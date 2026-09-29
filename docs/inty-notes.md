@@ -81,7 +81,10 @@ seems to re-check its dependencies, or inference over the big DOM rows is slow.
 
 Reported at `console.log(mount, play)` in `main.js` although the cause is
 elsewhere; the message does not say which field is present/absent or in
-which types. (Being investigated.)
+which types. Checking `src/ui/mixer.js` on its own located it at a
+`window.prompt(...)` call inside an event handler; the same code checks fine
+in isolation, so it depends on how `window` is used across the module graph.
+Workaround: go through the typed platform layer (`promptBox`).
 
 ## 9. 📚 DOM events are typed as elements
 
