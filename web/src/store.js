@@ -5,8 +5,8 @@
 // frame rebuilds all descriptions and reconciles them (see ui/tree.js).
 
 import { debounce } from "#platform";
-import { decodeProject, emptyProject, projectJson } from "./model.js";
-import { insertIx, insertIndex, trackIx, noteIndex } from "#brands";
+import { decodeProject, emptyProject, projectJson, cloneProject, describeChange } from "./model.js";
+import { insertIx, insertIndex, trackIx, noteIndex, clipIndex } from "#brands";
 
 export const state = {
   project /*: Project */: emptyProject(),
@@ -38,6 +38,10 @@ export const state = {
   diskIssues /*: Issue[] */: [],
   recording: false,
   selection /*: NoteIx[] */: [],
+  clipSelection /*: ClipIx[] */: [],
+  focus: "playlist",
+  viewport: { plStart: 0, plEnd: 0, plTrack0: 0, plTrack1: 0, prStart: 0, prEnd: 0, prLow: 0, prHigh: 0, prOn: false },
+  recent /*: { at: String, summary: String }[] */: [],
   hint: "",
 };
 
@@ -75,8 +79,22 @@ const undoStack = [];
 const redoStack = [];
 const MAX_UNDO = 200;
 
+/** The project as of the last edit-log entry (to describe what changed). */
+const logged = { project: emptyProject() };
+
+function logEdits() {
+  const lines = describeChange(logged.project, state.project);
+  logged.project = cloneProject(state.project);
+  if (lines.length === 0) return;
+  const at = new Date().toISOString();
+  for (const l of lines) state.recent.push({ at: at, summary: l });
+  while (state.recent.length > 12) state.recent.shift();
+  reportContext();
+}
+
 const syncSoon = debounce(120, () => {
   if (hooks.sync) hooks.sync(projectJson(state.project));
+  logEdits();
   return undefined;
 });
 
@@ -145,6 +163,7 @@ export function redo() {
 export function applyRemote(p) {
   snapshot();
   state.project = p;
+  logged.project = cloneProject(p);
   fixSelection();
   pushToEngine();
   invalidate();
@@ -155,6 +174,7 @@ export function applyRemote(p) {
 /** function load(p: Project) => Undefined */
 export function load(p) {
   state.project = p;
+  logged.project = cloneProject(p);
   state.loaded = true;
   undoStack.length = 0;
   redoStack.length = 0;
@@ -178,6 +198,8 @@ export function fixSelection() {
   if (insertIndex(state.insert) >= nIns) state.insert = insertIx(Math.max(0, nIns - 1));
   const pat = currentPattern();
   if (pat) state.selection = state.selection.filter((i) => noteIndex(i) < pat.notes.length);
+  const nClips = p.playlist.clips.length;
+  state.clipSelection = state.clipSelection.filter((i) => clipIndex(i) < nClips);
 }
 
 // ------------------------------------------------------------------ selection
@@ -232,6 +254,16 @@ const contextSoon = debounce(250, () => {
 
 export function reportContext() {
   contextSoon();
+}
+
+/** Which panel the producer is working in (reported to the agent). */
+/** function setFocus(name: String) => Undefined */
+export function setFocus(name) {
+  if (state.focus !== name) {
+    state.focus = name;
+    reportContext();
+  }
+  return undefined;
 }
 
 /** function deviceSpec(type: String, category: String) => DeviceSpec? */

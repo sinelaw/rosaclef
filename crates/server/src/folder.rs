@@ -67,9 +67,10 @@ impl Folder {
             self.write_project(&project)?;
         }
         write_if_changed(&self.dir.join(SCHEMA_FILE), &schema::schema_text())?;
+        write_if_changed(&self.state_path("context.schema.json"), &rosaclef_core::context::schema_text())?;
         let gitignore = self.dir.join(STATE_DIR).join(".gitignore");
         if !gitignore.exists() {
-            std::fs::write(gitignore, "*\n")?;
+            std::fs::write(gitignore, "*\n!context.schema.json\n")?;
         }
         Ok(())
     }

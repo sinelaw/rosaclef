@@ -148,6 +148,12 @@ export function encodeDevice(d) {
   return o;
 }
 
+/** The wire (project.json) form of a clip. */
+/** function encodeClipWire<R>(c: Clip) => R */
+export function encodeClipWire(c) {
+  return encodeClip(c);
+}
+
 /** function encodeClip<R>(c: Clip) => R */
 function encodeClip(c) {
   const o = JSON.parse("{}");
@@ -348,4 +354,120 @@ export function emptyProject() {
     playlist: { tracks: [], clips: [] },
     mixer: { inserts: [{ name: "Master", volume: 1, pan: 0, mute: false, solo: false, effects: [] }] },
   };
+}
+
+// ------------------------------------------------------------------ edit log
+
+/** function fmtNum(x: Number) => String */
+function fmtNum(x) {
+  return String(Math.round(x * 1000) / 1000);
+}
+
+/** function deviceDiff(label: String, a: Device, b: Device, out: String[]) => Undefined */
+function deviceDiff(label, a, b, out) {
+  if (a.type !== b.type) {
+    out.push(`${label}: ${a.type} → ${b.type}`);
+    return undefined;
+  }
+  /** const parts: String[] */
+  const parts = [];
+  for (const e of b.params) {
+    const old = a.params.find((x) => x.key === e.key);
+    if (!old || Math.abs(old.value - e.value) > 1e-9) parts.push(`${e.key} ${old ? fmtNum(old.value) : "default"} → ${fmtNum(e.value)}`);
+  }
+  for (const e of b.options) {
+    const old = a.options.find((x) => x.key === e.key);
+    if (!old || old.value !== e.value) parts.push(`${e.key} → ${e.value}`);
+  }
+  if (a.enabled !== b.enabled) parts.push(b.enabled ? "enabled" : "bypassed");
+  if (parts.length > 0) out.push(`${label}: ${parts.slice(0, 4).join(", ")}${parts.length > 4 ? ", …" : ""}`);
+  return undefined;
+}
+
+/** function noteText(n: Note) => String */
+function noteText(n) {
+  return `${noteName(n.pitch)} at beat ${fmtNum(n.start)}`;
+}
+
+/** A short human description of what changed between two versions. */
+/** function describeChange(a: Project, b: Project) => String[] */
+export function describeChange(a, b) {
+  /** const out: String[] */
+  const out = [];
+  if (a.meta.title !== b.meta.title) out.push(`title → "${b.meta.title}"`);
+  if (a.transport.bpm !== b.transport.bpm) out.push(`tempo ${fmtNum(a.transport.bpm)} → ${fmtNum(b.transport.bpm)} BPM`);
+  if (a.transport.swing !== b.transport.swing) out.push(`swing → ${Math.round(b.transport.swing * 100)}%`);
+
+  for (const c of b.channels) {
+    const old = a.channels.find((x) => x.id === c.id);
+    if (!old) {
+      out.push(`added channel "${c.id}" (${c.instrument.type})`);
+      continue;
+    }
+    if (old.name !== c.name) out.push(`channel "${c.id}" renamed to "${c.name}"`);
+    if (old.volume !== c.volume) out.push(`channel "${c.id}" volume → ${fmtNum(c.volume)}`);
+    if (old.pan !== c.pan) out.push(`channel "${c.id}" pan → ${fmtNum(c.pan)}`);
+    if (old.mute !== c.mute) out.push(`channel "${c.id}" ${c.mute ? "muted" : "unmuted"}`);
+    if (old.mixer !== c.mixer) out.push(`channel "${c.id}" rerouted to another insert`);
+    deviceDiff(`channel "${c.id}"`, old.instrument, c.instrument, out);
+  }
+  for (const c of a.channels) if (!b.channels.some((x) => x.id === c.id)) out.push(`removed channel "${c.id}"`);
+
+  for (const p of b.patterns) {
+    const old = a.patterns.find((x) => x.id === p.id);
+    if (!old) {
+      out.push(`added pattern "${p.id}"`);
+      continue;
+    }
+    if (old.length !== p.length) out.push(`pattern "${p.id}" length → ${fmtNum(p.length)} beats`);
+    if (old.name !== p.name) out.push(`pattern "${p.id}" renamed to "${p.name}"`);
+    /** const key: (Note) => String */
+    const key = (n) => `${n.channel}|${n.pitch}|${n.start}|${n.length}|${n.velocity}`;
+    const oldKeys = old.notes.map(key);
+    const newKeys = p.notes.map(key);
+    const added = p.notes.filter((n) => !oldKeys.includes(key(n)));
+    const removed = old.notes.filter((n) => !newKeys.includes(key(n)));
+    if (added.length > 0 && removed.length === added.length) {
+      out.push(`pattern "${p.id}": edited ${added.length} note${added.length > 1 ? "s" : ""} (${noteText(removed[0])} → ${noteText(added[0])}${added.length > 1 ? ", …" : ""})`);
+    } else {
+      if (added.length > 0) out.push(`pattern "${p.id}": +${added.length} note${added.length > 1 ? "s" : ""} on "${added[0].channel}" (${noteText(added[0])}${added.length > 1 ? ", …" : ""})`);
+      if (removed.length > 0) out.push(`pattern "${p.id}": −${removed.length} note${removed.length > 1 ? "s" : ""} (${noteText(removed[0])}${removed.length > 1 ? ", …" : ""})`);
+    }
+  }
+  for (const p of a.patterns) if (!b.patterns.some((x) => x.id === p.id)) out.push(`removed pattern "${p.id}"`);
+
+  const ca = a.playlist.clips.length;
+  const cb = b.playlist.clips.length;
+  if (cb > ca) out.push(`playlist: +${cb - ca} clip${cb - ca > 1 ? "s" : ""}`);
+  else if (cb < ca) out.push(`playlist: −${ca - cb} clip${ca - cb > 1 ? "s" : ""}`);
+  else if (JSON.stringify(a.playlist.clips.map(encodeClipKey)) !== JSON.stringify(b.playlist.clips.map(encodeClipKey))) out.push("playlist: clips moved or resized");
+  for (let t = 0; t < b.playlist.tracks.length && t < a.playlist.tracks.length; t++) {
+    const x = a.playlist.tracks[t];
+    const y = b.playlist.tracks[t];
+    if (x.name !== y.name) out.push(`track ${t} renamed to "${y.name}"`);
+    if (x.mute !== y.mute) out.push(`track ${t} ${y.mute ? "muted" : "unmuted"}`);
+  }
+  if (b.playlist.tracks.length > a.playlist.tracks.length) out.push("playlist: added a track");
+
+  for (let i = 0; i < b.mixer.inserts.length; i++) {
+    const y = b.mixer.inserts[i];
+    if (i >= a.mixer.inserts.length) {
+      out.push(`mixer: added insert ${i}`);
+      continue;
+    }
+    const x = a.mixer.inserts[i];
+    const label = `insert ${i} "${y.name}"`;
+    if (x.volume !== y.volume) out.push(`${label} volume → ${fmtNum(y.volume)}`);
+    if (x.pan !== y.pan) out.push(`${label} pan → ${fmtNum(y.pan)}`);
+    if (x.mute !== y.mute) out.push(`${label} ${y.mute ? "muted" : "unmuted"}`);
+    if (x.solo !== y.solo) out.push(`${label} ${y.solo ? "soloed" : "unsoloed"}`);
+    if (x.effects.length !== y.effects.length) out.push(`${label}: effects ${x.effects.map((e) => e.type).join(", ") || "none"} → ${y.effects.map((e) => e.type).join(", ") || "none"}`);
+    else for (let k = 0; k < y.effects.length; k++) deviceDiff(`${label} effect ${k} (${y.effects[k].type})`, x.effects[k], y.effects[k], out);
+  }
+  return out.slice(0, 8);
+}
+
+/** function encodeClipKey(c: Clip) => String */
+function encodeClipKey(c) {
+  return `${c.pattern}|${c.sample}|${trackIndex(c.track)}|${c.start}|${c.length}|${c.offset}`;
 }

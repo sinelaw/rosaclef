@@ -38,6 +38,28 @@ pub fn install_plugin_host(engine: &mut Engine) {
     engine.set_plugin_host(Arc::new(rosaclef_clap::ClapHost::new()));
 }
 
+/// Sequence number of `.rosaclef/context.json` writes.
+static CONTEXT_SEQ: AtomicU64 = AtomicU64::new(0);
+
+fn now_rfc3339() -> String {
+    // Minimal UTC formatter (no chrono dependency).
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) as i64;
+    let (days, rem) = (secs.div_euclid(86400), secs.rem_euclid(86400));
+    let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    // Civil-from-days (Howard Hinnant).
+    let z = days + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if mo <= 2 { y + 1 } else { y };
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
 struct Doc {
     project: Project,
     rev: u64,
@@ -333,7 +355,14 @@ async fn handle_client_message(app: &Shared, id: u64, v: Value) -> Option<Value>
             }
         }
         "context" => {
-            let ctx = v.get("context").cloned().unwrap_or(Value::Null);
+            let mut ctx = rosaclef_core::context::normalize(v.get("context").cloned().unwrap_or(Value::Null));
+            ctx.seq = CONTEXT_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
+            ctx.updated_at = now_rfc3339();
+            for e in &mut ctx.recent_edits {
+                if e.at.is_empty() {
+                    e.at = ctx.updated_at.clone();
+                }
+            }
             let _ = folder::write_atomic(&app.folder.state_path("context.json"), (serde_json::to_string_pretty(&ctx).unwrap() + "\n").as_bytes());
             None
         }

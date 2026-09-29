@@ -1,7 +1,7 @@
 // The studio shell: composes every panel into one description tree.
 
 import { drag } from "#platform";
-import { state, showDock, invalidate } from "../store.js";
+import { state, showDock, invalidate, setFocus } from "../store.js";
 import { topbar } from "./topbar.js";
 import { browser } from "./browser.js";
 import { rack, rackTools } from "./rack.js";
@@ -48,6 +48,7 @@ export function studio(b) {
   }
 
   b.open("section", "top", "pane pane-top");
+  b.on("pointerdown", (e) => setFocus("playlist"));
   b.open("div", "tabs", "tabs");
   b.open("div", "t", "tab on");
   glyph(b, "playlist");
@@ -77,6 +78,7 @@ export function studio(b) {
   });
 
   b.open("section", "dock", "pane pane-dock");
+  b.on("pointerdown", (e) => setFocus(state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : "channel rack"));
   b.open("div", "tabs", "tabs");
   tab(b, "rack", "Channel Rack", "rack", "F6");
   tab(b, "piano", "Piano Roll", "piano", "F7");
@@ -88,6 +90,7 @@ export function studio(b) {
   b.close();
   b.close();
   b.open("div", "body", "dock-body");
+  if (state.dock !== "piano") state.viewport.prOn = false;
   if (state.dock === "rack") rack(b);
   else if (state.dock === "piano") pianoRoll(b);
   else mixer(b);

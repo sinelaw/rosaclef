@@ -1,10 +1,10 @@
 // Connection to the Rosaclef server: project sync, native engine status.
 
 import { connectRaw, wsUrl } from "#platform";
-import { decodeProject } from "./model.js";
 import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel } from "./store.js";
 import { toast } from "./ui/toast.js";
-import { insertIndex, noteIndex } from "#brands";
+import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
+import { decodeProject, encodeClipWire, barBeat } from "./model.js";
 
 /** const sock: RawSock[] */
 const sock = [];
@@ -110,30 +110,53 @@ export function connect() {
   sock.push(s);
 }
 
-/** Tell the server (and so the agent) what the producer is looking at. */
+/** Tell the server (and so the agent) what the producer is looking at.
+ * Written to .rosaclef/context.json (schema: .rosaclef/context.schema.json). */
 export function sendContext() {
+  const p = state.project;
   const pat = currentPattern();
   const ch = currentChannel();
-  /** const selected: Note[] */
-  const selected = [];
+  const vp = state.viewport;
+  /** const notes: { index: Int, note: Note }[] */
+  const notes = [];
   if (pat) {
     for (const i of state.selection) {
       const n = noteIndex(i);
-      if (n < pat.notes.length) selected.push(pat.notes[n]);
+      if (n < pat.notes.length) notes.push({ index: n, note: pat.notes[n] });
     }
   }
+  const clips = [];
+  for (const c of state.clipSelection) {
+    const i = clipIndex(c);
+    if (i < p.playlist.clips.length) clips.push({ index: i, clip: encodeClipWire(p.playlist.clips[i]) });
+  }
+  const ins = insertIndex(state.insert);
+  const tr = trackIndex(state.track);
   send({
     t: "context",
     context: {
-      view: state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : "channel rack",
-      playMode: state.mode,
-      selectedPattern: pat ? { id: pat.id, name: pat.name, length: pat.length } : null,
-      selectedChannel: ch ? { id: ch.id, name: ch.name, instrument: ch.instrument.type } : null,
-      selectedInsert: insertIndex(state.insert),
-      selectedNotes: selected,
-      playheadBeat: Math.round(state.position * 1000) / 1000,
-      snap: state.snap,
-      hint: "Indexes refer to arrays in project.json; notes are listed in full.",
+      focus: state.focus,
+      dock: state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : "channel rack",
+      transport: {
+        playing: state.playing,
+        mode: state.mode,
+        positionBeats: Math.round(state.position * 1000) / 1000,
+        position: barBeat(state.position, p.transport.beatsPerBar),
+        bpm: p.transport.bpm,
+      },
+      selection: {
+        pattern: pat ? { id: pat.id, name: pat.name, length: pat.length, noteCount: pat.notes.length } : null,
+        channel: ch ? { id: ch.id, name: ch.name, instrument: ch.instrument.type, mixer: insertIndex(ch.mixer) } : null,
+        insert: ins < p.mixer.inserts.length ? { index: ins, name: p.mixer.inserts[ins].name } : null,
+        track: tr < p.playlist.tracks.length ? { index: tr, name: p.playlist.tracks[tr].name } : null,
+        notes: notes,
+        clips: clips,
+      },
+      visible: {
+        playlist: { startBeat: vp.plStart, endBeat: vp.plEnd, firstTrack: vp.plTrack0, lastTrack: vp.plTrack1 },
+        pianoRoll: vp.prOn && pat && ch ? { pattern: pat.id, channel: ch.id, startBeat: vp.prStart, endBeat: vp.prEnd, lowPitch: vp.prLow, highPitch: vp.prHigh } : null,
+      },
+      recentEdits: state.recent,
     },
   });
 }

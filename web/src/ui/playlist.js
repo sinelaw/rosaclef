@@ -5,7 +5,7 @@
 // previews, waveforms) are small canvas leaves.
 
 import { drag, getJson, promptBox } from "#platform";
-import { state, commit, begin, changed, invalidate, selectPattern, selectChannel, showDock, currentPattern, hint } from "../store.js";
+import { state, commit, begin, changed, invalidate, selectPattern, selectChannel, showDock, currentPattern, hint, reportContext } from "../store.js";
 import { snapTo, snapDown, songLength } from "../model.js";
 import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
@@ -20,7 +20,6 @@ const view = {
   scrollTop /*: Number */: 0,
   width /*: Number */: 900,
   height /*: Number */: 300,
-  selected /*: ClipIx[] */: [],
 };
 
 /** type PGeo = { zoom: Number, trackH: Number, beats: Number, width: Number, height: Number } */
@@ -57,7 +56,7 @@ function hit(boxes, x, y) {
 
 /** function isSel(i: ClipIx) => Boolean */
 function isSel(i) {
-  return view.selected.some((s) => clipIndex(s) === clipIndex(i));
+  return state.clipSelection.some((s) => clipIndex(s) === clipIndex(i));
 }
 
 // ------------------------------------------------------------------ peaks cache
@@ -86,8 +85,8 @@ function samplePeaks(path) {
 // ------------------------------------------------------------------ editing
 
 export function deleteSelectedClips() {
-  if (view.selected.length === 0) return;
-  const gone = view.selected.map(clipIndex);
+  if (state.clipSelection.length === 0) return;
+  const gone = state.clipSelection.map(clipIndex);
   commit(() => {
     const clips = state.project.playlist.clips;
     /** const keep: Clip[] */
@@ -96,7 +95,7 @@ export function deleteSelectedClips() {
     state.project.playlist.clips = keep;
     return undefined;
   });
-  view.selected = [];
+  state.clipSelection = [];
 }
 
 /** function patternById(id: String) => Pattern? */
@@ -159,7 +158,7 @@ function onLaneDown(e, g) {
         p.playlist.clips.splice(idx, 1);
         return undefined;
       });
-      view.selected = [];
+      state.clipSelection = [];
     }
     return undefined;
   }
@@ -168,14 +167,17 @@ function onLaneDown(e, g) {
     const box = boxes[k];
     const idx = clipIndex(box.i);
     const clip = p.playlist.clips[idx];
-    if (!isSel(box.i)) view.selected = e.shiftKey ? view.selected.concat([box.i]) : [box.i];
+    if (!isSel(box.i)) {
+      state.clipSelection = e.shiftKey ? state.clipSelection.concat([box.i]) : [box.i];
+      reportContext();
+    }
     if (clip.pattern !== "") {
       selectPattern(clip.pattern);
       followPattern();
       focusEditor(clip.pattern, e.detail >= 2);
     }
     const resizing = x > box.x + box.w - 8;
-    const orig = view.selected.map((s) => {
+    const orig = state.clipSelection.map((s) => {
       const c = p.playlist.clips[clipIndex(s)];
       return { i: clipIndex(s), start: c.start, length: c.length, track: trackIndex(c.track) };
     });
@@ -216,7 +218,7 @@ function onLaneDown(e, g) {
   begin();
   p.playlist.clips.push({ pattern: pat.id, sample: "", track: trackIx(track), start: start, length: pat.length, offset: 0, gain: 1, mixer: insertIx(0) });
   const idx = p.playlist.clips.length - 1;
-  view.selected = [clipIx(idx)];
+  state.clipSelection = [clipIx(idx)];
   changed(true);
   const x0 = e.clientX;
   drag(e, (m) => {
@@ -308,6 +310,7 @@ export function playlist(b) {
   const p = state.project;
   const g = geometry();
   followPlayhead(g);
+  reportViewport(g);
   const bpb = p.transport.beatsPerBar;
   b.open("div", "pl", "editor");
   b.open("div", "main", "editor-main pl");
@@ -484,6 +487,24 @@ export function playlist(b) {
 
   b.close();
   b.close();
+  return undefined;
+}
+
+/** Record the visible part of the song for the agent context. */
+/** function reportViewport(g: PGeo) => Undefined */
+function reportViewport(g) {
+  const vp = state.viewport;
+  const start = Math.round((view.scrollLeft / g.zoom) * 100) / 100;
+  const end = Math.round(((view.scrollLeft + view.width) / g.zoom) * 100) / 100;
+  const t0 = Math.floor(view.scrollTop / g.trackH);
+  const t1 = Math.max(t0, Math.min(state.project.playlist.tracks.length - 1, Math.floor((view.scrollTop + view.height - 1) / g.trackH)));
+  if (vp.plStart !== start || vp.plEnd !== end || vp.plTrack0 !== t0 || vp.plTrack1 !== t1) {
+    vp.plStart = start;
+    vp.plEnd = end;
+    vp.plTrack0 = t0;
+    vp.plTrack1 = t1;
+    reportContext();
+  }
   return undefined;
 }
 

@@ -58,14 +58,59 @@ the producer sees and hears every change you save within a fraction of a second.
 |---|---|
 | `project.json` | **The song.** Everything: tempo, instruments, patterns, arrangement, mixer. Edit this. |
 | `project.schema.json` | JSON Schema (draft 2020-12) for `project.json`. |
-| `.rosaclef/context.json` | What the producer is looking at *right now*: open view, selected pattern/channel/insert, playhead, selected notes. Read it when they say "this", "here", "the selected…". |
+| `.rosaclef/context.json` | What the producer is doing *right now* (see "The producer's context" below). Schema: `.rosaclef/context.schema.json`. |
 | `.rosaclef/status.json` | Result of the studio's last load of `project.json` (`ok` + `issues`). Check it after every edit. |
 | `samples/` | Audio files (wav/flac/mp3/ogg) used by `sampler` instruments and audio clips. |
 | `renders/` | Exported mixdowns. |
 
+## The producer's context
+
+The studio continuously rewrites `.rosaclef/context.json` (read-only for you)
+with what the producer is doing. **Read it whenever they say "this", "here",
+"these notes", "the selected…", "what I just did", or refer to a part of the
+song without naming it.** Fields (full schema in `.rosaclef/context.schema.json`):
+
+- `focus` — panel they last touched: `playlist`, `channel rack`, `piano roll`, `mixer`, `browser`, `agent`.
+- `transport` — `playing`, `mode` (`song` / `pattern`), playhead `positionBeats` and `position` (`bar:beat:tick`), `bpm`.
+- `selection` — the selected `pattern`, `channel`, mixer `insert` and playlist `track`; `notes`
+  (selected notes of the selected pattern, each with its `index` in that pattern's `notes`) and
+  `clips` (selected clips with their `index` in `playlist.clips`).
+- `visible` — what is on screen: the playlist's beat range and tracks, and (when the piano roll is
+  open) its pattern, channel, beat range and pitch range. "This part" usually means this range.
+- `recentEdits` — the producer's latest manual edits in plain words, newest last
+  (e.g. `pattern "groove": +1 note on "snare" (D3 at beat 2.5)`, `channel "bass": cutoff 1200 → 900`).
+  Your own edits to `project.json` are not listed.
+- `seq` / `updatedAt` — increase on every write; compare them to know whether it changed.
+
+Example:
+
+```json
+{
+  "seq": 41, "updatedAt": "2026-09-29T21:14:03Z",
+  "focus": "piano roll", "dock": "piano roll",
+  "transport": { "playing": false, "mode": "pattern", "positionBeats": 2, "position": "001:03:00", "bpm": 92 },
+  "selection": {
+    "pattern": { "id": "keys", "name": "Keys", "length": 16, "noteCount": 80 },
+    "channel": { "id": "keys", "name": "Rhodes", "instrument": "sextant", "mixer": 4 },
+    "insert": { "index": 4, "name": "Keys" }, "track": { "index": 2, "name": "Keys" },
+    "notes": [ { "index": 12, "note": { "channel": "keys", "pitch": 63, "start": 2.5, "length": 1, "velocity": 0.72 } } ],
+    "clips": []
+  },
+  "visible": {
+    "playlist": { "startBeat": 0, "endBeat": 37, "firstTrack": 0, "lastTrack": 7 },
+    "pianoRoll": { "pattern": "keys", "channel": "keys", "startBeat": 0, "endBeat": 11.3, "lowPitch": 55, "highPitch": 74 }
+  },
+  "recentEdits": [ { "at": "2026-09-29T21:13:58Z", "summary": "pattern \"keys\": edited 1 note (C4 at beat 2.5 → D♯4 at beat 2.5)" } ]
+}
+```
+
+Indexes refer to `project.json` as it was when the context was written; re-read the project before
+editing, and prefer matching notes by their content if the project changed since.
+
 ## Workflow
 
-1. Read `.rosaclef/context.json` and `project.json` (or run `rosaclef summary` for an overview).
+1. Read `.rosaclef/context.json` (what the producer is doing) and `project.json`
+   (or run `rosaclef summary` for an overview).
 2. Edit `project.json` directly — small, targeted edits. Keep the file's formatting style
    (one note per line); the studio rewrites it canonically on its next save anyway.
 3. Validate: `rosaclef validate` (exit status 0 = ok). Errors name the exact JSON path, e.g.

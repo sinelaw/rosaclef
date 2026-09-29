@@ -542,6 +542,19 @@ export function pianoRoll(b) {
     const mid = mine.length > 0 ? sum / mine.length : 66;
     view.scrollTop = Math.max(0, pitchY(g, mid) - view.height / 2);
   }
+  const vp = state.viewport;
+  const ps = Math.round((view.scrollLeft / g.zoom) * 100) / 100;
+  const pe = Math.round(((view.scrollLeft + view.width) / g.zoom) * 100) / 100;
+  const hi = Math.min(127, 127 - Math.floor(view.scrollTop / g.rowH));
+  const lo = Math.max(0, 127 - Math.floor((view.scrollTop + view.height) / g.rowH));
+  if (!vp.prOn || vp.prStart !== ps || vp.prEnd !== pe || vp.prLow !== lo || vp.prHigh !== hi) {
+    vp.prOn = true;
+    vp.prStart = ps;
+    vp.prEnd = pe;
+    vp.prLow = lo;
+    vp.prHigh = hi;
+    reportContext();
+  }
   b.open("div", "main", "editor-main pr");
   b.leaf("div", "corner", "corner", pat.name);
   rulerView(b, g, pat);

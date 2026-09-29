@@ -1,7 +1,7 @@
 // The browser (left panel): instruments, plugins, patterns, samples, project.
 
 import { uploadFile, pickFiles } from "#platform";
-import { state, commit, selectPattern, selectChannel, showDock, invalidate, hint } from "../store.js";
+import { state, commit, selectPattern, selectChannel, showDock, invalidate, hint, setFocus } from "../store.js";
 import { newDevice, setOption, uniqueId, paletteColor, presetDevice } from "../model.js";
 import { followPattern } from "../audio.js";
 import { glyph, iconButton, textInput } from "./widgets.js";
@@ -104,6 +104,7 @@ const DEVICE_ICONS = [
 export function browser(b) {
   const p = state.project;
   b.open("aside", "browser", "browser panel");
+  b.on("pointerdown", (e) => setFocus("browser"));
   b.open("div", "head", "panel-head");
   b.leaf("div", "t", "panel-title", "Browser");
   b.close();

@@ -8,7 +8,7 @@
 // The UI sends the same transport commands to whichever one is selected.
 
 import { audioStart, audioPost, audioPostSample, audioResume, decodeAudioUrl, recStart, recStop } from "#platform";
-import { state, hooks, invalidate, commit, currentPattern } from "./store.js";
+import { state, hooks, invalidate, commit, currentPattern, reportContext } from "./store.js";
 import { send } from "./net.js";
 import { toast } from "./ui/toast.js";
 import { projectJson } from "./model.js";
@@ -107,6 +107,7 @@ export async function play() {
   audioPost({ t: "mode", pattern: modeTarget() });
   audioPost({ t: "play" });
   state.playing = true;
+  reportContext();
   invalidate();
   return true;
 }
@@ -120,6 +121,7 @@ export function stop() {
   else audioPost({ t: "stop" });
   state.playing = false;
   state.position = 0;
+  reportContext();
   invalidate();
 }
 
@@ -137,6 +139,7 @@ export function togglePlay() {
 /** function setMode(mode: String) => Undefined */
 export function setMode(mode) {
   state.mode = mode;
+  reportContext();
   if (state.output === "browser") audioPost({ t: "mode", pattern: modeTarget() });
   else if (state.playing) send({ t: "native.play", pattern: modeTarget() });
   invalidate();

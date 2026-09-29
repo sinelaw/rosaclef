@@ -3,7 +3,7 @@
 // AGENTS.md / CLAUDE.md teach it the project format.
 
 import { connectRaw, wsUrl, createTerm, getJson } from "#platform";
-import { state, invalidate, currentPattern, currentChannel, hint } from "../store.js";
+import { state, invalidate, currentPattern, currentChannel, hint, setFocus } from "../store.js";
 import { iconButton, button, select, glyph } from "./widgets.js";
 import { insertIndex } from "#brands";
 
@@ -155,6 +155,7 @@ export function agentPanel(b) {
   const pat = currentPattern();
   const ch = currentChannel();
   b.open("aside", "agent", "agent");
+  b.on("pointerdown", (e) => setFocus("agent"));
 
   b.open("div", "head", "agent-head");
   b.open("div", "mark", "agent-mark");
