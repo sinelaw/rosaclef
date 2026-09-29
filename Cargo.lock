@@ -1333,6 +1333,7 @@ dependencies = [
  "notify",
  "parking_lot",
  "portable-pty",
+ "rosaclef-clap",
  "rosaclef-core",
  "rosaclef-engine",
  "serde",
@@ -1352,6 +1353,7 @@ dependencies = [
  "rosaclef-core",
  "rosaclef-engine",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1380,6 +1382,11 @@ dependencies = [
 [[package]]
 name = "rosaclef-wasm"
 version = "0.1.0"
+dependencies = [
+ "rosaclef-core",
+ "rosaclef-engine",
+ "serde_json",
+]
 
 [[package]]
 name = "rustc-hash"

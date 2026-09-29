@@ -418,3 +418,24 @@ pub fn soft_clip(x: f32) -> f32 {
         x.tanh()
     }
 }
+
+/// DC-blocking high-pass (about 10 Hz).
+#[derive(Clone, Default)]
+pub struct DcBlock {
+    x1: f32,
+    y1: f32,
+}
+
+impl DcBlock {
+    #[inline]
+    pub fn process(&mut self, x: f32, r: f32) -> f32 {
+        let y = x - self.x1 + r * self.y1;
+        self.x1 = x;
+        self.y1 = y;
+        y
+    }
+    /// Pole radius for a ~10 Hz corner.
+    pub fn coef(sr: f32) -> f32 {
+        1.0 - (TAU * 10.0 / sr)
+    }
+}

@@ -216,6 +216,7 @@ pub struct Engine {
     pending: Vec<Pending>,
     master_l: Vec<f32>,
     master_r: Vec<f32>,
+    dc: [dsp::DcBlock; 2],
 }
 
 impl Engine {
@@ -241,6 +242,7 @@ impl Engine {
             pending: vec![],
             master_l: vec![0.0; MAX_BLOCK],
             master_r: vec![0.0; MAX_BLOCK],
+            dc: Default::default(),
         };
         e.set_project(project);
         e
@@ -606,9 +608,10 @@ impl Engine {
                 }
             }
         }
+        let r = dsp::DcBlock::coef(self.ctx.sr);
         for i in 0..n {
-            master.buf_l[i] += self.master_l[i];
-            master.buf_r[i] += self.master_r[i];
+            master.buf_l[i] = self.dc[0].process(master.buf_l[i] + self.master_l[i], r);
+            master.buf_r[i] = self.dc[1].process(master.buf_r[i] + self.master_r[i], r);
         }
         run_insert(master, n);
         for i in 0..n {

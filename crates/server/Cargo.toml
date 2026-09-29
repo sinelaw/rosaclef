@@ -17,6 +17,7 @@ device-audio = ["dep:cpal"]
 [dependencies]
 rosaclef-core.workspace = true
 rosaclef-engine.workspace = true
+rosaclef-clap = { path = "../clap-host" }
 serde.workspace = true
 serde_json.workspace = true
 anyhow = "1"

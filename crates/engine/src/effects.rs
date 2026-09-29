@@ -372,6 +372,8 @@ impl Effect for Chorus {
 pub struct Drive {
     amount: f32,
     tone: [OnePole; 2],
+    dc: [DcBlock; 2],
+    dc_coef: f32,
     mix: f32,
     output: f32,
 }
@@ -381,6 +383,7 @@ impl Effect for Drive {
         self.amount = d.param("amount") as f32;
         self.mix = d.param("mix") as f32;
         self.output = d.param("output") as f32;
+        self.dc_coef = DcBlock::coef(ctx.sr);
         for t in &mut self.tone {
             t.set(d.param("tone") as f32, ctx.sr);
         }
@@ -388,12 +391,14 @@ impl Effect for Drive {
     fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
         let pre = 1.0 + self.amount * 24.0;
         let norm = 1.0 / pre.sqrt().max(1.0);
-        for (buf, tone) in [left, right].into_iter().zip(self.tone.iter_mut()) {
+        let r = self.dc_coef;
+        for ((buf, tone), dc) in [left, right].into_iter().zip(self.tone.iter_mut()).zip(self.dc.iter_mut()) {
             for x in buf.iter_mut() {
-                // Asymmetric curve adds even harmonics, like a tube stage.
+                // Asymmetric curve adds even harmonics, like a tube stage;
+                // the DC it creates is removed afterwards.
                 let v = *x * pre;
                 let sat = if v >= 0.0 { v.tanh() } else { (v * 0.8).tanh() / 0.8 };
-                let wet = tone.process(sat * norm * 1.6);
+                let wet = tone.process(dc.process(sat * norm * 1.6, r));
                 *x = mix(*x, wet, self.mix) * self.output;
             }
         }

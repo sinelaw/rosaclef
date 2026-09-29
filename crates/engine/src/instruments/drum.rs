@@ -93,7 +93,7 @@ impl Drum {
     fn voice_len(&self) -> f32 {
         let d = self.decay;
         match self.kind {
-            Kind::Kick => 1.6 * d + 0.05,
+            Kind::Kick => 0.75 * d + 0.05,
             Kind::Snare => 0.9 * d,
             Kind::Clap => 1.0 * d + 0.05,
             Kind::Hat => 0.3 * d,
@@ -176,7 +176,8 @@ impl Instrument for Drum {
                         v.phase[0] = (v.phase[0] + f * dt).fract();
                         let body = (v.phase[0] * TAU).sin();
                         let shaped = (body * (1.0 + tone * 2.5)).tanh() / (1.0 + tone * 2.5).tanh();
-                        let env = (-t / (0.32 * decay)).exp() * (t / 0.0015).min(1.0);
+                        // Punchy body with a short sub tail.
+                        let env = (0.6 * (-t / (0.07 * decay)).exp() + 0.4 * (-t / (0.16 * decay)).exp()) * (t / 0.0015).min(1.0);
                         let click = v.f1.process(noise, FilterMode::Highpass) * (-t / 0.004).exp() * snap * 0.6;
                         shaped * env + click
                     }
