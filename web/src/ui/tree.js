@@ -49,7 +49,9 @@ export function builder() {
       return undefined;
     },
     close: () => {
-      stack.pop();
+      // Modifiers after close() apply to the node just closed.
+      const closed = stack.pop();
+      if (closed !== undefined) current = nodeIndex(closed);
       return undefined;
     },
     leaf: (type, key, cls, text) => {
@@ -149,12 +151,6 @@ export function mount(backend, view) {
       }
       el.styles = d.styles;
     }
-    if (!sameKS(el.props, d.props)) {
-      for (const p of d.props) {
-        if (findKS(el.props, p.key) !== p.value) backend.setProp(h, p.key, p.value);
-      }
-      el.props = d.props;
-    }
     // Handlers: bind one backend listener per event type; it dispatches to
     // whatever handler the latest description holds.
     el.on = d.on;
@@ -168,6 +164,18 @@ export function mount(backend, view) {
           return undefined;
         });
       }
+    }
+    return undefined;
+  }
+
+  /** DOM properties go last: a select's value needs its options. */
+  /** function updateProps(el: Elem, d: Desc) => Undefined */
+  function updateProps(el, d) {
+    if (!sameKS(el.props, d.props)) {
+      for (const p of d.props) {
+        if (findKS(el.props, p.key) !== p.value) backend.setProp(el.handle, p.key, p.value);
+      }
+      el.props = d.props;
     }
     return undefined;
   }
@@ -221,6 +229,7 @@ export function mount(backend, view) {
         order.push(path);
         if (d.canvas) painters.push(i);
         place(el, kids[i]);
+        updateProps(el, d);
       }
       // Re-attach children only when their order changed.
       let same = order.length === parent.order.length;

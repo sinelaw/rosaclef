@@ -67,7 +67,7 @@ export async function startAudio() {
     audioPost({ t: "project", json: projectJson(state.project) });
     invalidate();
   } catch (e) {
-    toast("Could not start browser audio", "Your browser blocked the AudioWorklet or WebAssembly engine.", "error");
+    toast("Could not start browser audio", String(e), "error");
   }
   starting = false;
   return await audioResume();

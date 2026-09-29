@@ -1,7 +1,7 @@
 // The browser (left panel): instruments, plugins, patterns, samples, project.
 
-import { uploadFile, onFileDrop, pickFiles } from "#platform";
-import { state, commit, selectPattern, selectChannel, showDock, invalidate, hint } from "../store.js";
+import { uploadFile, pickFiles } from "#platform";
+import { state, commit, selectPattern, selectChannel, showDock, hint } from "../store.js";
 import { newDevice, setOption, uniqueId, paletteColor } from "../model.js";
 import { followPattern } from "../audio.js";
 import { glyph, iconButton, textInput } from "./widgets.js";
@@ -84,7 +84,6 @@ export function browser(b) {
   b.leaf("div", "t", "panel-title", "Browser");
   b.close();
   b.open("div", "body", "browser-body");
-  b.on("mount", (e) => undefined);
 
   // Instruments.
   b.open("div", "inst-title", "section-title");
@@ -218,9 +217,3 @@ export function browser(b) {
 
 /** The sample being dragged from the browser (read by the playlist). */
 export const dragSample = { path: "" };
-
-/** function installDrop() => Undefined */
-export function installDrop() {
-  invalidate();
-  return undefined;
-}

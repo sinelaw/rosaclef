@@ -184,18 +184,18 @@ fn engine_renders_plugin_instrument() {
         volume: 0.8,
         pan: 0.0,
         mute: false,
-        mixer: 1,
+        mixer: rosaclef_core::InsertIx(1),
     });
     project.patterns[0].notes.push(Note { channel: "sine".into(), pitch: 60, start: 0.0, length: 1.0, velocity: 0.9 });
     project.playlist.clips.push(Clip {
         pattern: "pattern-1".into(),
         sample: String::new(),
-        track: 0,
+        track: rosaclef_core::TrackIx(0),
         start: 0.0,
         length: 4.0,
         offset: 0.0,
         gain: 1.0,
-        mixer: 0,
+        mixer: rosaclef_core::InsertIx::MASTER,
     });
     let mut engine = Engine::new(48000.0);
     engine.set_plugin_host(Arc::new(ClapHost::new()));

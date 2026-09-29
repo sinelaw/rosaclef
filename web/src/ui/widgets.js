@@ -202,6 +202,8 @@ export function iconButton(b, key, cls, icon, tip, onClick) {
 /** function select(b: Builder, key: String, cls: String, value: String, choices: String[], labels: String[], tip: String, onSet: (String) => Undefined) => Undefined */
 export function select(b, key, cls, value, choices, labels, tip, onSet) {
   b.open("select", key, `select ${cls}`);
+  // Applied after the options exist (the reconciler sets props last).
+  b.prop("value", value);
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));
   b.on("change", (e) => {
@@ -212,7 +214,6 @@ export function select(b, key, cls, value, choices, labels, tip, onSet) {
     b.leaf("option", choices[i], "", i < labels.length ? labels[i] : choices[i]);
     b.attr("value", choices[i]);
   }
-  b.prop("value", value);
   b.close();
   return undefined;
 }

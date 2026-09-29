@@ -1,5 +1,6 @@
 // The mixer: insert strips and the effect rack of the selected insert.
 
+import { promptBox } from "#platform";
 import { state, commit, selectInsert, deviceSpec, hint } from "../store.js";
 import { newDevice, dbText, panText } from "../model.js";
 import { fader, knob, meter, button, iconButton, select } from "./widgets.js";
@@ -37,8 +38,8 @@ function strip(b, ins, i) {
   b.leaf("div", "name", "strip-name", ins.name);
   b.attr("title", "Double-click to rename");
   b.on("dblclick", (e) => {
-    const name = window.prompt("Insert name", ins.name);
-    if (name) {
+    const name = promptBox("Insert name", ins.name);
+    if (name !== "") {
       commit(() => {
         ins.name = name;
         return undefined;

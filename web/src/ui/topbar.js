@@ -6,7 +6,6 @@ import { barBeat } from "../model.js";
 import { togglePlay, stop, record, setMode, setOutput } from "../audio.js";
 import { iconButton, button, knob, meter } from "./widgets.js";
 import { toast } from "./toast.js";
-import { insertIx } from "#brands";
 
 /** function lcd(b: Builder, key: String, label: String, value: String, unit: String) => Undefined */
 function lcd(b, key, label, value, unit) {
@@ -147,11 +146,5 @@ export function topbar(b) {
   b.leaf("span", "t", "", "Export");
   b.close();
   b.close();
-  return undefined;
-}
-
-/** function selectMaster() => Undefined */
-export function selectMaster() {
-  state.insert = insertIx(0);
   return undefined;
 }

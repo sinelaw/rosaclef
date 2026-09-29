@@ -4,7 +4,7 @@
 // clip rectangle; rendering and hit-testing read them. Clip contents (note
 // previews, waveforms) are small canvas leaves.
 
-import { drag, fmt, getJson, onFileDrop, uploadFile } from "#platform";
+import { drag, getJson, promptBox } from "#platform";
 import { state, commit, begin, changed, invalidate, selectPattern, currentPattern, hint } from "../store.js";
 import { snapTo, snapDown, songLength } from "../model.js";
 import { seek, followPattern } from "../audio.js";
@@ -324,8 +324,8 @@ export function playlist(b) {
     b.leaf("span", "name", "t-name", tr.name);
     b.attr("title", "Double-click to rename");
     b.on("dblclick", (e) => {
-      const name = window.prompt("Track name", tr.name);
-      if (name) {
+      const name = promptBox("Track name", tr.name);
+      if (name !== "") {
         commit(() => {
           tr.name = name;
           return undefined;
