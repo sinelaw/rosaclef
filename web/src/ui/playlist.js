@@ -89,7 +89,11 @@ export function deleteSelectedClips() {
   if (view.selected.length === 0) return;
   const gone = view.selected.map(clipIndex);
   commit(() => {
-    state.project.playlist.clips = state.project.playlist.clips.filter((c, i) => !gone.includes(i));
+    const clips = state.project.playlist.clips;
+    /** const keep: Clip[] */
+    const keep = [];
+    for (let i = 0; i < clips.length; i++) if (!gone.includes(i)) keep.push(clips[i]);
+    state.project.playlist.clips = keep;
     return undefined;
   });
   view.selected = [];

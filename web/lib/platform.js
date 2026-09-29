@@ -381,7 +381,11 @@ export function domBackend(rootId) {
       const el = nodes[h];
       if (k === "checked" || k === "disabled") el[k] = v === "true";
       else if (k === "focus") { if (v === "true") setTimeout(() => el.focus(), 0); }
-      else if (k === "scrollLeft" || k === "scrollTop") el[k] = Number(v);
+      else if (k === "scrollLeft" || k === "scrollTop") {
+        // Scrolling a node that is not in the document yet is ignored.
+        if (el.isConnected) el[k] = Number(v);
+        else requestAnimationFrame(() => { el[k] = Number(v); });
+      }
       else if (el[k] !== v) el[k] = v;
     },
     append: (p, c) => { nodes[p].appendChild(nodes[c]); },

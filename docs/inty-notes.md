@@ -125,6 +125,8 @@ not accepted where a `Number` field is declared. Array indexing requires
   `arr.map((_) => [])` does.
 - `a && b` requires both operands to have the same type, so
   `cond && maybeObj ? x : y` must be rewritten with `if`.
+- `arr.filter((x, i) => …)` / `arr.map((x, i) => …)`: callbacks taking the
+  index are rejected (stdlib declares one-argument callbacks); use a loop.
 - Heterogeneous tuples (`[["l", 0.5]]`) are rejected; use records.
 - `promise.catch((e) => false)` must return a `Promise` (`Promise.resolve(false)`).
 - An AudioWorklet processor must `extend AudioWorkletProcessor`; with no

@@ -1,20 +1,4 @@
-/* Rosaclef Studio — layout. */
-
-/* ---------------------------------------------------------------- layout */
-
-.studio {
-  display: grid;
-  grid-template-rows: 60px minmax(0, 1fr) 26px;
-  grid-template-columns: var(--browser-w) minmax(0, 1fr) var(--agent-w);
-  grid-template-areas: "top top top" "browser work agent" "hint hint hint";
-  height: 100%;
-}
-
-.topbar { grid-area: top; }
-.browser { grid-area: browser; }
-.workspace { grid-area: work; }
-.agent { grid-area: agent; }
-.hintbar { grid-area: hint; }
+/* Top bar: brand, transport, LCDs (topbar.js). */
 
 /* ---------------------------------------------------------------- top bar */
 

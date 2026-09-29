@@ -23,6 +23,7 @@ const view = {
   tool: "draw",
   lastLength: 0.25,
   centered: false,
+  focus: "",
   marquee /*: { x0: Number, y0: Number, x1: Number, y1: Number } */: { x0: 0, y0: 0, x1: 0, y1: 0 },
   marqueeOn: false,
   keyDown: -1,
@@ -84,7 +85,10 @@ export function deleteSelection() {
   if (!pat || state.selection.length === 0) return;
   const gone = state.selection.map(noteIndex);
   commit(() => {
-    pat.notes = pat.notes.filter((n, i) => !gone.includes(i));
+    /** const keep: Note[] */
+    const keep = [];
+    for (let i = 0; i < pat.notes.length; i++) if (!gone.includes(i)) keep.push(pat.notes[i]);
+    pat.notes = keep;
     return undefined;
   });
   setSelection([]);
@@ -522,6 +526,16 @@ export function pianoRoll(b) {
     return undefined;
   }
   const g = geometry(pat);
+  // Scroll to the notes whenever another pattern/channel comes into view.
+  const focus = `${pat.id}/${ch.id}`;
+  if (view.focus !== focus && view.centered) {
+    view.focus = focus;
+    const mine = pat.notes.filter((n) => n.channel === ch.id);
+    let sum = 0;
+    for (const n of mine) sum = sum + n.pitch;
+    const mid = mine.length > 0 ? sum / mine.length : 66;
+    view.scrollTop = Math.max(0, pitchY(g, mid) - view.height / 2);
+  }
   b.open("div", "main", "editor-main pr");
   b.leaf("div", "corner", "corner", pat.name);
   rulerView(b, g, pat);

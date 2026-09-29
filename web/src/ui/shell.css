@@ -1,0 +1,81 @@
+/* The studio shell: grid layout, panes, tabs, hint bar, banners (shell.js). */
+
+/* ---------------------------------------------------------------- layout */
+
+.studio {
+  display: grid;
+  grid-template-rows: 60px minmax(0, 1fr) 26px;
+  grid-template-columns: var(--browser-w) minmax(0, 1fr) var(--agent-w);
+  grid-template-areas: "top top top" "browser work agent" "hint hint hint";
+  height: 100%;
+}
+
+.topbar { grid-area: top; }
+.browser { grid-area: browser; }
+.workspace { grid-area: work; }
+.agent { grid-area: agent; }
+.hintbar { grid-area: hint; }
+
+
+/* ---------------------------------------------------------------- workspace */
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--ob-1);
+}
+.pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative; }
+.pane-top { flex: 1 1 54%; }
+.pane-dock { flex: 0 0 var(--dock-h); border-top: 1px solid var(--line-2); box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45); }
+.splitter { height: 5px; margin: -3px 0; cursor: ns-resize; position: relative; z-index: 3; }
+.splitter:hover { background: linear-gradient(180deg, transparent, rgba(212, 175, 55, 0.35), transparent); }
+
+.tabs { display: flex; align-items: flex-end; gap: 2px; height: 38px; padding: 0 10px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #141117, #0e0c11); }
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 31px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 9px 9px 0 0;
+  background: transparent;
+  color: var(--muted);
+  font: 600 14px/1 var(--serif);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.tab .glyph { width: 14px; height: 14px; }
+.tab kbd { font: 500 9px/1 var(--mono); color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
+.tab:hover { color: var(--champagne); }
+.tab.on {
+  color: var(--gold-hi);
+  background: linear-gradient(180deg, #211d27, var(--ob-2));
+  border-color: var(--line-2);
+  box-shadow: 0 -4px 14px rgba(212, 175, 55, 0.08);
+  position: relative;
+}
+.tab.on::before { content: ""; position: absolute; left: 12px; right: 12px; top: -1px; height: 2px; border-radius: 2px; background: var(--metal); }
+.tools { display: flex; align-items: center; gap: 8px; margin-left: auto; padding-bottom: 5px; }
+.tools .label { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+
+.dock-body { flex: 1; min-height: 0; background: var(--ob-2); position: relative; }
+
+/* ---------------------------------------------------------------- hint bar, toasts, banners */
+
+.hintbar { display: flex; align-items: center; gap: 14px; padding: 0 12px; border-top: 1px solid var(--line); background: linear-gradient(180deg, #110f14, #09080b); color: var(--muted); font-size: 11px; }
+.hintbar .hint { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--serif); font-size: 14px; font-style: italic; color: var(--champagne); }
+.hintbar .meta { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+.banner { display: flex; gap: 10px; align-items: center; padding: 7px 12px; background: linear-gradient(90deg, rgba(156, 74, 87, 0.45), rgba(92, 29, 43, 0.2)); border-bottom: 1px solid rgba(224, 112, 126, 0.4); color: #f3c0c6; font-size: 11.5px; }
+.banner code { font-family: var(--mono); font-size: 10.5px; color: #fff; }
+
+.overlay { position: fixed; inset: 0; background: rgba(4, 3, 6, 0.72); backdrop-filter: blur(4px); display: grid; place-items: center; z-index: 60; }
+.dialog { width: 420px; padding: 20px 22px; border-radius: 16px; background: linear-gradient(180deg, #1f1b24, #121015); border: 1px solid var(--line-3); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), var(--glow); }
+.dialog h2 { margin: 0 0 6px; font: italic 600 26px/1.1 var(--serif); color: var(--gold-hi); }
+.dialog p { margin: 0 0 14px; color: var(--muted); font: 15px/1.4 var(--serif); }
+.dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.dialog a { color: var(--gold-hi); }
