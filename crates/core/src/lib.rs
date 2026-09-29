@@ -69,6 +69,16 @@ pub fn summary(p: &Project) -> String {
     s
 }
 
+/// Markdown table of the factory presets (embedded in the agent guide).
+pub fn presets_markdown() -> String {
+    use std::fmt::Write;
+    let mut s = String::from("| preset | type | tags | |\n|---|---|---|---|\n");
+    for p in presets::all() {
+        let _ = writeln!(s, "| {} | `{}` | {} | {} |", p.name, p.kind, p.tags, p.doc);
+    }
+    s
+}
+
 /// Markdown reference of every device and parameter (embedded in the agent guide).
 pub fn catalog_markdown() -> String {
     use std::fmt::Write;

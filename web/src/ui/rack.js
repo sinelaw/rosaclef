@@ -2,7 +2,7 @@
 
 import { drag, getJson } from "#platform";
 import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, showDock, deviceSpec, invalidate, hint } from "../store.js";
-import { getParam, setParam, getOption, setOption, noteName, paletteColor, PALETTE } from "../model.js";
+import { getParam, setParam, getOption, setOption, presetDevice, PALETTE } from "../model.js";
 import { preview } from "../audio.js";
 import { knob, paramKnob, select, button, iconButton, led, textInput, glyph } from "./widgets.js";
 import { insertIx, insertIndex } from "#brands";
@@ -252,10 +252,64 @@ export function deviceControls(b, dev, spec) {
     b.close();
   }
   const params = spec.openParams ? pluginSpecs(dev) : spec.params;
-  b.open("div", "params", "params");
+  // Parameters named opN… (FM operators) are grouped per operator.
+  /** const general: ParamSpec[] */
+  const general = [];
+  /** const groups: { title: String, params: ParamSpec[] }[] */
+  const groups = [];
   for (const ps of params) {
+    const digit = ps.key.charAt(2);
+    if (!ps.key.startsWith("op") || digit < "1" || digit > "9") {
+      general.push(ps);
+      continue;
+    }
+    const title = `Operator ${digit}`;
+    const g = groups.find((x) => x.title === title);
+    if (g) g.params.push(ps);
+    else groups.push({ title: title, params: [ps] });
+  }
+  b.open("div", "params", "params");
+  for (const ps of general) {
     paramKnob(b, ps, getParam(dev, ps), (v) => setParam(dev, ps.key, v));
   }
+  b.close();
+  for (const g of groups) {
+    b.open("div", `grp-${g.title}`, "param-group");
+    b.leaf("div", "t", "param-group-title", g.title);
+    b.open("div", "params", "params");
+    for (const ps of g.params) {
+      paramKnob(b, ps, getParam(dev, ps), (v) => setParam(dev, ps.key, v));
+    }
+    b.close();
+    b.close();
+  }
+  return undefined;
+}
+
+/** Preset picker for an instrument (applies params and options). */
+/** function presetPicker(b: Builder, dev: Device) => Undefined */
+function presetPicker(b, dev) {
+  const presets = state.catalog.presets.filter((p) => p.type === dev.type);
+  if (presets.length === 0) return undefined;
+  const names = [""].concat(presets.map((p) => p.name));
+  const labels = ["Factory presets…"].concat(presets.map((p) => `${p.name} — ${p.tags}`));
+  b.open("div", "preset", "field");
+  b.leaf("label", "l", "", "Preset");
+  select(b, "sel", "", "", names, labels, "Load a factory preset into this channel", (v) => {
+    const pr = presets.find((p) => p.name === v);
+    if (!pr) return undefined;
+    const fresh = presetDevice(pr);
+    commit(() => {
+      // Keep file references (e.g. a sampler's sample) that presets do not set.
+      for (const o of dev.options) {
+        if (!fresh.options.some((f) => f.key === o.key) && o.key === "sample") fresh.options.push(o);
+      }
+      dev.params = fresh.params;
+      dev.options = fresh.options;
+      return undefined;
+    });
+    return undefined;
+  });
   b.close();
   return undefined;
 }
@@ -306,6 +360,7 @@ function inspector(b) {
   }
   b.close();
 
+  presetPicker(b, ch.instrument);
   if (spec) deviceControls(b, ch.instrument, spec);
 
   b.open("div", "actions", "rack-add");

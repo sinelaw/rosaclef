@@ -430,7 +430,7 @@ async fn get_catalog(State(app): State<Shared>) -> impl IntoResponse {
     })
     .await
     .unwrap_or_default();
-    Json(json!({"devices": rosaclef_core::catalog::DEVICES, "plugins": plugins}))
+    Json(json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": plugins}))
 }
 
 #[derive(Deserialize)]

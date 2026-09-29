@@ -83,3 +83,7 @@
 .options { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .option { display: flex; flex-direction: column; gap: 4px; }
 .option label { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+
+.param-group { margin-top: 14px; padding: 10px 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, 0.16); }
+.param-group-title { font: italic 600 14px/1 var(--serif); color: var(--gold); margin: 0 0 10px 4px; letter-spacing: 0.04em; }
+.inspector .field .select { width: 100%; }

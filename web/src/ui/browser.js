@@ -1,8 +1,8 @@
 // The browser (left panel): instruments, plugins, patterns, samples, project.
 
 import { uploadFile, pickFiles } from "#platform";
-import { state, commit, selectPattern, selectChannel, showDock, hint } from "../store.js";
-import { newDevice, setOption, uniqueId, paletteColor } from "../model.js";
+import { state, commit, selectPattern, selectChannel, showDock, invalidate, hint } from "../store.js";
+import { newDevice, setOption, uniqueId, paletteColor, presetDevice } from "../model.js";
 import { followPattern } from "../audio.js";
 import { glyph, iconButton, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
@@ -69,11 +69,35 @@ export function uploadAll(files) {
   return undefined;
 }
 
+/** Instrument types whose preset list is expanded in the browser. */
+/** const expanded: String[] */
+const expanded = [];
+
+/** Add a channel playing a factory preset. */
+/** function addPresetChannel(pr: PresetInfo) => Undefined */
+export function addPresetChannel(pr) {
+  const dev = presetDevice(pr);
+  addChannel(pr.type, pr.name, (d) => {
+    d.params = dev.params;
+    d.options = dev.options;
+    return undefined;
+  });
+  showDock("rack");
+  return undefined;
+}
+
 const DEVICE_ICONS = [
   { type: "synth", icon: "wave" },
   { type: "fm", icon: "spark" },
   { type: "drum", icon: "rack" },
   { type: "sampler", icon: "folder" },
+  { type: "prisme", icon: "spark" },
+  { type: "sextant", icon: "mixer" },
+  { type: "tessera", icon: "pattern" },
+  { type: "cuivre", icon: "wave" },
+  { type: "nebula", icon: "loop" },
+  { type: "dedale", icon: "select" },
+  { type: "comete", icon: "export" },
 ];
 
 /** function browser(b: Builder) => Undefined */
@@ -93,9 +117,11 @@ export function browser(b) {
     if (d.category !== "instrument" || d.type === "plugin") continue;
     let icon = "wave";
     for (const di of DEVICE_ICONS) if (di.type === d.type) icon = di.icon;
-    b.open("div", `inst-${d.type}`, "b-item");
+    const presets = state.catalog.presets.filter((pr) => pr.type === d.type);
+    const open = expanded.includes(d.type);
+    b.open("div", `inst-${d.type}`, open ? "b-item inst open" : "b-item inst");
     b.attr("title", d.doc);
-    b.on("pointerenter", (e) => hint(`${d.label} — ${d.doc} Click to add a channel.`));
+    b.on("pointerenter", (e) => hint(`${d.label} — ${d.doc} Click to add a channel${presets.length > 0 ? "; the arrow shows its presets" : ""}.`));
     b.on("click", (e) => {
       if (d.type === "sampler") {
         pickFiles("audio/*", (files) => {
@@ -110,8 +136,31 @@ export function browser(b) {
     });
     glyph(b, icon);
     b.leaf("span", "n", "b-name", d.label);
-    b.leaf("span", "s", "b-sub", d.type);
+    b.leaf("span", "s", "b-sub", presets.length > 0 ? `${presets.length}` : d.type);
+    if (presets.length > 0) {
+      b.leaf("span", "caret", "b-caret", open ? "▾" : "▸");
+      b.attr("title", open ? "Hide presets" : "Show presets");
+      b.on("click", (e) => {
+        e.stopPropagation();
+        const at = expanded.indexOf(d.type);
+        if (at >= 0) expanded.splice(at, 1);
+        else expanded.push(d.type);
+        invalidate();
+        return undefined;
+      });
+    }
     b.close();
+    if (open) {
+      for (const pr of presets) {
+        b.open("div", `preset-${pr.name}`, "b-item preset");
+        b.attr("title", `${pr.doc}\n${pr.tags}`);
+        b.on("pointerenter", (e) => hint(`${pr.name} — ${pr.doc} (${pr.tags}) Click to add a channel with this preset.`));
+        b.on("click", (e) => addPresetChannel(pr));
+        b.leaf("span", "n", "b-name", pr.name);
+        b.leaf("span", "s", "b-sub", pr.tags.split(",")[0]);
+        b.close();
+      }
+    }
   }
   for (const pl of state.catalog.plugins) {
     if (!pl.instrument) continue;

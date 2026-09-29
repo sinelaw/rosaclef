@@ -89,6 +89,11 @@ enum Command {
     Schema,
     /// Print the device catalog (instruments, effects and their parameters).
     Catalog,
+    /// List factory presets (optionally for one instrument type), or print one as JSON.
+    Presets {
+        /// Instrument type (e.g. prisme) or a preset name.
+        filter: Option<String>,
+    },
     /// Write/refresh AGENTS.md, CLAUDE.md and GEMINI.md in a project folder.
     Guide { dir: Option<PathBuf> },
 }
@@ -222,6 +227,18 @@ fn main() -> Result<()> {
         }
         Command::Catalog => {
             print!("{}", rosaclef_core::catalog_markdown());
+            Ok(())
+        }
+        Command::Presets { filter } => {
+            if let Some(p) = filter.as_deref().and_then(rosaclef_core::presets::find) {
+                println!("{}", serde_json::to_string_pretty(&p.device())?);
+                return Ok(());
+            }
+            for p in rosaclef_core::presets::all() {
+                if filter.as_deref().map(|f| f == p.kind).unwrap_or(true) {
+                    println!("{:<10} {:<26} {:<24} {}", p.kind, p.name, p.tags, p.doc);
+                }
+            }
             Ok(())
         }
         Command::Guide { dir } => {

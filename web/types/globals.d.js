@@ -35,7 +35,8 @@
 /** type OptionSpec = { key: String, label: String, choices: String[], default: String, doc: String } */
 /** type DeviceSpec = { type: String, label: String, category: String, doc: String, params: ParamSpec[], options: OptionSpec[], openParams: Boolean } */
 /** type PluginInfo = { format: String, path: String, id: String, name: String, vendor: String, version: String, description: String, features: String[], instrument: Boolean, effect: Boolean } */
-/** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[] } */
+/** type PresetInfo = { name: String, type: String, tags: String, doc: String, params: KV[], options: KS[] } */
+/** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[] } */
 /** type AgentPreset = { id: String, name: String, command: String[], available: Boolean, hint: String } */
 
 // --------------------------------------------------------------- platform

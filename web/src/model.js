@@ -33,6 +33,33 @@ export function decodeDevice(d) {
   };
 }
 
+/** function decodeCatalog<T>(raw: T) => Catalog */
+export function decodeCatalog(raw) {
+  return {
+    devices: raw.devices,
+    plugins: raw.plugins,
+    presets: (raw.presets ?? []).map((p) => ({
+      name: String(p.name),
+      type: String(p.type),
+      tags: String(p.tags),
+      doc: String(p.doc),
+      params: decodeNums(p.params),
+      options: decodeStrs(p.options),
+    })),
+  };
+}
+
+/** A fresh device configured from a preset. */
+/** function presetDevice(p: PresetInfo) => Device */
+export function presetDevice(p) {
+  return {
+    type: p.type,
+    enabled: true,
+    params: p.params.map((e) => ({ key: e.key, value: e.value })),
+    options: p.options.map((e) => ({ key: e.key, value: e.value })),
+  };
+}
+
 /** function decodeProject<T>(raw: T) => Project */
 export function decodeProject(raw) {
   const t = raw.transport;

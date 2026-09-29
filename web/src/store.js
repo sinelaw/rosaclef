@@ -12,7 +12,7 @@ export const state = {
   project /*: Project */: emptyProject(),
   rev /*: Number */: 0,
   loaded: false,
-  catalog /*: Catalog */: { devices: [], plugins: [] },
+  catalog /*: Catalog */: { devices: [], plugins: [], presets: [] },
   agents /*: AgentPreset[] */: [],
   samples /*: String[] */: [],
   folder: "",

@@ -43,7 +43,8 @@ export function paramText(spec, v) {
   if (u === "ms") return `${num(v)} ms`;
   if (u === "dB") return `${v > 0 ? "+" : ""}${fmt(v, 1)} dB`;
   if (u === "beats") return `${num(v)} beats`;
-  if (u === "") return `${Math.round(v * 100)}%`;
+  if (u === "" && spec.min >= -1 && spec.max <= 1) return `${Math.round(v * 100)}%`;
+  if (u === "") return spec.key.toLowerCase().includes("ratio") ? `${num(v)}×` : num(v);
   return `${num(v)} ${u}`;
 }
 
