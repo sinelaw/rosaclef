@@ -14,12 +14,12 @@ import { toast } from "./toast.js";
 import { clipIx, clipIndex, trackIx, trackIndex, insertIx } from "#brands";
 
 const view = {
-  zoom: 22,
-  trackH: 54,
-  scrollLeft: 0,
-  scrollTop: 0,
-  width: 900,
-  height: 300,
+  zoom /*: Number */: 22,
+  trackH /*: Number */: 54,
+  scrollLeft /*: Number */: 0,
+  scrollTop /*: Number */: 0,
+  width /*: Number */: 900,
+  height /*: Number */: 300,
   selected /*: ClipIx[] */: [],
 };
 

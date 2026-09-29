@@ -14,14 +14,14 @@ import { select, iconButton } from "./widgets.js";
 import { noteIx, noteIndex } from "#brands";
 
 const view = {
-  zoom: 72,
-  rowH: 14,
-  scrollLeft: 0,
-  scrollTop: 0,
-  width: 800,
-  height: 300,
+  zoom /*: Number */: 72,
+  rowH /*: Number */: 14,
+  scrollLeft /*: Number */: 0,
+  scrollTop /*: Number */: 0,
+  width /*: Number */: 800,
+  height /*: Number */: 300,
   tool: "draw",
-  lastLength: 0.25,
+  lastLength /*: Number */: 0.25,
   centered: false,
   focus: "",
   marquee /*: { x0: Number, y0: Number, x1: Number, y1: Number } */: { x0: 0, y0: 0, x1: 0, y1: 0 },
