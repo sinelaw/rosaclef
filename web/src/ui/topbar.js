@@ -4,7 +4,8 @@ import { drag, fmt, sendJson, download } from "#platform";
 import { state, begin, changed, commit, undo, redo, hint } from "../store.js";
 import { barBeat } from "../model.js";
 import { togglePlay, stop, record, setMode, setOutput } from "../audio.js";
-import { iconButton, button, knob, meter } from "./widgets.js";
+import { iconButton, button, knobAt, meter } from "./widgets.js";
+import { isAutomated, shownValue, openMenu } from "../automation.js";
 import { toast } from "./toast.js";
 
 /** function lcd(b: Builder, key: String, label: String, value: String, unit: String) => Undefined */
@@ -78,11 +79,17 @@ export function topbar(b) {
   lcd(b, "pos", state.mode === "song" ? "Song" : "Pattern", barBeat(state.position, p.transport.beatsPerBar), "");
   b.close();
 
-  b.open("div", "bpm", "lcd");
-  b.attr("title", "Tempo — drag up/down (Shift for fine), double-click to type");
-  b.on("pointerenter", (e) => hint("Tempo — drag up/down (Shift: fine steps), double-click to type a value"));
+  b.open("div", "bpm", isAutomated("tempo") ? "lcd automated" : "lcd");
+  b.attr("title", "Tempo — drag up/down (Shift for fine), right-click to automate");
+  b.on("pointerenter", (e) => hint("Tempo — drag up/down (Shift: fine steps) · right-click to automate it"));
+  b.on("contextmenu", (e) => {
+    e.preventDefault();
+    openMenu("tempo", e.clientX, e.clientY);
+    return undefined;
+  });
   b.on("pointerdown", (e) => {
     e.preventDefault();
+    if (e.button === 2) return undefined;
     begin();
     const y0 = e.clientY;
     const bpm0 = p.transport.bpm;
@@ -95,12 +102,14 @@ export function topbar(b) {
     }, (u) => undefined);
     return undefined;
   });
-  lcd(b, "bpm", "Tempo", fmt(p.transport.bpm, 2), "BPM");
+  lcd(b, "bpm", "Tempo", fmt(shownValue("tempo", p.transport.bpm), 2), "BPM");
+  if (isAutomated("tempo")) b.leaf("i", "auto", "auto-dot", "");
   b.close();
 
+  const swing = shownValue("swing", p.transport.swing);
   b.open("div", "swing", "lcd static");
   b.leaf("span", "label", "lcd-label", "Swing");
-  knob(b, "k", "small", p.transport.swing, "", `Swing ${Math.round(p.transport.swing * 100)}%`, 0, (v) => {
+  knobAt(b, "k", "small", swing, "", `Swing ${Math.round(swing * 100)}%`, 0, "swing", (v) => {
     state.project.transport.swing = Math.round(v * 100) / 100;
     return undefined;
   });
@@ -119,7 +128,7 @@ export function topbar(b) {
     const ml = state.meters.length > 1 ? state.meters[0] : 0;
     const mr = state.meters.length > 1 ? state.meters[1] : 0;
     b.open("div", "master", "master-mini");
-    knob(b, "vol", "", master.volume / 1.25, "", "Master volume", 0.8, (v) => {
+    knobAt(b, "vol", "", shownValue("insert/0/volume", master.volume) / 1.25, "", "Master volume", 0.8, "insert/0/volume", (v) => {
       const ins = state.project.mixer.inserts[0];
       ins.volume = Math.round(v * 1.25 * 1000) / 1000;
       return undefined;

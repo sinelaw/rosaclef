@@ -47,6 +47,28 @@
   (`crates/server/src/device.rs`), records from the default input, and renders
   mixdowns offline (`/api/render`, `rosaclef render`). CLAP plugins load here.
 
+### Automation
+
+- `project.automation` holds lanes of breakpoints (`beat`, `value`, optional
+  `curve`) for one target each: `tempo`, `swing`, `channel/<id>/volume|pan|<param>`,
+  `insert/<n>/volume|pan`, `insert/<n>/effect/<k>/<param>`. The target is parsed
+  into `rosaclef_core::automation::AutomationTarget`, which also gives its value
+  range (from the catalog); `value_at`/`shape` define the interpolation, and
+  `web/src/automation.js` mirrors them so the UI shows what plays.
+- The engine compiles lanes on `set_project` (targets → channel/insert/effect
+  slots; parameter keys pre-inserted into per-device working copies, so the audio
+  path does not allocate) and, in song mode, evaluates them every ≤ 64 frames.
+  Tempo lanes drive the beat clock (evaluated at the block midpoint), audio
+  clips follow a `TempoMap` (seconds as a function of beats), and tempo-synced
+  devices are reconfigured when the tempo moves. Volumes and pans go through the
+  gain ramps; device parameters call `set_device` only when a value moves by more
+  than 1e-4 of its range. Stop, pause, pattern mode and lane removal restore the
+  project values; offline renders use the tempo map for their length and keep
+  the final automated values during the release tail.
+- In the studio, lanes live below the playlist tracks (`web/src/ui/lanes.js`),
+  sharing the playlist's zoom and scroll; controls bound to a target open an
+  automation menu on right-click and show a gold dot when automated.
+
 ### The UI library (`web/src/ui/tree.js`)
 
 A small retained, reconciling tree in the spirit of

@@ -25,3 +25,11 @@ export const handleIndex;
 export const nodeIx;
 /** const nodeIndex: (NodeIx) => Int */
 export const nodeIndex;
+/** const laneIx: (Int) => LaneIx */
+export const laneIx;
+/** const laneIndex: (LaneIx) => Int */
+export const laneIndex;
+/** const pointIx: (Int) => PointIx */
+export const pointIx;
+/** const pointIndex: (PointIx) => Int */
+export const pointIndex;

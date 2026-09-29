@@ -114,6 +114,14 @@ export function decodeProject(raw) {
         effects: (i.effects ?? []).map(decodeDevice),
       })),
     },
+    automation: (raw.automation ?? []).map((l) => ({
+      id: String(l.id),
+      name: String(l.name ?? ""),
+      target: String(l.target),
+      color: String(l.color ?? "#8a6bb0"),
+      mute: l.mute === true,
+      points: (l.points ?? []).map((pt) => ({ beat: Number(pt.beat), value: Number(pt.value), curve: Number(pt.curve ?? 0) })),
+    })),
   };
 }
 
@@ -211,6 +219,28 @@ export function encodeProject(p) {
       effects: i.effects.map(encodeDevice),
     })),
   };
+  if (p.automation.length > 0) o.automation = p.automation.map(encodeLane);
+  return o;
+}
+
+/** function encodePoint<R>(pt: AutomationPoint) => R */
+function encodePoint(pt) {
+  const o = JSON.parse("{}");
+  o.beat = round6(pt.beat);
+  o.value = round6(pt.value);
+  if (pt.curve !== 0) o.curve = round6(pt.curve);
+  return o;
+}
+
+/** function encodeLane<R>(l: AutomationLane) => R */
+function encodeLane(l) {
+  const o = JSON.parse("{}");
+  o.id = l.id;
+  o.name = l.name;
+  o.target = l.target;
+  o.color = l.color;
+  if (l.mute) o.mute = true;
+  o.points = l.points.map(encodePoint);
   return o;
 }
 
@@ -353,6 +383,7 @@ export function emptyProject() {
     patterns: [],
     playlist: { tracks: [], clips: [] },
     mixer: { inserts: [{ name: "Master", volume: 1, pan: 0, mute: false, solo: false, effects: [] }] },
+    automation: [],
   };
 }
 
@@ -464,7 +495,49 @@ export function describeChange(a, b) {
     if (x.effects.length !== y.effects.length) out.push(`${label}: effects ${x.effects.map((e) => e.type).join(", ") || "none"} → ${y.effects.map((e) => e.type).join(", ") || "none"}`);
     else for (let k = 0; k < y.effects.length; k++) deviceDiff(`${label} effect ${k} (${y.effects[k].type})`, x.effects[k], y.effects[k], out);
   }
+
+  for (const l of b.automation) {
+    const old = a.automation.find((x) => x.id === l.id);
+    if (!old) {
+      out.push(`added automation lane "${l.id}" (${l.target}, ${plural(l.points.length, "point")})`);
+      continue;
+    }
+    laneDiff(old, l, out);
+  }
+  for (const l of a.automation) if (!b.automation.some((x) => x.id === l.id)) out.push(`removed automation lane "${l.id}"`);
   return out.slice(0, 8);
+}
+
+/** function plural(n: Int, word: String) => String */
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** function laneDiff(a: AutomationLane, b: AutomationLane, out: String[]) => Undefined */
+function laneDiff(a, b, out) {
+  const label = `automation "${b.id}"`;
+  if (a.target !== b.target) out.push(`${label}: target → ${b.target}`);
+  if (a.name !== b.name) out.push(`${label} renamed to "${b.name}"`);
+  if (a.mute !== b.mute) out.push(`${label} ${b.mute ? "muted" : "unmuted"}`);
+  const d = b.points.length - a.points.length;
+  if (d > 0) out.push(`${label}: +${plural(d, "point")}`);
+  else if (d < 0) out.push(`${label}: −${plural(-d, "point")}`);
+  else {
+    for (let k = 0; k < b.points.length; k++) {
+      const x = a.points[k];
+      const y = b.points[k];
+      /** const parts: String[] */
+      const parts = [];
+      if (x.beat !== y.beat) parts.push(`beat ${fmtNum(x.beat)} → ${fmtNum(y.beat)}`);
+      if (x.value !== y.value) parts.push(`value ${fmtNum(x.value)} → ${fmtNum(y.value)}`);
+      if (x.curve !== y.curve) parts.push(`curve → ${fmtNum(y.curve)}`);
+      if (parts.length > 0) {
+        out.push(`${label}: point ${k} ${parts.join(", ")}`);
+        break;
+      }
+    }
+  }
+  return undefined;
 }
 
 /** function encodeClipKey(c: Clip) => String */

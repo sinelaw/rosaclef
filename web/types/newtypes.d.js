@@ -17,3 +17,7 @@ class ClipIx {}
 class Handle {}
 /** Index into a description buffer. */
 class NodeIx {}
+/** Index into project.automation. */
+class LaneIx {}
+/** Index into an automation lane's points. */
+class PointIx {}

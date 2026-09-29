@@ -4,7 +4,8 @@ import { drag, getJson } from "#platform";
 import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, showDock, deviceSpec, invalidate, hint } from "../store.js";
 import { getParam, setParam, getOption, setOption, presetDevice, PALETTE } from "../model.js";
 import { preview } from "../audio.js";
-import { knob, paramKnob, select, button, iconButton, led, textInput, glyph } from "./widgets.js";
+import { knobAt, paramKnobAt, select, button, iconButton, led, textInput, glyph } from "./widgets.js";
+import { shownValue, retargetLanes } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
 
 const STEP = 0.25;
@@ -97,11 +98,13 @@ function rackRow(b, pat, ch, idx) {
     return undefined;
   });
 
-  knob(b, "pan", "small", (ch.pan + 1) / 2, "", `Pan ${Math.round(ch.pan * 100)}`, 0.5, (v) => {
+  const pan = shownValue(`channel/${ch.id}/pan`, ch.pan);
+  const vol = shownValue(`channel/${ch.id}/volume`, ch.volume);
+  knobAt(b, "pan", "small", (pan + 1) / 2, "", `Pan ${Math.round(pan * 100)}`, 0.5, `channel/${ch.id}/pan`, (v) => {
     ch.pan = Math.round((v * 2 - 1) * 100) / 100;
     return undefined;
   });
-  knob(b, "vol", "small", ch.volume / 1.25, "", `Volume ${Math.round(ch.volume * 100)}%`, 0.64, (v) => {
+  knobAt(b, "vol", "small", vol / 1.25, "", `Volume ${Math.round(vol * 100)}%`, 0.64, `channel/${ch.id}/volume`, (v) => {
     ch.volume = Math.round(v * 125) / 100;
     return undefined;
   });
@@ -224,9 +227,11 @@ function getOptionRaw(d, key) {
   return "";
 }
 
-/** Knobs and selects for a device (instrument or effect). */
-/** function deviceControls(b: Builder, dev: Device, spec: DeviceSpec) => Undefined */
-export function deviceControls(b, dev, spec) {
+/** Knobs and selects for a device (instrument or effect). `target` is the
+ * automation target prefix of its parameters ("channel/<id>/",
+ * "insert/<n>/effect/<k>/"). */
+/** function deviceControls(b: Builder, dev: Device, spec: DeviceSpec, target: String) => Undefined */
+export function deviceControls(b, dev, spec, target) {
   if (spec.options.length > 0) {
     b.open("div", "opts", "options");
     for (const o of spec.options) {
@@ -270,7 +275,7 @@ export function deviceControls(b, dev, spec) {
   }
   b.open("div", "params", "params");
   for (const ps of general) {
-    paramKnob(b, ps, getParam(dev, ps), (v) => setParam(dev, ps.key, v));
+    paramKnobAt(b, ps, getParam(dev, ps), target + ps.key, (v) => setParam(dev, ps.key, v));
   }
   b.close();
   for (const g of groups) {
@@ -278,7 +283,7 @@ export function deviceControls(b, dev, spec) {
     b.leaf("div", "t", "param-group-title", g.title);
     b.open("div", "params", "params");
     for (const ps of g.params) {
-      paramKnob(b, ps, getParam(dev, ps), (v) => setParam(dev, ps.key, v));
+      paramKnobAt(b, ps, getParam(dev, ps), target + ps.key, (v) => setParam(dev, ps.key, v));
     }
     b.close();
     b.close();
@@ -361,7 +366,7 @@ function inspector(b) {
   b.close();
 
   presetPicker(b, ch.instrument);
-  if (spec) deviceControls(b, ch.instrument, spec);
+  if (spec) deviceControls(b, ch.instrument, spec, `channel/${ch.id}/`);
 
   b.open("div", "actions", "rack-add");
   button(b, "roll", "small", "Piano roll", "Edit this channel's notes (F7)", () => {
@@ -410,6 +415,7 @@ function deleteChannel(ch) {
   commit(() => {
     p.channels = p.channels.filter((c) => c.id !== ch.id);
     for (const pat of p.patterns) pat.notes = pat.notes.filter((n) => n.channel !== ch.id);
+    retargetLanes((t) => (t.startsWith(`channel/${ch.id}/`) ? "" : t));
     return undefined;
   });
   return undefined;

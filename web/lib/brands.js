@@ -14,3 +14,7 @@ export const handle = id;
 export const handleIndex = id;
 export const nodeIx = id;
 export const nodeIndex = id;
+export const laneIx = id;
+export const laneIndex = id;
+export const pointIx = id;
+export const pointIndex = id;

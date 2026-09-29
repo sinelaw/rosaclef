@@ -68,6 +68,10 @@ my-song/
 
 Times are in beats, pitches are MIDI numbers, instruments and effects are
 `{ "type", "params", "options" }` described by a catalog (`rosaclef catalog`).
+**Automation** lanes (`"automation": [{ "target": "channel/pad/cutoff", "points": [...] }]`)
+drive the tempo, swing, channel and insert volume/pan or any device parameter over the song;
+right-click a knob, fader or the tempo display to create one, and edit its curve under the
+playlist tracks.
 See [`docs/architecture.md`](docs/architecture.md) for the design.
 
 ## Repository

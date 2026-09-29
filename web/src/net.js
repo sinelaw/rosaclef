@@ -5,6 +5,7 @@ import { state, hooks, load, applyRemote, invalidate, currentPattern, currentCha
 import { toast } from "./ui/toast.js";
 import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
 import { decodeProject, encodeClipWire, barBeat } from "./model.js";
+import { selectedLane, selectedPoints, laneValueAt } from "./automation.js";
 
 /** const sock: RawSock[] */
 const sock = [];
@@ -132,6 +133,17 @@ export function sendContext() {
   }
   const ins = insertIndex(state.insert);
   const tr = trackIndex(state.track);
+  const lane = selectedLane();
+  let laneAt = -1;
+  /** const points: { index: Int, point: AutomationPoint }[] */
+  const points = [];
+  if (lane) {
+    for (let i = 0; i < p.automation.length; i++) if (p.automation[i].id === lane.id) laneAt = i;
+    for (const k of selectedPoints(lane)) {
+      const pt = lane.points[k];
+      points.push({ index: k, point: { beat: pt.beat, value: pt.value, curve: pt.curve } });
+    }
+  }
   send({
     t: "context",
     context: {
@@ -151,10 +163,21 @@ export function sendContext() {
         track: tr < p.playlist.tracks.length ? { index: tr, name: p.playlist.tracks[tr].name } : null,
         notes: notes,
         clips: clips,
+        automation: lane
+          ? {
+              index: laneAt,
+              id: lane.id,
+              name: lane.name,
+              target: lane.target,
+              pointCount: lane.points.length,
+              points: points,
+              valueAtPlayhead: Math.round(laneValueAt(lane.points, state.mode === "song" ? state.position : 0) * 1000) / 1000,
+            }
+          : null,
       },
       visible: {
         playlist: { startBeat: vp.plStart, endBeat: vp.plEnd, firstTrack: vp.plTrack0, lastTrack: vp.plTrack1 },
-        pianoRoll: vp.prOn && pat && ch ? { pattern: pat.id, channel: ch.id, startBeat: vp.prStart, endBeat: vp.prEnd, lowPitch: vp.prLow, highPitch: vp.prHigh } : null,
+        pianoRoll: vp.prOn ? (pat ? (ch ? { pattern: pat.id, channel: ch.id, startBeat: vp.prStart, endBeat: vp.prEnd, lowPitch: vp.prLow, highPitch: vp.prHigh } : null) : null) : null,
       },
       recentEdits: state.recent,
     },

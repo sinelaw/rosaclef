@@ -11,6 +11,7 @@ import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
 import { dragSample } from "./browser.js";
 import { toast } from "./toast.js";
+import { autoHeight, autoHeads, autoBody, onAutoDown, onAutoDblClick, autoHint, revealOffset, LANE_H } from "./lanes.js";
 import { clipIx, clipIndex, trackIx, trackIndex, insertIx } from "#brands";
 
 const view = {
@@ -145,6 +146,11 @@ function onLaneDown(e, g) {
   const p = state.project;
   const x = e.clientX - e.targetLeft + e.scrollLeft;
   const y = e.clientY - e.targetTop + e.scrollTop;
+  if (y >= g.height) {
+    // Automation lanes below the tracks.
+    onAutoDown(e, { zoom: g.zoom, top: g.height, x0: 0, x1: g.width }, x, y);
+    return undefined;
+  }
   const boxes = layout(g);
   const k = hit(boxes, x, y);
   const snap = Math.max(state.snap, 1);
@@ -310,6 +316,7 @@ export function playlist(b) {
   const p = state.project;
   const g = geometry();
   followPlayhead(g);
+  revealLane(g);
   reportViewport(g);
   const bpb = p.transport.beatsPerBar;
   b.open("div", "pl", "editor");
@@ -388,6 +395,7 @@ export function playlist(b) {
     });
     b.close();
   }
+  autoHeads(b, g.height);
   b.close();
   b.close();
 
@@ -406,7 +414,13 @@ export function playlist(b) {
     return undefined;
   });
   b.on("pointerdown", (e) => onLaneDown(e, g));
+  b.on("dblclick", (e) => {
+    const y = e.clientY - e.targetTop + e.scrollTop;
+    if (y >= g.height) onAutoDblClick(e, { zoom: g.zoom, top: g.height, x0: 0, x1: g.width }, e.clientX - e.targetLeft + e.scrollLeft, y);
+    return undefined;
+  });
   b.prop("scrollLeft", String(view.scrollLeft));
+  b.prop("scrollTop", String(view.scrollTop));
   b.on("contextmenu", (e) => {
     e.preventDefault();
     return undefined;
@@ -435,6 +449,11 @@ export function playlist(b) {
     return undefined;
   });
   b.on("pointermove", (e) => {
+    const y = e.clientY - e.targetTop + e.scrollTop;
+    if (y >= g.height) {
+      hint(autoHint({ zoom: g.zoom, top: g.height, x0: 0, x1: g.width }, e.clientX - e.targetLeft + e.scrollLeft, y));
+      return undefined;
+    }
     const beat = (e.clientX - e.targetLeft + e.scrollLeft) / g.zoom;
     const bar = Math.floor(beat / bpb) + 1;
     const pat = currentPattern();
@@ -444,7 +463,7 @@ export function playlist(b) {
 
   b.open("div", "content", "canvas-grid");
   b.style("width", `${g.width}px`);
-  b.style("height", `${Math.max(g.height, view.height - 2)}px`);
+  b.style("height", `${Math.max(g.height + autoHeight(), view.height - 2)}px`);
   for (let t = 0; t < tracks.length; t++) {
     b.leaf("div", `lane${t}`, "track-lane", "");
     b.style("top", `${t * g.trackH}px`);
@@ -478,6 +497,7 @@ export function playlist(b) {
     b.leaf("div", "edge", "clip-edge", "");
     b.close();
   }
+  autoBody(b, { zoom: g.zoom, top: g.height, x0: x0, x1: x1 });
   if (state.mode === "song") {
     b.leaf("div", "ph", "playhead", "");
     b.style("left", `${state.position * g.zoom}px`);
@@ -505,6 +525,16 @@ function reportViewport(g) {
     vp.plTrack1 = t1;
     reportContext();
   }
+  return undefined;
+}
+
+/** Scroll an automation lane into view (after "Create / Go to automation"). */
+/** function revealLane(g: PGeo) => Undefined */
+function revealLane(g) {
+  const off = revealOffset();
+  if (off < 0) return undefined;
+  const y = g.height + off;
+  if (y < view.scrollTop || y + LANE_H > view.scrollTop + view.height) view.scrollTop = Math.max(0, y + LANE_H - view.height + 12);
   return undefined;
 }
 

@@ -25,7 +25,9 @@
 /** type Mixer = { inserts: Insert[] } */
 /** type Meta = { title: String, author: String, description: String } */
 /** type Transport = { bpm: Number, beatsPerBar: Number, swing: Number } */
-/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer } */
+/** type AutomationPoint = { beat: Number, value: Number, curve: Number } */
+/** type AutomationLane = { id: String, name: String, target: String, color: String, mute: Boolean, points: AutomationPoint[] } */
+/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[] } */
 
 /** type Issue = { severity: String, path: String, message: String } */
 
@@ -37,7 +39,9 @@
 /** type PluginInfo = { format: String, path: String, id: String, name: String, vendor: String, version: String, description: String, features: String[], instrument: Boolean, effect: Boolean } */
 /** type PresetInfo = { name: String, type: String, tags: String, doc: String, params: KV[], options: KS[] } */
 /** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[] } */
-/** type AgentPreset = { id: String, name: String, command: String[], available: Boolean, hint: String } */
+/** A resolved automation target (web/src/automation.js). `kind`: tempo, swing, gain, pan or param; `open`: plugin parameter without a known range. */
+/** type TargetInfo = { ok: Boolean, kind: String, spec: ParamSpec, base: Number, label: String, color: String, open: Boolean } */
+/** type AgentPreset ={ id: String, name: String, command: String[], available: Boolean, hint: String } */
 
 // --------------------------------------------------------------- platform
 

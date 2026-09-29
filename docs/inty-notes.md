@@ -134,3 +134,13 @@ not accepted where a `Number` field is declared. Array indexing requires
 - `promise.catch((e) => false)` must return a `Promise` (`Promise.resolve(false)`).
 - An AudioWorklet processor must `extend AudioWorkletProcessor`; with no
   class inheritance, `web/engine/worklet.js` stays unchecked.
+
+## 14. 🐞 `new Date()` without arguments: "Presence mismatch"
+
+```js
+const at = new Date().toISOString();
+// Error: Presence mismatch: expected present, found absent
+```
+With inty 0.1.1 the zero-argument `Date` constructor fails (and, through
+item 4, every module importing `store.js` reported it). `new Date(Date.now())`
+checks. Rosaclef uses that form.

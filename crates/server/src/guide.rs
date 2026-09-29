@@ -74,7 +74,9 @@ song without naming it.** Fields (full schema in `.rosaclef/context.schema.json`
 - `transport` — `playing`, `mode` (`song` / `pattern`), playhead `positionBeats` and `position` (`bar:beat:tick`), `bpm`.
 - `selection` — the selected `pattern`, `channel`, mixer `insert` and playlist `track`; `notes`
   (selected notes of the selected pattern, each with its `index` in that pattern's `notes`) and
-  `clips` (selected clips with their `index` in `playlist.clips`).
+  `clips` (selected clips with their `index` in `playlist.clips`), and `automation` (the selected
+  automation lane — `index` in `automation`, `id`, `target`, selected `points` with their index,
+  `valueAtPlayhead` — or null).
 - `visible` — what is on screen: the playlist's beat range and tracks, and (when the piano roll is
   open) its pattern, channel, beat range and pitch range. "This part" usually means this range.
 - `recentEdits` — the producer's latest manual edits in plain words, newest last
@@ -193,6 +195,61 @@ Rules and conventions:
 - Keep patterns musically self-contained (e.g. a 4-beat drum loop, a 16-beat bassline) and build
   the arrangement from clips; reuse patterns instead of duplicating notes.
 - Colors are `#rrggbb`; the studio's palette favours golds, roses, champagne, burgundy, deep jewel tones.
+
+### Automation
+
+`automation` (top level, optional) holds **lanes**: breakpoint curves that move one value over
+the arrangement — tempo ramps, filter sweeps, fades. Lanes play in **song mode** (and in
+`rosaclef render`); when playback stops or in pattern mode every target returns to its own
+value in the project. The producer sees each lane under the playlist tracks.
+
+```jsonc
+"automation": [
+  { "id": "pad-cutoff", "name": "Pad cutoff", "target": "channel/pad/cutoff", "color": "#8a6bb0",
+    "points": [ { "beat": 0, "value": 400 }, { "beat": 32, "value": 6000, "curve": 0.4 } ] }
+]
+```
+
+- `target` — what the lane drives (one lane per target):
+
+  | target | value (natural units) |
+  |---|---|
+  | `tempo` | BPM, 20 … 999 |
+  | `swing` | 0 … 1 |
+  | `channel/<id>/volume` | linear gain 0 … 1.5 |
+  | `channel/<id>/pan` | −1 (left) … 1 (right) |
+  | `channel/<id>/<param>` | an instrument parameter of that channel, in its catalog unit and range (e.g. `cutoff` in Hz) |
+  | `insert/<n>/volume` | mixer insert fader, linear gain 0 … 2 (1 = 0 dB); `insert/0/…` is the master |
+  | `insert/<n>/pan` | −1 … 1 |
+  | `insert/<n>/effect/<k>/<param>` | parameter of effect `k` (index in that insert's `effects`) |
+
+  Plugin parameters take any number. Integer parameters are rounded while playing.
+- `points` — at least one, sorted by `beat` (absolute song time in beats, like clip `start`).
+  Before the first point the lane holds the first value, after the last point the last value.
+  Two points on the same beat make an instant jump.
+- `curve` (optional, −1 … 1, default 0 = straight) shapes the segment that **ends** at that point:
+  `> 0` changes slowly first and fast at the end (a sweep that "opens up" late — good for
+  filter cutoffs and builds), `< 0` changes fast first and then settles (good for fades).
+  The shape is `(e^(6·curve·t) − 1) / (e^(6·curve) − 1)` for t = 0 … 1 across the segment.
+- `mute: true` disables a lane; `name` and `color` are cosmetic.
+- Tempo automation moves the whole timeline: notes, audio clips, tempo-synced delays and the song's
+  duration follow it (`rosaclef render` reports the real duration).
+- If you delete a channel or an effect, delete or retarget its lanes too (validation reports
+  lanes whose target does not exist).
+
+Examples:
+
+```jsonc
+// A 16-bar build that pushes the tempo from 120 to 128 BPM, then holds.
+{ "id": "build-tempo", "name": "Build tempo", "target": "tempo",
+  "points": [ { "beat": 64, "value": 120 }, { "beat": 128, "value": 128, "curve": 0.3 } ] }
+// An 8-bar low-pass sweep on the master filter effect (insert 0, effect 1 is a "filter").
+{ "id": "master-sweep", "name": "Riser sweep", "target": "insert/0/effect/1/cutoff",
+  "points": [ { "beat": 96, "value": 300 }, { "beat": 128, "value": 18000, "curve": 0.5 } ] }
+// Fade the master out over the last 8 bars.
+{ "id": "fade-out", "name": "Fade out", "target": "insert/0/volume",
+  "points": [ { "beat": 224, "value": 1 }, { "beat": 256, "value": 0, "curve": -0.4 } ] }
+```
 
 ## Musical craft
 

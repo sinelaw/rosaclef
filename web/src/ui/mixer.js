@@ -3,8 +3,9 @@
 import { promptBox } from "#platform";
 import { state, commit, selectInsert, deviceSpec, hint } from "../store.js";
 import { newDevice, dbText, panText } from "../model.js";
-import { fader, knob, meter, button, iconButton, select } from "./widgets.js";
+import { faderAt, knobAt, meter, button, iconButton, select } from "./widgets.js";
 import { deviceControls } from "./rack.js";
+import { shownValue, remapEffects } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
 
 /** Fader travel: 0..1 maps to -inf..+6 dB with a musical curve. */
@@ -61,19 +62,21 @@ function strip(b, ins, i) {
   if (ins.effects.length > 4) b.leaf("div", "more", "fx-slot", `+${ins.effects.length - 4} more`);
   b.close();
 
-  knob(b, "pan", "small", (ins.pan + 1) / 2, "", `Balance ${panText(ins.pan)}`, 0.5, (v) => {
+  const pan = shownValue(`insert/${i}/pan`, ins.pan);
+  const vol = shownValue(`insert/${i}/volume`, ins.volume);
+  knobAt(b, "pan", "small", (pan + 1) / 2, "", `Balance ${panText(pan)}`, 0.5, `insert/${i}/pan`, (v) => {
     ins.pan = Math.round((v * 2 - 1) * 100) / 100;
     return undefined;
   });
 
   b.open("div", "faders", "strip-faders");
-  fader(b, "vol", volToFader(ins.volume), `${ins.name}: ${dbText(ins.volume)}`, volToFader(1), (t) => {
+  faderAt(b, "vol", volToFader(vol), `${ins.name}: ${dbText(vol)}`, volToFader(1), `insert/${i}/volume`, (t) => {
     ins.volume = faderToVol(t);
     return undefined;
   });
   meter(b, "meter", l, r);
   b.close();
-  b.leaf("div", "db", "strip-db", dbText(ins.volume));
+  b.leaf("div", "db", "strip-db", dbText(vol));
 
   b.open("div", "btns", "strip-btns");
   button(b, "m", ins.mute ? "small m on" : "small m", "M", "Mute", () => {
@@ -133,6 +136,7 @@ function fxPanel(b) {
         const a = ins.effects[k - 1];
         ins.effects[k - 1] = ins.effects[k];
         ins.effects[k] = a;
+        remapEffects(i, (j) => (j === k ? k - 1 : j === k - 1 ? k : j));
         return undefined;
       });
       return undefined;
@@ -140,12 +144,13 @@ function fxPanel(b) {
     iconButton(b, "del", "small ghost danger", "trash", "Remove effect", () => {
       commit(() => {
         ins.effects.splice(k, 1);
+        remapEffects(i, (j) => (j === k ? -1 : j > k ? j - 1 : j));
         return undefined;
       });
       return undefined;
     });
     b.close();
-    if (spec) deviceControls(b, fx, spec);
+    if (spec) deviceControls(b, fx, spec, `insert/${i}/effect/${k}/`);
     b.close();
   }
 

@@ -86,7 +86,7 @@ function logEdits() {
   const lines = describeChange(logged.project, state.project);
   logged.project = cloneProject(state.project);
   if (lines.length === 0) return;
-  const at = new Date().toISOString();
+  const at = new Date(Date.now()).toISOString();
   for (const l of lines) state.recent.push({ at: at, summary: l });
   while (state.recent.length > 12) state.recent.shift();
   reportContext();

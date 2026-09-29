@@ -1965,5 +1965,20 @@
         "effects": []
       }
     ]
-  }
+  },
+  "automation": [
+    {
+      "id": "pad-cutoff",
+      "name": "Silk Pad · Cutoff",
+      "target": "channel/pad/cutoff",
+      "color": "#8a6bb0",
+      "points": [
+        { "beat": 0, "value": 420 },
+        { "beat": 32, "value": 1300, "curve": 0.35 },
+        { "beat": 96, "value": 1300 },
+        { "beat": 112, "value": 2600, "curve": 0.3 },
+        { "beat": 128, "value": 900, "curve": -0.4 }
+      ]
+    }
+  ]
 }

@@ -3,6 +3,7 @@
 
 import { drag, fmt } from "#platform";
 import { begin, changed, hint, commit } from "../store.js";
+import { isAutomated, shownValue, openMenu } from "../automation.js";
 
 /** function clamp01(v: Number) => Number */
 export function clamp01(v) {
@@ -53,12 +54,44 @@ export function paramText(spec, v) {
 /** Rotary knob. `v` is 0..1; `onSet` receives 0..1 while dragging. */
 /** function knob(b: Builder, key: String, cls: String, v: Number, label: String, tip: String, dflt: Number, onSet: (Number) => Undefined) => Undefined */
 export function knob(b, key, cls, v, label, tip, dflt, onSet) {
-  b.open("div", key, `knob ${cls}`);
+  return knobAt(b, key, cls, v, label, tip, dflt, "", onSet);
+}
+
+/** Right-click menu of a control bound to an automation target ("" = none).
+ * Call right after opening the control's node. */
+/** function automatable(b: Builder, target: String) => Undefined */
+function automatable(b, target) {
+  if (target === "") return undefined;
+  b.on("contextmenu", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openMenu(target, e.clientX, e.clientY);
+    return undefined;
+  });
+  return undefined;
+}
+
+/** The gold "automated" dot (inside the control's node). */
+/** function autoDot(b: Builder, target: String) => Undefined */
+function autoDot(b, target) {
+  if (isAutomated(target)) {
+    b.leaf("i", "auto", "auto-dot", "");
+    b.attr("title", "Automated — right-click for the automation lane");
+  }
+  return undefined;
+}
+
+/** Knob bound to an automation target (e.g. "channel/pad/pan"). */
+/** function knobAt(b: Builder, key: String, cls: String, v: Number, label: String, tip: String, dflt: Number, target: String, onSet: (Number) => Undefined) => Undefined */
+export function knobAt(b, key, cls, v, label, tip, dflt, target, onSet) {
+  b.open("div", key, isAutomated(target) ? `knob automated ${cls}` : `knob ${cls}`);
+  automatable(b, target);
   b.style("--v", fmt(clamp01(v), 4));
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));
   b.on("pointerdown", (e) => {
     e.preventDefault();
+    if (e.button === 2) return undefined;
     begin();
     const y0 = e.clientY;
     const v0 = v;
@@ -86,6 +119,7 @@ export function knob(b, key, cls, v, label, tip, dflt, onSet) {
   b.leaf("div", "dot", "knob-dot", "");
   b.close();
   if (label !== "") b.leaf("span", "label", "knob-label", label);
+  autoDot(b, target);
   b.close();
   return undefined;
 }
@@ -93,11 +127,19 @@ export function knob(b, key, cls, v, label, tip, dflt, onSet) {
 /** Knob bound to a catalog parameter. */
 /** function paramKnob(b: Builder, spec: ParamSpec, value: Number, onSet: (Number) => Undefined) => Undefined */
 export function paramKnob(b, spec, value, onSet) {
-  const tip = `${spec.label}: ${paramText(spec, value)} — ${spec.doc}`;
+  return paramKnobAt(b, spec, value, "", onSet);
+}
+
+/** Parameter knob bound to an automation target; while the song plays it
+ * shows the automated value. */
+/** function paramKnobAt(b: Builder, spec: ParamSpec, value: Number, target: String, onSet: (Number) => Undefined) => Undefined */
+export function paramKnobAt(b, spec, value, target, onSet) {
+  const shown = shownValue(target, value);
+  const tip = `${spec.label}: ${paramText(spec, shown)} — ${spec.doc}`;
   b.open("div", spec.key, "param");
-  knob(b, "k", "", toUnit(spec, value), "", tip, toUnit(spec, spec.default), (t) => onSet(fromUnit(spec, t)));
+  knobAt(b, "k", "", toUnit(spec, shown), "", tip, toUnit(spec, spec.default), target, (t) => onSet(fromUnit(spec, t)));
   b.leaf("div", "name", "param-name", spec.label);
-  b.leaf("div", "val", "param-value", paramText(spec, value));
+  b.leaf("div", "val", "param-value", paramText(spec, shown));
   b.close();
   return undefined;
 }
@@ -107,12 +149,20 @@ export function paramKnob(b, spec, value, onSet) {
 /** Vertical fader, `v` 0..1. */
 /** function fader(b: Builder, key: String, v: Number, tip: String, dflt: Number, onSet: (Number) => Undefined) => Undefined */
 export function fader(b, key, v, tip, dflt, onSet) {
-  b.open("div", key, "fader");
+  return faderAt(b, key, v, tip, dflt, "", onSet);
+}
+
+/** Fader bound to an automation target. */
+/** function faderAt(b: Builder, key: String, v: Number, tip: String, dflt: Number, target: String, onSet: (Number) => Undefined) => Undefined */
+export function faderAt(b, key, v, tip, dflt, target, onSet) {
+  b.open("div", key, isAutomated(target) ? "fader automated" : "fader");
+  automatable(b, target);
   b.style("--v", fmt(clamp01(v), 4));
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));
   b.on("pointerdown", (e) => {
     e.preventDefault();
+    if (e.button === 2) return undefined;
     begin();
     const h = Math.max(20, e.targetHeight - 24);
     const pos = clamp01(1 - (e.clientY - e.targetTop - 12) / h);
@@ -135,6 +185,7 @@ export function fader(b, key, v, tip, dflt, onSet) {
   });
   b.leaf("div", "track", "fader-track", "");
   b.leaf("div", "cap", "fader-cap", "");
+  autoDot(b, target);
   b.close();
   return undefined;
 }

@@ -10,6 +10,7 @@ import { playlist, playlistTools } from "./playlist.js";
 import { mixer, mixerTools } from "./mixer.js";
 import { agentPanel } from "./agent.js";
 import { toastView } from "./toast.js";
+import { automationMenu } from "./lanes.js";
 import { glyph } from "./widgets.js";
 
 export const layoutState = { dockH: 46, agentW: 460 };
@@ -128,6 +129,7 @@ export function studio(b) {
   b.close();
 
   toastView(b);
+  automationMenu(b);
   b.close();
   return undefined;
 }
