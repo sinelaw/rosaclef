@@ -4,8 +4,9 @@
 // change calls `invalidate()`, which marks the UI tree; the next animation
 // frame rebuilds all descriptions and reconciles them (see ui/tree.js).
 
-import { debounce } from "platform";
+import { debounce } from "#platform";
 import { decodeProject, emptyProject, projectJson } from "./model.js";
+import { insertIx, insertIndex, trackIx, noteIndex } from "#brands";
 
 export const state = {
   project /*: Project */: emptyProject(),
@@ -17,8 +18,8 @@ export const state = {
   folder: "",
   pattern: "",
   channel: "",
-  insert /*: Int */: 1,
-  track /*: Int */: 0,
+  insert: insertIx(1),
+  track: trackIx(0),
   dock: "rack",
   mode: "pattern",
   playing: false,
@@ -35,7 +36,7 @@ export const state = {
   connected: false,
   diskIssues /*: Issue[] */: [],
   recording: false,
-  selection /*: Int[] */: [],
+  selection /*: NoteIx[] */: [],
   hint: "",
 };
 
@@ -173,9 +174,9 @@ export function fixSelection() {
     state.channel = p.channels.length > 0 ? p.channels[0].id : "";
   }
   const nIns = p.mixer.inserts.length;
-  if (state.insert >= nIns) state.insert = Math.max(0, nIns - 1);
+  if (insertIndex(state.insert) >= nIns) state.insert = insertIx(Math.max(0, nIns - 1));
   const pat = currentPattern();
-  if (pat) state.selection = state.selection.filter((i) => i < pat.notes.length);
+  if (pat) state.selection = state.selection.filter((i) => noteIndex(i) < pat.notes.length);
 }
 
 // ------------------------------------------------------------------ selection
@@ -207,7 +208,7 @@ export function selectChannel(id) {
   return undefined;
 }
 
-/** function selectInsert(i: Int) => Undefined */
+/** function selectInsert(i: InsertIx) => Undefined */
 export function selectInsert(i) {
   state.insert = i;
   reportContext();

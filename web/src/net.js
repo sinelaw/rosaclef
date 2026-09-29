@@ -1,9 +1,10 @@
 // Connection to the Rosaclef server: project sync, native engine status.
 
-import { connectRaw, wsUrl } from "platform";
+import { connectRaw, wsUrl } from "#platform";
 import { decodeProject } from "./model.js";
 import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel } from "./store.js";
 import { toast } from "./ui/toast.js";
+import { insertIndex, noteIndex } from "#brands";
 
 /** const sock: RawSock[] */
 const sock = [];
@@ -117,7 +118,8 @@ export function sendContext() {
   const selected = [];
   if (pat) {
     for (const i of state.selection) {
-      if (i < pat.notes.length) selected.push(pat.notes[i]);
+      const n = noteIndex(i);
+      if (n < pat.notes.length) selected.push(pat.notes[n]);
     }
   }
   send({
@@ -127,7 +129,7 @@ export function sendContext() {
       playMode: state.mode,
       selectedPattern: pat ? { id: pat.id, name: pat.name, length: pat.length } : null,
       selectedChannel: ch ? { id: ch.id, name: ch.name, instrument: ch.instrument.type } : null,
-      selectedInsert: state.insert,
+      selectedInsert: insertIndex(state.insert),
       selectedNotes: selected,
       playheadBeat: Math.round(state.position * 1000) / 1000,
       snap: state.snap,

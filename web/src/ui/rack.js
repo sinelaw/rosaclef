@@ -1,0 +1,398 @@
+// The channel rack (step sequencer) and the instrument inspector.
+
+import { drag, getJson } from "#platform";
+import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, showDock, deviceSpec, invalidate, hint } from "../store.js";
+import { getParam, setParam, getOption, setOption, noteName, paletteColor, PALETTE } from "../model.js";
+import { preview } from "../audio.js";
+import { knob, paramKnob, select, button, iconButton, led, textInput, glyph } from "./widgets.js";
+import { insertIx, insertIndex } from "#brands";
+
+const STEP = 0.25;
+const EPS = 0.000001;
+
+/** function stepPitch(ch: Channel) => Number */
+function stepPitch(ch) {
+  return 60;
+}
+
+/** Notes of `ch` that the step grid can represent (16ths, short, one pitch). */
+/** function isStepChannel(pat: Pattern, ch: Channel) => Boolean */
+function isStepChannel(pat, ch) {
+  for (const n of pat.notes) {
+    if (n.channel !== ch.id) continue;
+    const s = n.start / STEP;
+    if (Math.abs(s - Math.round(s)) > EPS) return false;
+    if (n.pitch !== stepPitch(ch) && ch.instrument.type !== "drum") return false;
+    if (n.length > STEP + EPS && ch.instrument.type !== "drum") return false;
+  }
+  return true;
+}
+
+/** function stepNote(pat: Pattern, ch: Channel, step: Number) => Int */
+function stepNote(pat, ch, step) {
+  const t = step * STEP;
+  return pat.notes.findIndex((n) => n.channel === ch.id && Math.abs(n.start - t) < EPS);
+}
+
+/** function toggleStep(pat: Pattern, ch: Channel, step: Number) => Undefined */
+function toggleStep(pat, ch, step) {
+  const i = stepNote(pat, ch, step);
+  commit(() => {
+    if (i >= 0) pat.notes.splice(i, 1);
+    else pat.notes.push({ channel: ch.id, pitch: stepPitch(ch), start: step * STEP, length: STEP, velocity: 0.8 });
+    return undefined;
+  });
+  if (i < 0) preview(ch.id, stepPitch(ch), 0.8);
+  return undefined;
+}
+
+/** A tiny piano-roll preview of one channel's notes (canvas leaf). */
+/** function miniRoll(b: Builder, pat: Pattern, ch: Channel, width: Number) => Undefined */
+function miniRoll(b, pat, ch, width) {
+  b.canvas("mini", "mini-roll", (g, w, h) => {
+    const notes = pat.notes.filter((n) => n.channel === ch.id);
+    if (notes.length === 0) return undefined;
+    let lo = 127;
+    let hi = 0;
+    for (const n of notes) {
+      lo = Math.min(lo, n.pitch);
+      hi = Math.max(hi, n.pitch);
+    }
+    const span = Math.max(6, hi - lo + 1);
+    const nh = Math.max(2, (h - 6) / span);
+    g.fillStyle = ch.color;
+    g.shadowColor = ch.color;
+    g.shadowBlur = 6;
+    for (const n of notes) {
+      const x = (n.start / pat.length) * w;
+      const y = h - 3 - (n.pitch - lo + 1) * nh;
+      g.globalAlpha = 0.5 + n.velocity * 0.5;
+      g.fillRect(x, y, Math.max(2, (n.length / pat.length) * w - 1), Math.max(2, nh - 1));
+    }
+    return undefined;
+  });
+  b.style("width", `${width}px`);
+  b.on("click", (e) => {
+    selectChannel(ch.id);
+    showDock("piano");
+    return undefined;
+  });
+  return undefined;
+}
+
+/** function rackRow(b: Builder, pat: Pattern, ch: Channel, idx: Int) => Undefined */
+function rackRow(b, pat, ch, idx) {
+  const steps = Math.min(64, Math.round(pat.length / STEP));
+  const playStep = state.playing && state.mode === "pattern" ? Math.floor(state.position / STEP) : -1;
+  const level = idx < state.chMeters.length ? state.chMeters[idx] : 0;
+  b.open("div", ch.id, ch.id === state.channel ? "rack-row sel" : "rack-row");
+
+  b.leaf("div", "mute", ch.mute ? "ch-mute off" : "ch-mute", "");
+  b.attr("title", ch.mute ? "Unmute channel" : "Mute channel");
+  b.on("click", (e) => {
+    commit(() => {
+      ch.mute = !ch.mute;
+      return undefined;
+    });
+    return undefined;
+  });
+
+  knob(b, "pan", "small", (ch.pan + 1) / 2, "", `Pan ${Math.round(ch.pan * 100)}`, 0.5, (v) => {
+    ch.pan = Math.round((v * 2 - 1) * 100) / 100;
+    return undefined;
+  });
+  knob(b, "vol", "small", ch.volume / 1.25, "", `Volume ${Math.round(ch.volume * 100)}%`, 0.64, (v) => {
+    ch.volume = Math.round(v * 125) / 100;
+    return undefined;
+  });
+
+  b.leaf("div", "ins", "ch-ins", insertIndex(ch.mixer) === 0 ? "M" : String(insertIndex(ch.mixer)));
+  b.attr("title", "Mixer insert — drag up/down to reroute");
+  b.on("pointerenter", (e) => hint("Mixer insert this channel plays through — drag to change, M = master"));
+  b.on("pointerdown", (e) => {
+    e.preventDefault();
+    begin();
+    const y0 = e.clientY;
+    const i0 = insertIndex(ch.mixer);
+    const max = state.project.mixer.inserts.length - 1;
+    drag(e, (m) => {
+      const i = Math.max(0, Math.min(max, i0 + Math.round((y0 - m.clientY) / 12)));
+      ch.mixer = insertIx(i);
+      changed(true);
+      return undefined;
+    }, (u) => undefined);
+    return undefined;
+  });
+
+  b.open("div", "name", "ch-name");
+  b.on("click", (e) => {
+    selectChannel(ch.id);
+    return undefined;
+  });
+  b.on("dblclick", (e) => {
+    selectChannel(ch.id);
+    showDock("piano");
+    return undefined;
+  });
+  b.leaf("i", "sw", "swatch", "");
+  b.style("--c", ch.color);
+  b.leaf("span", "n", "", ch.name);
+  b.close();
+  led(b, "led", level);
+
+  if (isStepChannel(pat, ch)) {
+    b.open("div", "steps", "steps");
+    const groups = Math.ceil(steps / 4);
+    for (let g = 0; g < groups; g++) {
+      b.open("div", `g${g}`, g % 2 === 1 ? "step-group alt" : "step-group");
+      for (let k = 0; k < 4 && g * 4 + k < steps; k++) {
+        const s = g * 4 + k;
+        const ni = stepNote(pat, ch, s);
+        let cls = "step";
+        if (ni >= 0) cls = `${cls} on`;
+        if (s === playStep) cls = `${cls} play`;
+        b.leaf("div", `s${s}`, cls, "");
+        b.style("--c", ch.color);
+        if (ni >= 0) b.style("--vel", String(pat.notes[ni].velocity));
+        b.on("pointerdown", (e) => {
+          e.preventDefault();
+          if (e.button === 2) {
+            if (ni >= 0) toggleStep(pat, ch, s);
+            return undefined;
+          }
+          toggleStep(pat, ch, s);
+          return undefined;
+        });
+        b.on("contextmenu", (e) => {
+          e.preventDefault();
+          return undefined;
+        });
+        b.on("wheel", (e) => {
+          if (ni < 0) return undefined;
+          e.preventDefault();
+          begin();
+          const n = pat.notes[ni];
+          n.velocity = Math.max(0.05, Math.min(1, Math.round((n.velocity - e.deltaY / 1000) * 100) / 100));
+          changed(true);
+          return undefined;
+        });
+      }
+      b.close();
+    }
+    b.close();
+  } else {
+    miniRoll(b, pat, ch, steps * 25 + Math.ceil(steps / 4) * 5);
+  }
+  b.close();
+  return undefined;
+}
+
+// ------------------------------------------------------------------ inspector
+
+/** const pluginParams: { key: String, params: ParamSpec[] }[] */
+const pluginParams = [];
+/** const pluginLoading: String[] */
+const pluginLoading = [];
+
+/** function pluginSpecs(dev: Device) => ParamSpec[] */
+function pluginSpecs(dev) {
+  const key = `${getOptionRaw(dev, "path")}#${getOptionRaw(dev, "id")}`;
+  for (const e of pluginParams) if (e.key === key) return e.params;
+  if (!pluginLoading.includes(key)) {
+    pluginLoading.push(key);
+    getJson(`/api/plugins/params?path=${encodeURIComponent(getOptionRaw(dev, "path"))}&id=${encodeURIComponent(getOptionRaw(dev, "id"))}`)
+      .then((r) => {
+        /** const specs: ParamSpec[] */
+        const specs = [];
+        for (const pp of r.params) {
+          specs.push({ key: String(pp.id), label: String(pp.name), min: Number(pp.min), max: Number(pp.max), default: Number(pp.default), unit: "", curve: "linear", integer: pp.stepped === true, doc: String(pp.module) });
+        }
+        pluginParams.push({ key: key, params: specs });
+        invalidate();
+        return Promise.resolve(true);
+      })
+      .catch((e) => Promise.resolve(false));
+  }
+  /** const none: ParamSpec[] */
+  const none = [];
+  return none;
+}
+
+/** function getOptionRaw(d: Device, key: String) => String */
+function getOptionRaw(d, key) {
+  for (const o of d.options) if (o.key === key) return o.value;
+  return "";
+}
+
+/** Knobs and selects for a device (instrument or effect). */
+/** function deviceControls(b: Builder, dev: Device, spec: DeviceSpec) => Undefined */
+export function deviceControls(b, dev, spec) {
+  if (spec.options.length > 0) {
+    b.open("div", "opts", "options");
+    for (const o of spec.options) {
+      if (o.choices.length === 0) {
+        if (dev.type === "plugin") continue;
+        b.open("div", o.key, "option");
+        b.leaf("label", "l", "", o.label);
+        textInput(b, "in", "", getOption(dev, o), o.doc, (v) => {
+          commit(() => setOption(dev, o.key, v));
+          return undefined;
+        });
+        b.close();
+        continue;
+      }
+      b.open("div", o.key, "option");
+      b.leaf("label", "l", "", o.label);
+      select(b, "sel", "", getOption(dev, o), o.choices, o.choices, o.doc, (v) => {
+        commit(() => setOption(dev, o.key, v));
+        return undefined;
+      });
+      b.close();
+    }
+    b.close();
+  }
+  const params = spec.openParams ? pluginSpecs(dev) : spec.params;
+  b.open("div", "params", "params");
+  for (const ps of params) {
+    paramKnob(b, ps, getParam(dev, ps), (v) => setParam(dev, ps.key, v));
+  }
+  b.close();
+  return undefined;
+}
+
+/** function inspector(b: Builder) => Undefined */
+function inspector(b) {
+  const ch = currentChannel();
+  b.open("div", "insp", "inspector");
+  if (!ch) {
+    b.leaf("div", "none", "b-empty", "Select a channel");
+    b.close();
+    return undefined;
+  }
+  const spec = deviceSpec(ch.instrument.type, "instrument");
+  b.open("div", "head", "insp-head");
+  b.leaf("i", "sw", "swatch", "");
+  b.style("--c", ch.color);
+  b.open("div", "t", "");
+  b.leaf("div", "title", "insp-title", spec ? spec.label : ch.instrument.type);
+  b.leaf("div", "sub", "insp-sub", `${ch.name} · ${ch.instrument.type}`);
+  b.close();
+  b.close();
+  if (spec) b.leaf("div", "doc", "insp-doc", spec.doc);
+
+  b.open("div", "name", "field");
+  b.leaf("label", "l", "", "Channel name");
+  textInput(b, "in", "", ch.name, "", (v) => {
+    commit(() => {
+      ch.name = v;
+      return undefined;
+    });
+    return undefined;
+  });
+  b.close();
+
+  b.open("div", "colors", "options");
+  for (const c of PALETTE) {
+    b.leaf("i", c, "swatch", "");
+    b.style("--c", c);
+    b.style("cursor", "pointer");
+    b.on("click", (e) => {
+      commit(() => {
+        ch.color = c;
+        return undefined;
+      });
+      return undefined;
+    });
+  }
+  b.close();
+
+  if (spec) deviceControls(b, ch.instrument, spec);
+
+  b.open("div", "actions", "rack-add");
+  button(b, "roll", "small", "Piano roll", "Edit this channel's notes (F7)", () => {
+    showDock("piano");
+    return undefined;
+  });
+  button(b, "dup", "small", "Duplicate", "Duplicate this channel", () => {
+    duplicateChannel(ch);
+    return undefined;
+  });
+  button(b, "del", "small danger", "Delete", "Delete this channel and its notes", () => {
+    deleteChannel(ch);
+    return undefined;
+  });
+  b.close();
+  b.close();
+  return undefined;
+}
+
+/** function duplicateChannel(ch: Channel) => Undefined */
+function duplicateChannel(ch) {
+  const p = state.project;
+  let n = 2;
+  while (p.channels.some((c) => c.id === `${ch.id}-${n}`)) n = n + 1;
+  const id = `${ch.id}-${n}`;
+  commit(() => {
+    p.channels.push({
+      id: id,
+      name: `${ch.name} ${n}`,
+      color: ch.color,
+      instrument: { type: ch.instrument.type, enabled: true, params: ch.instrument.params.map((x) => ({ key: x.key, value: x.value })), options: ch.instrument.options.map((x) => ({ key: x.key, value: x.value })) },
+      volume: ch.volume,
+      pan: ch.pan,
+      mute: false,
+      mixer: ch.mixer,
+    });
+    return undefined;
+  });
+  selectChannel(id);
+  return undefined;
+}
+
+/** function deleteChannel(ch: Channel) => Undefined */
+function deleteChannel(ch) {
+  const p = state.project;
+  commit(() => {
+    p.channels = p.channels.filter((c) => c.id !== ch.id);
+    for (const pat of p.patterns) pat.notes = pat.notes.filter((n) => n.channel !== ch.id);
+    return undefined;
+  });
+  return undefined;
+}
+
+/** function rack(b: Builder) => Undefined */
+export function rack(b) {
+  const pat = currentPattern();
+  b.open("div", "rack", "rack");
+  b.open("div", "list", "rack-list");
+  if (!pat) {
+    b.leaf("div", "none", "b-empty", "Create a pattern in the browser to start sequencing.");
+  } else {
+    let idx = 0;
+    for (const ch of state.project.channels) {
+      rackRow(b, pat, ch, idx);
+      idx = idx + 1;
+    }
+    if (state.project.channels.length === 0) b.leaf("div", "empty", "b-empty", "Add an instrument from the browser — or ask the agent on the right.");
+  }
+  b.close();
+  inspector(b);
+  b.close();
+  return undefined;
+}
+
+/** function rackTools(b: Builder) => Undefined */
+export function rackTools(b) {
+  const pat = currentPattern();
+  if (!pat) return undefined;
+  b.leaf("span", "l", "label", "Length");
+  const lengths = ["4", "8", "12", "16", "32", "64"];
+  select(b, "len", "", String(pat.length), lengths, lengths.map((x) => `${Number(x) / 4} bar${x === "4" ? "" : "s"}`), "Pattern length", (v) => {
+    commit(() => {
+      pat.length = Number(v);
+      return undefined;
+    });
+    return undefined;
+  });
+  return undefined;
+}

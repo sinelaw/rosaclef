@@ -11,6 +11,41 @@ use std::collections::BTreeMap;
 /// Identifier of the current document format.
 pub const FORMAT: &str = "rosaclef/1";
 
+/// Index of a mixer insert (`mixer.inserts[i]`; 0 is the master bus).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[serde(transparent)]
+pub struct InsertIx(pub u32);
+
+impl InsertIx {
+    pub const MASTER: InsertIx = InsertIx(0);
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+/// Index of a playlist track (`playlist.tracks[i]`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[serde(transparent)]
+pub struct TrackIx(pub u32);
+
+impl TrackIx {
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl std::fmt::Display for InsertIx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::fmt::Display for TrackIx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Project {
@@ -64,9 +99,9 @@ pub struct Channel {
     pub pan: f64,
     #[serde(default)]
     pub mute: bool,
-    /// Mixer insert index this channel is routed to (0 = master).
+    /// Mixer insert this channel is routed to (0 = master).
     #[serde(default)]
-    pub mixer: u32,
+    pub mixer: InsertIx,
 }
 
 /// An instrument or an effect: a device type plus its settings.
@@ -142,8 +177,8 @@ pub struct Clip {
     /// Project-relative path of an audio file (audio clip).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sample: String,
-    /// Playlist track index.
-    pub track: u32,
+    /// Playlist track.
+    pub track: TrackIx,
     /// Start on the timeline, in beats.
     pub start: f64,
     /// Length on the timeline, in beats.
@@ -156,7 +191,7 @@ pub struct Clip {
     pub gain: f64,
     /// Audio clips: mixer insert to play through (0 = master).
     #[serde(default)]
-    pub mixer: u32,
+    pub mixer: InsertIx,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]

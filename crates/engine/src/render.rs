@@ -104,7 +104,7 @@ pub fn render_note(device: &Device, pitch: u8, velocity: f32, seconds: f32, samp
         volume: 1.0,
         pan: 0.0,
         mute: false,
-        mixer: 0,
+        mixer: rosaclef_core::InsertIx::MASTER,
     });
     project.mixer.inserts[0].effects.clear();
     let mut engine = Engine::new(sample_rate);

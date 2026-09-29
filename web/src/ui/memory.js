@@ -2,6 +2,8 @@
 // element tree and every primitive operation so tests can assert on the
 // result of a view without a browser.
 
+import { handle, handleIndex } from "#brands";
+
 /** type MemNode = { type: String, cls: String, text: String, attrs: KS[], styles: KS[], props: KS[], children: Int[], parent: Int, alive: Boolean } */
 
 /** type MemBackend = { backend: Backend, dump: () => String, ops: () => Int, fire: (String, String, Ev) => Boolean, nodes: () => MemNode[] } */
@@ -30,17 +32,23 @@ function setKS(list, key, value) {
 export function memoryBackend() {
   /** const nodes: MemNode[] */
   const nodes = [{ type: "root", cls: "", text: "", attrs: [], styles: [], props: [], children: [], parent: -1, alive: true }];
-  /** const handlers: { handle: Int, event: String, fn: (Ev) => Undefined }[] */
+  /** const handlers: { handle: Handle, event: String, fn: (Ev) => Undefined }[] */
   const handlers = [];
   /** const frames: (() => Undefined)[] */
   const frames = [];
   let ops = 0;
 
-  /** function detach(h: Int) => Undefined */
+  /** function node(h: Handle) => MemNode */
+  function node(h) {
+    return nodes[handleIndex(h)];
+  }
+
+  /** function detach(h: Handle) => Undefined */
   function detach(h) {
-    const p = nodes[h].parent;
-    if (p >= 0) nodes[p].children = nodes[p].children.filter((c) => c !== h);
-    nodes[h].parent = -1;
+    const i = handleIndex(h);
+    const p = nodes[i].parent;
+    if (p >= 0) nodes[p].children = nodes[p].children.filter((c) => c !== i);
+    nodes[i].parent = -1;
     return undefined;
   }
 
@@ -49,51 +57,51 @@ export function memoryBackend() {
     create: (type) => {
       ops = ops + 1;
       nodes.push({ type: type, cls: "", text: "", attrs: [], styles: [], props: [], children: [], parent: -1, alive: true });
-      return nodes.length - 1;
+      return handle(nodes.length - 1);
     },
-    root: () => 0,
+    root: () => handle(0),
     setText: (h, s) => {
       ops = ops + 1;
-      nodes[h].text = s;
+      node(h).text = s;
       return undefined;
     },
     setClass: (h, c) => {
       ops = ops + 1;
-      nodes[h].cls = c;
+      node(h).cls = c;
       return undefined;
     },
     setAttr: (h, k, v) => {
       ops = ops + 1;
-      setKS(nodes[h].attrs, k, v);
+      setKS(node(h).attrs, k, v);
       return undefined;
     },
     removeAttr: (h, k) => {
       ops = ops + 1;
-      nodes[h].attrs = nodes[h].attrs.filter((a) => a.key !== k);
+      node(h).attrs = node(h).attrs.filter((a) => a.key !== k);
       return undefined;
     },
     setStyle: (h, k, v) => {
       ops = ops + 1;
-      if (v === "") nodes[h].styles = nodes[h].styles.filter((a) => a.key !== k);
-      else setKS(nodes[h].styles, k, v);
+      if (v === "") node(h).styles = node(h).styles.filter((a) => a.key !== k);
+      else setKS(node(h).styles, k, v);
       return undefined;
     },
     setProp: (h, k, v) => {
       ops = ops + 1;
-      setKS(nodes[h].props, k, v);
+      setKS(node(h).props, k, v);
       return undefined;
     },
     append: (p, c) => {
       ops = ops + 1;
       detach(c);
-      nodes[p].children.push(c);
-      nodes[c].parent = p;
+      node(p).children.push(handleIndex(c));
+      node(c).parent = handleIndex(p);
       return undefined;
     },
     remove: (h) => {
       ops = ops + 1;
       detach(h);
-      nodes[h].alive = false;
+      node(h).alive = false;
       return undefined;
     },
     listen: (h, event, fn) => {
@@ -126,7 +134,7 @@ export function memoryBackend() {
     /** Dispatch an event to the first live node with this class. */
     fire: (cls, event, e) => {
       for (const hd of handlers) {
-        const n = nodes[hd.handle];
+        const n = node(hd.handle);
         if (n.alive && hd.event === event && n.cls.split(" ").includes(cls)) {
           hd.fn(e);
           return true;

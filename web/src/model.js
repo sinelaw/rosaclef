@@ -1,6 +1,8 @@
 // Project model helpers: decoding the wire JSON into the typed in-memory
 // model, encoding it back, and small musical utilities.
 
+import { insertIx, insertIndex, trackIx, trackIndex } from "#brands";
+
 // ------------------------------------------------------------------ decode
 
 /** function decodeNums<T>(o: T) => KV[] */
@@ -47,7 +49,7 @@ export function decodeProject(raw) {
       volume: Number(c.volume ?? 0.8),
       pan: Number(c.pan ?? 0),
       mute: c.mute === true,
-      mixer: Math.round(Number(c.mixer ?? 0)),
+      mixer: insertIx(Math.round(Number(c.mixer ?? 0))),
     })),
     patterns: (raw.patterns ?? []).map((p) => ({
       id: String(p.id),
@@ -67,12 +69,12 @@ export function decodeProject(raw) {
       clips: (pl.clips ?? []).map((c) => ({
         pattern: String(c.pattern ?? ""),
         sample: String(c.sample ?? ""),
-        track: Math.round(Number(c.track)),
+        track: trackIx(Math.round(Number(c.track))),
         start: Number(c.start),
         length: Number(c.length),
         offset: Number(c.offset ?? 0),
         gain: Number(c.gain ?? 1),
-        mixer: Math.round(Number(c.mixer ?? 0)),
+        mixer: insertIx(Math.round(Number(c.mixer ?? 0))),
       })),
     },
     mixer: {
@@ -124,13 +126,13 @@ function encodeClip(c) {
   const o = JSON.parse("{}");
   if (c.pattern !== "") o.pattern = c.pattern;
   if (c.sample !== "") o.sample = c.sample;
-  o.track = c.track;
+  o.track = trackIndex(c.track);
   o.start = round6(c.start);
   o.length = round6(c.length);
   if (c.offset !== 0) o.offset = round6(c.offset);
   if (c.sample !== "") {
     o.gain = c.gain;
-    o.mixer = c.mixer;
+    o.mixer = insertIndex(c.mixer);
   }
   return o;
 }
@@ -150,7 +152,7 @@ export function encodeProject(p) {
     volume: round6(c.volume),
     pan: round6(c.pan),
     mute: c.mute,
-    mixer: c.mixer,
+    mixer: insertIndex(c.mixer),
   }));
   o.patterns = p.patterns.map((pt) => ({
     id: pt.id,

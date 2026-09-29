@@ -1,7 +1,7 @@
 // Widgets: components are plain functions that write descriptions into a
 // Builder. State comes in as arguments; changes go out through callbacks.
 
-import { drag, fmt } from "platform";
+import { drag, fmt } from "#platform";
 import { begin, changed, hint, commit } from "../store.js";
 
 /** function clamp01(v: Number) => Number */

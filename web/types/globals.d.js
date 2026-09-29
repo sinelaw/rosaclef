@@ -4,16 +4,22 @@
 // and `options` are JSON objects; in memory they are lists of key/value
 // entries so that they can be typed without a dictionary type.
 
+// ------------------------------------------------------------------ newtypes
+// Nominal index types: integers with different meanings must not be mixed up.
+// Construct and unwrap them with the casts exported by "#brands".
+
+// (declared in newtypes.d.js, which is loaded first)
+
 // ------------------------------------------------------------------ model
 
 /** type KV = { key: String, value: Number } */
 /** type KS = { key: String, value: String } */
 /** type Device = { type: String, enabled: Boolean, params: KV[], options: KS[] } */
-/** type Channel = { id: String, name: String, color: String, instrument: Device, volume: Number, pan: Number, mute: Boolean, mixer: Int } */
+/** type Channel = { id: String, name: String, color: String, instrument: Device, volume: Number, pan: Number, mute: Boolean, mixer: InsertIx } */
 /** type Note = { channel: String, pitch: Number, start: Number, length: Number, velocity: Number } */
 /** type Pattern = { id: String, name: String, color: String, length: Number, notes: Note[] } */
 /** type Track = { name: String, mute: Boolean } */
-/** type Clip = { pattern: String, sample: String, track: Int, start: Number, length: Number, offset: Number, gain: Number, mixer: Int } */
+/** type Clip = { pattern: String, sample: String, track: TrackIx, start: Number, length: Number, offset: Number, gain: Number, mixer: InsertIx } */
 /** type Playlist = { tracks: Track[], clips: Clip[] } */
 /** type Insert = { name: String, volume: Number, pan: Number, mute: Boolean, solo: Boolean, effects: Device[] } */
 /** type Mixer = { inserts: Insert[] } */
@@ -94,7 +100,7 @@
 
 /** type Listener = { event: String, fn: (Ev) => Undefined } */
 /** type Painter = (Ctx, Number, Number) => Undefined */
-/** type Desc = { parent: Int, type: String, key: String, cls: String, text: String, attrs: KS[], styles: KS[], props: KS[], on: Listener[], paint: Painter, canvas: Boolean } */
+/** type Desc = { parent: NodeIx, type: String, key: String, cls: String, text: String, attrs: KS[], styles: KS[], props: KS[], on: Listener[], paint: Painter, canvas: Boolean } */
 
 /** type Builder = {
     open: (String, String, String) => Undefined,
@@ -110,17 +116,17 @@
 } */
 
 /** type Backend = {
-    create: (String) => Int,
-    root: () => Int,
-    setText: (Int, String) => Undefined,
-    setClass: (Int, String) => Undefined,
-    setAttr: (Int, String, String) => Undefined,
-    removeAttr: (Int, String) => Undefined,
-    setStyle: (Int, String, String) => Undefined,
-    setProp: (Int, String, String) => Undefined,
-    append: (Int, Int) => Undefined,
-    remove: (Int) => Undefined,
-    listen: (Int, String, (Ev) => Undefined) => Undefined,
-    paint: (Int, Painter) => Undefined,
+    create: (String) => Handle,
+    root: () => Handle,
+    setText: (Handle, String) => Undefined,
+    setClass: (Handle, String) => Undefined,
+    setAttr: (Handle, String, String) => Undefined,
+    removeAttr: (Handle, String) => Undefined,
+    setStyle: (Handle, String, String) => Undefined,
+    setProp: (Handle, String, String) => Undefined,
+    append: (Handle, Handle) => Undefined,
+    remove: (Handle) => Undefined,
+    listen: (Handle, String, (Ev) => Undefined) => Undefined,
+    paint: (Handle, Painter) => Undefined,
     frame: (() => Undefined) => Undefined
 } */

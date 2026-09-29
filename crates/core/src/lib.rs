@@ -46,7 +46,7 @@ pub fn summary(p: &Project) -> String {
             .playlist
             .clips
             .iter()
-            .filter(|c| c.track as usize == ti)
+            .filter(|c| c.track.index() == ti)
             .map(|c| {
                 let what = if c.pattern.is_empty() { c.sample.clone() } else { c.pattern.clone() };
                 format!("{what}@{}+{}", format::format_f64(c.start), format::format_f64(c.length))
@@ -58,7 +58,7 @@ pub fn summary(p: &Project) -> String {
     }
     let _ = writeln!(s, "\nMixer ({} inserts):", p.mixer.inserts.len());
     for (i, ins) in p.mixer.inserts.iter().enumerate() {
-        let used = i == 0 || p.channels.iter().any(|c| c.mixer as usize == i) || !ins.effects.is_empty();
+        let used = i == 0 || p.channels.iter().any(|c| c.mixer.index() == i) || !ins.effects.is_empty();
         if !used {
             continue;
         }
@@ -130,7 +130,7 @@ mod tests {
             volume: 0.8,
             pan: 0.0,
             mute: false,
-            mixer: 99,
+            mixer: InsertIx(99),
         });
         let issues = validate::validate(&p);
         let paths: Vec<&str> = issues.iter().map(|i| i.path.as_str()).collect();

@@ -17,7 +17,7 @@ pub mod samples;
 use dsp::{hermite, pan_gains, Ramp};
 use effects::Effect;
 use instruments::{Instrument, NoteEvent, NoteKind};
-use rosaclef_core::{Device, Project};
+use rosaclef_core::{Device, InsertIx, Project};
 use samples::{SampleBank, SampleData, SampleRef};
 use std::sync::Arc;
 
@@ -108,14 +108,19 @@ fn signature(dev: &Device) -> String {
     }
 }
 
+/// Stable identity of a channel instance inside the engine (survives
+/// project updates that reorder channels).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ChannelHandle(u32);
+
 struct ChannelRt {
-    handle: u32,
+    handle: ChannelHandle,
     id: String,
     sig: String,
     inst: Box<dyn Instrument>,
     gain_l: Ramp,
     gain_r: Ramp,
-    mixer: usize,
+    mixer: InsertIx,
     events: Vec<NoteEvent>,
     buf_l: Vec<f32>,
     buf_r: Vec<f32>,
@@ -175,12 +180,12 @@ struct CClip {
     end: f64,
     offset: f64,
     gain: f32,
-    mixer: usize,
+    mixer: InsertIx,
 }
 
 #[derive(Clone, Copy)]
 struct Pending {
-    handle: u32,
+    handle: ChannelHandle,
     key: u8,
     end: f64,
 }
@@ -203,7 +208,7 @@ pub struct Engine {
     clips: Vec<CClip>,
     song_length: f64,
     swing: f64,
-    next_handle: u32,
+    next_handle: ChannelHandle,
     samples: SampleBank,
     plugins: Option<Arc<dyn PluginHost>>,
     /// Problems encountered while building devices (e.g. a plugin failed to load).
@@ -231,7 +236,7 @@ impl Engine {
             clips: vec![],
             song_length: 0.0,
             swing: 0.0,
-            next_handle: 1,
+            next_handle: ChannelHandle(1),
             samples: SampleBank::default(),
             plugins: None,
             device_errors: vec![],
@@ -285,7 +290,7 @@ impl Engine {
                 None => {
                     let inst = self.make_instrument(&ch.instrument, &ch.id);
                     let handle = self.next_handle;
-                    self.next_handle += 1;
+                    self.next_handle = ChannelHandle(handle.0 + 1);
                     ChannelRt {
                         handle,
                         id: ch.id.clone(),
@@ -293,7 +298,7 @@ impl Engine {
                         inst,
                         gain_l: Ramp::default(),
                         gain_r: Ramp::default(),
-                        mixer: 0,
+                        mixer: InsertIx::MASTER,
                         events: Vec::with_capacity(64),
                         buf_l: vec![0.0; MAX_BLOCK],
                         buf_r: vec![0.0; MAX_BLOCK],
@@ -306,7 +311,7 @@ impl Engine {
             let v = if ch.mute { 0.0 } else { ch.volume as f32 };
             rt.gain_l.set(v * pl);
             rt.gain_r.set(v * pr);
-            rt.mixer = (ch.mixer as usize).min(project.mixer.inserts.len().saturating_sub(1));
+            rt.mixer = clamp_insert(ch.mixer, &project);
             self.channels.push(rt);
         }
 
@@ -364,7 +369,7 @@ impl Engine {
             .playlist
             .clips
             .iter()
-            .filter(|c| !muted_tracks.get(c.track as usize).copied().unwrap_or(false))
+            .filter(|c| !muted_tracks.get(c.track.index()).copied().unwrap_or(false))
             .map(|c| CClip {
                 pattern: if c.pattern.is_empty() { None } else { self.patterns.iter().position(|p| p.id == c.pattern) },
                 sample_path: c.sample.clone(),
@@ -373,14 +378,14 @@ impl Engine {
                 end: c.start + c.length,
                 offset: c.offset,
                 gain: c.gain as f32,
-                mixer: (c.mixer as usize).min(project.mixer.inserts.len().saturating_sub(1)),
+                mixer: clamp_insert(c.mixer, &project),
             })
             .filter(|c| c.pattern.is_some() || !c.sample_path.is_empty())
             .collect();
         self.song_length = project.song_length();
 
         // Drop note-offs for channels that no longer exist.
-        let handles: Vec<u32> = self.channels.iter().map(|c| c.handle).collect();
+        let handles: Vec<ChannelHandle> = self.channels.iter().map(|c| c.handle).collect();
         self.pending.retain(|p| handles.contains(&p.handle));
 
         if let PlayMode::Pattern(id) = &self.mode {
@@ -583,7 +588,7 @@ impl Engine {
             ch.events.clear();
             let (gl, il) = ch.gain_l.block(n);
             let (gr, ir) = ch.gain_r.block(n);
-            let ins = &mut self.inserts[ch.mixer];
+            let ins = &mut self.inserts[ch.mixer.index()];
             let mut peak = ch.peak;
             for i in 0..n {
                 let l = bl[i] * (gl + il * i as f32);
@@ -694,7 +699,7 @@ impl Engine {
                                 }
                             }
                         } else if let Some(sample) = &clip.sample {
-                            mix_audio_clip(clip, sample, &mut self.inserts[clip.mixer], frame, seg, b0, bpf, self.ctx);
+                            mix_audio_clip(clip, sample, &mut self.inserts[clip.mixer.index()], frame, seg, b0, bpf, self.ctx);
                         }
                     }
                 }
@@ -726,6 +731,15 @@ fn mix_audio_clip(clip: &CClip, sample: &SampleData, ins: &mut InsertRt, frame: 
         let g = clip.gain * edge;
         ins.buf_l[frame + i] += hermite(ch_l, pos) * g;
         ins.buf_r[frame + i] += hermite(ch_r, pos) * g;
+    }
+}
+
+/// Route to an existing insert (the master when the index is out of range).
+fn clamp_insert(ix: InsertIx, project: &Project) -> InsertIx {
+    if ix.index() < project.mixer.inserts.len() {
+        ix
+    } else {
+        InsertIx::MASTER
     }
 }
 

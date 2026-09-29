@@ -10,7 +10,7 @@ use crate::server::App;
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use parking_lot::Mutex;
-use rosaclef_core::{Clip, Project};
+use rosaclef_core::{Clip, InsertIx, Project, TrackIx};
 use rosaclef_engine::{Engine, PlayMode};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -294,7 +294,7 @@ fn finish_recording(app: &Arc<App>) {
     }
     let mut project = app.project();
     let beats = audio.duration() / project.seconds_per_beat();
-    let track = track.min(project.playlist.tracks.len().saturating_sub(1) as u32);
+    let track = TrackIx(track.min(project.playlist.tracks.len().saturating_sub(1) as u32));
     project.playlist.clips.push(Clip {
         pattern: String::new(),
         sample: rel.clone(),
@@ -303,7 +303,7 @@ fn finish_recording(app: &Arc<App>) {
         length: beats.max(0.25),
         offset: 0.0,
         gain: 1.0,
-        mixer: 0,
+        mixer: InsertIx::MASTER,
     });
     app.apply_edit(project);
     app.send_all(json!({"t": "recorded", "path": rel}));

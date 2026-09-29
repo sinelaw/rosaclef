@@ -1,0 +1,78 @@
+/* Rosaclef Studio — obsidian lacquer, brushed gold, rose and jewel tones. */
+
+:root {
+  --ob-0: #060508;
+  --ob-1: #0c0a0f;
+  --ob-2: #121016;
+  --ob-3: #19161e;
+  --ob-4: #221e28;
+  --ob-5: #2c2733;
+  --line: rgba(212, 175, 55, 0.13);
+  --line-2: rgba(212, 175, 55, 0.24);
+  --line-3: rgba(212, 175, 55, 0.45);
+  --gold: #d4af37;
+  --gold-hi: #f5e2a6;
+  --gold-mid: #c9a14a;
+  --gold-lo: #7d5f22;
+  --champagne: #e8d5b0;
+  --ivory: #f6eedd;
+  --rose: #d08a93;
+  --rose-deep: #9c4a57;
+  --burgundy: #5c1d2b;
+  --emerald: #46a58b;
+  --sapphire: #5b82c4;
+  --text: #ebe1cd;
+  --muted: #a39780;
+  --dim: #6d6457;
+  --danger: #e0707e;
+  --metal: linear-gradient(180deg, #f7e7b4 0%, #dfbd6a 38%, #a9822f 52%, #d9b760 70%, #f2dc98 100%);
+  --metal-soft: linear-gradient(180deg, #e9d397 0%, #c6a152 50%, #9a772c 51%, #caa65a 100%);
+  --lacquer: linear-gradient(180deg, #1b1820 0%, #111015 100%);
+  --lacquer-hi: linear-gradient(180deg, #25212b 0%, #16141a 100%);
+  --inset: inset 0 1px 0 rgba(255, 240, 200, 0.05), inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  --glow: 0 0 14px rgba(212, 175, 55, 0.35);
+  --serif: "Cormorant Garamond", "Cormorant", Georgia, "Times New Roman", serif;
+  --sans: "Manrope", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --agent-w: 460px;
+  --browser-w: 236px;
+  --dock-h: 46%;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--ob-0);
+  color: var(--text);
+  font: 12.5px/1.4 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+body::before {
+  /* Warm vignette + grain over the whole studio. */
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(212, 175, 55, 0.06), transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 .9 0 0 0 0 .7 0 0 0 .035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: screen;
+}
+
+#app { height: 100%; }
+
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+::selection { background: rgba(212, 175, 55, 0.3); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--ob-1); }
+::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #3a3240, #28222d); border: 2px solid var(--ob-1); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #4a4052; }
+::-webkit-scrollbar-corner { background: var(--ob-1); }

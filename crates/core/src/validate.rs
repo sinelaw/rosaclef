@@ -144,7 +144,7 @@ pub fn validate(p: &Project) -> Vec<Issue> {
             check_device(&mut v, &format!("{path}.effects[{j}]"), fx, Category::Effect);
         }
     }
-    let n_inserts = p.mixer.inserts.len() as u32;
+    let n_inserts = p.mixer.inserts.len();
 
     // Channels.
     let mut channel_ids = HashSet::new();
@@ -161,7 +161,7 @@ pub fn validate(p: &Project) -> Vec<Issue> {
         }
         v.range(&format!("{path}.volume"), ch.volume, 0.0, 1.5);
         v.range(&format!("{path}.pan"), ch.pan, -1.0, 1.0);
-        if ch.mixer >= n_inserts {
+        if ch.mixer.index() >= n_inserts {
             v.err(format!("{path}.mixer"), format!("mixer insert {} does not exist (there are {n_inserts})", ch.mixer));
         }
         check_device(&mut v, &format!("{path}.instrument"), &ch.instrument, Category::Instrument);
@@ -209,7 +209,7 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     }
 
     // Playlist.
-    let n_tracks = p.playlist.tracks.len() as u32;
+    let n_tracks = p.playlist.tracks.len();
     for (i, c) in p.playlist.clips.iter().enumerate() {
         let path = format!("playlist.clips[{i}]");
         match (c.pattern.is_empty(), c.sample.is_empty()) {
@@ -220,13 +220,13 @@ pub fn validate(p: &Project) -> Vec<Issue> {
             }
             (true, false) => {
                 check_relative_path(&mut v, &format!("{path}.sample"), &c.sample);
-                if c.mixer >= n_inserts {
+                if c.mixer.index() >= n_inserts {
                     v.err(format!("{path}.mixer"), format!("mixer insert {} does not exist", c.mixer));
                 }
             }
             _ => v.err(&path, "a clip needs exactly one of \"pattern\" or \"sample\""),
         }
-        if c.track >= n_tracks {
+        if c.track.index() >= n_tracks {
             v.err(format!("{path}.track"), format!("track {} does not exist (there are {n_tracks} tracks)", c.track));
         }
         if !(c.start >= 0.0 && c.start.is_finite()) {

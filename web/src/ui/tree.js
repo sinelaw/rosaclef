@@ -18,6 +18,8 @@
 // signals and no observers: anything that changes calls `mark()`, and the
 // next frame rebuilds and reconciles everything.
 
+import { nodeIx, nodeIndex } from "#brands";
+
 /** function noPaint(g: Ctx, w: Number, h: Number) => Undefined */
 function noPaint(g, w, h) {
   return undefined;
@@ -28,13 +30,13 @@ function noPaint(g, w, h) {
 export function builder() {
   /** const nodes: Desc[] */
   const nodes = [];
-  /** const stack: Int[] */
+  /** const stack: NodeIx[] */
   const stack = [];
   let current = -1;
 
   /** function add(type: String, key: String, cls: String) => Undefined */
   function add(type, key, cls) {
-    const parent = stack.length > 0 ? stack[stack.length - 1] : -1;
+    const parent = stack.length > 0 ? stack[stack.length - 1] : nodeIx(-1);
     nodes.push({ parent: parent, type: type, key: key, cls: cls, text: "", attrs: [], styles: [], props: [], on: [], paint: noPaint, canvas: false });
     current = nodes.length - 1;
     return undefined;
@@ -43,7 +45,7 @@ export function builder() {
   return {
     open: (type, key, cls) => {
       add(type, key, cls);
-      stack.push(current);
+      stack.push(nodeIx(current));
       return undefined;
     },
     close: () => {
@@ -87,7 +89,7 @@ export function builder() {
 
 // ------------------------------------------------------------ reconciliation
 
-/** type Elem = { path: String, handle: Int, type: String, cls: String, text: String, attrs: KS[], styles: KS[], props: KS[], on: Listener[], bound: String[], order: String[], seen: Int } */
+/** type Elem = { path: String, handle: Handle, type: String, cls: String, text: String, attrs: KS[], styles: KS[], props: KS[], on: Listener[], bound: String[], order: String[], seen: Int } */
 
 /** function sameKS(a: KS[], b: KS[]) => Boolean */
 function sameKS(a, b) {
@@ -183,7 +185,7 @@ export function mount(backend, view) {
     /** const rootKids: Int[] */
     const rootKids = [];
     for (let i = 0; i < nodes.length; i++) {
-      const p = nodes[i].parent;
+      const p = nodeIndex(nodes[i].parent);
       if (p < 0) rootKids.push(i);
       else kids[p].push(i);
     }

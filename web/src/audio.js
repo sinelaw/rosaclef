@@ -7,11 +7,12 @@
 //    lowest latency).
 // The UI sends the same transport commands to whichever one is selected.
 
-import { audioStart, audioPost, audioPostSample, audioResume, decodeAudioUrl, recStart, recStop } from "platform";
+import { audioStart, audioPost, audioPostSample, audioResume, decodeAudioUrl, recStart, recStop } from "#platform";
 import { state, hooks, invalidate, commit, currentPattern } from "./store.js";
 import { send } from "./net.js";
 import { toast } from "./ui/toast.js";
 import { projectJson } from "./model.js";
+import { insertIx, trackIndex } from "#brands";
 
 /** const loaded: String[] */
 const loaded = [];
@@ -203,7 +204,7 @@ export async function record() {
   }
   if (state.output === "native") {
     state.mode = "song";
-    send({ t: "native.record", track: state.track });
+    send({ t: "native.record", track: trackIndex(state.track) });
     state.recording = true;
     invalidate();
     return true;
@@ -246,7 +247,7 @@ export function stopRecording() {
         length: Math.max(0.25, endBeat - startBeat),
         offset: 0,
         gain: 1,
-        mixer: 0,
+        mixer: insertIx(0),
       });
       return undefined;
     });
