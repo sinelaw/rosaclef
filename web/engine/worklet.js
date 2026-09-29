@@ -40,6 +40,8 @@ class RosaclefProcessor extends AudioWorkletProcessor {
     this.mem = null;
     this.frame = 0;
     this.recording = false;
+    // Messages that arrive before the WebAssembly module is ready wait for it.
+    this.ready = new Promise((resolve) => { this.resolveReady = resolve; });
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
 
@@ -66,11 +68,12 @@ class RosaclefProcessor extends AudioWorkletProcessor {
       const { instance } = await WebAssembly.instantiate(m.wasm, {});
       this.wasm = instance.exports;
       this.wasm.rc_init(sampleRate);
+      this.resolveReady();
       this.port.postMessage({ t: "ready", sampleRate });
       return;
     }
+    if (!this.wasm) await this.ready;
     const w = this.wasm;
-    if (!w) return;
     switch (m.t) {
       case "project": {
         const status = this.withStr(m.json, (p, l) => w.rc_set_project(p, l));

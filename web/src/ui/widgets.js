@@ -268,6 +268,7 @@ const ICONS = [
   { name: "folder", d: "M3.5 6.5h6l2 2h9v10h-17z" },
   { name: "wave", d: "M3 12h2l2-6 3 12 3-9 2 6 2-3h4" },
   { name: "plug", d: "M9 3.5v5M15 3.5v5M6.5 8.5h11v3a5.5 5.5 0 0 1-11 0zM12 17v3.5" },
+  { name: "follow", d: "M3.5 12h12M11.5 7.5l4.5 4.5-4.5 4.5M20 4.5v15" },
   { name: "copy", d: "M8.5 8.5h11v11h-11zM5.5 15.5h-1v-11h11v1" },
 ];
 

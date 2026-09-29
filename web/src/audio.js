@@ -18,7 +18,6 @@ import { insertIx, trackIndex } from "#brands";
 const loaded = [];
 /** const loading: String[] */
 const loading = [];
-let starting = false;
 
 /** function onEngineMessage(m: AudioMsg) => Undefined */
 function onEngineMessage(m) {
@@ -57,10 +56,21 @@ function loadSample(path) {
   return undefined;
 }
 
-/** Start the browser engine (must follow a user gesture). */
-export async function startAudio() {
-  if (state.audioReady || starting) return await audioResume();
-  starting = true;
+/** const startup: Promise<Boolean>[] */
+const startup = [];
+
+/** Start the browser engine (must follow a user gesture). Every caller waits
+ * for the same startup, so a play pressed as the very first gesture is not
+ * lost. */
+export function startAudio() {
+  if (state.audioReady) return audioResume();
+  if (startup.length > 0) return startup[0];
+  const p = boot();
+  startup.push(p);
+  return p;
+}
+
+async function boot() {
   try {
     await audioStart("/engine/worklet.js", "/engine/rosaclef.wasm", onEngineMessage);
     state.audioReady = true;
@@ -68,8 +78,9 @@ export async function startAudio() {
     invalidate();
   } catch (e) {
     toast("Could not start browser audio", String(e), "error");
+    startup.length = 0;
+    return false;
   }
-  starting = false;
   return await audioResume();
 }
 

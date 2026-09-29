@@ -7,7 +7,7 @@
 import { drag, getJson, promptBox } from "#platform";
 import { state, commit, begin, changed, invalidate, selectPattern, currentPattern, hint } from "../store.js";
 import { snapTo, snapDown, songLength } from "../model.js";
-import { seek, followPattern } from "../audio.js";
+import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
 import { dragSample } from "./browser.js";
 import { toast } from "./toast.js";
@@ -270,6 +270,7 @@ function clipBody(b, c, w) {
 export function playlist(b) {
   const p = state.project;
   const g = geometry();
+  followPlayhead(g);
   const bpb = p.transport.beatsPerBar;
   b.open("div", "pl", "editor");
   b.open("div", "main", "editor-main pl");
@@ -282,9 +283,7 @@ export function playlist(b) {
   b.open("div", "ruler", "ruler");
   b.on("pointerdown", (e) => {
     const beat = (e.clientX - e.targetLeft + view.scrollLeft) / g.zoom;
-    if (state.mode !== "song") {
-      state.mode = "song";
-    }
+    if (state.mode !== "song") setMode("song");
     seek(Math.max(0, snapDown(beat, bpb)));
     return undefined;
   });
@@ -367,6 +366,7 @@ export function playlist(b) {
     return undefined;
   });
   b.on("pointerdown", (e) => onLaneDown(e, g));
+  b.prop("scrollLeft", String(view.scrollLeft));
   b.on("contextmenu", (e) => {
     e.preventDefault();
     return undefined;
@@ -450,9 +450,31 @@ export function playlist(b) {
   return undefined;
 }
 
+/** Page the view along with the playhead (FL Studio style) while playing. */
+/** function followPlayhead(g: PGeo) => Undefined */
+function followPlayhead(g) {
+  if (!state.follow || !state.playing || state.mode !== "song") return undefined;
+  const x = state.position * g.zoom;
+  if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.88) {
+    view.scrollLeft = Math.max(0, x - view.width * 0.08);
+  }
+  return undefined;
+}
+
+/** function followButton(b: Builder) => Undefined */
+export function followButton(b) {
+  iconButton(b, "follow", state.follow ? "small on" : "small", "follow", state.follow ? "Follow playback: on — the view scrolls with the playhead" : "Follow playback: off", () => {
+    state.follow = !state.follow;
+    invalidate();
+    return undefined;
+  });
+  return undefined;
+}
+
 /** function playlistTools(b: Builder) => Undefined */
 export function playlistTools(b) {
   const pat = currentPattern();
+  followButton(b);
   b.leaf("span", "l", "label", "Paint");
   const ids = state.project.patterns.map((x) => x.id);
   select(b, "pat", "", state.pattern, ids, state.project.patterns.map((x) => x.name), "Pattern placed by clicking an empty lane", (v) => {

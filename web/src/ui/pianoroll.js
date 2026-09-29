@@ -11,6 +11,7 @@ import { state, commit, begin, changed, currentPattern, currentChannel, selectCh
 import { isBlackKey, noteName, snapTo, snapDown } from "../model.js";
 import { preview, noteOn, noteOff, seek } from "../audio.js";
 import { select, iconButton } from "./widgets.js";
+import { followButton } from "./playlist.js";
 import { noteIx, noteIndex } from "#brands";
 
 const view = {
@@ -389,6 +390,7 @@ function gridView(b, g, pat, ch) {
     return undefined;
   });
   if (view.centered) b.prop("scrollTop", String(view.scrollTop));
+  b.prop("scrollLeft", String(view.scrollLeft));
 
   b.open("div", "content", "canvas-grid");
   b.style("width", `${g.width}px`);
@@ -526,6 +528,10 @@ export function pianoRoll(b) {
     return undefined;
   }
   const g = geometry(pat);
+  if (state.follow && state.playing && state.mode === "pattern") {
+    const x = state.position * g.zoom;
+    if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.88) view.scrollLeft = Math.max(0, x - view.width * 0.08);
+  }
   // Scroll to the notes whenever another pattern/channel comes into view.
   const focus = `${pat.id}/${ch.id}`;
   if (view.focus !== focus && view.centered) {
@@ -552,6 +558,7 @@ export function pianoRoll(b) {
 export function pianoTools(b) {
   const ids = state.project.channels.map((c) => c.id);
   const names = state.project.channels.map((c) => c.name);
+  followButton(b);
   b.leaf("span", "cl", "label", "Channel");
   select(b, "ch", "", state.channel, ids, names, "Channel to edit", (v) => selectChannel(v));
   iconButton(b, "draw", view.tool === "draw" ? "small on" : "small", "draw", "Draw tool (P)", () => {
