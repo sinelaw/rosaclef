@@ -1371,10 +1371,12 @@ dependencies = [
  "rosaclef-clap",
  "rosaclef-core",
  "rosaclef-engine",
+ "rosaclef-import",
  "serde",
  "serde_json",
  "symphonia",
  "tokio",
+ "tower",
  "tower-http",
  "which",
 ]

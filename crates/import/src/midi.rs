@@ -523,6 +523,11 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
     let mut project = Project::empty(&opts.title);
     project.schema = "./project.schema.json".into();
     project.meta.description = "Imported from a MIDI file".into();
+    // A format 1 conductor track (no notes) usually carries the song name.
+    let conductor_has_notes = order.iter().any(|s| matches!(s, Source::Melodic { track: 0, .. } | Source::Drum { track: 0, .. }));
+    if smf.format == 1 && !conductor_has_notes && !track_names[0].is_empty() {
+        project.meta.title = track_names[0].clone();
+    }
     project.transport.bpm = bpm;
     project.transport.beats_per_bar = beats_per_bar as u32;
     project.patterns.clear();

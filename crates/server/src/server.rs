@@ -2,17 +2,17 @@
 //! plugins, native audio and the agent terminal.
 
 use crate::folder::{self, Folder};
-use crate::terminal::Terminal;
-use anyhow::Result;
-use axum::body::Bytes;
+use crate::terminal::{AgentEnv, Terminal};
+use anyhow::{bail, Result};
+use axum::body::{Body, Bytes};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Query, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::extract::{Query, Request, State};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use rosaclef_core::validate::{self, Issue, Severity};
 use rosaclef_core::{format, Project};
 use rosaclef_engine::render::RenderScope;
@@ -28,6 +28,8 @@ use tower_http::services::ServeDir;
 
 pub struct Config {
     pub folder: Folder,
+    /// Folder holding the project library (one project per subfolder).
+    pub library: PathBuf,
     pub host: String,
     pub port: u16,
     pub web: PathBuf,
@@ -76,7 +78,10 @@ struct Broadcast {
 }
 
 pub struct App {
-    folder: Folder,
+    /// The open project. It changes when the producer opens another one
+    /// from the library; take a snapshot with [`App::folder`].
+    folder: RwLock<Folder>,
+    pub(crate) library: PathBuf,
     doc: Mutex<Doc>,
     tx: broadcast::Sender<Broadcast>,
     next_client: AtomicU64,
@@ -85,9 +90,12 @@ pub struct App {
     plugins: Mutex<Option<Vec<rosaclef_clap::PluginDescriptor>>>,
     #[cfg(feature = "device-audio")]
     native: Mutex<Option<crate::device::Native>>,
+    watcher: Mutex<Option<(notify::RecommendedWatcher, tokio::sync::mpsc::UnboundedSender<PathBuf>)>>,
+    /// Serializes project switches (and library operations on the open project).
+    pub(crate) switching: Mutex<()>,
 }
 
-type Shared = Arc<App>;
+pub(crate) type Shared = Arc<App>;
 
 pub async fn run(cfg: Config) -> Result<()> {
     let checked = cfg.folder.load()?;
@@ -105,15 +113,18 @@ pub async fn run(cfg: Config) -> Result<()> {
     let url = format!("http://{}:{}", cfg.host, cfg.port);
     let (tx, _) = broadcast::channel(256);
     let app = Arc::new(App {
-        folder: cfg.folder.clone(),
+        folder: RwLock::new(cfg.folder.clone()),
+        library: cfg.library.clone(),
         doc: Mutex::new(Doc { project, rev: 1, last_hash: folder::hash(&text), issues }),
         tx,
         next_client: AtomicU64::new(1),
-        term: Arc::new(Terminal::new()),
+        term: Arc::new(Terminal::new(AgentEnv { dir: cfg.folder.dir.clone(), url: url.clone() })),
         url: url.clone(),
         plugins: Mutex::new(None),
         #[cfg(feature = "device-audio")]
         native: Mutex::new(None),
+        watcher: Mutex::new(None),
+        switching: Mutex::new(()),
     });
     write_status(&app);
 
@@ -121,7 +132,6 @@ pub async fn run(cfg: Config) -> Result<()> {
     #[cfg(feature = "device-audio")]
     spawn_native_status(app.clone());
 
-    let files = ServeDir::new(&cfg.folder.dir);
     let web = ServeDir::new(&cfg.web).append_index_html_on_directories(true);
     let router = Router::new()
         .route("/ws", get(ws_handler))
@@ -131,12 +141,13 @@ pub async fn run(cfg: Config) -> Result<()> {
         .route("/api/catalog", get(get_catalog))
         .route("/api/plugins", get(get_plugins))
         .route("/api/plugins/params", get(get_plugin_params))
-        .route("/api/samples", get(list_samples).post(upload_sample))
+        .route("/api/samples", get(list_samples).post(upload_sample).layer(axum::extract::DefaultBodyLimit::max(512 << 20)))
         .route("/api/peaks", get(get_peaks))
         .route("/api/render", post(render))
         .route("/api/agents", get(get_agents))
         .route("/api/info", get(get_info))
-        .nest_service("/files", files)
+        .nest("/files", Router::new().fallback(serve_file))
+        .merge(crate::library::routes())
         .fallback_service(web)
         .with_state(app.clone());
 
@@ -144,6 +155,7 @@ pub async fn run(cfg: Config) -> Result<()> {
     println!();
     println!("  ✦ Rosaclef studio");
     println!("    project  {}", cfg.folder.dir.display());
+    println!("    library  {}", cfg.library.display());
     println!("    open     {url}");
     println!();
     axum::serve(listener, router).await?;
@@ -154,27 +166,61 @@ pub async fn run(cfg: Config) -> Result<()> {
 
 /// Reject cross-site requests (a web page on another origin must not be able
 /// to drive the terminal or rewrite the project).
-fn same_origin(headers: &HeaderMap) -> bool {
+pub(crate) fn same_origin(headers: &HeaderMap) -> bool {
     let Some(origin) = headers.get(header::ORIGIN).and_then(|o| o.to_str().ok()) else { return true };
     let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) else { return false };
     let origin_host = origin.split("://").nth(1).unwrap_or("");
     origin_host == host
 }
 
-fn forbidden() -> Response {
+pub(crate) fn forbidden() -> Response {
     (StatusCode::FORBIDDEN, "cross-origin request refused").into_response()
 }
+
+/// A client edit made for a project that is no longer open.
+#[derive(Debug)]
+pub(crate) struct Stale;
+
+impl std::fmt::Display for Stale {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the edit was made for another project (the studio switched projects)")
+    }
+}
+
+impl std::error::Error for Stale {}
 
 impl App {
     fn broadcast(&self, exclude: u64, v: Value) {
         let _ = self.tx.send(Broadcast { exclude, text: v.to_string().into() });
     }
 
+    /// Snapshot of the open project folder.
+    pub(crate) fn folder(&self) -> Folder {
+        self.folder.read().clone()
+    }
+
+    pub(crate) fn project(&self) -> Project {
+        self.doc.lock().project.clone()
+    }
+
+    pub(crate) fn send_all(&self, v: Value) {
+        self.broadcast(0, v);
+    }
+
     /// Accept a new project version from a client or the HTTP API.
-    fn apply(&self, project: Project, issues: Vec<Issue>, origin: &str, exclude: u64) -> Result<u64> {
-        let text = self.folder.write_project(&project)?;
+    /// `expect_folder` (sent by UI clients) guards against edits that were
+    /// made for a project that has since been closed.
+    pub(crate) fn apply(&self, project: Project, issues: Vec<Issue>, origin: &str, exclude: u64, expect_folder: Option<&str>) -> Result<u64> {
         let rev = {
+            // The doc lock also serializes against project switches.
             let mut doc = self.doc.lock();
+            let folder = self.folder();
+            if let Some(f) = expect_folder {
+                if f != folder.dir.display().to_string() {
+                    return Err(Stale.into());
+                }
+            }
+            let text = folder.write_project(&project)?;
             doc.rev += 1;
             doc.last_hash = folder::hash(&text);
             doc.project = project.clone();
@@ -187,10 +233,94 @@ impl App {
         Ok(rev)
     }
 
+    /// The `welcome` message (and `switched`, which carries the same data
+    /// after the open project changed).
+    fn welcome(&self, t: &str, client: u64) -> Value {
+        let folder = self.folder();
+        let doc = self.doc.lock();
+        json!({
+            "t": t,
+            "client": client,
+            "rev": doc.rev,
+            "project": doc.project,
+            "issues": doc.issues,
+            "folder": folder.dir.display().to_string(),
+            "name": folder.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+            "samples": folder.list_samples(),
+            "native": native_status(self),
+        })
+    }
+
+    /// Open another project folder: load and validate it, re-point the
+    /// watcher, native engine and agent terminal, and tell every client to
+    /// reload. Blocking (it restarts the agent), so call it from
+    /// `spawn_blocking`.
+    pub(crate) fn switch_to(&self, target: Folder) -> Result<()> {
+        let _guard = self.switching.lock();
+        if !target.project_path().is_file() {
+            bail!("{} has no {}", target.dir.display(), rosaclef_core::PROJECT_FILE);
+        }
+        target.init(false)?;
+        let text = target.read_text()?;
+        let checked = validate::parse_and_validate(&text);
+        if !checked.is_ok() {
+            let msgs: Vec<String> = checked.errors().take(3).map(|i| i.to_string()).collect();
+            bail!("the project is invalid and cannot be opened:\n{}", msgs.join("\n"));
+        }
+        let project = checked.project.expect("checked");
+        crate::guide::write(&target)?;
+        {
+            let mut doc = self.doc.lock();
+            *self.folder.write() = target.clone();
+            *doc = Doc { project: project.clone(), rev: 1, last_hash: folder::hash(&text), issues: checked.issues };
+        }
+        self.repoint(&target, &project);
+        println!("  ⇄ opened {}", target.dir.display());
+        Ok(())
+    }
+
+    /// Rename the open project's folder and follow it.
+    pub(crate) fn rename_open(&self, to: &std::path::Path) -> Result<()> {
+        let _guard = self.switching.lock();
+        let (target, project) = {
+            // No edit can be written while the folder moves.
+            let doc = self.doc.lock();
+            let old = self.folder();
+            std::fs::rename(&old.dir, to)?;
+            let target = Folder::new(to);
+            *self.folder.write() = target.clone();
+            (target, doc.project.clone())
+        };
+        self.repoint(&target, &project);
+        println!("  ⇄ renamed the open project to {}", target.dir.display());
+        Ok(())
+    }
+
+    /// After the open folder changed: watcher, status, native engine, agent
+    /// terminal, and a `switched` message so every client reloads.
+    fn repoint(&self, target: &Folder, project: &Project) {
+        {
+            let mut w = self.watcher.lock();
+            if let Some((_, tx)) = w.take() {
+                match make_watcher(tx.clone(), &target.dir) {
+                    Ok(nw) => *w = Some((nw, tx)),
+                    Err(e) => eprintln!("warning: cannot watch {}: {e}", target.dir.display()),
+                }
+            }
+        }
+        write_status(self);
+        self.update_native(project);
+        self.term.set_env(AgentEnv { dir: target.dir.clone(), url: self.url.clone() });
+        if let Err(e) = self.term.restart() {
+            eprintln!("warning: could not restart the agent in {}: {e}", target.dir.display());
+        }
+        self.broadcast(0, self.welcome("switched", 0));
+    }
+
     #[cfg(feature = "device-audio")]
     fn update_native(&self, project: &Project) {
         if let Some(n) = self.native.lock().as_ref() {
-            n.set_project(project.clone(), &self.folder);
+            n.set_project(project.clone(), &self.folder());
         }
     }
 
@@ -202,7 +332,7 @@ fn write_status(app: &App) {
     let doc = app.doc.lock();
     let ok = doc.issues.iter().all(|i| i.severity != Severity::Error);
     let v = json!({"ok": ok, "rev": doc.rev, "issues": doc.issues});
-    let _ = folder::write_atomic(&app.folder.state_path("status.json"), (serde_json::to_string_pretty(&v).unwrap() + "\n").as_bytes());
+    let _ = folder::write_atomic(&app.folder().state_path("status.json"), (serde_json::to_string_pretty(&v).unwrap() + "\n").as_bytes());
 }
 
 fn write_invalid_status(app: &App, issues: &[Issue]) {
@@ -213,14 +343,14 @@ fn write_invalid_status(app: &App, issues: &[Issue]) {
         "note": "project.json on disk is invalid; the studio keeps using the last valid version until it is fixed",
         "issues": issues
     });
-    let _ = folder::write_atomic(&app.folder.state_path("status.json"), (serde_json::to_string_pretty(&v).unwrap() + "\n").as_bytes());
+    let _ = folder::write_atomic(&app.folder().state_path("status.json"), (serde_json::to_string_pretty(&v).unwrap() + "\n").as_bytes());
 }
 
 // ---------------------------------------------------------------- watching
 
-fn spawn_watcher(app: Shared) -> Result<()> {
+/// A file watcher on `dir` that forwards changed paths to `tx`.
+fn make_watcher(tx: tokio::sync::mpsc::UnboundedSender<PathBuf>, dir: &std::path::Path) -> Result<notify::RecommendedWatcher> {
     use notify::{RecursiveMode, Watcher};
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<PathBuf>();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if let Ok(ev) = res {
             for p in ev.paths {
@@ -228,11 +358,16 @@ fn spawn_watcher(app: Shared) -> Result<()> {
             }
         }
     })?;
-    watcher.watch(&app.folder.dir, RecursiveMode::Recursive)?;
+    watcher.watch(dir, RecursiveMode::Recursive)?;
+    Ok(watcher)
+}
+
+fn spawn_watcher(app: Shared) -> Result<()> {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<PathBuf>();
+    let watcher = make_watcher(tx.clone(), &app.folder().dir)?;
+    // Kept on the app so a project switch can replace it.
+    *app.watcher.lock() = Some((watcher, tx));
     tokio::spawn(async move {
-        let _keep = watcher;
-        let project_path = app.folder.project_path();
-        let samples_dir = app.folder.dir.join(folder::SAMPLES_DIR);
         while let Some(first) = rx.recv().await {
             // Debounce bursts of events (editors write in several steps).
             tokio::time::sleep(Duration::from_millis(60)).await;
@@ -240,11 +375,15 @@ fn spawn_watcher(app: Shared) -> Result<()> {
             while let Ok(p) = rx.try_recv() {
                 paths.push(p);
             }
+            // Events from a project that was just closed no longer match.
+            let folder = app.folder();
+            let project_path = folder.project_path();
+            let samples_dir = folder.dir.join(folder::SAMPLES_DIR);
             if paths.iter().any(|p| p.file_name() == project_path.file_name() && p.parent() == project_path.parent()) {
                 reload_from_disk(&app);
             }
             if paths.iter().any(|p| p.starts_with(&samples_dir)) {
-                app.broadcast(0, json!({"t": "samples", "samples": app.folder.list_samples()}));
+                app.broadcast(0, json!({"t": "samples", "samples": folder.list_samples()}));
             }
         }
     });
@@ -252,34 +391,46 @@ fn spawn_watcher(app: Shared) -> Result<()> {
 }
 
 fn reload_from_disk(app: &App) {
-    let Ok(text) = app.folder.read_text() else { return };
-    let h = folder::hash(&text);
-    if app.doc.lock().last_hash == h {
-        return;
+    enum Outcome {
+        Changed(u64, Box<Project>, Vec<Issue>),
+        Invalid(Vec<Issue>),
     }
-    let checked = validate::parse_and_validate(&text);
-    if checked.is_ok() {
-        let project = checked.project.unwrap();
-        let rev = {
-            let mut doc = app.doc.lock();
-            doc.last_hash = h;
+    // Read and compare under the doc lock so a concurrent project switch
+    // cannot pair the old folder's text with the new document.
+    let outcome = {
+        let mut doc = app.doc.lock();
+        let Ok(text) = app.folder().read_text() else { return };
+        let h = folder::hash(&text);
+        if doc.last_hash == h {
+            return;
+        }
+        doc.last_hash = h;
+        let checked = validate::parse_and_validate(&text);
+        if checked.is_ok() {
+            let project = checked.project.unwrap();
             if doc.project == project {
                 return;
             }
             doc.rev += 1;
             doc.project = project.clone();
             doc.issues = checked.issues.clone();
-            doc.rev
-        };
-        println!("  ↻ project.json changed on disk (rev {rev})");
-        app.broadcast(0, json!({"t": "project", "rev": rev, "origin": "disk", "project": project, "issues": checked.issues}));
-        write_status(app);
-        app.update_native(&project);
-    } else {
-        app.doc.lock().last_hash = h;
-        println!("  ✗ project.json on disk is invalid ({} issue(s))", checked.issues.len());
-        app.broadcast(0, json!({"t": "invalid", "issues": checked.issues}));
-        write_invalid_status(app, &checked.issues);
+            Outcome::Changed(doc.rev, Box::new(project), checked.issues)
+        } else {
+            Outcome::Invalid(checked.issues)
+        }
+    };
+    match outcome {
+        Outcome::Changed(rev, project, issues) => {
+            println!("  ↻ project.json changed on disk (rev {rev})");
+            app.broadcast(0, json!({"t": "project", "rev": rev, "origin": "disk", "project": project, "issues": issues}));
+            write_status(app);
+            app.update_native(&project);
+        }
+        Outcome::Invalid(issues) => {
+            println!("  ✗ project.json on disk is invalid ({} issue(s))", issues.len());
+            app.broadcast(0, json!({"t": "invalid", "issues": issues}));
+            write_invalid_status(app, &issues);
+        }
     }
 }
 
@@ -295,19 +446,7 @@ async fn ws_handler(State(app): State<Shared>, headers: HeaderMap, ws: WebSocket
 async fn client(app: Shared, socket: WebSocket) {
     let id = app.next_client.fetch_add(1, Ordering::Relaxed);
     let (mut sink, mut stream) = socket.split();
-    let welcome = {
-        let doc = app.doc.lock();
-        json!({
-            "t": "welcome",
-            "client": id,
-            "rev": doc.rev,
-            "project": doc.project,
-            "issues": doc.issues,
-            "folder": app.folder.dir.display().to_string(),
-            "samples": app.folder.list_samples(),
-            "native": native_status(&app),
-        })
-    };
+    let welcome = app.welcome("welcome", id);
     if sink.send(Message::Text(welcome.to_string().into())).await.is_err() {
         return;
     }
@@ -349,8 +488,11 @@ async fn handle_client_message(app: &Shared, id: u64, v: Value) -> Option<Value>
             if !checked.is_ok() {
                 return Some(json!({"t": "rejected", "issues": checked.issues}));
             }
-            match app.apply(checked.project.unwrap(), checked.issues, "ui", id) {
+            // UI clients say which project the edit is for.
+            let expect = v.get("folder").and_then(|f| f.as_str());
+            match app.apply(checked.project.unwrap(), checked.issues, "ui", id, expect) {
                 Ok(rev) => Some(json!({"t": "ack", "rev": rev})),
+                Err(e) if e.is::<Stale>() => None,
                 Err(e) => Some(json!({"t": "error", "message": e.to_string()})),
             }
         }
@@ -363,7 +505,7 @@ async fn handle_client_message(app: &Shared, id: u64, v: Value) -> Option<Value>
                     e.at = ctx.updated_at.clone();
                 }
             }
-            let _ = folder::write_atomic(&app.folder.state_path("context.json"), (serde_json::to_string_pretty(&ctx).unwrap() + "\n").as_bytes());
+            let _ = folder::write_atomic(&app.folder().state_path("context.json"), (serde_json::to_string_pretty(&ctx).unwrap() + "\n").as_bytes());
             None
         }
         #[cfg(feature = "device-audio")]
@@ -391,21 +533,12 @@ pub(crate) fn native_status(app: &App) -> Value {
 
 #[cfg(feature = "device-audio")]
 impl App {
-    pub(crate) fn folder(&self) -> &Folder {
-        &self.folder
-    }
-    pub(crate) fn project(&self) -> Project {
-        self.doc.lock().project.clone()
-    }
     pub(crate) fn native(&self) -> &Mutex<Option<crate::device::Native>> {
         &self.native
     }
-    pub(crate) fn send_all(&self, v: Value) {
-        self.broadcast(0, v);
-    }
     pub(crate) fn apply_edit(&self, project: Project) {
         let issues = validate::validate(&project);
-        let _ = self.apply(project, issues, "studio", 0);
+        let _ = self.apply(project, issues, "studio", 0, None);
     }
 }
 
@@ -438,7 +571,7 @@ async fn put_project(State(app): State<Shared>, headers: HeaderMap, body: Bytes)
     if !checked.is_ok() {
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"ok": false, "issues": checked.issues}))).into_response();
     }
-    match app.apply(checked.project.unwrap(), checked.issues, "api", 0) {
+    match app.apply(checked.project.unwrap(), checked.issues, "api", 0, None) {
         Ok(rev) => Json(json!({"ok": true, "rev": rev})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -489,7 +622,7 @@ async fn get_plugin_params(Query(q): Query<ParamsQuery>) -> Response {
 }
 
 async fn list_samples(State(app): State<Shared>) -> impl IntoResponse {
-    Json(json!({"samples": app.folder.list_samples()}))
+    Json(json!({"samples": app.folder().list_samples()}))
 }
 
 #[derive(Deserialize)]
@@ -523,8 +656,9 @@ async fn upload_sample(State(app): State<Shared>, headers: HeaderMap, Query(q): 
     if !same_origin(&headers) {
         return forbidden();
     }
-    let rel = unique_sample_path(&app.folder, &q.name);
-    let path = app.folder.dir.join(&rel);
+    let folder = app.folder();
+    let rel = unique_sample_path(&folder, &q.name);
+    let path = folder.dir.join(&rel);
     if let Err(e) = folder::write_atomic(&path, &body) {
         return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
     }
@@ -538,7 +672,7 @@ struct PeaksQuery {
 }
 
 async fn get_peaks(State(app): State<Shared>, Query(q): Query<PeaksQuery>) -> Response {
-    let Some(path) = app.folder.resolve(&q.path) else {
+    let Some(path) = app.folder().resolve(&q.path) else {
         return (StatusCode::BAD_REQUEST, "invalid path").into_response();
     };
     let n = q.n.unwrap_or(1024);
@@ -564,7 +698,7 @@ async fn render(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<R
         return forbidden();
     }
     let project = app.doc.lock().project.clone();
-    let folder = app.folder.clone();
+    let folder = app.folder();
     let res = tokio::task::spawn_blocking(move || -> Result<Value> {
         let scope = match req.pattern.clone().filter(|p| !p.is_empty()) {
             Some(id) => RenderScope::Pattern { id, loops: req.loops.unwrap_or(1) },
@@ -603,7 +737,8 @@ async fn get_agents() -> impl IntoResponse {
 
 async fn get_info(State(app): State<Shared>) -> impl IntoResponse {
     Json(json!({
-        "folder": app.folder.dir.display().to_string(),
+        "folder": app.folder().dir.display().to_string(),
+        "library": app.library.display().to_string(),
         "url": app.url,
         "version": env!("CARGO_PKG_VERSION"),
         "native": native_status(&app),
@@ -616,7 +751,23 @@ async fn term_handler(State(app): State<Shared>, headers: HeaderMap, ws: WebSock
     if !same_origin(&headers) {
         return forbidden();
     }
-    let env = crate::terminal::AgentEnv { dir: app.folder.dir.clone(), url: app.url.clone() };
     let term = app.term.clone();
-    ws.on_upgrade(move |socket| crate::terminal::serve(term, env, socket))
+    ws.on_upgrade(move |socket| crate::terminal::serve(term, socket))
+}
+
+// ------------------------------------------------------------------ files
+
+/// `/files/...`: static files of the *current* project folder. Revalidated
+/// on every use, since two projects may hold different files at one path.
+async fn serve_file(State(app): State<Shared>, req: Request) -> Response {
+    use tower::ServiceExt;
+    let dir = app.folder().dir;
+    match ServeDir::new(dir).oneshot(req).await {
+        Ok(res) => {
+            let mut res = res.map(Body::new);
+            res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+            res
+        }
+        Err(e) => match e {},
+    }
 }

@@ -24,13 +24,13 @@
 //! | TripleOscillator | `synth` (Aurum) |
 //! | Kicker | `drum` kick |
 //! | AudioFileProcessor | `sampler` (Vault) |
-//! | LB302 | `cuivre` (or `synth`) acid bass |
+//! | LB302 | `synth` (Aurum) acid bass with glide |
 //! | other instruments | `synth` fallback, with a warning |
 //!
 //! Automation, per-clip mutes, sends between FX channels and unsupported
 //! plugins are skipped with a warning.
 
-use crate::{beats, clamp, color, ensure_valid, has_instrument, pad_tracks, set_option, set_param, Ids, Imported, SampleCopy, Warnings, MAX_INSERTS};
+use crate::{beats, clamp, color, ensure_valid, pad_tracks, set_option, set_param, Ids, Imported, SampleCopy, Warnings, MAX_INSERTS};
 use anyhow::{anyhow, bail, Context, Result};
 use rosaclef_core::{Channel, Clip, Device, Insert, InsertIx, Note, Pattern, Project, Track, TrackIx};
 use roxmltree::{Document, Node, ParsingOptions};
@@ -561,19 +561,18 @@ impl<'o> Importer<'o> {
                 (d, PitchMode::Normal, 0)
             }
             "lb302" => {
-                let kind = if has_instrument("cuivre") { "cuivre" } else { "synth" };
-                let mut d = Device::new(kind);
-                let shape = get("shape", 0.0) as i32;
-                let (w, noise) = match (kind, shape) {
-                    ("cuivre", 1 | 5) => ("triangle", 0.0),
-                    ("cuivre", 2 | 3) => ("pulse", 0.0),
-                    ("cuivre", 7) => ("saw", 0.8),
-                    ("cuivre", _) => ("saw", 0.0),
-                    (_, 1 | 5) => ("triangle", 0.0),
-                    (_, 2 | 3) => ("square", 0.0),
-                    _ => ("saw", 0.0),
+                // Aurum rather than the (still unfinished) Cuivre engine:
+                // one oscillator into a resonant low-pass with a snappy
+                // filter envelope and optional glide.
+                let mut d = Device::new("synth");
+                let w = match get("shape", 0.0) as i32 {
+                    1 | 5 => "triangle",
+                    2 | 3 => "square",
+                    7 => "noise",
+                    _ => "saw",
                 };
                 set_option(&mut d, "wave1", w);
+                set_param(&mut d, "osc2Mix", 0.0);
                 let cutoff = 80.0 * 2f64.powf(get("vcf_cut", 0.75) * 7.0);
                 set_param(&mut d, "cutoff", cutoff);
                 set_param(&mut d, "resonance", get("vcf_res", 0.75) * 0.8);
@@ -585,20 +584,8 @@ impl<'o> Importer<'o> {
                 set_param(&mut d, "release", 0.03);
                 let slide = get("slide", 0.0) != 0.0;
                 set_param(&mut d, "glide", if slide { 0.02 + get("slide_dec", 0.6) * 0.2 } else { 0.0001 });
-                if kind == "cuivre" {
-                    set_param(&mut d, "mix2", 0.0);
-                    set_param(&mut d, "sub", 0.0);
-                    set_param(&mut d, "noise", noise);
-                    set_param(&mut d, "drift", 0.1);
-                    set_param(&mut d, "drive", get("dist", 0.0));
-                    set_param(&mut d, "filterAttack", 0.002);
-                    set_param(&mut d, "filterSustain", 0.0);
-                    set_option(&mut d, "filter", if get("db24", 0.0) != 0.0 { "ladder" } else { "screamer" });
-                    set_option(&mut d, "mode", if slide { "legato" } else { "mono" });
-                } else {
-                    set_param(&mut d, "osc2Mix", 0.0);
-                }
-                self.warn.add(format!("track \"{track}\": LB302 was approximated by {}", if kind == "cuivre" { "Cuivre" } else { "Aurum (synth)" }));
+                set_param(&mut d, "gain", 0.55);
+                self.warn.add(format!("track \"{track}\": LB302 was approximated by Aurum (synth)"));
                 (d, PitchMode::Normal, 0)
             }
             "malletsstk" => {

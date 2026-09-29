@@ -193,11 +193,10 @@ fn imports_a_song() {
     let pad = &p.channels[3];
     assert_eq!(pad.instrument.kind, "synth");
     let acid = &p.channels[4];
-    if rosaclef_core::catalog::device("cuivre").is_some() {
-        assert_eq!(acid.instrument.kind, "cuivre");
-        assert_eq!(acid.instrument.option("mode"), "legato");
-    }
-    assert!(acid.instrument.param("glide") > 0.01);
+    assert_eq!(acid.instrument.kind, "synth");
+    assert_eq!(acid.instrument.option("wave1"), "saw");
+    assert!(acid.instrument.param("resonance") > 0.5);
+    assert!(acid.instrument.param("glide") > 0.01, "LB302 slide becomes glide");
     assert_eq!(acid.mixer.0, 0, "routing to a missing FX channel falls back to the master");
 
     // Pitches: LMMS key 57 = A4 = MIDI 69.

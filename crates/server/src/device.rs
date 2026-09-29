@@ -201,7 +201,7 @@ pub async fn handle(app: Arc<App>, t: &str, v: &Value) -> Option<Value> {
     match t {
         "native.enable" => {
             let project = app.project();
-            let folder = app.folder().clone();
+            let folder = app.folder();
             let res = tokio::task::spawn_blocking(move || Native::start(project, &folder)).await;
             let reply = match res {
                 Ok(Ok(n)) => {
@@ -288,7 +288,7 @@ fn finish_recording(app: &Arc<App>) {
     }
     let audio = rosaclef_engine::render::Audio { sample_rate: sr as f32, left, right };
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let rel = crate::server::unique_sample_path(app.folder(), &format!("take-{stamp}.wav"));
+    let rel = crate::server::unique_sample_path(&app.folder(), &format!("take-{stamp}.wav"));
     if folder::write_atomic(&app.folder().dir.join(&rel), &rosaclef_engine::render::encode_wav(&audio, 24)).is_err() {
         return;
     }

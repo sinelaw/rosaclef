@@ -167,7 +167,8 @@ fn format1() -> Vec<u8> {
 
 #[test]
 fn imports_format1_with_dedupe() {
-    let im = midi::import(&format1(), &Options::new("My Song")).unwrap();
+    let im = midi::import(&format1(), &Options::new("song-file")).unwrap();
+    assert_eq!(im.project.meta.title, "My Song", "the conductor track names the song");
     check_valid(&im);
     let p = &im.project;
     assert_eq!(p.transport.bpm, 120.0);
