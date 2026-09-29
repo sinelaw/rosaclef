@@ -65,6 +65,10 @@ A small retained, reconciling tree in the spirit of
 - Dense editors (piano roll, playlist) compute one layout (rectangles) that
   both rendering and hit-testing read, and only emit nodes for what is visible.
   Canvas is used only for per-pixel content (waveforms, clip previews).
+- The studio layout — which panels are minimized or maximized, the dock
+  height, the agent width — lives in one place, `web/src/ui/panes.js`
+  (persisted in `localStorage`); the shell turns it into grid columns and a
+  flex basis, and CSS transitions animate the change.
 
 ### Types in the frontend
 

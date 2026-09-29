@@ -78,6 +78,12 @@ export const confirmBox;
 /** const promptBox: (String, String) => String */
 export const promptBox;
 
+/** const loadPref: (String) => String */
+export const loadPref;
+
+/** const savePref: (String, String) => Undefined */
+export const savePref;
+
 /** const fmt: (Number, Number) => String */
 export const fmt;
 

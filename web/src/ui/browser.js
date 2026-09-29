@@ -6,6 +6,7 @@ import { newDevice, setOption, uniqueId, paletteColor, presetDevice } from "../m
 import { followPattern } from "../audio.js";
 import { glyph, iconButton, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
+import { paneHeader, paneControls } from "./panes.js";
 import { insertIx } from "#brands";
 
 /** Add a channel with a new instrument; returns its id. */
@@ -106,11 +107,14 @@ export function browser(b) {
   b.open("aside", "browser", "browser panel");
   b.on("pointerdown", (e) => setFocus("browser"));
   b.open("div", "head", "panel-head");
+  paneHeader(b, "browser");
   b.leaf("div", "t", "panel-title", "Browser");
+  paneControls(b, "browser");
   b.close();
   b.open("div", "body", "browser-body");
 
-  // Instruments.
+  // Instruments. (Sections are grouped so a maximized browser can lay them out in columns.)
+  b.open("div", "sec-inst", "b-section");
   b.open("div", "inst-title", "section-title");
   b.text("Instruments");
   b.close();
@@ -184,7 +188,10 @@ export function browser(b) {
     b.close();
   }
 
+  b.close();
+
   // Patterns.
+  b.open("div", "sec-pat", "b-section");
   b.open("div", "pat-title", "section-title");
   b.text("Patterns");
   iconButton(b, "add", "small ghost", "plus", "New pattern", addPattern);
@@ -207,7 +214,10 @@ export function browser(b) {
     b.close();
   }
 
+  b.close();
+
   // Samples.
+  b.open("div", "sec-smp", "b-section");
   b.open("div", "smp-title", "section-title");
   b.text("Samples");
   iconButton(b, "up", "small ghost", "plus", "Import audio files into samples/", () => {
@@ -233,7 +243,10 @@ export function browser(b) {
     b.close();
   }
 
+  b.close();
+
   // Project.
+  b.open("div", "sec-prj", "b-section");
   b.open("div", "prj-title", "section-title");
   b.text("Project");
   b.close();
@@ -259,6 +272,7 @@ export function browser(b) {
   b.close();
   b.leaf("div", "folder", "b-empty", state.folder.split("/").pop() ?? state.folder);
   b.attr("title", state.folder);
+  b.close();
 
   b.close();
   b.close();

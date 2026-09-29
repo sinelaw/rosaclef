@@ -14,7 +14,7 @@ export function blankEvent() {
     clientX: 0, clientY: 0, offsetX: 0, offsetY: 0, movementX: 0, movementY: 0,
     button: 0, buttons: 0, pointerId: 0, deltaX: 0, deltaY: 0, key: "", code: "",
     shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, repeat: false,
-    detail: 0, typing: false, value: "", checked: false,
+    detail: 0, typing: false, onControl: false, value: "", checked: false,
     targetLeft: 0, targetTop: 0, targetWidth: 0, targetHeight: 0, scrollLeft: 0, scrollTop: 0,
     preventDefault: () => undefined, stopPropagation: () => undefined,
   };
