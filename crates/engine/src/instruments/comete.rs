@@ -229,7 +229,7 @@ impl Space {
     fn new(sr: f32) -> Space {
         let ms = |m: f32| ((m * 0.001 * sr) as usize).max(1);
         Space {
-            ap: [Delay::new(ms(2.96)), Delay::new(ms(2.23)), Delay::new(ms(3.14)), Delay::new(ms(2.35))],
+            ap: [Delay::new(ms(2.96)), Delay::new(ms(2.23)), Delay::new(ms(3.19)), Delay::new(ms(2.35))],
             lines: [Delay::new(ms(41.3)), Delay::new(ms(47.9)), Delay::new(ms(55.1)), Delay::new(ms(63.7))],
             damp: Default::default(),
             gains: [0.0; 4],
@@ -384,7 +384,7 @@ impl Comete {
                 s.nf_r.set(nf * 1.07, 0.1, sr);
                 let boom = (0.3 + 0.15 * dur.min(16.0)).min(3.0);
                 target = [
-                    (-secs / 0.09).exp() + 0.3 * tail,
+                    (-secs / 0.09).exp() + 0.45 * tail,
                     (-secs / 0.3).exp() * (0.3 + 0.7 * p.tone),
                     (-secs / boom).exp() * tail.sqrt(),
                 ];
@@ -399,9 +399,8 @@ impl Comete {
         let ramp = (s.secs / attack).min(1.0);
         let amp = amp * ramp;
         s.amp_inc = (amp - s.amp) / span;
-        for j in 0..3 {
-            let tj = target[j] * ramp;
-            s.layers_inc[j] = (tj - s.layers[j]) / span;
+        for ((inc, layer), tj) in s.layers_inc.iter_mut().zip(&s.layers).zip(target) {
+            *inc = (tj * ramp - layer) / span;
         }
     }
 }
@@ -502,7 +501,7 @@ impl Comete {
         for s in self.shots.iter_mut().filter(|s| s.active) {
             let vel = 0.35 + 0.65 * s.vel;
             for i in 0..n {
-                if s.counter % CONTROL == 0 {
+                if s.counter.is_multiple_of(CONTROL) {
                     Comete::control(s, &p, sr, inc);
                 }
                 s.counter += 1;

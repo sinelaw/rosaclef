@@ -627,7 +627,7 @@ fn control(v: &mut Voice, p: &Params, k: &Consts) {
 /// One output sample of a voice (before gain and pan).
 #[inline(always)]
 fn tick(v: &mut Voice, p: &Params, k: &Consts) -> f32 {
-    if v.counter % CONTROL == 0 {
+    if v.counter.is_multiple_of(CONTROL) {
         control(v, p, k);
     }
     v.counter += 1;

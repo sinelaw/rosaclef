@@ -250,7 +250,7 @@ fn reflect(d: i32, max: i32) -> i32 {
 fn snap_even(d: i32, max: i32) -> i32 {
     if d.rem_euclid(2) == 0 {
         d
-    } else if d + 1 <= max {
+    } else if d < max {
         d + 1
     } else {
         d - 1
@@ -399,7 +399,7 @@ impl Dedale {
         let deg = gen.deg[s].clamp(-max, max);
         let pitch = (gen.key as i32 + degree_to_semis(p.scale, deg)).clamp(0, 127) as f32;
         // Accents: downbeats and a few random steps are louder.
-        let down = s % 4 == 0;
+        let down = s.is_multiple_of(4);
         let rand_acc = gen.acc[s] < 0.25;
         let mut v = 1.0 - 0.55 * p.accent;
         if down {
@@ -608,7 +608,7 @@ impl Instrument for Dedale {
                     v.fenv = if v.fenv > 1e-6 { v.fenv * v.fenv_coef } else { 0.0 };
                     let s = match sound {
                         Sound::Pluck => {
-                            if v.counter % CONTROL == 0 {
+                            if v.counter.is_multiple_of(CONTROL) {
                                 let fc = f * (1.2 + tone * 5.0) * (1.0 + (4.0 + 10.0 * tone) * v.fenv) + 80.0;
                                 v.svf.set(fc.min(18000.0), 0.15 + 0.2 * tone, sr);
                             }
@@ -630,7 +630,7 @@ impl Instrument for Dedale {
                             (c + h) * 0.75
                         }
                         Sound::Bass => {
-                            if v.counter % CONTROL == 0 {
+                            if v.counter.is_multiple_of(CONTROL) {
                                 let fc = f * (1.5 + 5.0 * tone) * (1.0 + 3.0 * v.fenv) + 60.0;
                                 v.svf.set(fc.min(12000.0), 0.3, sr);
                             }
@@ -640,7 +640,7 @@ impl Instrument for Dedale {
                             v.svf.process(x, FilterMode::Lowpass) * 1.35
                         }
                         Sound::Perc => {
-                            if v.counter % CONTROL == 0 {
+                            if v.counter.is_multiple_of(CONTROL) {
                                 let fc = (f * 2.0 * (0.6 + 0.8 * tone)).clamp(120.0, 12000.0);
                                 v.svf.set(fc, 0.75, sr);
                                 v.svf2.set((f * 4.0 + 2000.0 * tone).min(16000.0), 0.3, sr);

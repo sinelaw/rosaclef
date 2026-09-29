@@ -500,34 +500,3 @@ fn realtime_performance() {
     }
 }
 
-#[test]
-#[ignore]
-fn level_survey() {
-    let cfgs: Vec<(&str, Device, u8)> = vec![
-        ("cuivre def 36", Device::new("cuivre"), 36),
-        ("cuivre def 60", Device::new("cuivre"), 60),
-        ("cuivre def 84", Device::new("cuivre"), 84),
-        ("cuivre scream 48", device("cuivre", &[], &[("filter", "screamer")]), 48),
-        ("cuivre scream res1 48", device("cuivre", &[("resonance", 1.0), ("drive", 1.0)], &[("filter", "screamer")]), 48),
-        ("cuivre ladder res1 48", device("cuivre", &[("resonance", 1.0), ("drive", 1.0)], &[]), 48),
-        ("cuivre open 48", device("cuivre", &[("cutoff", 12000.0), ("resonance", 0.0)], &[]), 48),
-    ];
-    for (name, d, k) in cfgs {
-        let o = note(&d, 120.0, k, 1.0, 2.0);
-        println!("{name:<28} peak {:.3} rms {:.3}", o.peak(), o.rms_in(0.1, 0.9));
-    }
-    for voice in ["pluck", "bell", "bass", "perc"] {
-        for k in [36u8, 48, 60, 72] {
-            let d = device("dedale", &[], &[("voice", voice)]);
-            let o = note(&d, 120.0, k, 3.0, 4.0);
-            println!("dedale {voice:<6} {k}  peak {:.3} rms {:.3}", o.peak(), o.rms_in(0.0, 3.0));
-        }
-    }
-    for kind in ["riser", "downlifter", "impact", "sweep", "subdrop"] {
-        for sp in [0.0, 0.5, 1.0] {
-            let d = device("comete", &[("space", sp)], &[("kind", kind)]);
-            let o = note(&d, 120.0, 60, 0.1, 6.0);
-            println!("comete {kind:<10} space {sp} peak {:.3} rms {:.3}", o.peak(), o.rms_in(0.0, 4.0));
-        }
-    }
-}
