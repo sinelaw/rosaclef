@@ -150,7 +150,7 @@ struct Voice {
 
 impl Voice {
     fn new(slot: usize) -> Voice {
-        let mut rng = Rng::new(0xC0FFEE ^ ((slot as u32 + 1) * 0x9E37_79B9));
+        let mut rng = Rng::new(0xC0FFEE ^ (slot as u32 + 1).wrapping_mul(0x9E37_79B9));
         let tol = [rng.bipolar(), rng.bipolar(), rng.bipolar(), rng.bipolar(), rng.bipolar()];
         Voice {
             active: false,
