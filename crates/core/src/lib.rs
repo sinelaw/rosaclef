@@ -2,6 +2,7 @@
 //! system (native server, WebAssembly engine, command line tools).
 
 pub mod catalog;
+pub mod presets;
 pub mod format;
 pub mod model;
 pub mod schema;

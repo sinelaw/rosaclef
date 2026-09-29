@@ -1,14 +1,28 @@
 //! Built-in instruments and the common instrument interface.
 
+mod comete;
+mod cuivre;
+mod dedale;
 mod drum;
 mod fm;
+mod nebula;
+mod prisme;
 mod sampler;
+mod sextant;
 mod synth;
+mod tessera;
 
+pub use comete::Comete;
+pub use cuivre::Cuivre;
+pub use dedale::Dedale;
 pub use drum::Drum;
 pub use fm::Fm;
+pub use nebula::Nebula;
+pub use prisme::Prisme;
 pub use sampler::Sampler;
+pub use sextant::Sextant;
 pub use synth::Synth;
+pub use tessera::Tessera;
 
 use crate::samples::SampleBank;
 use crate::Ctx;
@@ -85,6 +99,13 @@ pub fn create(dev: &Device, ctx: &Ctx) -> Option<Box<dyn Instrument>> {
         "fm" => Box::new(Fm::new(ctx.sr)),
         "drum" => Box::new(Drum::new(ctx.sr)),
         "sampler" => Box::new(Sampler::new(ctx.sr)),
+        "prisme" => Box::new(Prisme::new(ctx.sr)),
+        "sextant" => Box::new(Sextant::new(ctx.sr)),
+        "tessera" => Box::new(Tessera::new(ctx.sr)),
+        "cuivre" => Box::new(Cuivre::new(ctx.sr)),
+        "nebula" => Box::new(Nebula::new(ctx.sr)),
+        "dedale" => Box::new(Dedale::new(ctx.sr)),
+        "comete" => Box::new(Comete::new(ctx.sr)),
         _ => return None,
     };
     inst.set_device(dev, ctx);

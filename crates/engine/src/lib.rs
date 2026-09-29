@@ -428,8 +428,10 @@ impl Engine {
             }
         };
         for ch in &self.project.channels {
-            if ch.instrument.kind == "sampler" {
-                add(ch.instrument.option("sample"));
+            match ch.instrument.kind.as_str() {
+                "sampler" => add(ch.instrument.option("sample")),
+                "nebula" if ch.instrument.option("source") == "sample" => add(ch.instrument.option("sample")),
+                _ => {}
             }
         }
         for c in &self.project.playlist.clips {
