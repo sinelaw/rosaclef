@@ -39,6 +39,18 @@ export const pickFiles;
 /** const download: (String, String) => Undefined */
 export const download;
 
+/** const previewAudio: (String, () => Undefined) => Undefined */
+export const previewAudio;
+
+/** const stopPreview: () => Undefined */
+export const stopPreview;
+
+/** const fmtDate: (Number) => String */
+export const fmtDate;
+
+/** const nowIso: () => String */
+export const nowIso;
+
 /** const wsUrl: (String) => String */
 export const wsUrl;
 

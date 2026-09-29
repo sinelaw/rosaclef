@@ -84,8 +84,36 @@ async function boot() {
   return await audioResume();
 }
 
+/** The project folder whose samples the browser engine holds. */
+const sampleCache = { folder: "" };
+
+/** Another project was opened: it may hold different audio at the same
+ * paths, so decode again every cached sample it uses and forget the rest. */
+function forgetSamples() {
+  /** const used: String[] */
+  const used = [];
+  for (const c of state.project.channels) {
+    for (const o of c.instrument.options) {
+      if (o.key === "sample" && o.value !== "") used.push(o.value);
+    }
+  }
+  for (const c of state.project.playlist.clips) {
+    if (c.sample !== "") used.push(c.sample);
+  }
+  const old = loaded.slice();
+  loaded.length = 0;
+  loading.length = 0;
+  for (const path of old) {
+    if (used.includes(path)) loadSample(path);
+  }
+}
+
 export function installEngine() {
   hooks.engine = (json) => {
+    if (state.folder !== sampleCache.folder) {
+      if (sampleCache.folder !== "") forgetSamples();
+      sampleCache.folder = state.folder;
+    }
     if (state.audioReady) audioPost({ t: "project", json: json });
     return undefined;
   };

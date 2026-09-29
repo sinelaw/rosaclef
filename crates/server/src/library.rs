@@ -231,7 +231,20 @@ pub fn duplicate(library: &Path, name: &str, to: &str) -> Result<()> {
     copy_dir(&src, &dst)?;
     let f = Folder::new(&dst);
     f.init(false)?;
+    follow_title(&f, name, to)?;
     crate::guide::write(&f)?;
+    Ok(())
+}
+
+/// A song titled after its folder keeps following the folder's name.
+fn follow_title(f: &Folder, old: &str, new: &str) -> Result<()> {
+    let Ok(checked) = f.load() else { return Ok(()) };
+    if let Some(mut p) = checked.project {
+        if p.meta.title == old || p.meta.title.is_empty() {
+            p.meta.title = new.to_string();
+            f.write_project(&p)?;
+        }
+    }
     Ok(())
 }
 
@@ -286,7 +299,7 @@ pub struct FileInfo {
     /// Referenced by the project (a sampler or an audio clip).
     pub used: bool,
     /// The studio's own files, which cannot be renamed or deleted here.
-    pub protected: bool,
+    pub managed: bool,
 }
 
 const PROTECTED: &[&str] = &[PROJECT_FILE, folder::SCHEMA_FILE];
@@ -336,7 +349,7 @@ pub fn files(f: &Folder, sub: &str, project: &Project) -> Result<Vec<FileInfo>> 
         out.push(FileInfo {
             kind: if crate::decode::is_audio_file(&p) { "audio".into() } else { "other".into() },
             used: used.contains(&rel),
-            protected: dir.is_empty() && PROTECTED.contains(&name.as_str()),
+            managed: dir.is_empty() && PROTECTED.contains(&name.as_str()),
             size: meta.as_ref().map(|m| m.len() as f64).unwrap_or(0.0),
             modified: millis(meta.map(|m| m.modified()).unwrap_or_else(|| Err(std::io::Error::other("no metadata")))),
             path: rel,
@@ -545,9 +558,17 @@ async fn rename_project(State(app): State<Shared>, headers: HeaderMap, Json(req)
         let src_canon = src.canonicalize().unwrap_or(src.clone());
         if src_canon == a.folder().dir {
             // The open project: move it and follow it (agent, watcher, clients).
-            a.rename_open(&dst)
+            a.rename_open(&dst)?;
+            let mut p = a.project();
+            if p.meta.title == name {
+                p.meta.title = to2.clone();
+                let issues = rosaclef_core::validate::validate(&p);
+                a.apply(p, issues, "files", 0, None)?;
+            }
+            Ok(())
         } else {
-            std::fs::rename(&src, &dst).map_err(Into::into)
+            std::fs::rename(&src, &dst)?;
+            follow_title(&Folder::new(&dst), &name, &to2)
         }
     })
     .await;
@@ -777,6 +798,7 @@ mod tests {
         duplicate(&lib, "Alpha", "Gamma").unwrap();
         assert!(lib.join("Gamma/samples/x.wav").is_file());
         assert!(lib.join("Gamma/AGENTS.md").is_file());
+        assert_eq!(Folder::new(lib.join("Gamma")).load().unwrap().project.unwrap().meta.title, "Gamma", "a title that was the folder name follows it");
         assert!(duplicate(&lib, "Alpha", "Beta").is_err());
 
         let trashed = trash_project(&lib, "Gamma").unwrap();
@@ -803,7 +825,7 @@ mod tests {
         assert!(find(".rosaclef/status.json").is_none(), "hidden files are not listed");
         let kick = find("samples/kick.wav").unwrap();
         assert!(kick.used && kick.kind == "audio" && kick.dir == "samples" && kick.size == 4.0);
-        assert!(find("project.json").unwrap().protected);
+        assert!(find("project.json").unwrap().managed);
         assert_eq!(find("notes.txt").unwrap().kind, "other");
         assert_eq!(files(&f, "renders", &p).unwrap().len(), 1);
         assert!(files(&f, "../", &p).is_err());

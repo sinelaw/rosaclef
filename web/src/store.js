@@ -4,7 +4,7 @@
 // change calls `invalidate()`, which marks the UI tree; the next animation
 // frame rebuilds all descriptions and reconciles them (see ui/tree.js).
 
-import { debounce } from "#platform";
+import { debounce, nowIso } from "#platform";
 import { decodeProject, emptyProject, projectJson, cloneProject, describeChange } from "./model.js";
 import { insertIx, insertIndex, trackIx, noteIndex, clipIndex } from "#brands";
 
@@ -86,7 +86,7 @@ function logEdits() {
   const lines = describeChange(logged.project, state.project);
   logged.project = cloneProject(state.project);
   if (lines.length === 0) return;
-  const at = new Date().toISOString();
+  const at = nowIso();
   for (const l of lines) state.recent.push({ at: at, summary: l });
   while (state.recent.length > 12) state.recent.shift();
   reportContext();

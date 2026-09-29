@@ -5,6 +5,7 @@ import { state, hooks, load, applyRemote, invalidate, currentPattern, currentCha
 import { toast } from "./ui/toast.js";
 import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
 import { decodeProject, encodeClipWire, barBeat } from "./model.js";
+import { projectSwitched } from "./ui/projects.js";
 
 /** const sock: RawSock[] */
 const sock = [];
@@ -25,13 +26,14 @@ function issueText(issues) {
 function onMessage(text) {
   const m = JSON.parse(text);
   const t = String(m.t);
-  if (t === "welcome") {
+  if (t === "welcome" || t === "switched") {
     state.folder = String(m.folder);
     state.samples = m.samples;
     state.rev = Number(m.rev);
     state.nativeAvailable = m.native.available === true;
     state.nativeEnabled = m.native.enabled === true;
     load(decodeProject(m.project));
+    if (t === "switched") projectSwitched();
   } else if (t === "project") {
     state.rev = Number(m.rev);
     state.diskIssues = [];
@@ -132,6 +134,13 @@ export function sendContext() {
   }
   const ins = insertIndex(state.insert);
   const tr = trackIndex(state.track);
+  // (Nested ifs: inty wants both operands of && to have one type.)
+  const roll = [];
+  if (vp.prOn) {
+    if (pat) {
+      if (ch) roll.push({ pattern: pat.id, channel: ch.id, startBeat: vp.prStart, endBeat: vp.prEnd, lowPitch: vp.prLow, highPitch: vp.prHigh });
+    }
+  }
   send({
     t: "context",
     context: {
@@ -154,7 +163,7 @@ export function sendContext() {
       },
       visible: {
         playlist: { startBeat: vp.plStart, endBeat: vp.plEnd, firstTrack: vp.plTrack0, lastTrack: vp.plTrack1 },
-        pianoRoll: vp.prOn && pat && ch ? { pattern: pat.id, channel: ch.id, startBeat: vp.prStart, endBeat: vp.prEnd, lowPitch: vp.prLow, highPitch: vp.prHigh } : null,
+        pianoRoll: roll.length > 0 ? roll[0] : null,
       },
       recentEdits: state.recent,
     },
@@ -163,7 +172,7 @@ export function sendContext() {
 
 export function installSync() {
   hooks.sync = (json) => {
-    send({ t: "put", project: JSON.parse(json) });
+    send({ t: "put", folder: state.folder, project: JSON.parse(json) });
     return undefined;
   };
   hooks.context = sendContext;
