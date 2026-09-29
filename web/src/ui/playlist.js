@@ -5,7 +5,7 @@
 // previews, waveforms) are small canvas leaves.
 
 import { drag, getJson, promptBox } from "#platform";
-import { state, commit, begin, changed, invalidate, selectPattern, currentPattern, hint } from "../store.js";
+import { state, commit, begin, changed, invalidate, selectPattern, selectChannel, showDock, currentPattern, hint } from "../store.js";
 import { snapTo, snapDown, songLength } from "../model.js";
 import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
@@ -104,6 +104,42 @@ function patternById(id) {
   return state.project.patterns.find((p) => p.id === id);
 }
 
+/** Show the editor that fits a pattern: the piano roll (with its main
+ * melodic channel) for melodic patterns, the channel rack for drum-only
+ * ones. `forcePiano` (double click) always opens the piano roll. */
+/** function focusEditor(patternId: String, forcePiano: Boolean) => Undefined */
+function focusEditor(patternId, forcePiano) {
+  const pat = patternById(patternId);
+  if (!pat) return undefined;
+  // Count notes per channel; prefer melodic (non-drum) channels.
+  let best = "";
+  let bestCount = 0;
+  let bestDrum = "";
+  let bestDrumCount = 0;
+  for (const ch of state.project.channels) {
+    let n = 0;
+    for (const note of pat.notes) if (note.channel === ch.id) n = n + 1;
+    if (n === 0) continue;
+    if (ch.instrument.type === "drum") {
+      if (n > bestDrumCount) {
+        bestDrum = ch.id;
+        bestDrumCount = n;
+      }
+    } else if (n > bestCount) {
+      best = ch.id;
+      bestCount = n;
+    }
+  }
+  if (best !== "") {
+    selectChannel(best);
+    showDock("piano");
+  } else if (bestDrum !== "") {
+    selectChannel(bestDrum);
+    showDock(forcePiano ? "piano" : "rack");
+  }
+  return undefined;
+}
+
 /** function onLaneDown(e: Ev, g: PGeo) => Undefined */
 function onLaneDown(e, g) {
   e.preventDefault();
@@ -136,6 +172,7 @@ function onLaneDown(e, g) {
     if (clip.pattern !== "") {
       selectPattern(clip.pattern);
       followPattern();
+      focusEditor(clip.pattern, e.detail >= 2);
     }
     const resizing = x > box.x + box.w - 8;
     const orig = view.selected.map((s) => {
