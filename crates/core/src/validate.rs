@@ -1,0 +1,294 @@
+//! Parsing and semantic validation of project documents.
+//!
+//! Errors carry a JSON path (`channels[2].instrument.params.cutoff`) and a
+//! human readable message, so that an agent editing the file by hand can fix
+//! mistakes quickly.
+
+use crate::catalog::{self, Category, DeviceSpec};
+use crate::model::{Device, Project, FORMAT};
+use serde::Serialize;
+use std::collections::HashSet;
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    Error,
+    Warning,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct Issue {
+    pub severity: Severity,
+    pub path: String,
+    pub message: String,
+}
+
+impl std::fmt::Display for Issue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let sev = match self.severity {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        };
+        if self.path.is_empty() {
+            write!(f, "{sev}: {}", self.message)
+        } else {
+            write!(f, "{sev}: {}: {}", self.path, self.message)
+        }
+    }
+}
+
+/// Result of parsing a document: the project (when it parsed) and any issues.
+pub struct Checked {
+    pub project: Option<Project>,
+    pub issues: Vec<Issue>,
+}
+
+impl Checked {
+    pub fn errors(&self) -> impl Iterator<Item = &Issue> {
+        self.issues.iter().filter(|i| i.severity == Severity::Error)
+    }
+    pub fn is_ok(&self) -> bool {
+        self.project.is_some() && self.errors().next().is_none()
+    }
+}
+
+/// Parse JSON text into a project and validate it.
+pub fn parse_and_validate(text: &str) -> Checked {
+    let de = &mut serde_json::Deserializer::from_str(text);
+    match serde_path_to_error::deserialize::<_, Project>(de) {
+        Ok(project) => {
+            let issues = validate(&project);
+            Checked { project: Some(project), issues }
+        }
+        Err(err) => {
+            let path = err.path().to_string();
+            let path = if path == "." { String::new() } else { path };
+            let inner = err.into_inner();
+            Checked {
+                project: None,
+                issues: vec![Issue { severity: Severity::Error, path, message: inner.to_string() }],
+            }
+        }
+    }
+}
+
+/// Parse an already-decoded JSON value into a project and validate it.
+pub fn value_and_validate(value: serde_json::Value) -> Checked {
+    match serde_path_to_error::deserialize::<_, Project>(value) {
+        Ok(project) => {
+            let issues = validate(&project);
+            Checked { project: Some(project), issues }
+        }
+        Err(err) => {
+            let path = err.path().to_string();
+            let path = if path == "." { String::new() } else { path };
+            Checked {
+                project: None,
+                issues: vec![Issue { severity: Severity::Error, path, message: err.into_inner().to_string() }],
+            }
+        }
+    }
+}
+
+struct V {
+    issues: Vec<Issue>,
+}
+
+impl V {
+    fn err(&mut self, path: impl Into<String>, message: impl Into<String>) {
+        self.issues.push(Issue { severity: Severity::Error, path: path.into(), message: message.into() });
+    }
+    fn warn(&mut self, path: impl Into<String>, message: impl Into<String>) {
+        self.issues.push(Issue { severity: Severity::Warning, path: path.into(), message: message.into() });
+    }
+    fn range(&mut self, path: &str, v: f64, min: f64, max: f64) {
+        if !v.is_finite() || v < min || v > max {
+            self.err(path, format!("value {v} is outside the allowed range {min}..{max}"));
+        }
+    }
+}
+
+fn valid_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
+fn valid_color(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Semantic checks that the type system alone cannot express.
+pub fn validate(p: &Project) -> Vec<Issue> {
+    let mut v = V { issues: vec![] };
+
+    if p.format != FORMAT {
+        v.err("format", format!("unsupported format {:?}, expected {:?}", p.format, FORMAT));
+    }
+    v.range("transport.bpm", p.transport.bpm, 20.0, 999.0);
+    if p.transport.beats_per_bar == 0 || p.transport.beats_per_bar > 32 {
+        v.err("transport.beatsPerBar", "must be between 1 and 32");
+    }
+    v.range("transport.swing", p.transport.swing, 0.0, 1.0);
+
+    // Mixer.
+    if p.mixer.inserts.is_empty() {
+        v.err("mixer.inserts", "there must be at least one insert (index 0 is the master)");
+    }
+    if p.mixer.inserts.len() > 128 {
+        v.err("mixer.inserts", "at most 128 inserts are supported");
+    }
+    for (i, ins) in p.mixer.inserts.iter().enumerate() {
+        let path = format!("mixer.inserts[{i}]");
+        v.range(&format!("{path}.volume"), ins.volume, 0.0, 2.0);
+        v.range(&format!("{path}.pan"), ins.pan, -1.0, 1.0);
+        for (j, fx) in ins.effects.iter().enumerate() {
+            check_device(&mut v, &format!("{path}.effects[{j}]"), fx, Category::Effect);
+        }
+    }
+    let n_inserts = p.mixer.inserts.len() as u32;
+
+    // Channels.
+    let mut channel_ids = HashSet::new();
+    for (i, ch) in p.channels.iter().enumerate() {
+        let path = format!("channels[{i}]");
+        if !valid_id(&ch.id) {
+            v.err(format!("{path}.id"), format!("invalid id {:?}: use 1-64 characters from [A-Za-z0-9_.-]", ch.id));
+        }
+        if !channel_ids.insert(ch.id.as_str()) {
+            v.err(format!("{path}.id"), format!("duplicate channel id {:?}", ch.id));
+        }
+        if !valid_color(&ch.color) {
+            v.err(format!("{path}.color"), "colors are #rrggbb hex strings");
+        }
+        v.range(&format!("{path}.volume"), ch.volume, 0.0, 1.5);
+        v.range(&format!("{path}.pan"), ch.pan, -1.0, 1.0);
+        if ch.mixer >= n_inserts {
+            v.err(format!("{path}.mixer"), format!("mixer insert {} does not exist (there are {n_inserts})", ch.mixer));
+        }
+        check_device(&mut v, &format!("{path}.instrument"), &ch.instrument, Category::Instrument);
+    }
+
+    // Patterns.
+    let mut pattern_ids = HashSet::new();
+    for (i, pat) in p.patterns.iter().enumerate() {
+        let path = format!("patterns[{i}]");
+        if !valid_id(&pat.id) {
+            v.err(format!("{path}.id"), format!("invalid id {:?}: use 1-64 characters from [A-Za-z0-9_.-]", pat.id));
+        }
+        if !pattern_ids.insert(pat.id.as_str()) {
+            v.err(format!("{path}.id"), format!("duplicate pattern id {:?}", pat.id));
+        }
+        if !valid_color(&pat.color) {
+            v.err(format!("{path}.color"), "colors are #rrggbb hex strings");
+        }
+        if !(pat.length > 0.0 && pat.length <= 4096.0) {
+            v.err(format!("{path}.length"), "pattern length must be in (0, 4096] beats");
+        }
+        let mut beyond = 0;
+        for (j, n) in pat.notes.iter().enumerate() {
+            let np = format!("{path}.notes[{j}]");
+            if !channel_ids.contains(n.channel.as_str()) {
+                v.err(format!("{np}.channel"), format!("unknown channel {:?}", n.channel));
+            }
+            if !(0..=127).contains(&n.pitch) {
+                v.err(format!("{np}.pitch"), "pitch must be a MIDI note number 0..127");
+            }
+            if !(n.start >= 0.0 && n.start.is_finite()) {
+                v.err(format!("{np}.start"), "start must be >= 0");
+            }
+            if !(n.length > 0.0 && n.length.is_finite()) {
+                v.err(format!("{np}.length"), "length must be > 0");
+            }
+            v.range(&format!("{np}.velocity"), n.velocity, 0.0, 1.0);
+            if n.start >= pat.length {
+                beyond += 1;
+            }
+        }
+        if beyond > 0 {
+            v.warn(format!("{path}.notes"), format!("{beyond} note(s) start after the pattern length ({}) and will never play", pat.length));
+        }
+    }
+
+    // Playlist.
+    let n_tracks = p.playlist.tracks.len() as u32;
+    for (i, c) in p.playlist.clips.iter().enumerate() {
+        let path = format!("playlist.clips[{i}]");
+        match (c.pattern.is_empty(), c.sample.is_empty()) {
+            (false, true) => {
+                if !pattern_ids.contains(c.pattern.as_str()) {
+                    v.err(format!("{path}.pattern"), format!("unknown pattern {:?}", c.pattern));
+                }
+            }
+            (true, false) => {
+                check_relative_path(&mut v, &format!("{path}.sample"), &c.sample);
+                if c.mixer >= n_inserts {
+                    v.err(format!("{path}.mixer"), format!("mixer insert {} does not exist", c.mixer));
+                }
+            }
+            _ => v.err(&path, "a clip needs exactly one of \"pattern\" or \"sample\""),
+        }
+        if c.track >= n_tracks {
+            v.err(format!("{path}.track"), format!("track {} does not exist (there are {n_tracks} tracks)", c.track));
+        }
+        if !(c.start >= 0.0 && c.start.is_finite()) {
+            v.err(format!("{path}.start"), "start must be >= 0");
+        }
+        if !(c.length > 0.0 && c.length.is_finite()) {
+            v.err(format!("{path}.length"), "length must be > 0");
+        }
+        if !(c.offset >= 0.0 && c.offset.is_finite()) {
+            v.err(format!("{path}.offset"), "offset must be >= 0");
+        }
+        v.range(&format!("{path}.gain"), c.gain, 0.0, 4.0);
+    }
+    v.issues
+}
+
+fn check_relative_path(v: &mut V, path: &str, file: &str) {
+    if file.starts_with('/') || file.split(['/', '\\']).any(|seg| seg == "..") {
+        v.err(path, format!("{file:?} must be a path relative to the project folder (no '..')"));
+    }
+}
+
+fn check_device(v: &mut V, path: &str, d: &Device, category: Category) {
+    let Some(spec): Option<&DeviceSpec> = catalog::device_in(&d.kind, category) else {
+        let known: Vec<_> = catalog::DEVICES.iter().filter(|s| s.category == category).map(|s| s.kind).collect();
+        let what = if category == Category::Instrument { "instrument" } else { "effect" };
+        v.err(format!("{path}.type"), format!("unknown {what} type {:?}; expected one of {}", d.kind, known.join(", ")));
+        return;
+    };
+    if !spec.open_params {
+        for (k, val) in &d.params {
+            match spec.param(k) {
+                None => {
+                    let keys: Vec<_> = spec.params.iter().map(|p| p.key).collect();
+                    v.err(format!("{path}.params.{k}"), format!("unknown parameter for {:?}; expected one of {}", spec.kind, keys.join(", ")));
+                }
+                Some(ps) => {
+                    v.range(&format!("{path}.params.{k}"), *val, ps.min, ps.max);
+                    if ps.integer && val.fract() != 0.0 {
+                        v.err(format!("{path}.params.{k}"), "must be a whole number");
+                    }
+                }
+            }
+        }
+    }
+    for (k, val) in &d.options {
+        match spec.option(k) {
+            None => {
+                let keys: Vec<_> = spec.options.iter().map(|o| o.key).collect();
+                v.err(format!("{path}.options.{k}"), format!("unknown option for {:?}; expected one of {}", spec.kind, keys.join(", ")));
+            }
+            Some(os) => {
+                if !os.choices.is_empty() && !os.choices.contains(&val.as_str()) {
+                    v.err(format!("{path}.options.{k}"), format!("{val:?} is not one of {}", os.choices.join(", ")));
+                }
+            }
+        }
+    }
+    if d.kind == "sampler" && !d.option("sample").is_empty() {
+        check_relative_path(v, &format!("{path}.options.sample"), d.option("sample"));
+    }
+    if d.kind == "plugin" && d.option("path").is_empty() {
+        v.err(format!("{path}.options.path"), "plugin devices need options.path");
+    }
+}

@@ -1,0 +1,14 @@
+[package]
+name = "rosaclef-clap"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clap-sys = "0.5"
+libloading = "0.9"
+rosaclef-core = { workspace = true }
+rosaclef-engine = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -1,0 +1,6 @@
+[package]
+name = "rosaclef-wasm"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
