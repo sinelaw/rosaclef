@@ -502,12 +502,14 @@ struct SawSection {
     pan_l: Vec<f32>,
     pan_r: Vec<f32>,
     wander: Vec<Wander>,
+    dt: Vec<f32>,
+    count: usize,
 }
 
 impl SawSection {
     fn new(rng: &mut Rng, notes: &[f32], detune: f32, vib: (f32, f32), vib_depth: f32, sr: f32) -> SawSection {
         let k = notes.len();
-        let mut s = SawSection { freq: vec![], phase: vec![], vib_rate: vec![], vib_depth: vec![], vib_phase: vec![], pan_l: vec![], pan_r: vec![], wander: vec![] };
+        let mut s = SawSection { freq: vec![], phase: vec![], vib_rate: vec![], vib_depth: vec![], vib_phase: vec![], pan_l: vec![], pan_r: vec![], wander: vec![], dt: vec![0.0; k], count: 0 };
         for (i, f) in notes.iter().enumerate() {
             s.freq.push(f * cents(detune * rng.bipolar()));
             s.phase.push(rng.unit());
@@ -526,12 +528,23 @@ impl SawSection {
 
     #[inline]
     fn next(&mut self, rng: &mut Rng, sr: f32) -> (f32, f32) {
+        const STEP: usize = 32;
+        if self.count.is_multiple_of(STEP) {
+            // Vibrato and drift at control rate.
+            for i in 0..self.freq.len() {
+                self.vib_phase[i] = (self.vib_phase[i] + self.vib_rate[i] * STEP as f32 / sr).fract();
+                let mut w = 0.0;
+                for _ in 0..STEP {
+                    w = self.wander[i].next(rng);
+                }
+                let c = self.vib_depth[i] * (TAU * self.vib_phase[i]).sin() + 4.0 * w;
+                self.dt[i] = (self.freq[i] * cents(c) / sr).min(0.49);
+            }
+        }
+        self.count += 1;
         let (mut l, mut r) = (0.0, 0.0);
         for i in 0..self.freq.len() {
-            self.vib_phase[i] = (self.vib_phase[i] + self.vib_rate[i] / sr).fract();
-            let w = self.wander[i].next(rng);
-            let c = self.vib_depth[i] * (TAU * self.vib_phase[i]).sin() + 4.0 * w;
-            let dt = (self.freq[i] * cents(c) / sr).min(0.49);
+            let dt = self.dt[i];
             let s = osc(Wave::Saw, self.phase[i], dt, rng);
             self.phase[i] += dt;
             if self.phase[i] >= 1.0 {
@@ -541,6 +554,51 @@ impl SawSection {
             r += s * self.pan_r[i];
         }
         (l, r)
+    }
+}
+
+/// Bank of sine phasors (complex rotation, renormalised periodically).
+struct Phasors {
+    re: Vec<f32>,
+    im: Vec<f32>,
+    c: Vec<f32>,
+    s: Vec<f32>,
+    count: usize,
+}
+
+impl Phasors {
+    fn new() -> Phasors {
+        Phasors { re: vec![], im: vec![], c: vec![], s: vec![], count: 0 }
+    }
+    fn add(&mut self, freq: f32, phase: f32, sr: f32) -> usize {
+        let w = (freq as f64 / sr as f64 * std::f64::consts::TAU).min(std::f64::consts::PI);
+        self.re.push((phase * TAU).cos());
+        self.im.push((phase * TAU).sin());
+        self.c.push(w.cos() as f32);
+        self.s.push(w.sin() as f32);
+        self.re.len() - 1
+    }
+    /// Advance every phasor one sample.
+    #[inline]
+    fn step(&mut self) {
+        for i in 0..self.re.len() {
+            let r = self.re[i] * self.c[i] - self.im[i] * self.s[i];
+            let m = self.re[i] * self.s[i] + self.im[i] * self.c[i];
+            self.re[i] = r;
+            self.im[i] = m;
+        }
+        self.count += 1;
+        if self.count.is_multiple_of(256) {
+            for i in 0..self.re.len() {
+                let g = 1.5 - 0.5 * (self.re[i] * self.re[i] + self.im[i] * self.im[i]);
+                self.re[i] *= g;
+                self.im[i] *= g;
+            }
+        }
+    }
+    #[inline]
+    fn sin(&self, i: usize) -> f32 {
+        self.im[i]
     }
 }
 
@@ -585,52 +643,38 @@ fn bowl(l: &mut [f32], r: &mut [f32], sr: f32) {
     let ratios = [1.0, 2.76, 5.18, 8.23, 11.9, 16.1];
     let amps = [1.0, 0.62, 0.38, 0.24, 0.13, 0.08];
     let taus = [9.0, 5.5, 3.2, 2.2, 1.5, 1.1];
-    struct P {
-        inc: [f64; 2],
-        ph: [f64; 4],
-        amp: f32,
-        dec: f32,
+    let mut ph = Phasors::new();
+    let mut dec = [0f32; 6];
+    for k in 0..ratios.len() {
+        let f = C4 * ratios[k];
+        let beat = 0.5 + 1.8 * rng.unit();
+        // Both sides share the lower component; each beats against its own
+        // upper component (wide but mono-compatible).
+        ph.add(f - beat * 0.5, rng.unit(), sr);
+        ph.add(f + beat * 0.5, rng.unit(), sr);
+        ph.add(f + beat * 0.5 * (0.6 + 0.3 * rng.unit()), rng.unit(), sr);
+        dec[k] = (-1.0 / (taus[k] * sr)).exp();
     }
-    let mut parts: Vec<P> = ratios
-        .iter()
-        .zip(amps.iter())
-        .zip(taus.iter())
-        .map(|((r, a), t)| {
-            let f = (C4 * r) as f64;
-            let beat = 0.5 + 1.8 * rng.unit() as f64;
-            P {
-                inc: [(f - beat * 0.5) / sr as f64, (f + beat * 0.5) / sr as f64],
-                ph: [rng.unit() as f64, rng.unit() as f64, rng.unit() as f64, rng.unit() as f64],
-                amp: *a,
-                dec: (-1.0 / (t * sr)).exp(),
-            }
-        })
-        .collect();
     let mut strike = [1f32; 6];
     let rub_coef = (-1.0 / (1.2 * sr)).exp();
     let mut rub = 1.0f32;
     let mut sway = Wander::new(&mut rng, 0.2, sr);
+    let att_n = 0.004 * sr;
     for i in 0..l.len() {
         rub *= rub_coef;
         let sustain = 0.35 * (1.0 - rub);
-        let s = sway.next(&mut rng);
+        let s = 1.0 + 0.1 * sway.next(&mut rng);
         let (mut ol, mut or) = (0.0f32, 0.0f32);
-        for (k, p) in parts.iter_mut().enumerate() {
-            strike[k] *= p.dec;
-            let a = p.amp * (strike[k] + sustain / (1.0 + k as f32 * 0.6));
-            // Left and right hear the beating pair with different phases.
-            let t = std::f64::consts::TAU;
-            let x0 = (p.ph[0] * t).sin() + (p.ph[1] * t).sin();
-            let x1 = (p.ph[2] * t).sin() + (p.ph[3] * t).sin() * (1.0 + 0.1 * s as f64);
-            p.ph[0] = (p.ph[0] + p.inc[0]).fract();
-            p.ph[1] = (p.ph[1] + p.inc[1]).fract();
-            p.ph[2] = (p.ph[2] + p.inc[0]).fract();
-            p.ph[3] = (p.ph[3] + p.inc[1]).fract();
-            ol += x0 as f32 * a;
-            or += x1 as f32 * a;
+        for k in 0..ratios.len() {
+            strike[k] *= dec[k];
+            let a = amps[k] * (strike[k] + sustain / (1.0 + k as f32 * 0.6));
+            let j = k * 3;
+            ol += (ph.sin(j) + ph.sin(j + 1)) * a;
+            or += (ph.sin(j) + ph.sin(j + 2) * s) * a;
         }
+        ph.step();
         // Soft mallet at the very start.
-        let att = (i as f32 / (0.004 * sr)).min(1.0);
+        let att = (i as f32 / att_n).min(1.0);
         l[i] = ol * att;
         r[i] = or * att;
     }
@@ -640,8 +684,17 @@ fn bowl(l: &mut [f32], r: &mut [f32], sr: f32) {
 fn ember(l: &mut [f32], r: &mut [f32], sr: f32) {
     let mut rng = Rng::new(0xe3be);
     let f0 = C4 * 0.5;
-    let mut ph = [[0f32; 10]; 2];
+    let mut ph = Phasors::new();
     let det = [cents(-4.0), cents(4.0)];
+    let mut hamp = [0f32; 10];
+    for d in det {
+        for (k, h) in hamp.iter_mut().enumerate() {
+            let kk = (k + 1) as f32;
+            *h = 1.0 / kk.powf(1.6);
+            ph.add(f0 * kk * d, rng.unit(), sr);
+        }
+    }
+    let sub_i = ph.add(f0 * 0.5, 0.0, sr);
     let mut breathe = Wander::new(&mut rng, 0.25, sr);
     let mut roar_lp = [OnePole::default(), OnePole::default()];
     roar_lp[0].set(700.0, sr);
@@ -654,19 +707,16 @@ fn ember(l: &mut [f32], r: &mut [f32], sr: f32) {
     let mut crackle_coef = 0.0f32;
     let mut cpan = (1.0f32, 1.0f32);
     let crackle_p = 22.0 / sr;
-    let mut sub_ph = 0.0f32;
     for i in 0..l.len() {
         let b = 1.0 + 0.25 * breathe.next(&mut rng);
         let mut hum = [0f32; 2];
-        for c in 0..2 {
-            for (k, p) in ph[c].iter_mut().enumerate() {
-                let kk = (k + 1) as f32;
-                hum[c] += (*p * TAU).sin() / kk.powf(1.6);
-                *p = (*p + f0 * kk * det[c] / sr).fract();
+        for (c, h) in hum.iter_mut().enumerate() {
+            for (k, a) in hamp.iter().enumerate() {
+                *h += ph.sin(c * 10 + k) * a;
             }
         }
-        let sub = (sub_ph * TAU).sin() * 0.35;
-        sub_ph = (sub_ph + f0 * 0.5 / sr).fract();
+        let sub = ph.sin(sub_i) * 0.35;
+        ph.step();
         let ra = 0.12 * (1.0 + 0.6 * roar_amp.next(&mut rng));
         let roar = [roar_lp[0].process(rng.bipolar()) * ra, roar_lp[1].process(rng.bipolar()) * ra];
         if rng.unit() < crackle_p {
