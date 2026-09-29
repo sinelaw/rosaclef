@@ -68,9 +68,9 @@ impl Sampler {
 
 impl Instrument for Sampler {
     fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
-        let path = d.option("sample").to_string();
+        let path = d.option("sample");
         if path != self.path {
-            self.path = path;
+            self.path = path.to_string();
             self.sample = None;
         }
         self.mode = match d.option("mode") {

@@ -1,6 +1,7 @@
 //! JSON Schema (draft 2020-12) for project documents, generated from the model
 //! and the device catalog.
 
+use crate::automation;
 use crate::catalog::{self, Category, DeviceSpec};
 use crate::model::FORMAT;
 use serde_json::{json, Map, Value};
@@ -137,6 +138,11 @@ pub fn schema() -> Value {
                         "items": {"$ref": "#/$defs/insert"}
                     }
                 }
+            },
+            "automation": {
+                "type": "array",
+                "description": "Automation lanes: breakpoint curves that drive one value each (tempo, a mix control or a device parameter) over song time. Applied while the song plays in song mode and in renders.",
+                "items": {"$ref": "#/$defs/automationLane"}
             }
         },
         "$defs": {
@@ -214,6 +220,41 @@ pub fn schema() -> Value {
                     "mute": {"type": "boolean"},
                     "solo": {"type": "boolean"},
                     "effects": {"type": "array", "items": {"$ref": "#/$defs/effect"}}
+                }
+            },
+            "automationLane": {
+                "type": "object",
+                "required": ["id", "target", "points"],
+                "additionalProperties": false,
+                "properties": {
+                    "id": id,
+                    "name": {"type": "string"},
+                    "target": {
+                        "type": "string",
+                        "pattern": automation::TARGET_PATTERN,
+                        "description": format!(
+                            "What the lane drives: {}. Values use the target's natural units and range: tempo in BPM (20..999), swing 0..1, channel volume 0..1.5 and insert volume 0..2 (linear gain), pan -1..1, device parameters as in the catalog (plugin parameters: any number). At most one lane per target.",
+                            automation::TARGET_GRAMMAR
+                        )
+                    },
+                    "color": color,
+                    "mute": {"type": "boolean", "default": false, "description": "A muted lane is ignored."},
+                    "points": {
+                        "type": "array",
+                        "minItems": 1,
+                        "description": "Breakpoints sorted by beat. Before the first point the lane holds its first value, after the last point its last value. Two points on the same beat make a step.",
+                        "items": {"$ref": "#/$defs/automationPoint"}
+                    }
+                }
+            },
+            "automationPoint": {
+                "type": "object",
+                "required": ["beat", "value"],
+                "additionalProperties": false,
+                "properties": {
+                    "beat": {"type": "number", "minimum": 0, "description": "Absolute song time in beats."},
+                    "value": {"type": "number", "description": "Target value in its natural units."},
+                    "curve": num(-1.0, 1.0, "Shape of the segment ending at this point: 0 linear, > 0 slow start then fast (exponential rise), < 0 fast start then settling.")
                 }
             }
         }

@@ -1,6 +1,7 @@
 //! Rosaclef core: the project document model shared by every part of the
 //! system (native server, WebAssembly engine, command line tools).
 
+pub mod automation;
 pub mod catalog;
 pub mod context;
 pub mod presets;
@@ -42,7 +43,16 @@ pub fn summary(p: &Project) -> String {
         let per: Vec<String> = per.iter().map(|(c, n)| format!("{c}:{n}")).collect();
         let _ = writeln!(s, "  {:<14} \"{}\" {} beats, {} notes [{}]", pat.id, pat.name, format::format_f64(pat.length), pat.notes.len(), per.join(" "));
     }
-    let _ = writeln!(s, "\nPlaylist: {} tracks, {} clips, song length {} beats", p.playlist.tracks.len(), p.playlist.clips.len(), format::format_f64(p.song_length()));
+    let secs = automation::TempoMap::new(p).seconds_at(p.song_length());
+    let _ = writeln!(
+        s,
+        "\nPlaylist: {} tracks, {} clips, song length {} beats ({}:{:04.1})",
+        p.playlist.tracks.len(),
+        p.playlist.clips.len(),
+        format::format_f64(p.song_length()),
+        (secs / 60.0).floor(),
+        secs % 60.0
+    );
     for (ti, tr) in p.playlist.tracks.iter().enumerate() {
         let clips: Vec<String> = p
             .playlist
@@ -66,6 +76,25 @@ pub fn summary(p: &Project) -> String {
         }
         let fx: Vec<&str> = ins.effects.iter().map(|e| e.kind.as_str()).collect();
         let _ = writeln!(s, "  [{i}] {:<12} vol {} pan {} fx [{}]", ins.name, format::format_f64(ins.volume), format::format_f64(ins.pan), fx.join(", "));
+    }
+    if !p.automation.is_empty() {
+        let _ = writeln!(s, "\nAutomation ({} lanes):", p.automation.len());
+        for lane in &p.automation {
+            let (lo, hi) = lane.points.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), pt| (lo.min(pt.value), hi.max(pt.value)));
+            let span = match (lane.points.first(), lane.points.last()) {
+                (Some(a), Some(b)) => format!("beats {}..{}", format::format_f64(a.beat), format::format_f64(b.beat)),
+                _ => "no points".into(),
+            };
+            let range = if lane.points.is_empty() { String::new() } else { format!(", values {}..{}", format::format_f64(lo), format::format_f64(hi)) };
+            let _ = writeln!(
+                s,
+                "  {:<14} {:<28} {} points, {span}{range}{}",
+                lane.id,
+                lane.target,
+                lane.points.len(),
+                if lane.mute { " (muted)" } else { "" }
+            );
+        }
     }
     s
 }
@@ -148,6 +177,76 @@ mod tests {
         let paths: Vec<&str> = issues.iter().map(|i| i.path.as_str()).collect();
         assert!(paths.contains(&"channels[0].mixer"));
         assert!(paths.contains(&"channels[0].instrument.params.cutoff"));
+    }
+
+    fn lane(id: &str, target: &str, points: &[(f64, f64, f64)]) -> AutomationLane {
+        AutomationLane {
+            id: id.into(),
+            name: String::new(),
+            target: target.into(),
+            color: "#8a6bb0".into(),
+            mute: false,
+            points: points.iter().map(|&(beat, value, curve)| AutomationPoint { beat, value, curve }).collect(),
+        }
+    }
+
+    fn with_pad() -> Project {
+        let mut p = Project::empty("Test");
+        p.channels.push(Channel {
+            id: "pad".into(),
+            name: "Pad".into(),
+            color: "#ffffff".into(),
+            instrument: Device::new("synth"),
+            volume: 0.8,
+            pan: 0.0,
+            mute: false,
+            mixer: InsertIx(1),
+        });
+        p
+    }
+
+    #[test]
+    fn automation_round_trips_and_validates() {
+        let mut p = with_pad();
+        p.automation.push(lane("pad-cutoff", "channel/pad/cutoff", &[(0.0, 400.0, 0.0), (32.0, 6000.0, 0.4)]));
+        p.automation.push(lane("tempo", "tempo", &[(0.0, 120.0, 0.0), (16.0, 128.0, 0.0)]));
+        p.automation.push(lane("fade", "insert/0/volume", &[(0.0, 1.0, 0.0), (8.0, 0.0, -0.5)]));
+        p.automation.push(lane("lim", "insert/0/effect/0/ceiling", &[(0.0, -1.0, 0.0)]));
+        let text = format::to_string(&p);
+        // Points stay one per line.
+        assert!(text.contains("\n        { \"beat\": 32, \"value\": 6000, \"curve\": 0.4 }"), "{text}");
+        let checked = validate::parse_and_validate(&text);
+        assert!(checked.is_ok(), "{:?}", checked.issues);
+        assert_eq!(checked.project.unwrap(), p);
+        assert!(summary(&p).contains("pad-cutoff"));
+        // Projects without automation serialize without the key.
+        assert!(!format::to_string(&with_pad()).contains("automation"));
+    }
+
+    #[test]
+    fn automation_errors_have_paths() {
+        let mut p = with_pad();
+        p.automation.push(lane("a", "channel/pad/cutoff", &[(4.0, 400.0, 0.0), (2.0, 99999.0, 3.0)]));
+        p.automation.push(lane("a", "channel/lead/volume", &[(0.0, 0.5, 0.0)]));
+        p.automation.push(lane("b", "insert/0/effect/3/mix", &[]));
+        p.automation.push(lane("c", "bpm", &[(0.0, 120.0, 0.0)]));
+        p.automation.push(lane("d", "channel/pad/cutoff", &[(-1.0, 400.0, 0.0)]));
+        p.automation.push(lane("e", "tempo", &[(0.0, 10.0, 0.0)]));
+        p.automation.push(lane("f", "channel/pad/nope", &[(0.0, 1.0, 0.0)]));
+        let issues = validate::validate(&p);
+        let has = |path: &str, needle: &str| issues.iter().any(|i| i.path == path && i.message.contains(needle));
+        assert!(has("automation[0].points[1].beat", "sorted"), "{issues:?}");
+        assert!(has("automation[0].points[1].value", "range"));
+        assert!(has("automation[0].points[1].curve", "range"));
+        assert!(has("automation[1].id", "duplicate"));
+        assert!(has("automation[1].target", "unknown channel"));
+        assert!(has("automation[2].target", "no effect 3"));
+        assert!(has("automation[2].points", "at least one"));
+        assert!(has("automation[3].target", "invalid automation target"));
+        assert!(has("automation[4].target", "already automates"));
+        assert!(has("automation[4].points[0].beat", ">= 0"));
+        assert!(has("automation[5].points[0].value", "range"));
+        assert!(has("automation[6].target", "no parameter"));
     }
 
     #[test]

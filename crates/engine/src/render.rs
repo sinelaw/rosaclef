@@ -39,20 +39,22 @@ const MAX_TAIL_SECONDS: f32 = 8.0;
 /// Render with an engine that already has the project, samples and plugin host.
 pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
     let sr = engine.sample_rate();
-    let beats = match scope {
+    let seconds = match scope {
         RenderScope::Song => {
             engine.set_mode(PlayMode::Song);
-            engine.project().song_length()
+            // Follows tempo automation.
+            engine.song_seconds(engine.project().song_length())
         }
         RenderScope::Pattern { id, loops } => {
             engine.set_mode(PlayMode::Pattern(id.clone()));
-            engine.project().pattern(id).map(|p| p.length).unwrap_or(0.0) * (*loops).max(1) as f64
+            let beats = engine.project().pattern(id).map(|p| p.length).unwrap_or(0.0) * (*loops).max(1) as f64;
+            beats * engine.project().seconds_per_beat()
         }
     };
     engine.stop();
     engine.play();
-    let spb = engine.project().seconds_per_beat();
-    let music_frames = (beats * spb * sr as f64).round() as usize;
+    // Rounded down: one frame too many would wrap the song back to its start.
+    let music_frames = (seconds * sr as f64).floor() as usize;
     let mut out = Audio { sample_rate: sr, left: Vec::with_capacity(music_frames), right: Vec::with_capacity(music_frames) };
     let mut bl = [0f32; MAX_BLOCK];
     let mut br = [0f32; MAX_BLOCK];
@@ -64,8 +66,8 @@ pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
         out.right.extend_from_slice(&br[..n]);
         done += n;
     }
-    // Let notes release and effects ring out.
-    engine.pause();
+    // Let notes release and effects ring out (automation holds its final values).
+    engine.end_song();
     let max_tail = (MAX_TAIL_SECONDS * sr) as usize;
     let quiet_needed = (0.25 * sr) as usize;
     let mut quiet = 0;

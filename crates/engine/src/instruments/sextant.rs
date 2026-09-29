@@ -45,6 +45,17 @@ const CHUNK: usize = 128;
 /// Per-operator cents offsets (× `detune`). Operator 1 stays in tune.
 const DETUNE_SPREAD: [f32; OPS] = [0.0, 0.55, -0.8, 1.0, -0.45, 0.7];
 
+/// Parameter keys per operator (no formatting when settings change, which
+/// automation does on the audio thread).
+const OP_KEYS: [[&str; 5]; OPS] = [
+    ["op1Ratio", "op1Level", "op1Attack", "op1Decay", "op1Sustain"],
+    ["op2Ratio", "op2Level", "op2Attack", "op2Decay", "op2Sustain"],
+    ["op3Ratio", "op3Level", "op3Attack", "op3Decay", "op3Sustain"],
+    ["op4Ratio", "op4Level", "op4Attack", "op4Decay", "op4Sustain"],
+    ["op5Ratio", "op5Level", "op5Attack", "op5Decay", "op5Sustain"],
+    ["op6Ratio", "op6Level", "op6Attack", "op6Decay", "op6Sustain"],
+];
+
 struct Algorithm {
     name: &'static str,
     /// `mods[i]`: bit j set when operator j modulates operator i (j > i).
@@ -308,13 +319,12 @@ impl Instrument for Sextant {
     fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
         let f = |k: &str| d.param(k) as f32;
         let mut p = self.p.clone();
-        for i in 0..OPS {
-            let n = i + 1;
-            p.ratio[i] = f(&format!("op{n}Ratio"));
-            p.level[i] = f(&format!("op{n}Level")).clamp(0.0, 1.0);
-            p.attack[i] = f(&format!("op{n}Attack"));
-            p.decay[i] = f(&format!("op{n}Decay"));
-            p.sustain[i] = f(&format!("op{n}Sustain"));
+        for (i, keys) in OP_KEYS.iter().enumerate() {
+            p.ratio[i] = f(keys[0]);
+            p.level[i] = f(keys[1]).clamp(0.0, 1.0);
+            p.attack[i] = f(keys[2]);
+            p.decay[i] = f(keys[3]);
+            p.sustain[i] = f(keys[4]);
         }
         p.release = f("release");
         p.feedback = f("feedback").clamp(0.0, 1.0);

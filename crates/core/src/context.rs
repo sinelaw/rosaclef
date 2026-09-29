@@ -3,7 +3,7 @@
 //! just did". The UI sends it; the server normalizes it through these types
 //! (unknown fields are dropped, missing ones defaulted) and stamps it.
 
-use crate::model::{Clip, Note};
+use crate::model::{AutomationPoint, Clip, Note};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -49,6 +49,30 @@ pub struct Selection {
     pub notes: Vec<SelectedNote>,
     /// Selected playlist clips, with their index in `playlist.clips`.
     pub clips: Vec<SelectedClip>,
+    /// Selected automation lane (and points), if any.
+    pub automation: Option<AutomationRef>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AutomationRef {
+    /// Index in `automation`.
+    pub index: u32,
+    pub id: String,
+    pub name: String,
+    pub target: String,
+    pub point_count: u32,
+    /// Selected points, with their index in the lane's `points`.
+    pub points: Vec<SelectedPoint>,
+    /// The lane's value at the playhead.
+    pub value_at_playhead: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectedPoint {
+    pub index: u32,
+    pub point: AutomationPoint,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -181,6 +205,22 @@ pub fn schema() -> Value {
                         "type": "array",
                         "description": "Selected playlist clips; index is into playlist.clips.",
                         "items": {"type": "object", "properties": {"index": {"type": "integer"}, "clip": {"$ref": "project.schema.json#/$defs/clip"}}}
+                    },
+                    "automation": {
+                        "type": ["object", "null"],
+                        "description": "The selected automation lane; index is into automation, point indexes into automation[<index>].points.",
+                        "properties": {
+                            "index": {"type": "integer"},
+                            "id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "target": {"type": "string"},
+                            "pointCount": {"type": "integer"},
+                            "points": {
+                                "type": "array",
+                                "items": {"type": "object", "properties": {"index": {"type": "integer"}, "point": {"$ref": "project.schema.json#/$defs/automationPoint"}}}
+                            },
+                            "valueAtPlayhead": {"type": ["number", "null"]}
+                        }
                     }
                 }
             },
@@ -227,5 +267,18 @@ mod tests {
         assert!(c.selection.notes.is_empty());
         let text = serde_json::to_string(&c).unwrap();
         assert!(!text.contains("bogus"));
+        assert!(c.selection.automation.is_none());
+    }
+
+    #[test]
+    fn automation_selection_is_kept() {
+        let c = normalize(json!({"selection": {"automation": {
+            "index": 1, "id": "pad-cutoff", "target": "channel/pad/cutoff", "pointCount": 2,
+            "points": [{"index": 1, "point": {"beat": 32, "value": 6000, "curve": 0.4}}], "valueAtPlayhead": 1200.5
+        }}}));
+        let a = c.selection.automation.expect("automation selection");
+        assert_eq!(a.id, "pad-cutoff");
+        assert_eq!(a.points[0].point.value, 6000.0);
+        assert_eq!(a.value_at_playhead, Some(1200.5));
     }
 }

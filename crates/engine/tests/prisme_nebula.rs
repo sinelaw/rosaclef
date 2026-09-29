@@ -209,7 +209,7 @@ fn staggered(kind: &str, notes: u8) -> Vec<f32> {
     let mut bl = [0f32; MAX_BLOCK];
     let mut br = [0f32; MAX_BLOCK];
     for i in 0..notes {
-        e.note_on("x", 40 + (i * 7) % 40, 0.8);
+        e.note_on("x", 40 + ((i as u32 * 7) % 40) as u8, 0.8);
         for _ in 0..40 {
             e.process(&mut bl, &mut br);
             out.extend_from_slice(&bl);

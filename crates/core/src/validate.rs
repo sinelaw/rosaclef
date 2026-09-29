@@ -4,6 +4,7 @@
 //! human readable message, so that an agent editing the file by hand can fix
 //! mistakes quickly.
 
+use crate::automation::AutomationTarget;
 use crate::catalog::{self, Category, DeviceSpec};
 use crate::model::{Device, Project, FORMAT};
 use serde::Serialize;
@@ -240,7 +241,66 @@ pub fn validate(p: &Project) -> Vec<Issue> {
         }
         v.range(&format!("{path}.gain"), c.gain, 0.0, 4.0);
     }
+
+    check_automation(&mut v, p);
     v.issues
+}
+
+fn check_automation(v: &mut V, p: &Project) {
+    let mut lane_ids = HashSet::new();
+    let mut targets: Vec<(AutomationTarget, usize)> = vec![];
+    for (i, lane) in p.automation.iter().enumerate() {
+        let path = format!("automation[{i}]");
+        if !valid_id(&lane.id) {
+            v.err(format!("{path}.id"), format!("invalid id {:?}: use 1-64 characters from [A-Za-z0-9_.-]", lane.id));
+        }
+        if !lane_ids.insert(lane.id.as_str()) {
+            v.err(format!("{path}.id"), format!("duplicate automation lane id {:?}", lane.id));
+        }
+        if !valid_color(&lane.color) {
+            v.err(format!("{path}.color"), "colors are #rrggbb hex strings");
+        }
+        let info = match lane.target.parse::<AutomationTarget>() {
+            Err(e) => {
+                v.err(format!("{path}.target"), e);
+                None
+            }
+            Ok(t) => {
+                if let Some((_, j)) = targets.iter().find(|(o, _)| *o == t) {
+                    v.err(format!("{path}.target"), format!("automation[{j}] already automates {t}; use one lane per target"));
+                }
+                let info = match t.resolve(p) {
+                    Ok(info) => Some(info),
+                    Err(e) => {
+                        v.err(format!("{path}.target"), format!("{}: {e}", lane.target));
+                        None
+                    }
+                };
+                targets.push((t, i));
+                info
+            }
+        };
+        if lane.points.is_empty() {
+            v.err(format!("{path}.points"), "an automation lane needs at least one point");
+        }
+        let mut prev = 0.0f64;
+        for (j, pt) in lane.points.iter().enumerate() {
+            let pp = format!("{path}.points[{j}]");
+            if !(pt.beat >= 0.0 && pt.beat.is_finite()) {
+                v.err(format!("{pp}.beat"), "beat must be >= 0");
+            } else if pt.beat < prev {
+                v.err(format!("{pp}.beat"), format!("points must be sorted by beat ({} comes after {})", pt.beat, prev));
+            } else {
+                prev = pt.beat;
+            }
+            match &info {
+                Some(info) => v.range(&format!("{pp}.value"), pt.value, info.min, info.max),
+                None if !pt.value.is_finite() => v.err(format!("{pp}.value"), "value must be a finite number"),
+                None => {}
+            }
+            v.range(&format!("{pp}.curve"), pt.curve, -1.0, 1.0);
+        }
+    }
 }
 
 fn check_relative_path(v: &mut V, path: &str, file: &str) {

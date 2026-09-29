@@ -62,6 +62,45 @@ pub struct Project {
     #[serde(default)]
     pub playlist: Playlist,
     pub mixer: Mixer,
+    /// Automation lanes: values that change over song time (tempo ramps,
+    /// filter sweeps, fades). See [`crate::automation`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub automation: Vec<AutomationLane>,
+}
+
+/// One automation lane: a breakpoint curve driving a single target over the
+/// arrangement (song mode).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutomationLane {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// What the lane drives, e.g. `tempo`, `channel/pad/cutoff`,
+    /// `insert/3/effect/0/mix` (see [`crate::automation::AutomationTarget`]).
+    pub target: String,
+    #[serde(default = "default_lane_color")]
+    pub color: String,
+    /// A muted lane is ignored (the target keeps its project value).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub mute: bool,
+    /// Breakpoints, sorted by beat.
+    #[serde(default)]
+    pub points: Vec<AutomationPoint>,
+}
+
+/// A breakpoint of an automation lane.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutomationPoint {
+    /// Absolute song time in beats.
+    pub beat: f64,
+    /// Value in the target's natural units (BPM, Hz, linear gain, 0..1, ...).
+    pub value: f64,
+    /// Shape of the segment that *ends* at this point (-1..1): 0 = linear,
+    /// > 0 changes slowly first and fast at the end, < 0 the opposite.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub curve: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -239,6 +278,15 @@ fn default_true() -> bool {
 fn is_true(b: &bool) -> bool {
     *b
 }
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+fn is_zero(x: &f64) -> bool {
+    *x == 0.0
+}
+fn default_lane_color() -> String {
+    "#8a6bb0".into()
+}
 
 impl Project {
     /// A new, empty project with a master bus and a handful of inserts.
@@ -266,6 +314,7 @@ impl Project {
                 clips: vec![],
             },
             mixer: Mixer { inserts },
+            automation: vec![],
         }
     }
 
@@ -275,6 +324,10 @@ impl Project {
 
     pub fn pattern(&self, id: &str) -> Option<&Pattern> {
         self.patterns.iter().find(|p| p.id == id)
+    }
+
+    pub fn lane(&self, id: &str) -> Option<&AutomationLane> {
+        self.automation.iter().find(|l| l.id == id)
     }
 
     /// Seconds per beat at the project tempo.

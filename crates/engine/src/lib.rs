@@ -8,21 +8,33 @@
 //! External plugins (CLAP, ...) are supported through the [`PluginHost`]
 //! trait, which only native hosts implement.
 
+mod automation;
 pub mod dsp;
 pub mod effects;
 pub mod instruments;
 pub mod render;
 pub mod samples;
 
+use automation::CLane;
 use dsp::{hermite, pan_gains, Ramp};
 use effects::Effect;
 use instruments::{Instrument, NoteEvent, NoteKind};
+use rosaclef_core::automation::TempoMap;
 use rosaclef_core::{Device, InsertIx, Project};
 use samples::{SampleBank, SampleData, SampleRef};
 use std::sync::Arc;
 
 /// Largest block processed in one go; larger requests are split.
 pub const MAX_BLOCK: usize = 128;
+
+/// Largest block between two automation updates (when the project has lanes).
+pub const AUTOMATION_BLOCK: usize = 64;
+
+/// Devices whose settings depend on the tempo (they are reconfigured when
+/// tempo automation moves the tempo).
+fn tempo_synced(kind: &str) -> bool {
+    matches!(kind, "delay" | "comete" | "dedale")
+}
 
 /// Processing context handed to devices.
 #[derive(Clone, Copy, Debug)]
@@ -118,6 +130,12 @@ struct ChannelRt {
     id: String,
     sig: String,
     inst: Box<dyn Instrument>,
+    /// Working copy of the instrument settings (automation writes here).
+    dev: Device,
+    tempo_synced: bool,
+    volume: f32,
+    pan: f32,
+    mute: bool,
     gain_l: Ramp,
     gain_r: Ramp,
     mixer: InsertIx,
@@ -127,16 +145,31 @@ struct ChannelRt {
     peak: f32,
 }
 
+impl ChannelRt {
+    fn update_gains(&mut self) {
+        let (pl, pr) = pan_gains(self.pan);
+        let v = if self.mute { 0.0 } else { self.volume };
+        self.gain_l.set(v * pl);
+        self.gain_r.set(v * pr);
+    }
+}
+
 struct FxRt {
     sig: String,
     enabled: bool,
     fx: Box<dyn Effect>,
+    /// Working copy of the effect settings (automation writes here).
+    dev: Device,
+    tempo_synced: bool,
 }
 
 struct InsertRt {
     fx: Vec<FxRt>,
     buf_l: Vec<f32>,
     buf_r: Vec<f32>,
+    volume: f32,
+    pan: f32,
+    mute: bool,
     gain_l: Ramp,
     gain_r: Ramp,
     audible: bool,
@@ -149,11 +182,20 @@ impl InsertRt {
             fx: vec![],
             buf_l: vec![0.0; MAX_BLOCK],
             buf_r: vec![0.0; MAX_BLOCK],
+            volume: 1.0,
+            pan: 0.0,
+            mute: false,
             gain_l: Ramp::default(),
             gain_r: Ramp::default(),
             audible: true,
             peak: [0.0; 2],
         }
+    }
+
+    fn update_gains(&mut self) {
+        let v = if self.mute { 0.0 } else { self.volume };
+        self.gain_l.set(v * (1.0 - self.pan).min(1.0));
+        self.gain_r.set(v * (1.0 + self.pan).min(1.0));
     }
 }
 
@@ -161,9 +203,23 @@ impl InsertRt {
 struct CNote {
     channel: usize,
     key: u8,
+    /// Start without swing.
     start: f64,
+    /// On an off-beat 16th: delayed by the swing amount.
+    swung: bool,
     length: f64,
     velocity: f32,
+}
+
+impl CNote {
+    #[inline]
+    fn start_at(&self, swing_shift: f64) -> f64 {
+        if self.swung {
+            self.start + swing_shift
+        } else {
+            self.start
+        }
+    }
 }
 
 struct CPattern {
@@ -208,6 +264,15 @@ pub struct Engine {
     clips: Vec<CClip>,
     song_length: f64,
     swing: f64,
+    /// Compiled automation lanes (song mode).
+    lanes: Vec<CLane>,
+    /// Automated values are currently applied (not the project's).
+    auto_applied: bool,
+    /// Keep automated values after the sequencer stops (render tails).
+    auto_hold: bool,
+    /// Tempo that tempo-synced devices were last configured with.
+    synced_bpm: f32,
+    tempo_map: TempoMap,
     next_handle: ChannelHandle,
     samples: SampleBank,
     plugins: Option<Arc<dyn PluginHost>>,
@@ -236,6 +301,11 @@ impl Engine {
             clips: vec![],
             song_length: 0.0,
             swing: 0.0,
+            lanes: vec![],
+            auto_applied: false,
+            auto_hold: false,
+            synced_bpm: 120.0,
+            tempo_map: TempoMap::default(),
             next_handle: ChannelHandle(1),
             samples: SampleBank::default(),
             plugins: None,
@@ -296,6 +366,11 @@ impl Engine {
                         id: ch.id.clone(),
                         sig,
                         inst,
+                        dev: Device::default(),
+                        tempo_synced: false,
+                        volume: 0.0,
+                        pan: 0.0,
+                        mute: false,
                         gain_l: Ramp::default(),
                         gain_r: Ramp::default(),
                         mixer: InsertIx::MASTER,
@@ -307,10 +382,12 @@ impl Engine {
                 }
             };
             rt.inst.set_samples(&self.samples);
-            let (pl, pr) = pan_gains(ch.pan as f32);
-            let v = if ch.mute { 0.0 } else { ch.volume as f32 };
-            rt.gain_l.set(v * pl);
-            rt.gain_r.set(v * pr);
+            rt.dev = ch.instrument.clone();
+            rt.tempo_synced = tempo_synced(&ch.instrument.kind);
+            rt.volume = ch.volume as f32;
+            rt.pan = ch.pan as f32;
+            rt.mute = ch.mute;
+            rt.update_gains();
             rt.mixer = clamp_insert(ch.mixer, &project);
             self.channels.push(rt);
         }
@@ -327,22 +404,23 @@ impl Engine {
                     Some(f) => f,
                     None => {
                         let fx = make_effect(dev, &ctx, self.plugins.as_deref(), &mut self.device_errors, &format!("mixer.inserts[{idx}].effects[{j}]"));
-                        FxRt { sig, enabled: true, fx }
+                        FxRt { sig, enabled: true, fx, dev: Device::default(), tempo_synced: false }
                     }
                 };
                 f.fx.set_device(dev, &ctx);
                 f.enabled = dev.enabled;
+                f.dev = dev.clone();
+                f.tempo_synced = tempo_synced(&dev.kind);
                 rt.fx.push(f);
             }
-            let v = if ins.mute { 0.0 } else { ins.volume as f32 };
-            let pan = ins.pan as f32;
-            rt.gain_l.set(v * (1.0 - pan).min(1.0));
-            rt.gain_r.set(v * (1.0 + pan).min(1.0));
+            rt.volume = ins.volume as f32;
+            rt.pan = ins.pan as f32;
+            rt.mute = ins.mute;
+            rt.update_gains();
             rt.audible = idx == 0 || !any_solo || ins.solo;
         }
 
-        // Patterns, with swing applied to off-beat 16ths.
-        let swing_shift = self.swing * (1.0 / 12.0);
+        // Patterns. Swing delays off-beat 16ths when they are scheduled.
         self.patterns = project
             .patterns
             .iter()
@@ -354,8 +432,8 @@ impl Engine {
                         let channel = project.channels.iter().position(|c| c.id == n.channel)?;
                         let sixteenth = n.start * 4.0;
                         let on_grid = (sixteenth - sixteenth.round()).abs() < 1e-6;
-                        let start = if on_grid && (sixteenth.round() as i64) % 2 == 1 { n.start + swing_shift } else { n.start };
-                        Some(CNote { channel, key: n.pitch.clamp(0, 127) as u8, start, length: n.length.max(1e-4), velocity: n.velocity as f32 })
+                        let swung = on_grid && (sixteenth.round() as i64) % 2 == 1;
+                        Some(CNote { channel, key: n.pitch.clamp(0, 127) as u8, start: n.start, swung, length: n.length.max(1e-4), velocity: n.velocity as f32 })
                     })
                     .collect();
                 notes.sort_by(|a, b| a.start.total_cmp(&b.start));
@@ -393,7 +471,17 @@ impl Engine {
                 self.mode = PlayMode::Song;
             }
         }
+
+        // Automation: every value above is the project's own; re-apply the
+        // lanes at the current position when they are active.
+        self.synced_bpm = self.ctx.bpm;
+        self.tempo_map = TempoMap::new(&project);
         self.project = project;
+        self.compile_automation();
+        self.auto_applied = false;
+        if self.automation_active() || (self.auto_hold && !self.lanes.is_empty()) {
+            self.apply_automation(0);
+        }
     }
 
     fn make_instrument(&mut self, dev: &Device, channel: &str) -> Box<dyn Instrument> {
@@ -471,20 +559,33 @@ impl Engine {
     pub fn play(&mut self) {
         if !self.playing {
             self.playing = true;
+            self.auto_hold = false;
             self.clock = 0.0;
         }
     }
 
-    /// Pause keeps the position.
+    /// Pause keeps the position. Automated values return to the project's.
     pub fn pause(&mut self) {
         self.playing = false;
+        self.auto_hold = false;
         self.release_all();
+        self.restore_automation();
     }
 
-    /// Stop rewinds to the start.
+    /// Stop rewinds to the start. Automated values return to the project's.
     pub fn stop(&mut self) {
         self.playing = false;
+        self.auto_hold = false;
         self.position = 0.0;
+        self.release_all();
+        self.restore_automation();
+    }
+
+    /// Stop sequencing but keep automated values where they are, so release
+    /// and effect tails keep the song's final mix (offline renders).
+    pub fn end_song(&mut self) {
+        self.playing = false;
+        self.auto_hold = true;
         self.release_all();
     }
 
@@ -497,7 +598,18 @@ impl Engine {
             self.mode = mode;
             self.position = 0.0;
             self.release_all();
+            self.restore_automation();
         }
+    }
+
+    /// Seconds from the start of the song to `beat`, following tempo automation.
+    pub fn song_seconds(&self, beat: f64) -> f64 {
+        self.tempo_map.seconds_at(beat)
+    }
+
+    /// Current tempo (automated while the song plays).
+    pub fn bpm(&self) -> f64 {
+        self.ctx.bpm as f64
     }
 
     pub fn mode(&self) -> &PlayMode {
@@ -562,9 +674,10 @@ impl Engine {
     /// Render audio of any length into the two output buffers (overwriting).
     pub fn process(&mut self, out_l: &mut [f32], out_r: &mut [f32]) {
         let n = out_l.len().min(out_r.len());
+        let step = if self.lanes.is_empty() { MAX_BLOCK } else { AUTOMATION_BLOCK };
         let mut done = 0;
         while done < n {
-            let len = (n - done).min(MAX_BLOCK);
+            let len = (n - done).min(step);
             self.process_block(&mut out_l[done..done + len], &mut out_r[done..done + len]);
             done += len;
         }
@@ -575,6 +688,11 @@ impl Engine {
         for ins in &mut self.inserts {
             ins.buf_l[..n].fill(0.0);
             ins.buf_r[..n].fill(0.0);
+        }
+        if self.automation_active() {
+            self.apply_automation(n);
+        } else if self.auto_applied && !self.auto_hold {
+            self.restore_automation();
         }
         if self.playing {
             self.schedule(n);
@@ -671,11 +789,15 @@ impl Engine {
                 pending.push(Pending { handle: ch.handle, key: note.key, end: c0 + (t - b0) + note.length.min(max_len) });
             };
 
+            let shift = self.swing * (1.0 / 12.0);
             match &self.mode {
                 PlayMode::Pattern(id) => {
                     if let Some(p) = self.patterns.iter().find(|p| &p.id == id) {
-                        for note in p.notes.iter().filter(|nn| nn.start >= b0 && nn.start < b1) {
-                            emit(note, note.start, f64::MAX, &mut self.channels, &mut self.pending);
+                        for note in &p.notes {
+                            let t = note.start_at(shift);
+                            if t >= b0 && t < b1 {
+                                emit(note, t, f64::MAX, &mut self.channels, &mut self.pending);
+                            }
                         }
                     }
                 }
@@ -694,14 +816,17 @@ impl Engine {
                             for k in k0.max(0)..=k1 {
                                 let origin = base + k as f64 * p.length;
                                 for note in &p.notes {
-                                    let t = origin + note.start;
-                                    if t >= lo && t < hi && note.start < p.length {
+                                    let start = note.start_at(shift);
+                                    let t = origin + start;
+                                    if t >= lo && t < hi && start < p.length {
                                         emit(note, t, clip.end - t, &mut self.channels, &mut self.pending);
                                     }
                                 }
                             }
                         } else if let Some(sample) = &clip.sample {
-                            mix_audio_clip(clip, sample, &mut self.inserts[clip.mixer.index()], frame, seg, b0, bpf, self.ctx);
+                            let base_spb = 60.0 / self.project.transport.bpm.max(1.0);
+                            let timing = ClipTiming { frame, seg, b0, bpf, spb: 60.0 / self.ctx.bpm as f64, base_spb };
+                            mix_audio_clip(clip, sample, &mut self.inserts[clip.mixer.index()], &timing, &self.tempo_map);
                         }
                     }
                 }
@@ -713,26 +838,43 @@ impl Engine {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn mix_audio_clip(clip: &CClip, sample: &SampleData, ins: &mut InsertRt, frame: usize, seg: usize, b0: f64, bpf: f64, ctx: Ctx) {
-    let spb = 60.0 / ctx.bpm as f64;
-    let fade = 0.004 / spb;
-    let src_per_beat = spb * sample.sample_rate as f64;
+/// Where a scheduling segment lies, for mixing audio clips.
+struct ClipTiming {
+    /// First frame and length of the segment in the block.
+    frame: usize,
+    seg: usize,
+    /// Song position at the first frame, and beats per frame.
+    b0: f64,
+    bpf: f64,
+    /// Seconds per beat now, and at the project tempo.
+    spb: f64,
+    base_spb: f64,
+}
+
+/// Mix an audio clip. Audio plays at its natural speed: the source position
+/// is the time elapsed since the clip start (following tempo automation) plus
+/// the clip offset (beats at the project tempo).
+fn mix_audio_clip(clip: &CClip, sample: &SampleData, ins: &mut InsertRt, t: &ClipTiming, tempo: &TempoMap) {
+    let fade = 0.004 / t.spb;
+    let sr = sample.sample_rate as f64;
+    let offset_s = clip.offset * t.base_spb;
+    let start_s = tempo.seconds_at(clip.start);
     let ch_l = &sample.channels[0];
     let ch_r = sample.channels.get(1).unwrap_or(ch_l);
-    for i in 0..seg {
-        let beat = b0 + i as f64 * bpf;
+    for i in 0..t.seg {
+        let beat = t.b0 + i as f64 * t.bpf;
         if beat < clip.start || beat >= clip.end {
             continue;
         }
-        let pos = (beat - clip.start + clip.offset) * src_per_beat;
+        let secs = if tempo.is_automated() { tempo.seconds_at(beat) - start_s } else { (beat - clip.start) * t.base_spb };
+        let pos = (secs + offset_s) * sr;
         if pos >= ch_l.len() as f64 {
             continue;
         }
         let edge = ((beat - clip.start) / fade).min((clip.end - beat) / fade).min(1.0) as f32;
         let g = clip.gain * edge;
-        ins.buf_l[frame + i] += hermite(ch_l, pos) * g;
-        ins.buf_r[frame + i] += hermite(ch_r, pos) * g;
+        ins.buf_l[t.frame + i] += hermite(ch_l, pos) * g;
+        ins.buf_r[t.frame + i] += hermite(ch_r, pos) * g;
     }
 }
 

@@ -306,15 +306,19 @@ impl Instrument for Nebula {
             release: f("release"),
             gain: f("gain"),
         };
-        let source = d.option("source").to_string();
+        // Strings are only copied when they change (parameter automation calls
+        // this on the audio thread).
+        let source = d.option("source");
         if source != "sample" && (source != self.builtin_name || self.builtin.is_none()) {
-            self.builtin = Some(Arc::new(synth_source(&source, self.sr)));
-            self.builtin_name = source.clone();
+            self.builtin = Some(Arc::new(synth_source(source, self.sr)));
+            self.builtin_name = source.to_string();
         }
-        self.source = source;
-        let path = d.option("sample").to_string();
+        if self.source != source {
+            self.source = source.to_string();
+        }
+        let path = d.option("sample");
         if path != self.sample_path {
-            self.sample_path = path;
+            self.sample_path = path.to_string();
             self.user = None;
         }
         let sr = self.sr;
