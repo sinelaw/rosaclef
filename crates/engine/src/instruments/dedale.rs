@@ -15,7 +15,7 @@ const MAX_STEPS: usize = 32;
 const GENERATORS: usize = 4;
 const POOL: usize = 16;
 const CONTROL: usize = 16;
-const OUT_SCALE: f32 = 0.55;
+const OUT_SCALE: f32 = 0.7;
 
 const MINOR: &[i32] = &[0, 2, 3, 5, 7, 8, 10];
 const MAJOR: &[i32] = &[0, 2, 4, 5, 7, 9, 11];
@@ -82,7 +82,11 @@ fn wrap(ph: &mut f32, dt: f32) {
 /// Fast sine for a phase in [0, 1) (parabolic approximation with correction).
 #[inline]
 fn fsin(ph: f32) -> f32 {
-    let x = ph - ph.floor();
+    // Wrap to [0, 1) without `floor` (a libm call on baseline x86-64).
+    let mut x = ph - (ph as i32) as f32;
+    if x < 0.0 {
+        x += 1.0;
+    }
     let t = 2.0 * x - 1.0; // -1..1, sin(pi*t) = -sin(2*pi*x)
     let y = 4.0 * t * (1.0 - t.abs());
     -(y * (0.775 + 0.225 * y.abs()))
@@ -193,7 +197,11 @@ impl Generator {
         let max = Self::max_degree(p);
         let steps = p.steps.min(MAX_STEPS);
         for i in 1..steps {
-            if self.rng.unit() < p.variation * 0.35 {
+            // Only sounding steps mutate, so the variation is always audible.
+            if !euclid(i, steps, p.pulses) {
+                continue;
+            }
+            if self.rng.unit() < p.variation * 0.5 {
                 let r = self.rng.unit();
                 let delta = if r < 0.3 {
                     -1
@@ -212,7 +220,7 @@ impl Generator {
                     self.deg[i] = snap_even(self.deg[i], max);
                 }
             }
-            if self.rng.unit() < p.variation * 0.3 {
+            if self.rng.unit() < p.variation * 0.4 {
                 self.roll[i] = self.rng.unit();
             }
             if self.rng.unit() < p.variation * 0.2 {
@@ -332,7 +340,6 @@ pub struct Dedale {
     p: Params,
     gens: Vec<Generator>,
     voices: Vec<Voice>,
-    rng: Rng,
     clock: u64,
     /// Steps per sample.
     step_inc: f64,
@@ -361,7 +368,6 @@ impl Dedale {
             },
             gens: vec![Generator::new(); GENERATORS],
             voices: vec![Voice::default(); POOL],
-            rng: Rng::new(0xDEDA1E),
             clock: 0,
             step_inc: 0.0,
         };
@@ -403,10 +409,13 @@ impl Dedale {
         }
         let vel = (gen.vel * v).clamp(0.05, 1.0);
         let gate_samples = (p.gate * step_samples).max(16.0) as u32;
-        self.start_voice(pitch, vel, gate_samples);
+        // Pan and noise come from the phrase too, so a phrase repeats exactly.
+        let pan = (gen.acc[s] * 2.0 - 1.0) * 0.35;
+        let noise_seed = (gen.roll[s].to_bits() ^ (s as u32).wrapping_mul(0x9E37_79B9)) | 1;
+        self.start_voice(pitch, vel, gate_samples, pan, noise_seed);
     }
 
-    fn start_voice(&mut self, pitch: f32, vel: f32, gate_samples: u32) {
+    fn start_voice(&mut self, pitch: f32, vel: f32, gate_samples: u32, pan: f32, noise_seed: u32) {
         self.clock += 1;
         let p = self.p;
         let sr = self.sr;
@@ -426,10 +435,7 @@ impl Dedale {
                 best
             }
         };
-        let pan = self.rng.bipolar() * 0.35;
         let (pl, pr) = pan_gains(pan);
-        let noise_seed = self.rng.next_u32();
-        let ph0 = self.rng.unit();
         let v = &mut self.voices[i];
         v.active = true;
         v.sound = Some(p.sound);
@@ -441,10 +447,10 @@ impl Dedale {
         v.released = false;
         v.age = self.clock;
         v.counter = 0;
-        v.noise = noise_seed | 1;
+        v.noise = noise_seed;
         v.svf.reset();
         v.svf2.reset();
-        v.ph = [0.0, ph0, 0.0];
+        v.ph = [0.0, 0.37, 0.0];
         // Attack: short ramp from the current level (smooth when a voice is stolen).
         let attack_time = match p.sound {
             Sound::Bass => 0.004,
@@ -598,7 +604,8 @@ impl Instrument for Dedale {
                     } else if !v.released {
                         v.released = true;
                     }
-                    v.fenv *= v.fenv_coef;
+                    // Flushed to zero before it reaches the (slow) subnormal range.
+                    v.fenv = if v.fenv > 1e-6 { v.fenv * v.fenv_coef } else { 0.0 };
                     let s = match sound {
                         Sound::Pluck => {
                             if v.counter % CONTROL == 0 {
@@ -630,7 +637,7 @@ impl Instrument for Dedale {
                             let x = saw(v.ph[0], dt) * 0.7 + fsin(v.ph[1]) * 0.9;
                             wrap(&mut v.ph[0], dt);
                             v.ph[1] = v.ph[0];
-                            v.svf.process(x, FilterMode::Lowpass) * 0.75
+                            v.svf.process(x, FilterMode::Lowpass) * 1.35
                         }
                         Sound::Perc => {
                             if v.counter % CONTROL == 0 {
@@ -641,8 +648,13 @@ impl Instrument for Dedale {
                             let nz = v.noise();
                             let body = v.svf.process(nz, FilterMode::Bandpass) * 1.6;
                             let click = v.svf2.process(nz, FilterMode::Highpass) * v.fenv * (0.3 + 0.5 * tone);
-                            // Metallic partials (square-ish, inharmonic).
-                            let m = (fsin(v.ph[0]) + fsin(v.ph[1]) * 0.8 + fsin(v.ph[2]) * 0.6).signum() * 0.12 * v.fenv * (0.4 + tone);
+                            // Metallic partials: three inharmonic squares, only in the attack.
+                            let m = if v.fenv > 0.0 {
+                                let sq = |ph: f32| if ph < 0.5 { 1.0 } else { -1.0 };
+                                (sq(v.ph[0]) + sq(v.ph[1]) * 0.8 + sq(v.ph[2]) * 0.6) * 0.06 * v.fenv * (0.4 + tone)
+                            } else {
+                                0.0
+                            };
                             wrap(&mut v.ph[0], (dt * 1.47).min(0.49));
                             wrap(&mut v.ph[1], (dt * 2.13).min(0.49));
                             wrap(&mut v.ph[2], (dt * 3.31).min(0.49));
