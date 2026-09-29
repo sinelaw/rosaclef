@@ -16,7 +16,7 @@ pub const PRESETS: &[Preset] = &[
         kind: "prisme",
         tags: "bell, glass",
         doc: "Sparse, stretched glass partials that ring like water-struck crystal and fade from the top down.",
-        params: &[("partials", 24.0), ("brightness", 0.9), ("cutoff", 14000.0), ("resonance", 0.0), ("filterEnv", 0.0), ("stretch", 0.25), ("spectralDecay", 0.7), ("shimmer", 0.1), ("attack", 0.002), ("decay", 3.0), ("sustain", 0.0), ("release", 2.0), ("gain", 0.75)],
+        params: &[("partials", 24.0), ("brightness", 0.9), ("cutoff", 14000.0), ("resonance", 0.0), ("filterEnv", 0.0), ("stretch", 0.25), ("spectralDecay", 0.45), ("shimmer", 0.15), ("unison", 2.0), ("detune", 6.0), ("attack", 0.002), ("decay", 3.0), ("sustain", 0.0), ("release", 2.0), ("gain", 0.6)],
         options: &[("spectrum", "glass")],
     },
     Preset {
@@ -24,7 +24,7 @@ pub const PRESETS: &[Preset] = &[
         kind: "prisme",
         tags: "choir, pad",
         doc: "Formant-shaped \"aah\" spectrum with shimmering partials and a gentle ensemble spread.",
-        params: &[("partials", 64.0), ("brightness", 0.7), ("cutoff", 6000.0), ("resonance", 0.0), ("filterEnv", 0.0), ("spectralDecay", 0.0), ("shimmer", 0.55), ("unison", 3.0), ("detune", 14.0), ("attack", 0.7), ("decay", 1.5), ("sustain", 0.9), ("release", 1.8), ("gain", 0.75)],
+        params: &[("partials", 64.0), ("brightness", 0.7), ("cutoff", 6000.0), ("resonance", 0.0), ("filterEnv", 0.0), ("spectralDecay", 0.0), ("shimmer", 0.55), ("unison", 3.0), ("detune", 14.0), ("attack", 0.7), ("decay", 1.5), ("sustain", 0.9), ("release", 1.8), ("gain", 0.55)],
         options: &[("spectrum", "choir")],
     },
     Preset {

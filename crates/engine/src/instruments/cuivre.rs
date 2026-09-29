@@ -144,11 +144,13 @@ struct Voice {
     dc: DcBlock,
     counter: usize,
     fresh: bool,
+    /// Filter currently running 2x oversampled.
+    os: bool,
 }
 
 impl Voice {
     fn new(slot: usize) -> Voice {
-        let mut rng = Rng::new(0xC0FFEE ^ ((slot as u32 + 1) * 0x9E37_79B9));
+        let mut rng = Rng::new(0xC0FFEE ^ (slot as u32 + 1).wrapping_mul(0x9E37_79B9));
         let tol = [rng.bipolar(), rng.bipolar(), rng.bipolar(), rng.bipolar(), rng.bipolar()];
         Voice {
             active: false,
@@ -178,6 +180,7 @@ impl Voice {
             dc: DcBlock::default(),
             counter: 0,
             fresh: true,
+            os: false,
         }
     }
 
@@ -204,18 +207,40 @@ impl Voice {
     }
 }
 
-/// One oversampled step of the nonlinear ZDF ladder. `gg` = g / (1 + g).
+/// Per-sample coefficients of the ladder.
+#[derive(Clone, Copy)]
+struct LadderCoefs {
+    /// g / (1 + g): one-pole TPT gain.
+    gg: f32,
+    g2: f32,
+    g3: f32,
+    g4: f32,
+    b: f32,
+    k: f32,
+    /// 1 / (1 + k * g^4).
+    inv: f32,
+}
+
+impl LadderCoefs {
+    #[inline]
+    fn new(g: f32, k: f32) -> LadderCoefs {
+        let gg = g / (1.0 + g);
+        let g2 = gg * gg;
+        let g4 = g2 * g2;
+        LadderCoefs { gg, g2, g3: g2 * gg, g4, b: 1.0 - gg, k, inv: 1.0 / (1.0 + k * g4) }
+    }
+}
+
+/// One step of the nonlinear zero-delay-feedback ladder (4 TPT one-poles
+/// with tanh stage saturation).
 #[inline]
-fn ladder(s: &mut [f32; 4], x: f32, gg: f32, k: f32) -> f32 {
-    let b = 1.0 - gg;
-    let g2 = gg * gg;
-    let g4 = g2 * g2;
+fn ladder(s: &mut [f32; 4], x: f32, c: &LadderCoefs) -> f32 {
     // Linear estimate of the output solves the zero-delay feedback loop.
-    let sigma = b * (g2 * gg * s[0] + g2 * s[1] + gg * s[2] + s[3]);
-    let y4 = (g4 * x + sigma) / (1.0 + k * g4);
-    let mut xi = x - k * y4;
+    let sigma = c.b * (c.g3 * s[0] + c.g2 * s[1] + c.gg * s[2] + s[3]);
+    let y4 = (c.g4 * x + sigma) * c.inv;
+    let mut xi = x - c.k * y4;
     for st in s.iter_mut() {
-        let v = gg * (ftanh(xi) - ftanh(*st));
+        let v = c.gg * (ftanh(xi) - ftanh(*st));
         let y = *st + v;
         *st = y + v;
         xi = y;
@@ -478,115 +503,190 @@ impl Instrument for Cuivre {
         let sr = self.sr;
         let n = left.len().min(right.len());
         let ctrl_sr = sr / CONTROL as f32;
-        let osr = 2.0 * sr;
-        let glide_coef = if p.glide > MIN_GLIDE { settle_coef(p.glide, ctrl_sr) } else { 0.0 };
-        let drift_k = 1.0 - settle_coef(0.8, ctrl_sr);
-        let fc_max = (0.45 * sr).min(20000.0);
-        let dc_r = DcBlock::coef(sr);
+        let k = Consts {
+            sr,
+            ctrl_sr,
+            osr: 2.0 * sr,
+            glide_coef: if p.glide > MIN_GLIDE { settle_coef(p.glide, ctrl_sr) } else { 0.0 },
+            drift_k: 1.0 - settle_coef(0.8, ctrl_sr),
+            fc_max: (0.45 * sr).min(20000.0),
+            os_on: 0.14 * sr,
+            os_off: 0.11 * sr,
+            dc_r: DcBlock::coef(sr),
+            ladder_in: 0.8 + 2.6 * p.drive,
+            scream_in: 0.7 + 3.5 * p.drive,
+            mix1: 1.0 - 0.25 * p.mix2,
+        };
         let mono = p.voicing != Voicing::Poly;
-        let d = p.drift;
-        let ladder_in = 0.8 + 2.6 * p.drive;
-        let scream_in = 0.7 + 3.5 * p.drive;
-        let mix1 = 1.0 - 0.25 * p.mix2;
-        for v in self.voices.iter_mut().filter(|v| v.active) {
-            let (pl, pr) = if mono { (1.0, 1.0) } else { pan_gains(v.tol[3] * 0.3) };
+        let out_gain = |v: &Voice| {
             let amp = p.gain * OUT_SCALE * (0.35 + 0.65 * v.vel);
-            for i in 0..n {
-                if v.counter % CONTROL == 0 {
-                    // Pitch: glide, static tolerance and slow drift.
-                    v.note = if glide_coef > 0.0 { v.target + (v.note - v.target) * glide_coef } else { v.target };
-                    v.drift_timer -= 1;
-                    if v.drift_timer <= 0 {
-                        for j in 0..3 {
-                            v.drift_tgt[j] = v.rng.bipolar();
-                        }
-                        v.drift_timer = ((0.2 + 0.8 * v.rng.unit()) * ctrl_sr) as i32;
-                    }
-                    for j in 0..3 {
-                        v.drift[j] += (v.drift_tgt[j] - v.drift[j]) * drift_k;
-                    }
-                    let c1 = d * (v.tol[0] * 3.0 + v.drift[0] * 5.0);
-                    let c2 = d * (v.tol[1] * 3.0 + v.drift[1] * 5.0);
-                    let f1 = midi_to_hz(v.note + c1 * 0.01);
-                    v.dt1 = (f1 / sr).min(0.45);
-                    v.dt2 = (f1 * p.osc2_ratio * cents(c2 - c1) / sr).min(0.45);
-                    // Cutoff.
-                    let fe = v.fenv.next();
-                    let oct = p.filter_env * 6.0 * fe * (0.6 + 0.4 * v.vel)
-                        + p.key_track * (v.note - 60.0) / 12.0
-                        + d * (v.tol[2] * 0.15 + v.drift[2] * 0.12);
-                    let fc = (p.cutoff * 2f32.powf(oct)).clamp(16.0, fc_max);
-                    let g_new = (PI * fc / osr).tan();
-                    if v.fresh {
-                        v.g = g_new;
-                        v.g_inc = 0.0;
-                        v.fresh = false;
-                    } else {
-                        v.g_inc = (g_new - v.g) * (1.0 / CONTROL as f32);
-                    }
-                    let res = (p.resonance + d * v.tol[4] * 0.03).clamp(0.0, 1.0);
-                    v.k = match p.model {
-                        Model::Ladder => 4.25 * res,
-                        Model::Screamer => 2.0 - 2.06 * res,
-                    };
-                }
-                v.counter += 1;
-
-                // Oscillators.
-                let o1 = va_osc(p.wave1, v.ph1, v.dt1, p.pw);
-                let o2 = va_osc(p.wave2, v.ph2, v.dt2, p.pw);
-                let dts = v.dt1 * 0.5;
-                let mut ps2 = v.phs + 0.5;
-                if ps2 >= 1.0 {
-                    ps2 -= 1.0;
-                }
-                let sub = (if v.phs < 0.5 { 1.0 } else { -1.0 }) + blep(v.phs, dts) - blep(ps2, dts);
-                v.ph1 += v.dt1;
-                if v.ph1 >= 1.0 {
-                    v.ph1 -= 1.0;
-                }
-                v.ph2 += v.dt2;
-                if v.ph2 >= 1.0 {
-                    v.ph2 -= 1.0;
-                }
-                v.phs += dts;
-                if v.phs >= 1.0 {
-                    v.phs -= 1.0;
-                }
-                let mut x = o1 * mix1 + o2 * p.mix2 + sub * p.sub;
-                if p.noise > 0.0 {
-                    x += v.rng.bipolar() * p.noise * 0.8;
-                }
-
-                // 2x oversampled filter (linear interpolation up, average down).
-                v.g += v.g_inc;
-                let g = v.g;
-                let y = match p.model {
-                    Model::Ladder => {
-                        let x = x * ladder_in;
-                        let xa = 0.5 * (v.prev_in + x);
-                        v.prev_in = x;
-                        let gg = g / (1.0 + g);
-                        let ya = ladder(&mut v.s, xa, gg, v.k);
-                        let yb = ladder(&mut v.s, x, gg, v.k);
-                        0.5 * (ya + yb) * (1.0 + 0.3 * v.k)
-                    }
-                    Model::Screamer => {
-                        let x = ftanh(x * scream_in);
-                        let xa = 0.5 * (v.prev_in + x);
-                        v.prev_in = x;
-                        let ya = screamer(&mut v.s, &mut v.bp, xa, g, v.k);
-                        let yb = screamer(&mut v.s, &mut v.bp, x, g, v.k);
-                        1.4 * ftanh(0.5 * (ya + yb) * 0.9)
-                    }
-                };
-                let out = v.dc.process(y, dc_r) * v.env.next() * amp;
-                left[i] += out * pl;
-                right[i] += out * pr;
+            let (pl, pr) = if mono { (1.0, 1.0) } else { pan_gains(v.tol[3] * 0.3) };
+            (amp * pl, amp * pr)
+        };
+        // Voices are rendered in pairs: their filters are independent serial
+        // chains, so the CPU can overlap them.
+        let mut active = [0usize; MAX_VOICES];
+        let mut count = 0;
+        for (i, v) in self.voices.iter().enumerate() {
+            if v.active {
+                active[count] = i;
+                count += 1;
             }
+        }
+        let mut j = 0;
+        while j + 1 < count {
+            let (lo, hi) = self.voices.split_at_mut(active[j + 1]);
+            let (a, b) = (&mut lo[active[j]], &mut hi[0]);
+            let (al, ar) = out_gain(a);
+            let (bl, br) = out_gain(b);
+            for i in 0..n {
+                let ya = tick(a, &p, &k);
+                let yb = tick(b, &p, &k);
+                left[i] += ya * al + yb * bl;
+                right[i] += ya * ar + yb * br;
+            }
+            j += 2;
+        }
+        if j < count {
+            let v = &mut self.voices[active[j]];
+            let (gl, gr) = out_gain(v);
+            for i in 0..n {
+                let y = tick(v, &p, &k);
+                left[i] += y * gl;
+                right[i] += y * gr;
+            }
+        }
+        for v in self.voices.iter_mut().filter(|v| v.active) {
             if v.env.is_idle() {
                 v.active = false;
             }
         }
     }
+}
+
+/// Per-block constants shared by all voices.
+struct Consts {
+    sr: f32,
+    ctrl_sr: f32,
+    osr: f32,
+    glide_coef: f32,
+    drift_k: f32,
+    fc_max: f32,
+    os_on: f32,
+    os_off: f32,
+    dc_r: f32,
+    ladder_in: f32,
+    scream_in: f32,
+    mix1: f32,
+}
+
+/// Control-rate update of a voice: glide, drift, cutoff and resonance.
+fn control(v: &mut Voice, p: &Params, k: &Consts) {
+    let d = p.drift;
+    v.note = if k.glide_coef > 0.0 { v.target + (v.note - v.target) * k.glide_coef } else { v.target };
+    v.drift_timer -= 1;
+    if v.drift_timer <= 0 {
+        for j in 0..3 {
+            v.drift_tgt[j] = v.rng.bipolar();
+        }
+        v.drift_timer = ((0.2 + 0.8 * v.rng.unit()) * k.ctrl_sr) as i32;
+    }
+    for j in 0..3 {
+        v.drift[j] += (v.drift_tgt[j] - v.drift[j]) * k.drift_k;
+    }
+    // Pitch: static tolerance plus slow drift, a few cents.
+    let c1 = d * (v.tol[0] * 3.0 + v.drift[0] * 5.0);
+    let c2 = d * (v.tol[1] * 3.0 + v.drift[1] * 5.0);
+    let f1 = midi_to_hz(v.note + c1 * 0.01);
+    v.dt1 = (f1 / k.sr).min(0.45);
+    v.dt2 = (f1 * p.osc2_ratio * cents(c2 - c1) / k.sr).min(0.45);
+    // Cutoff.
+    let fe = v.fenv.next();
+    let oct = p.filter_env * 6.0 * fe * (0.6 + 0.4 * v.vel) + p.key_track * (v.note - 60.0) / 12.0 + d * (v.tol[2] * 0.15 + v.drift[2] * 0.12);
+    let fc = (p.cutoff * 2f32.powf(oct)).clamp(16.0, k.fc_max);
+    // Oversample only when the cutoff is high enough to need it (with
+    // hysteresis); the TPT integrator states carry over between rates.
+    let os = if v.os { fc > k.os_off } else { fc > k.os_on };
+    let switched = os != v.os;
+    v.os = os;
+    let g_new = (PI * fc / if os { k.osr } else { k.sr }).tan();
+    if v.fresh || switched {
+        v.g = g_new;
+        v.g_inc = 0.0;
+        v.fresh = false;
+    } else {
+        v.g_inc = (g_new - v.g) * (1.0 / CONTROL as f32);
+    }
+    let res = (p.resonance + d * v.tol[4] * 0.03).clamp(0.0, 1.0);
+    v.k = match p.model {
+        Model::Ladder => 4.25 * res,
+        Model::Screamer => 2.0 - 2.06 * res,
+    };
+}
+
+/// One output sample of a voice (before gain and pan).
+#[inline(always)]
+fn tick(v: &mut Voice, p: &Params, k: &Consts) -> f32 {
+    if v.counter.is_multiple_of(CONTROL) {
+        control(v, p, k);
+    }
+    v.counter += 1;
+
+    // Oscillators.
+    let o1 = va_osc(p.wave1, v.ph1, v.dt1, p.pw);
+    let o2 = va_osc(p.wave2, v.ph2, v.dt2, p.pw);
+    let dts = v.dt1 * 0.5;
+    let mut ps2 = v.phs + 0.5;
+    if ps2 >= 1.0 {
+        ps2 -= 1.0;
+    }
+    let sub = (if v.phs < 0.5 { 1.0 } else { -1.0 }) + blep(v.phs, dts) - blep(ps2, dts);
+    v.ph1 += v.dt1;
+    if v.ph1 >= 1.0 {
+        v.ph1 -= 1.0;
+    }
+    v.ph2 += v.dt2;
+    if v.ph2 >= 1.0 {
+        v.ph2 -= 1.0;
+    }
+    v.phs += dts;
+    if v.phs >= 1.0 {
+        v.phs -= 1.0;
+    }
+    let mut x = o1 * k.mix1 + o2 * p.mix2 + sub * p.sub;
+    if p.noise > 0.0 {
+        x += v.rng.bipolar() * p.noise * 0.8;
+    }
+
+    // Filter, 2x oversampled at high cutoffs (linear interpolation up,
+    // average down).
+    v.g += v.g_inc;
+    let g = v.g;
+    let y = match p.model {
+        Model::Ladder => {
+            let x = x * k.ladder_in;
+            let c = LadderCoefs::new(g, v.k);
+            let y = if v.os {
+                let ya = ladder(&mut v.s, 0.5 * (v.prev_in + x), &c);
+                0.5 * (ya + ladder(&mut v.s, x, &c))
+            } else {
+                ladder(&mut v.s, x, &c)
+            };
+            v.prev_in = x;
+            // Mild passband-loss compensation at high resonance.
+            y * (1.0 + 0.3 * v.k)
+        }
+        Model::Screamer => {
+            let x = ftanh(x * k.scream_in);
+            let y = if v.os {
+                let ya = screamer(&mut v.s, &mut v.bp, 0.5 * (v.prev_in + x), g, v.k);
+                0.5 * (ya + screamer(&mut v.s, &mut v.bp, x, g, v.k))
+            } else {
+                screamer(&mut v.s, &mut v.bp, x, g, v.k)
+            };
+            v.prev_in = x;
+            1.4 * ftanh(y * 0.9)
+        }
+    };
+    v.dc.process(y, k.dc_r) * v.env.next()
 }

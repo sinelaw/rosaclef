@@ -1,7 +1,8 @@
 //! "Prisme": additive synthesizer — up to 64 sine partials per voice.
 //!
-//! Each voice owns a bank of sine partials (table lookup + fixed-point phase
-//! accumulators). A base recipe (`spectrum`) sets partial ratios and levels;
+//! Each voice owns a bank of sine partials: rotating phasors (one complex
+//! multiply per partial and sample) laid out in 8-lane blocks so the compiler
+//! can vectorise them. A base recipe (`spectrum`) sets partial ratios and levels;
 //! brightness, odd/even balance, a partial-domain low-pass with resonance and
 //! its envelope, per-partial spectral decay and a slow random "shimmer" then
 //! reshape the levels at control rate. Levels are ramped linearly across each
@@ -17,14 +18,13 @@ const MAX_UNISON: usize = 4;
 const VOICES: usize = if MAX_VOICES < 16 { MAX_VOICES } else { 16 };
 /// Control-rate chunk length (samples).
 const CR: usize = 32;
-const TABLE_BITS: u32 = 12;
-const TABLE_SIZE: usize = 1 << TABLE_BITS;
-const FRAC_BITS: u32 = 32 - TABLE_BITS;
-const FRAC_MASK: u32 = (1 << FRAC_BITS) - 1;
-const FRAC_SCALE: f32 = 1.0 / (1u32 << FRAC_BITS) as f32;
-/// Sum of squared partial levels after normalisation (sets the loudness).
-const LEVEL: f32 = 0.3;
-/// Partials quieter than this are skipped (their phase still advances).
+/// Partials are processed in blocks of this many lanes.
+const LANES: usize = 8;
+const BLOCKS: usize = MAX_PARTIALS / LANES;
+type Bank = [[f32; LANES]; BLOCKS];
+/// Root-sum-square of the partial levels after normalisation (sets the loudness).
+const LEVEL: f32 = 0.6;
+/// Partials quieter than this count as silent.
 const SILENT: f32 = 1e-6;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -77,7 +77,7 @@ fn recipe(spec: Spectrum, i: usize, f0: f32) -> (f32, f32) {
     let k = (i + 1) as f32;
     match spec {
         Spectrum::Saw => (k, 1.0 / k),
-        Spectrum::Square => (k, if i % 2 == 0 { 1.0 / k } else { 0.0 }),
+        Spectrum::Square => (k, if i.is_multiple_of(2) { 1.0 / k } else { 0.0 }),
         Spectrum::Organ => (k, ORGAN.iter().find(|(h, _)| *h == i + 1).map(|(_, a)| *a).unwrap_or(0.0)),
         Spectrum::Bell => {
             if i < BELL.len() {
@@ -169,8 +169,11 @@ struct Voice {
     sh_to: [f32; MAX_PARTIALS],
     sh_t: [f32; MAX_PARTIALS],
     sh_rate: [f32; MAX_PARTIALS],
-    phase: [[u32; MAX_PARTIALS]; MAX_UNISON],
-    inc: [[u32; MAX_PARTIALS]; MAX_UNISON],
+    /// Phasor state (cos, sin) and per-sample rotation, per unison copy.
+    re: [Bank; MAX_UNISON],
+    im: [Bank; MAX_UNISON],
+    rot_c: [Bank; MAX_UNISON],
+    rot_s: [Bank; MAX_UNISON],
     fenv: f32,
     env: Adsr,
     rng: Rng,
@@ -198,8 +201,10 @@ impl Voice {
             sh_to: [0.0; MAX_PARTIALS],
             sh_t: [0.0; MAX_PARTIALS],
             sh_rate: [0.0; MAX_PARTIALS],
-            phase: [[0; MAX_PARTIALS]; MAX_UNISON],
-            inc: [[0; MAX_PARTIALS]; MAX_UNISON],
+            re: [[[1.0; LANES]; BLOCKS]; MAX_UNISON],
+            im: [[[0.0; LANES]; BLOCKS]; MAX_UNISON],
+            rot_c: [[[1.0; LANES]; BLOCKS]; MAX_UNISON],
+            rot_s: [[[0.0; LANES]; BLOCKS]; MAX_UNISON],
             fenv: 0.0,
             env: Adsr::default(),
             rng: Rng::new(1),
@@ -224,6 +229,7 @@ impl Voice {
             if i >= p.partials {
                 self.base[i] = 0.0;
                 self.freq[i] = 0.0;
+                self.amp[i] = 0.0;
                 continue;
             }
             let (r0, a0) = recipe(p.spectrum, i, self.f0);
@@ -252,9 +258,11 @@ impl Voice {
             self.sdec_coef[i] = (-rate * CR as f32 / sr).exp();
         }
         for u in 0..p.unison {
-            for i in 0..p.partials {
-                let x = (self.freq[i] * p.det[u] / sr).clamp(0.0, 0.49);
-                self.inc[u][i] = (x as f64 * 4_294_967_296.0) as u32;
+            for i in 0..MAX_PARTIALS {
+                let w = if self.base[i] > 0.0 { (self.freq[i] * p.det[u] / sr).clamp(0.0, 0.49) as f64 * std::f64::consts::TAU } else { 0.0 };
+                let (s, c) = w.sin_cos();
+                self.rot_c[u][i / LANES][i % LANES] = c as f32;
+                self.rot_s[u][i / LANES][i % LANES] = s as f32;
             }
         }
     }
@@ -270,7 +278,9 @@ impl Voice {
         for u in 0..MAX_UNISON {
             for i in 0..MAX_PARTIALS {
                 // The centre copy starts every partial at a zero crossing.
-                self.phase[u][i] = if u == 0 { 0 } else { self.rng.next_u32() };
+                let ph = if u == 0 { 0.0 } else { self.rng.unit() * TAU };
+                self.re[u][i / LANES][i % LANES] = ph.cos();
+                self.im[u][i / LANES][i % LANES] = ph.sin();
             }
         }
         self.configure(p, sr);
@@ -291,7 +301,7 @@ impl Voice {
     }
 
     /// Update the partial levels and synthesise the next control chunk.
-    fn chunk(&mut self, p: &Params, table: &[f32; TABLE_SIZE + 1], sr: f32) {
+    fn chunk(&mut self, p: &Params, sr: f32) {
         let n = p.partials;
         // Cutoff (with envelope) for this chunk.
         let oct = p.filter_env * 6.0 * self.fenv * (0.5 + 0.5 * self.velocity);
@@ -301,7 +311,7 @@ impl Voice {
         let res = p.resonance * 3.0;
         const Q2: f32 = 5.0 * 5.0;
         let mut target = [0f32; MAX_PARTIALS];
-        for i in 0..n {
+        for (i, tgt) in target.iter_mut().enumerate().take(n) {
             let base = self.base[i];
             if base == 0.0 {
                 continue;
@@ -328,7 +338,7 @@ impl Voice {
                 shim = (1.0 + depth * v).max(0.0);
             }
             self.sdec[i] *= self.sdec_coef[i];
-            target[i] = base * filt * self.sdec[i] * shim;
+            *tgt = base * filt * self.sdec[i] * shim;
         }
         if self.fresh {
             self.amp[..n].copy_from_slice(&target[..n]);
@@ -336,37 +346,52 @@ impl Voice {
         }
         self.out_l = [0.0; CR];
         self.out_r = [0.0; CR];
+        // Only blocks up to the last audible partial are synthesised.
+        let last = (0..n).rev().find(|&i| self.amp[i] > SILENT || target[i] > SILENT).map(|i| i + 1).unwrap_or(0);
+        let nb = last.div_ceil(LANES);
+        if nb == 0 {
+            self.amp[..n].copy_from_slice(&target[..n]);
+            self.pos = 0;
+            return;
+        }
         let inv_cr = 1.0 / CR as f32;
+        let mut a0: Bank = [[0.0; LANES]; BLOCKS];
+        let mut da: Bank = [[0.0; LANES]; BLOCKS];
+        for i in 0..last {
+            a0[i / LANES][i % LANES] = self.amp[i];
+            da[i / LANES][i % LANES] = (target[i] - self.amp[i]) * inv_cr;
+        }
         for u in 0..p.unison {
-            let mut tmp = [0f32; CR];
-            let phases = &mut self.phase[u];
-            let incs = &self.inc[u];
-            for i in 0..n {
-                let a0 = self.amp[i];
-                let a1 = target[i];
-                let inc = incs[i];
-                let mut ph = phases[i];
-                if a0 < SILENT && a1 < SILENT {
-                    phases[i] = ph.wrapping_add(inc.wrapping_mul(CR as u32));
-                    continue;
-                }
-                let da = (a1 - a0) * inv_cr;
-                let mut a = a0;
-                for s in tmp.iter_mut() {
-                    let idx = (ph >> FRAC_BITS) as usize;
-                    let fr = (ph & FRAC_MASK) as f32 * FRAC_SCALE;
-                    let s0 = table[idx];
-                    let s1 = table[idx + 1];
-                    *s += (s0 + (s1 - s0) * fr) * a;
-                    a += da;
-                    ph = ph.wrapping_add(inc);
-                }
-                phases[i] = ph;
-            }
+            let re = &mut self.re[u];
+            let im = &mut self.im[u];
+            let rc = &self.rot_c[u];
+            let rs = &self.rot_s[u];
             let (pl, pr) = (p.pan_l[u], p.pan_r[u]);
-            for s in 0..CR {
-                self.out_l[s] += tmp[s] * pl;
-                self.out_r[s] += tmp[s] * pr;
+            for t in 0..CR {
+                let tf = t as f32;
+                let mut acc = [0f32; LANES];
+                for b in 0..nb {
+                    let (r, m, c, s, a, d) = (&mut re[b], &mut im[b], &rc[b], &rs[b], &a0[b], &da[b]);
+                    for j in 0..LANES {
+                        let nr = r[j] * c[j] - m[j] * s[j];
+                        let nm = r[j] * s[j] + m[j] * c[j];
+                        r[j] = nr;
+                        m[j] = nm;
+                        acc[j] += nm * (a[j] + d[j] * tf);
+                    }
+                }
+                let x = acc.iter().sum::<f32>();
+                self.out_l[t] += x * pl;
+                self.out_r[t] += x * pr;
+            }
+            // Keep the phasors on the unit circle.
+            for b in 0..nb {
+                let (r, m) = (&mut re[b], &mut im[b]);
+                for j in 0..LANES {
+                    let g = 1.5 - 0.5 * (r[j] * r[j] + m[j] * m[j]);
+                    r[j] *= g;
+                    m[j] *= g;
+                }
             }
         }
         self.amp[..n].copy_from_slice(&target[..n]);
@@ -382,17 +407,12 @@ pub struct Prisme {
     sr: f32,
     p: Params,
     voices: Vec<Voice>,
-    table: Box<[f32; TABLE_SIZE + 1]>,
     rng: Rng,
     clock: u64,
 }
 
 impl Prisme {
     pub fn new(sr: f32) -> Prisme {
-        let mut table = Box::new([0f32; TABLE_SIZE + 1]);
-        for (i, t) in table.iter_mut().enumerate() {
-            *t = (i as f64 / TABLE_SIZE as f64 * std::f64::consts::TAU).sin() as f32;
-        }
         let mut p = Params {
             spectrum: Spectrum::Saw,
             partials: 32,
@@ -418,7 +438,7 @@ impl Prisme {
             uni_norm: 1.0,
         };
         p.derive_unison();
-        Prisme { sr, p, voices: (0..VOICES).map(|_| Voice::new()).collect(), table, rng: Rng::new(0x9a15e), clock: 0 }
+        Prisme { sr, p, voices: (0..VOICES).map(|_| Voice::new()).collect(), rng: Rng::new(0x9a15e), clock: 0 }
     }
 }
 
@@ -491,14 +511,13 @@ impl Instrument for Prisme {
     }
 
     fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
-        let Prisme { sr, p, voices, table, rng, .. } = self;
+        let Prisme { sr, p, voices, rng, .. } = self;
         let sr = *sr;
-        let table: &[f32; TABLE_SIZE + 1] = table;
         for v in voices.iter_mut().filter(|v| v.active) {
             let mut vel_gain = (0.25 + 0.75 * v.velocity) * p.gain * p.uni_norm;
             for i in 0..left.len() {
                 if v.pos >= CR {
-                    v.chunk(p, table, sr);
+                    v.chunk(p, sr);
                 }
                 let e = v.env.next() * vel_gain;
                 left[i] += v.out_l[v.pos] * e;

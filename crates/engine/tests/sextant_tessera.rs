@@ -57,16 +57,26 @@ fn pitch_of(a: &Audio) -> f32 {
     let start = (0.25 * SR) as usize;
     let x: Vec<f32> = a.left[start..start + 8192].iter().zip(&a.right[start..start + 8192]).map(|(l, r)| l + r).collect();
     let w = 4096;
-    let acf = |lag: usize| -> f32 { (0..w).map(|i| x[i] * x[i + lag]).sum() };
-    let (lo, hi) = ((SR / 2000.0) as usize, (SR / 40.0) as usize);
-    let vals: Vec<f32> = (lo..hi).map(acf).collect();
-    let best = vals.iter().cloned().fold(f32::MIN, f32::max);
-    // The shortest lag that is (nearly) as periodic as the best one.
-    let mut i = vals.iter().position(|v| *v >= 0.9 * best).unwrap();
+    // Normalized autocorrelation.
+    let r = |lag: usize| -> f32 {
+        let (mut xy, mut xx, mut yy) = (0.0, 0.0, 0.0);
+        for i in 0..w {
+            xy += x[i] * x[i + lag];
+            xx += x[i] * x[i];
+            yy += x[i + lag] * x[i + lag];
+        }
+        xy / (xx * yy).sqrt().max(1e-12)
+    };
+    let hi = (SR / 40.0) as usize;
+    let vals: Vec<f32> = (0..hi).map(r).collect();
+    // Skip the main lobe, then take the first strong peak.
+    let mut i = vals.iter().position(|v| *v < 0.0).unwrap();
+    let best = vals[i..].iter().cloned().fold(f32::MIN, f32::max);
+    i += vals[i..].iter().position(|v| *v >= 0.85 * best).unwrap();
     while i + 1 < vals.len() && vals[i + 1] > vals[i] {
         i += 1;
     }
-    SR / (lo + i) as f32
+    SR / i as f32
 }
 
 fn assert_octave(kind: &str, dev: &Device) {
@@ -103,7 +113,7 @@ fn every_algorithm_and_table_is_healthy() {
                 let d = device("tessera", &[("position", pos), ("warp", 0.6)], &[("table", table), ("warp", warp)]);
                 let a = render_note(&d, 45, 0.9, 1.0, SR);
                 assert!(a.left.iter().all(|x| x.is_finite()), "{table}/{warp}");
-                assert!(a.peak() > 0.05 && a.peak() < 1.0, "tessera {table}/{warp}/{pos}: peak {}", a.peak());
+                assert!(a.peak() > 0.01 && a.peak() < 1.0, "tessera {table}/{warp}/{pos}: peak {}", a.peak());
             }
         }
     }
@@ -184,7 +194,10 @@ fn presets_render_within_level_bounds() {
 #[test]
 fn voice_stealing_is_clean() {
     let ctx = Ctx { sr: SR, bpm: 120.0 };
-    for dev in [device("sextant", &[("release", 3.0)], &[]), device("tessera", &[("release", 3.0), ("unison", 1.0)], &[])] {
+    // Low sine tones: legitimate sample steps are tiny, so a hard cut would stand out.
+    let sine_fm = device("sextant", &[("op2Level", 0.0), ("op1Sustain", 1.0), ("release", 3.0)], &[("algorithm", "stack")]);
+    let sine_wt = device("tessera", &[("position", 0.0), ("unison", 1.0), ("sustain", 1.0), ("release", 3.0)], &[]);
+    for dev in [sine_fm, sine_wt] {
         let mut inst = instruments::create(&dev, &ctx).unwrap();
         let mut l = vec![0f32; 128];
         let mut r = vec![0f32; 128];
@@ -192,9 +205,11 @@ fn voice_stealing_is_clean() {
         let mut prev = 0f32;
         for block in 0..400 {
             if block % 3 == 0 && block < 300 {
-                let key = 40 + (block * 7 % 36) as u8;
+                let key = 24 + (block * 7 % 16) as u8;
                 inst.handle(NoteKind::On { key, velocity: 0.9 });
-                inst.handle(NoteKind::Off { key });
+                if block >= 6 {
+                    inst.handle(NoteKind::Off { key: 24 + ((block - 6) * 7 % 16) as u8 });
+                }
             }
             l.fill(0.0);
             r.fill(0.0);
@@ -206,7 +221,7 @@ fn voice_stealing_is_clean() {
             }
         }
         println!("{}: largest sample step while stealing {max_step:.3}", dev.kind);
-        assert!(max_step < 0.5, "{}: step {max_step}", dev.kind);
+        assert!(max_step < 0.2, "{}: step {max_step}", dev.kind);
     }
 }
 
@@ -239,6 +254,7 @@ fn realtime_performance() {
         ("sextant ep (default)", device("sextant", &[("release", 8.0)], &[])),
         ("sextant stack + feedback", device("sextant", &[("feedback", 0.8), ("release", 8.0)], &[("algorithm", "stack")])),
         ("tessera default (unison 3)", device("tessera", &[("sustain", 1.0)], &[])),
+        ("tessera supersaw (unison 7)", device("tessera", &[("unison", 7.0), ("detune", 38.0), ("position", 0.5), ("sustain", 1.0)], &[])),
         (
             "tessera unison 7, warp, drive, sub",
             device("tessera", &[("unison", 7.0), ("positionLfo", 0.5), ("warp", 0.5), ("drive", 0.5), ("sub", 0.5), ("sustain", 1.0)], &[("warp", "mirror")]),

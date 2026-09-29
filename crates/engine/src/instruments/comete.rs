@@ -14,7 +14,9 @@ use std::f32::consts::PI;
 const SHOTS: usize = 6;
 const CONTROL: usize = 16;
 const CHUNK: usize = 128;
-const OUT_SCALE: f32 = 0.5;
+const OUT_SCALE: f32 = 0.62;
+/// Level of the summed shots going into the drive stage.
+const MIX: f32 = 0.38;
 
 /// Cheap rational tanh approximation (exact +-1 at +-3, smooth).
 #[inline]
@@ -27,7 +29,11 @@ fn ftanh(x: f32) -> f32 {
 /// Fast sine for a phase in cycles.
 #[inline]
 fn fsin(ph: f32) -> f32 {
-    let x = ph - ph.floor();
+    // Wrap to [0, 1) without `floor` (a libm call on baseline x86-64).
+    let mut x = ph - (ph as i32) as f32;
+    if x < 0.0 {
+        x += 1.0;
+    }
     let t = 2.0 * x - 1.0;
     let y = 4.0 * t * (1.0 - t.abs());
     -(y * (0.775 + 0.225 * y.abs()))
@@ -223,7 +229,7 @@ impl Space {
     fn new(sr: f32) -> Space {
         let ms = |m: f32| ((m * 0.001 * sr) as usize).max(1);
         Space {
-            ap: [Delay::new(ms(2.96)), Delay::new(ms(2.23)), Delay::new(ms(3.14)), Delay::new(ms(2.35))],
+            ap: [Delay::new(ms(2.96)), Delay::new(ms(2.23)), Delay::new(ms(3.19)), Delay::new(ms(2.35))],
             lines: [Delay::new(ms(41.3)), Delay::new(ms(47.9)), Delay::new(ms(55.1)), Delay::new(ms(63.7))],
             damp: Default::default(),
             gains: [0.0; 4],
@@ -340,7 +346,7 @@ impl Comete {
                 amp = level;
             }
             Kind::Sweep => {
-                let w = (PI * t).sin();
+                let w = (PI * t).sin().max(0.0);
                 let nf = (150.0 * 2f32.powf(sweep * w) * bright).clamp(40.0, nyq);
                 let res = 0.35 + 0.35 * p.intensity;
                 s.nf_l.set(nf, res, sr);
@@ -365,7 +371,8 @@ impl Comete {
             }
             Kind::Impact => {
                 let secs = s.secs;
-                let tail = (-6.9 * t).exp();
+                // Long tail reaching silence exactly at the end of the effect.
+                let tail = (-3.5 * t).exp() * (1.0 - t);
                 let f_sub = midi_to_hz(base + 31.0 + 24.0 * p.intensity * (-secs / 0.035).exp());
                 s.dt[0] = (f_sub / sr).min(0.45);
                 let fm = midi_to_hz(base + 57.0);
@@ -375,13 +382,13 @@ impl Comete {
                 let nf = (200.0 + (1500.0 + 9000.0 * p.tone) * (-secs / 0.35).exp() * (0.5 + 0.5 * p.intensity)).clamp(40.0, nyq);
                 s.nf_l.set(nf, 0.1, sr);
                 s.nf_r.set(nf * 1.07, 0.1, sr);
-                let boom = (0.25 + 0.12 * dur.min(16.0)).min(2.5);
+                let boom = (0.3 + 0.15 * dur.min(16.0)).min(3.0);
                 target = [
-                    (-secs / 0.09).exp() + 0.2 * tail,
+                    (-secs / 0.09).exp() + 0.45 * tail,
                     (-secs / 0.3).exp() * (0.3 + 0.7 * p.tone),
                     (-secs / boom).exp() * tail.sqrt(),
                 ];
-                amp = tail.powf(0.25);
+                amp = tail.sqrt();
             }
         }
         // Attack ramp for click-free starts.
@@ -392,9 +399,8 @@ impl Comete {
         let ramp = (s.secs / attack).min(1.0);
         let amp = amp * ramp;
         s.amp_inc = (amp - s.amp) / span;
-        for j in 0..3 {
-            let tj = target[j] * ramp;
-            s.layers_inc[j] = (tj - s.layers[j]) / span;
+        for ((inc, layer), tj) in s.layers_inc.iter_mut().zip(&s.layers).zip(target) {
+            *inc = (tj * ramp - layer) / span;
         }
     }
 }
@@ -495,7 +501,7 @@ impl Comete {
         for s in self.shots.iter_mut().filter(|s| s.active) {
             let vel = 0.35 + 0.65 * s.vel;
             for i in 0..n {
-                if s.counter % CONTROL == 0 {
+                if s.counter.is_multiple_of(CONTROL) {
                     Comete::control(s, &p, sr, inc);
                 }
                 s.counter += 1;
@@ -564,7 +570,7 @@ impl Comete {
                 if s.killing {
                     s.end_fade *= kill_coef;
                 }
-                let g = s.end_fade.max(0.0) * vel;
+                let g = s.end_fade.max(0.0) * vel * MIX;
                 bl[i] += l * g;
                 br[i] += r * g;
                 s.t += inc;
@@ -577,7 +583,7 @@ impl Comete {
 
         // Drive, space and output.
         let se = p.space_eff();
-        let wet = se * 0.55;
+        let wet = se * 0.4;
         let dry = 1.0 - 0.3 * se;
         let mut peak = 0.0f32;
         for i in 0..n {

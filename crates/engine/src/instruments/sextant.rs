@@ -180,9 +180,9 @@ fn derive(v: &Voice, p: &Params, sr: f32) -> Derived {
         }
     }
     for i in 0..OPS {
-        for j in (i + 1)..OPS {
+        for (j, s) in scale.iter().enumerate().skip(i + 1) {
             if algo.mods[i] & b(j) != 0 {
-                d.m[i][j] = scale[j];
+                d.m[i][j] = *s;
             }
         }
     }
@@ -192,10 +192,11 @@ fn derive(v: &Voice, p: &Params, sr: f32) -> Derived {
 
 #[inline]
 fn sine(table: &[f32], phase: f32) -> f32 {
-    let p = phase - phase.floor();
-    let x = p * SINE_LEN as f32;
-    let i = (x as usize).min(SINE_LEN - 1);
-    let f = x - i as f32;
+    // Floor without a libm call (the phase may be negative when modulated).
+    let x = phase * SINE_LEN as f32;
+    let xi = x as i32 - (x < 0.0) as i32;
+    let f = x - xi as f32;
+    let i = (xi as usize) & (SINE_LEN - 1);
     let a = table[i];
     a + (table[i + 1] - a) * f
 }
@@ -260,18 +261,18 @@ impl Sextant {
                     v.fb[0] = raw[TOP];
                     for k in (0..TOP).rev() {
                         let mut pm = 0.0;
-                        for j in (k + 1)..OPS {
-                            pm += d.m[k][j] * raw[j];
+                        for (m, x) in d.m[k].iter().zip(&raw).skip(k + 1) {
+                            pm += m * x;
                         }
                         raw[k] = sine(table, v.phase[k] + pm) * v.env[k].next();
                     }
                     let mut l = 0.0;
                     let mut r = 0.0;
-                    for k in 0..OPS {
-                        l += raw[k] * d.cl[k];
-                        r += raw[k] * d.cr[k];
+                    for (k, x) in raw.iter().enumerate() {
+                        l += x * d.cl[k];
+                        r += x * d.cr[k];
                         let ph = v.phase[k] + d.dt[k];
-                        v.phase[k] = if ph >= 1.0 { ph - ph.floor() } else { ph };
+                        v.phase[k] = if ph >= 1.0 { ph - (ph as i32) as f32 } else { ph };
                     }
                     bl[i] += l * v.fade;
                     br[i] += r * v.fade;

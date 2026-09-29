@@ -104,7 +104,8 @@ struct Builder {
     a: Vec<f32>,
     b: Vec<f32>,
     /// Fixed pseudo-random phase per harmonic (same in every frame, so frames
-    /// crossfade without cancelling).
+    /// crossfade without cancelling); keeps dense spectra from piling up into
+    /// one tall spike, which would leave them quiet after peak normalization.
     phase: Vec<f32>,
 }
 
@@ -197,9 +198,9 @@ impl Builder {
                 let seg = (t * 4.0).min(3.999);
                 let w = seg.fract();
                 match seg as usize {
-                    0 => self.blend(|h| shape_sine(h), |h| shape_triangle(h), w),
-                    1 => self.blend(|h| shape_triangle(h), |h| shape_saw(h), w),
-                    2 => self.blend(|h| shape_saw(h), |h| shape_pulse(h, 0.5), w),
+                    0 => self.blend(shape_sine, shape_triangle, w),
+                    1 => self.blend(shape_triangle, shape_saw, w),
+                    2 => self.blend(shape_saw, |h| shape_pulse(h, 0.5), w),
                     _ => {
                         let duty = 0.5 - 0.4 * w;
                         self.blend(|h| shape_pulse(h, duty), |_| (0.0, 0.0), 0.0)
@@ -218,8 +219,9 @@ impl Builder {
                     for h in 1..=H0 {
                         let d = ((h as f32).log2() - center.log2()) / 0.5;
                         let amp = (-d * d).exp() * (1.0 + 0.3 * u) + if h == 1 { 0.45 } else { 0.0 };
-                        let sign = if h % 2 == 0 { -1.0 } else { 1.0 };
-                        self.b[h] = amp * sign;
+                        if amp > 1e-4 {
+                            self.add_phased(h, amp);
+                        }
                     }
                 } else {
                     // Sparse combs: harmonics 1, 1+s, 1+2s... with a growing step.
@@ -227,7 +229,7 @@ impl Builder {
                     let step = 2 + (u * 6.99) as usize;
                     for h in 1..=H0 {
                         if (h - 1) % step == 0 && h <= 192 {
-                            self.b[h] = if h == 1 { 1.0 } else { 0.9 / (h as f32).powf(0.45) };
+                            self.add_phased(h, if h == 1 { 1.0 } else { 0.9 / (h as f32).powf(0.45) });
                         }
                     }
                 }
@@ -324,10 +326,10 @@ fn shape_sine(h: usize) -> (f32, f32) {
 }
 
 fn shape_triangle(h: usize) -> (f32, f32) {
-    if h % 2 == 0 {
+    if h.is_multiple_of(2) {
         return (0.0, 0.0);
     }
-    let sign = if (h / 2) % 2 == 0 { 1.0 } else { -1.0 };
+    let sign = if (h / 2).is_multiple_of(2) { 1.0 } else { -1.0 };
     (0.0, sign * 8.0 / (std::f32::consts::PI * std::f32::consts::PI * (h * h) as f32))
 }
 
@@ -427,16 +429,15 @@ fn fast_tanh(x: f32) -> f32 {
     x * (27.0 + x2) / (27.0 + 9.0 * x2)
 }
 
-/// Read a table level at phase `ph` between frames `fa` and `fa + 1`.
+/// Read one sample at phase `ph`, crossfading frames `a` and `b` by `ff`.
 #[inline]
-fn read(level: &[f32], n: usize, fa: usize, ff: f32, ph: f32) -> f32 {
+fn read(a: &[f32], b: &[f32], n: usize, ff: f32, ph: f32) -> f32 {
     let x = ph * n as f32;
     let i = (x as usize).min(n - 1);
     let fr = x - i as f32;
-    let a = &level[fa * (n + 1) + i..fa * (n + 1) + i + 2];
-    let b = &level[(fa + 1) * (n + 1) + i..(fa + 1) * (n + 1) + i + 2];
-    let sa = a[0] + (a[1] - a[0]) * fr;
-    let sb = b[0] + (b[1] - b[0]) * fr;
+    let (a0, a1, b0, b1) = (a[i], a[i + 1], b[i], b[i + 1]);
+    let sa = a0 + (a1 - a0) * fr;
+    let sb = b0 + (b1 - b0) * fr;
     sa + (sb - sa) * ff
 }
 
@@ -567,25 +568,27 @@ impl Tessera {
                     let fpos = v.pos.clamp(0.0, 1.0) * (FRAMES - 1) as f32;
                     let fa = (fpos as usize).min(FRAMES - 2);
                     let ff = fpos - fa as f32;
+                    let fa_s = &level[fa * (len + 1)..(fa + 1) * (len + 1)];
+                    let fb_s = &level[(fa + 1) * (len + 1)..(fa + 2) * (len + 1)];
 
                     let mut l = 0.0;
                     let mut r = 0.0;
                     for u in 0..n_uni {
                         let ph = v.phase[u];
                         let s = match warp {
-                            Warp::None | Warp::Fold => read(level, len, fa, ff, ph),
+                            Warp::None | Warp::Fold => read(fa_s, fb_s, len, ff, ph),
                             Warp::Bend => {
                                 let q = if ph < bend_k { 0.5 * ph / bend_k } else { 0.5 + 0.5 * (ph - bend_k) / (1.0 - bend_k) };
-                                read(level, len, fa, ff, q)
+                                read(fa_s, fb_s, len, ff, q)
                             }
                             Warp::Sync => {
                                 let q = ph * sync_mult;
-                                read(level, len, fa, ff, q - q.floor())
+                                read(fa_s, fb_s, len, ff, q - (q as i32) as f32)
                             }
                             Warp::Mirror => {
                                 let q = if ph < 0.5 { 2.0 * ph } else { 2.0 - 2.0 * ph };
-                                let a = read(level, len, fa, ff, ph);
-                                let m = read(level, len, fa, ff, q.min(0.999_999));
+                                let a = read(fa_s, fb_s, len, ff, ph);
+                                let m = read(fa_s, fb_s, len, ff, q.min(0.999_999));
                                 a + (m - a) * amt
                             }
                         };
