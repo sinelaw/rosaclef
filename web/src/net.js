@@ -154,7 +154,7 @@ export function sendContext() {
       },
       visible: {
         playlist: { startBeat: vp.plStart, endBeat: vp.plEnd, firstTrack: vp.plTrack0, lastTrack: vp.plTrack1 },
-        pianoRoll: vp.prOn && pat && ch ? { pattern: pat.id, channel: ch.id, startBeat: vp.prStart, endBeat: vp.prEnd, lowPitch: vp.prLow, highPitch: vp.prHigh } : null,
+        pianoRoll: !vp.prOn ? null : pat ? (ch ? { pattern: pat.id, channel: ch.id, startBeat: vp.prStart, endBeat: vp.prEnd, lowPitch: vp.prLow, highPitch: vp.prHigh } : null) : null,
       },
       recentEdits: state.recent,
     },
