@@ -41,8 +41,10 @@ fn onsets(left: &[f32], sr: f32) -> Vec<f32> {
 fn demo_song_renders_with_healthy_levels() {
     let mut e = Engine::new(48000.0);
     e.set_project(demo());
+    let project = demo();
+    let end = project.playlist.clips.iter().map(|c| c.start + c.length).fold(0.0, f64::max);
+    let song_seconds = end * 60.0 / project.transport.bpm;
     let a = render(&mut e, &RenderScope::Song);
-    let song_seconds = 128.0 * 60.0 / 118.0;
     assert!(a.duration() > song_seconds && a.duration() < song_seconds + 9.0, "duration {}", a.duration());
     assert!(a.peak() > 0.3 && a.peak() <= 1.0, "peak {}", a.peak());
     assert!(a.rms() > 0.02, "rms {}", a.rms());
