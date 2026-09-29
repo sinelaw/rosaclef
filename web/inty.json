@@ -1,0 +1,5 @@
+{
+  "paths": {
+    "platform": ["./types/platform.d.js"]
+  }
+}
