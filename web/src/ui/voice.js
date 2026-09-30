@@ -593,7 +593,7 @@ function targetView(b) {
     }
   }
   choice(b, "rep", "Loop", String(voice.repeat), ["1", "2", "4", "8"], ["×1", "×2", "×4", "×8"], "How many times the clip plays the pattern", (v) => {
-    voice.repeat = Math.max(1, Math.round(Number(v)));
+    voice.repeat = Math.round(Math.max(1, Number(v)));
   });
   b.close();
 }
@@ -666,7 +666,7 @@ function paintMelody(g, w, h, r) {
   const k = resolveKey(t, s);
   const steps = scaleSteps(k.scale);
   for (let p = lo; p < hi; p++) {
-    const pc = (((p - k.key) % 12) + 12) % 12;
+    const pc = (((Math.round(p) - k.key) % 12) + 12) % 12;
     if (s.scale !== "chromatic" && steps.includes(pc)) {
       g.fillStyle = pc === 0 ? "rgba(212, 175, 55, 0.09)" : "rgba(212, 175, 55, 0.04)";
       g.fillRect(0, yOf(p + 1), w, rowH);
