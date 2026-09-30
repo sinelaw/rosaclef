@@ -15,14 +15,14 @@ import { followButton } from "./playlist.js";
 import { noteIx, noteIndex } from "#brands";
 
 const view = {
-  zoom /*: Number */: 72,
-  rowH /*: Number */: 14,
-  scrollLeft /*: Number */: 0,
-  scrollTop /*: Number */: 0,
-  width /*: Number */: 800,
-  height /*: Number */: 300,
+  zoom: 72,
+  rowH: 14,
+  scrollLeft: 0,
+  scrollTop: 0,
+  width: 800,
+  height: 300,
   tool: "draw",
-  lastLength /*: Number */: 0.25,
+  lastLength: 0.25,
   centered: false,
   focus: "",
   marquee /*: { x0: Number, y0: Number, x1: Number, y1: Number } */: { x0: 0, y0: 0, x1: 0, y1: 0 },
@@ -75,7 +75,6 @@ function isSelected(i) {
 function setSelection(list) {
   state.selection = list.map(noteIx);
   reportContext();
-  return undefined;
 }
 
 // ------------------------------------------------------------------ editing ops
@@ -90,7 +89,6 @@ export function deleteSelection() {
     const keep = [];
     for (let i = 0; i < pat.notes.length; i++) if (!gone.includes(i)) keep.push(pat.notes[i]);
     pat.notes = keep;
-    return undefined;
   });
   setSelection([]);
 }
@@ -115,9 +113,7 @@ export function transpose(semis) {
       const n = pat.notes[noteIndex(s)];
       n.pitch = Math.max(0, Math.min(127, n.pitch + semis));
     }
-    return undefined;
   });
-  return undefined;
 }
 
 export function quantize() {
@@ -132,7 +128,6 @@ export function quantize() {
       if (targets.length > 0 ? !targets.includes(i) : n.channel !== ch.id) continue;
       n.start = Math.max(0, snapTo(n.start, grid));
     }
-    return undefined;
   });
 }
 
@@ -155,7 +150,6 @@ export function duplicateSelection() {
       pat.notes.push({ channel: n.channel, pitch: n.pitch, start: n.start + shift, length: n.length, velocity: n.velocity });
       fresh.push(pat.notes.length - 1);
     }
-    return undefined;
   });
   setSelection(fresh);
 }
@@ -177,7 +171,6 @@ function onGridDown(e, pat, ch, g) {
       const idx = boxes[k].i;
       commit(() => {
         pat.notes.splice(idx, 1);
-        return undefined;
       });
       setSelection([]);
     }
@@ -222,7 +215,6 @@ function onGridDown(e, pat, ch, g) {
         }
       }
       changed(true);
-      return undefined;
     }, (u) => undefined);
     return undefined;
   }
@@ -236,7 +228,6 @@ function onGridDown(e, pat, ch, g) {
     drag(e, (m) => {
       view.marquee = { x0: view.marquee.x0, y0: view.marquee.y0, x1: m.clientX - sx, y1: m.clientY - sy };
       invalidate();
-      return undefined;
     }, (u) => {
       const mq = view.marquee;
       const lx = Math.min(mq.x0, mq.x1);
@@ -247,7 +238,6 @@ function onGridDown(e, pat, ch, g) {
       setSelection(inside);
       view.marqueeOn = false;
       invalidate();
-      return undefined;
     });
     return undefined;
   }
@@ -269,9 +259,7 @@ function onGridDown(e, pat, ch, g) {
     pat.notes[idx].length = l;
     view.lastLength = l;
     changed(true);
-    return undefined;
   }, (u) => undefined);
-  return undefined;
 }
 
 // ------------------------------------------------------------------ render
@@ -283,7 +271,6 @@ function rulerView(b, g, pat) {
   b.on("pointerdown", (e) => {
     const beat = (e.clientX - e.targetLeft + view.scrollLeft) / g.zoom;
     seek(Math.max(0, snapDown(beat, 1)));
-    return undefined;
   });
   b.open("div", "in", "");
   b.style("transform", `translateX(${-view.scrollLeft}px)`);
@@ -303,7 +290,6 @@ function rulerView(b, g, pat) {
   }
   b.close();
   b.close();
-  return undefined;
 }
 
 /** function keysView(b: Builder, g: Geo, ch: Channel) => Undefined */
@@ -334,16 +320,13 @@ function keysView(b, g, ch) {
         noteOff(ch.id, p);
         view.keyDown = -1;
         invalidate();
-        return undefined;
       });
-      return undefined;
     });
     if (p % 12 === 0) b.leaf("span", "l", "", noteName(p));
     b.close();
   }
   b.close();
   b.close();
-  return undefined;
 }
 
 /** function gridView(b: Builder, g: Geo, pat: Pattern, ch: Channel) => Undefined */
@@ -353,7 +336,6 @@ function gridView(b, g, pat, ch) {
     view.scrollLeft = e.scrollLeft;
     view.scrollTop = e.scrollTop;
     invalidate();
-    return undefined;
   });
   b.on("resize", (e) => {
     view.width = e.targetWidth;
@@ -363,12 +345,10 @@ function gridView(b, g, pat, ch) {
       view.scrollTop = pitchY(g, 76) - 10;
     }
     invalidate();
-    return undefined;
   });
   b.on("pointerdown", (e) => onGridDown(e, pat, ch, g));
   b.on("contextmenu", (e) => {
     e.preventDefault();
-    return undefined;
   });
   b.on("wheel", (e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -380,14 +360,12 @@ function gridView(b, g, pat, ch) {
       view.rowH = Math.max(8, Math.min(30, view.rowH + (e.deltaY < 0 ? 1 : -1)));
       invalidate();
     }
-    return undefined;
   });
   b.on("pointermove", (e) => {
     const y = e.clientY - e.targetTop + e.scrollTop;
     const pitch = 127 - Math.floor(y / g.rowH);
     const beat = (e.clientX - e.targetLeft + e.scrollLeft) / g.zoom;
     hint(`${noteName(pitch)} · beat ${fmt(beat, 2)} — click to draw, drag to move, right-click to delete, Shift-drag to select, Ctrl+wheel to zoom`);
-    return undefined;
   });
   if (view.centered) b.prop("scrollTop", String(view.scrollTop));
   b.prop("scrollLeft", String(view.scrollLeft));
@@ -469,7 +447,6 @@ function gridView(b, g, pat, ch) {
   }
   b.close();
   b.close();
-  return undefined;
 }
 
 /** function velocityView(b: Builder, g: Geo, pat: Pattern, ch: Channel) => Undefined */
@@ -495,11 +472,9 @@ function velocityView(b, g, pat, ch) {
         for (const t of targets) pat.notes[t].velocity = Math.round(v * 100) / 100;
         changed(true);
       }
-      return undefined;
     };
     setAt(e);
     drag(e, setAt, (u) => undefined);
-    return undefined;
   });
   b.open("div", "in", "");
   b.style("transform", `translateX(${-view.scrollLeft}px)`);
@@ -514,7 +489,6 @@ function velocityView(b, g, pat, ch) {
   }
   b.close();
   b.close();
-  return undefined;
 }
 
 /** function pianoRoll(b: Builder) => Undefined */
@@ -564,7 +538,6 @@ export function pianoRoll(b) {
   velocityView(b, g, pat, ch);
   b.close();
   b.close();
-  return undefined;
 }
 
 /** function pianoTools(b: Builder) => Undefined */
@@ -577,25 +550,20 @@ export function pianoTools(b) {
   iconButton(b, "draw", view.tool === "draw" ? "small on" : "small", "draw", "Draw tool (P)", () => {
     view.tool = "draw";
     invalidate();
-    return undefined;
   });
   iconButton(b, "select", view.tool === "select" ? "small on" : "small", "select", "Select tool (E)", () => {
     view.tool = "select";
     invalidate();
-    return undefined;
   });
   b.leaf("span", "sl", "label", "Snap");
   select(b, "snap", "", String(state.snap), ["0", "0.125", "0.25", "0.5", "1", "4"], ["Off", "1/32", "1/16", "1/8", "Beat", "Bar"], "Grid snap", (v) => {
     state.snap = Number(v);
     invalidate();
-    return undefined;
   });
-  return undefined;
 }
 
 /** function setTool(t: String) => Undefined */
 export function setTool(t) {
   view.tool = t;
   invalidate();
-  return undefined;
 }

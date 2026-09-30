@@ -21,9 +21,7 @@
 import { nodeIx, nodeIndex } from "#brands";
 
 /** function noPaint(g: Ctx, w: Number, h: Number) => Undefined */
-function noPaint(g, w, h) {
-  return undefined;
-}
+function noPaint(g, w, h) {}
 
 /** The description builder: a stack of open nodes over a flat buffer. */
 /** function builder() => Builder */
@@ -39,51 +37,41 @@ export function builder() {
     const parent = stack.length > 0 ? stack[stack.length - 1] : nodeIx(-1);
     nodes.push({ parent: parent, type: type, key: key, cls: cls, text: "", attrs: [], styles: [], props: [], on: [], paint: noPaint, canvas: false });
     current = nodes.length - 1;
-    return undefined;
   }
 
   return {
     open: (type, key, cls) => {
       add(type, key, cls);
       stack.push(nodeIx(current));
-      return undefined;
     },
     close: () => {
       // Modifiers after close() apply to the node just closed.
       const closed = stack.pop();
       if (closed !== undefined) current = nodeIndex(closed);
-      return undefined;
     },
     leaf: (type, key, cls, text) => {
       add(type, key, cls);
       nodes[current].text = text;
-      return undefined;
     },
     text: (s) => {
       if (current >= 0) nodes[current].text = s;
-      return undefined;
     },
     attr: (k, v) => {
       if (current >= 0) nodes[current].attrs.push({ key: k, value: v });
-      return undefined;
     },
     style: (k, v) => {
       if (current >= 0) nodes[current].styles.push({ key: k, value: v });
-      return undefined;
     },
     prop: (k, v) => {
       if (current >= 0) nodes[current].props.push({ key: k, value: v });
-      return undefined;
     },
     on: (event, fn) => {
       if (current >= 0) nodes[current].on.push({ event: event, fn: fn });
-      return undefined;
     },
     canvas: (key, cls, paint) => {
       add("canvas", key, cls);
       nodes[current].paint = paint;
       nodes[current].canvas = true;
-      return undefined;
     },
     nodes: () => nodes,
   };
@@ -161,11 +149,9 @@ export function mount(backend, view) {
         backend.listen(h, ev, (e) => {
           const cur = el.on.find((x) => x.event === ev);
           if (cur) cur.fn(e);
-          return undefined;
         });
       }
     }
-    return undefined;
   }
 
   /** DOM properties go last: a select's value needs its options. */
@@ -177,7 +163,6 @@ export function mount(backend, view) {
       }
       el.props = d.props;
     }
-    return undefined;
   }
 
   function flush() {
@@ -248,7 +233,6 @@ export function mount(backend, view) {
         }
         parent.order = order;
       }
-      return undefined;
     }
 
     rootElem.seen = generation;
@@ -259,7 +243,6 @@ export function mount(backend, view) {
     const gone = [];
     elems.forEach((el, path) => {
       if (el.seen !== generation) gone.push(path);
-      return undefined;
     });
     for (const path of gone) {
       const el = elems.get(path);
@@ -273,7 +256,6 @@ export function mount(backend, view) {
       const el = elems.get(paths[i]);
       if (el) backend.paint(el.handle, nodes[i].paint);
     }
-    return undefined;
   }
 
   return {
@@ -282,7 +264,6 @@ export function mount(backend, view) {
         queued = true;
         backend.frame(flush);
       }
-      return undefined;
     },
     flush: flush,
     stats: () => ({ elements: elems.size, flushes: flushes, created: created }),

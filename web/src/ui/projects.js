@@ -56,7 +56,6 @@ function icon(b, d) {
   b.leaf("path", "p", "", "");
   b.attr("d", d);
   b.close();
-  return undefined;
 }
 
 // ------------------------------------------------------------------ formatting
@@ -144,11 +143,11 @@ function refreshProjects() {
       pm.projects = r.projects;
       pm.loaded = true;
       invalidate();
-      return Promise.resolve(true);
+      return true;
     })
     .catch((e) => {
       toast("Could not list the projects", errText(e), "error");
-      return Promise.resolve(false);
+      return false;
     });
 }
 
@@ -158,11 +157,11 @@ function refreshFiles() {
       pm.files = r.files;
       pm.filesLoaded = true;
       invalidate();
-      return Promise.resolve(true);
+      return true;
     })
     .catch((e) => {
       toast("Could not list the files", errText(e), "error");
-      return Promise.resolve(false);
+      return false;
     });
 }
 
@@ -175,14 +174,13 @@ function act(label, p, done) {
     pm.busy = "";
     done(r);
     invalidate();
-    return Promise.resolve(true);
+    return true;
   }).catch((e) => {
     pm.busy = "";
     toast(label.replace("…", " failed"), errText(e), "error");
     invalidate();
-    return Promise.resolve(false);
+    return false;
   });
-  return undefined;
 }
 
 /** function openProject(name: String) => Undefined */
@@ -190,18 +188,14 @@ function openProject(name) {
   act(`Opening “${name}”…`, sendJson("/api/projects/open", "POST", { name: name }), (r) => {
     pm.imported = [];
     closeProjects();
-    return undefined;
   });
-  return undefined;
 }
 
 /** function createProject(name: String, demo: Boolean) => Undefined */
 function createProject(name, demo) {
   act(`Creating “${name}”…`, sendJson("/api/projects", "POST", { name: name, demo: demo }), (r) => {
     openProject(String(r.name));
-    return undefined;
   });
-  return undefined;
 }
 
 /** function duplicateProject(name: String, to: String) => Undefined */
@@ -209,9 +203,7 @@ function duplicateProject(name, to) {
   act(`Duplicating “${name}”…`, sendJson("/api/projects/duplicate", "POST", { name: name, to: to }), (r) => {
     toast("Project duplicated", `“${name}” → “${String(r.name)}”`, "info");
     refreshProjects();
-    return undefined;
   });
-  return undefined;
 }
 
 /** function renameProject(name: String, to: String) => Undefined */
@@ -219,9 +211,7 @@ function renameProject(name, to) {
   act(`Renaming “${name}”…`, sendJson("/api/projects/rename", "POST", { name: name, to: to }), (r) => {
     toast("Project renamed", `“${name}” → “${String(r.name)}”`, "info");
     refreshProjects();
-    return undefined;
   });
-  return undefined;
 }
 
 /** function deleteProject(p: ProjectInfo) => Undefined */
@@ -230,9 +220,7 @@ function deleteProject(p) {
   act(`Deleting “${p.name}”…`, sendJson(`/api/projects/${encodeURIComponent(p.name)}`, "DELETE", {}), (r) => {
     toast("Moved to the trash", p.name, "info");
     refreshProjects();
-    return undefined;
   });
-  return undefined;
 }
 
 /** function importKind(fileName: String) => String */
@@ -252,11 +240,8 @@ function importProject() {
       pm.imported = [{ name: String(r.name), source: f.name, warnings: r.warnings, into: false }];
       pm.tab = "projects";
       refreshProjects();
-      return undefined;
     });
-    return undefined;
   });
-  return undefined;
 }
 
 /** Add the parts of a MIDI file to the open song (one undo step). */
@@ -267,11 +252,8 @@ function importMidiHere() {
     act(`Adding ${f.name}…`, uploadFile("/api/import-midi?into=current", f), (r) => {
       pm.imported = [{ name: "", source: f.name, warnings: r.warnings, into: true }];
       toast("MIDI parts added", `${String(r.channels)} new channel(s) from ${f.name} — Ctrl+Z undoes it`, "info");
-      return undefined;
     });
-    return undefined;
   });
-  return undefined;
 }
 
 /** Upload audio files into samples/. */
@@ -281,12 +263,9 @@ function importAudio() {
       act(`Uploading ${f.name}…`, uploadFile(`/api/samples?name=${encodeURIComponent(f.name)}`, f), (r) => {
         toast("Sample added", String(r.path), "info");
         refreshFiles();
-        return undefined;
       });
     }
-    return undefined;
   });
-  return undefined;
 }
 
 /** function renameFile(path: String, to: String) => Undefined */
@@ -295,9 +274,7 @@ function renameFile(path, to) {
     const refs = Number(r.references);
     toast("File renamed", refs > 0 ? `${String(r.path)} — ${refs} reference(s) in the song updated` : String(r.path), "info");
     refreshFiles();
-    return undefined;
   });
-  return undefined;
 }
 
 /** function deleteFile(f: FileInfo) => Undefined */
@@ -308,9 +285,7 @@ function deleteFile(f) {
   act(`Deleting ${f.name}…`, sendJson(`/api/files?path=${encodeURIComponent(f.path)}`, "DELETE", {}), (r) => {
     toast("Moved to the trash", String(r.trashed), "info");
     refreshFiles();
-    return undefined;
   });
-  return undefined;
 }
 
 // ------------------------------------------------------------------ opening
@@ -320,7 +295,6 @@ export function openProjects() {
   refreshProjects();
   if (pm.tab === "files") refreshFiles();
   invalidate();
-  return undefined;
 }
 
 export function closeProjects() {
@@ -328,7 +302,6 @@ export function closeProjects() {
   pm.mode = "";
   stopPlaying();
   invalidate();
-  return undefined;
 }
 
 /** Called by net.js after the server opened another project. */
@@ -341,7 +314,6 @@ export function projectSwitched() {
     if (pm.tab === "files") refreshFiles();
   }
   toast(`Opened “${state.project.meta.title}”`, state.folder, "info");
-  return undefined;
 }
 
 /** function showTab(tab: String) => Undefined */
@@ -350,7 +322,6 @@ function showTab(tab) {
   pm.mode = "";
   if (tab === "files") refreshFiles();
   invalidate();
-  return undefined;
 }
 
 /** function compose(mode: String, target: String, draft: String) => Undefined */
@@ -359,7 +330,6 @@ function compose(mode, target, draft) {
   pm.target = target;
   pm.draft = draft;
   invalidate();
-  return undefined;
 }
 
 function confirmCompose() {
@@ -374,13 +344,11 @@ function confirmCompose() {
   else if (mode === "rename" && name !== target) renameProject(target, name);
   else if (mode === "file") renameFile(target, name);
   invalidate();
-  return undefined;
 }
 
 function stopPlaying() {
   stopPreview();
   pm.preview = "";
-  return undefined;
 }
 
 /** function togglePreview(f: FileInfo) => Undefined */
@@ -393,11 +361,9 @@ function togglePreview(f) {
     previewAudio(`/files/${encodePath(path)}`, () => {
       if (pm.preview === path) pm.preview = "";
       invalidate();
-      return undefined;
     });
   }
   invalidate();
-  return undefined;
 }
 
 listenWindow("keydown", (e) => {
@@ -413,7 +379,6 @@ listenWindow("keydown", (e) => {
     if (pm.open) closeProjects();
     else openProjects();
   }
-  return undefined;
 });
 
 // ------------------------------------------------------------------ views
@@ -427,12 +392,10 @@ export function projectsButton(b) {
   b.on("click", (e) => {
     if (pm.open) closeProjects();
     else openProjects();
-    return undefined;
   });
   glyph(b, "folder");
   b.leaf("span", "t", "", "Projects");
   b.close();
-  return undefined;
 }
 
 /** The name field shared by New / Duplicate / Rename. */
@@ -462,26 +425,21 @@ function composer(b) {
   b.prop("focus", "true");
   b.on("input", (e) => {
     pm.draft = e.value;
-    return undefined;
   });
   b.on("keydown", (e) => {
     if (e.key === "Enter") {
       pm.draft = e.value;
       confirmCompose();
     }
-    return undefined;
   });
   button(b, "ok", "gold", action, "Confirm (Enter)", () => {
     confirmCompose();
-    return undefined;
   });
   button(b, "cancel", "ghost", "Cancel", "Cancel (Esc)", () => {
     pm.mode = "";
     invalidate();
-    return undefined;
   });
   b.close();
-  return undefined;
 }
 
 /** The report of the last import. */
@@ -505,17 +463,14 @@ function importNote(b, im) {
   if (!im.into) {
     button(b, "open", "gold", "Open it", `Open “${im.name}”`, () => {
       openProject(im.name);
-      return undefined;
     });
   }
   button(b, "dismiss", "ghost", "Dismiss", "Hide this report", () => {
     pm.imported = [];
     invalidate();
-    return undefined;
   });
   b.close();
   b.close();
-  return undefined;
 }
 
 /** Cover art: the song's colors, monogram and a waveform drawn from its name. */
@@ -538,7 +493,6 @@ function cover(b, p) {
   if (p.current) b.leaf("span", "badge", "pm-badge", "Open now");
   else if (p.invalid) b.leaf("span", "badge", "pm-badge bad", "Needs repair");
   b.close();
-  return undefined;
 }
 
 /** function card(b: Builder, p: ProjectInfo) => Undefined */
@@ -548,7 +502,6 @@ function card(b, p) {
   b.attr("title", `${p.folder}\nDouble-click to open`);
   b.on("dblclick", (e) => {
     if (!p.current && !busy) openProject(p.name);
-    return undefined;
   });
   cover(b, p);
   b.open("div", "body", "pm-card-body");
@@ -567,7 +520,6 @@ function card(b, p) {
   if (!p.current) {
     button(b, "open", "small gold", "Open", `Open “${p.title}” in the studio`, () => {
       openProject(p.name);
-      return undefined;
     });
   }
   iconButton(b, "dup", "small ghost", "copy", `Duplicate “${p.name}”`, () => compose("duplicate", p.name, uniqueName(`${nameFrom(p.title)} copy`, pm.projects)));
@@ -576,7 +528,6 @@ function card(b, p) {
   if (p.current) b.attr("disabled", "true");
   b.close();
   b.close();
-  return undefined;
 }
 
 /** function projectsView(b: Builder) => Undefined */
@@ -605,7 +556,6 @@ function projectsView(b) {
   b.on("input", (e) => {
     pm.filter = e.value;
     invalidate();
-    return undefined;
   });
   b.close();
   b.close();
@@ -630,7 +580,6 @@ function projectsView(b) {
     b.leaf("p", "p", "", q !== "" ? `Nothing is called “${pm.filter}”.` : "Create a project, start from the demo, or import an LMMS or MIDI file.");
     b.close();
   }
-  return undefined;
 }
 
 /** function fileRow(b: Builder, f: FileInfo) => Undefined */
@@ -657,7 +606,6 @@ function fileRow(b, f) {
   b.open("div", "act", "pm-file-actions");
   iconButton(b, "dl", "small ghost", "export", `Download ${f.name}`, () => {
     download(url, f.name);
-    return undefined;
   });
   iconButton(b, "ren", "small ghost", "draw", f.managed ? "Managed by the studio" : `Rename ${f.name}`, () => compose("file", f.path, f.name));
   if (f.managed) b.attr("disabled", "true");
@@ -665,7 +613,6 @@ function fileRow(b, f) {
   if (f.managed) b.attr("disabled", "true");
   b.close();
   b.close();
-  return undefined;
 }
 
 /** The folders to show, in order: samples, renders, others, then the top level. */
@@ -708,7 +655,6 @@ function filesView(b) {
   b.close();
   iconButton(b, "refresh", "", "restart", "Refresh the list", () => {
     refreshFiles();
-    return undefined;
   });
   b.close();
 
@@ -745,7 +691,6 @@ function filesView(b) {
   }
   if (!pm.filesLoaded) b.leaf("div", "loading", "pm-none", "Reading the project folder…");
   b.close();
-  return undefined;
 }
 
 /** The Projects window (nothing when closed). */
@@ -805,5 +750,4 @@ export function projectsOverlay(b) {
 
   b.close();
   b.close();
-  return undefined;
 }

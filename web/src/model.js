@@ -267,7 +267,6 @@ export function setParam(d, key, v) {
   const e = d.params.find((p) => p.key === key);
   if (e) e.value = v;
   else d.params.push({ key: key, value: v });
-  return undefined;
 }
 
 /** function getOption(d: Device, spec: OptionSpec) => String */
@@ -287,7 +286,6 @@ export function setOption(d, key, v) {
   const e = d.options.find((p) => p.key === key);
   if (e) e.value = v;
   else d.options.push({ key: key, value: v });
-  return undefined;
 }
 
 /** function newDevice(type: String) => Device */
@@ -412,7 +410,6 @@ function deviceDiff(label, a, b, out) {
   }
   if (a.enabled !== b.enabled) parts.push(b.enabled ? "enabled" : "bypassed");
   if (parts.length > 0) out.push(`${label}: ${parts.slice(0, 4).join(", ")}${parts.length > 4 ? ", …" : ""}`);
-  return undefined;
 }
 
 /** function noteText(n: Note) => String */
@@ -537,7 +534,6 @@ function laneDiff(a, b, out) {
       }
     }
   }
-  return undefined;
 }
 
 /** function encodeClipKey(c: Clip) => String */

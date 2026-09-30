@@ -97,9 +97,9 @@ A small retained, reconciling tree in the spirit of
 The UI is plain JavaScript type-checked by
 [inty](https://sinelaw.github.io/inty/) — no transpilation. Global model and
 UI types live in `web/types/globals.d.js`; integers with different meanings are
-nominal newtypes (`InsertIx`, `TrackIx`, `NoteIx`, `Handle`, …) declared in
-`web/types/newtypes.d.js`, erased at runtime by identity casts
-(`web/lib/brands.js`). The only unchecked code is the platform boundary
+`nominal type`s (`InsertIx`, `TrackIx`, `NoteIx`, `Handle`, …) declared in the
+same file, erased at runtime by identity casts (`web/lib/brands.js`).
+`web/check.sh` checks every module in one run (about 2 s). The only unchecked code is the platform boundary
 (`web/lib/platform.js`, typed by `web/types/platform.d.js`) and the
 AudioWorklet processor.
 

@@ -8,7 +8,22 @@
 // Nominal index types: integers with different meanings must not be mixed up.
 // Construct and unwrap them with the casts exported by "#brands".
 
-// (declared in newtypes.d.js, which is loaded first)
+/** Index into mixer.inserts (0 = master). */
+/** nominal type InsertIx = Int */
+/** Index into playlist.tracks. */
+/** nominal type TrackIx = Int */
+/** Index into a pattern's notes. */
+/** nominal type NoteIx = Int */
+/** Index into playlist.clips. */
+/** nominal type ClipIx = Int */
+/** A UI backend element handle. */
+/** nominal type Handle = Int */
+/** Index into a description buffer. */
+/** nominal type NodeIx = Int */
+/** Index into project.automation. */
+/** nominal type LaneIx = Int */
+/** Index into an automation lane's points. */
+/** nominal type PointIx = Int */
 
 // ------------------------------------------------------------------ model
 

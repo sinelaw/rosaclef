@@ -25,18 +25,16 @@ getJson("/api/catalog")
   .then((c) => {
     state.catalog = decodeCatalog(c);
     invalidate();
-    return Promise.resolve(true);
+    return true;
   })
-  .catch((e) => Promise.resolve(false));
+  .catch((e) => false);
 
 // Browsers only start audio after a user gesture.
 listenWindow("pointerdown", (e) => {
   if (!state.audioReady && state.output === "browser") startAudio();
-  return undefined;
 });
 listenWindow("resize", (e) => {
   invalidate();
-  return undefined;
 });
 
 ui.flush();

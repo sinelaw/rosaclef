@@ -16,7 +16,6 @@ function lcd(b, key, label, value, unit) {
   b.text(value);
   if (unit !== "") b.leaf("small", "unit", "", unit);
   b.close();
-  return undefined;
 }
 
 let exporting = false;
@@ -31,12 +30,12 @@ function exportSong() {
       const path = String(r.path);
       toast("Mixdown ready", `${path}\n${fmt(Number(r.duration), 1)} s · peak ${fmt(Number(r.peakDb), 1)} dBFS`, "info");
       download(String(r.url), path.split("/").pop() ?? "mixdown.wav");
-      return Promise.resolve(true);
+      return true;
     })
     .catch((e) => {
       exporting = false;
       toast("Export failed", String(e), "error");
-      return Promise.resolve(false);
+      return false;
     });
 }
 
@@ -66,15 +65,12 @@ export function topbar(b) {
   b.close();
   iconButton(b, "play", state.playing ? "play on" : "play", state.playing ? "pause" : "play", "Play / pause (Space)", () => {
     togglePlay();
-    return undefined;
   });
   iconButton(b, "stop", "stop", "stop", "Stop and rewind", () => {
     stop();
-    return undefined;
   });
   iconButton(b, "rec", state.recording ? "rec armed" : "rec", "record", "Record audio from the microphone onto the selected track (R)", () => {
     record();
-    return undefined;
   });
 
   b.open("div", "pos", "lcd static");
@@ -87,7 +83,6 @@ export function topbar(b) {
   b.on("contextmenu", (e) => {
     e.preventDefault();
     openMenu("tempo", e.clientX, e.clientY);
-    return undefined;
   });
   b.on("pointerdown", (e) => {
     e.preventDefault();
@@ -100,9 +95,7 @@ export function topbar(b) {
       const v = Math.round((bpm0 + (y0 - m.clientY) * step) * 100) / 100;
       state.project.transport.bpm = Math.max(20, Math.min(400, v));
       changed(true);
-      return undefined;
     }, (u) => undefined);
-    return undefined;
   });
   lcd(b, "bpm", "Tempo", fmt(shownValue("tempo", p.transport.bpm), 2), "BPM");
   if (isAutomated("tempo")) b.leaf("i", "auto", "auto-dot", "");
@@ -113,7 +106,6 @@ export function topbar(b) {
   b.leaf("span", "label", "lcd-label", "Swing");
   knobAt(b, "k", "small", swing, "", `Swing ${Math.round(swing * 100)}%`, 0, "swing", (v) => {
     state.project.transport.swing = Math.round(v * 100) / 100;
-    return undefined;
   });
   b.close();
   b.close();
@@ -133,7 +125,6 @@ export function topbar(b) {
     knobAt(b, "vol", "", shownValue("insert/0/volume", master.volume) / 1.25, "", "Master volume", 0.8, "insert/0/volume", (v) => {
       const ins = state.project.mixer.inserts[0];
       ins.volume = Math.round(v * 1.25 * 1000) / 1000;
-      return undefined;
     });
     meter(b, "meter", ml, mr);
     b.close();
@@ -141,21 +132,17 @@ export function topbar(b) {
 
   iconButton(b, "undo", "", "undo", "Undo (Ctrl+Z) — includes the agent's edits", () => {
     undo();
-    return undefined;
   });
   iconButton(b, "redo", "", "redo", "Redo (Ctrl+Shift+Z)", () => {
     redo();
-    return undefined;
   });
   b.open("button", "export", "btn gold");
   b.attr("title", "Render the song to a WAV file");
   b.on("pointerenter", (e) => hint("Export: render the whole song offline to a 24-bit WAV (saved in renders/)"));
   b.on("click", (e) => {
     exportSong();
-    return undefined;
   });
   b.leaf("span", "t", "", "Export");
   b.close();
   b.close();
-  return undefined;
 }

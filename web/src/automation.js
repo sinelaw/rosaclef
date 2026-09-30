@@ -23,7 +23,7 @@ export const auto = {
   collapsed: false,
   /** Lane id to scroll into view on the next playlist render. */
   reveal: "",
-  menu: { open: false, x /*: Number */: 0, y /*: Number */: 0, target: "" },
+  menu: { open: false, x: 0, y: 0, target: "" },
 };
 
 // ------------------------------------------------------------------ curves
@@ -196,7 +196,6 @@ export function goToLane(id) {
   auto.reveal = id;
   reportContext();
   invalidate();
-  return undefined;
 }
 
 /** FL-style: a lane for a control, spanning the song at its current value. */
@@ -215,24 +214,20 @@ export function createLane(target) {
   const v = info.base;
   commit(() => {
     p.automation.push({ id: id, name: info.label, target: target, color: info.color, mute: false, points: [{ beat: 0, value: v, curve: 0 }, { beat: end, value: v, curve: 0 }] });
-    return undefined;
   });
   goToLane(id);
-  return undefined;
 }
 
 /** function removeLane(id: String) => Undefined */
 export function removeLane(id) {
   commit(() => {
     state.project.automation = state.project.automation.filter((l) => l.id !== id);
-    return undefined;
   });
   if (auto.lane === id) {
     auto.lane = "";
     auto.points = [];
   }
   reportContext();
-  return undefined;
 }
 
 /** Keep lanes pointing at the right things after a structural edit: `map`
@@ -250,7 +245,6 @@ export function retargetLanes(map) {
     }
   }
   p.automation = keep;
-  return undefined;
 }
 
 /** Effects of insert `insert` were moved or removed: `slot(k)` is effect
@@ -266,7 +260,6 @@ export function remapEffects(insert, slot) {
     const k = slot(Math.round(Number(rest.slice(0, cut))));
     return k < 0 ? "" : `${prefix}${k}${rest.slice(cut)}`;
   });
-  return undefined;
 }
 
 // ------------------------------------------------------------------ menu
@@ -279,7 +272,6 @@ export function openMenu(target, x, y) {
   auto.menu.y = y;
   auto.menu.target = target;
   invalidate();
-  return undefined;
 }
 
 export function closeMenu() {

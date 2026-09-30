@@ -27,7 +27,6 @@ const sock = [];
 /** function send<M>(m: M) => Undefined */
 function send(m) {
   if (sock.length > 0) sock[0].send(JSON.stringify(m));
-  return undefined;
 }
 
 /** function preferred() => String */
@@ -47,7 +46,6 @@ export function startAgent(id) {
   }
   send({ t: "start", agent: id, cols: t ? t.cols() : 80, rows: t ? t.rows() : 24 });
   invalidate();
-  return undefined;
 }
 
 function connectTerm() {
@@ -55,7 +53,6 @@ function connectTerm() {
     onOpen: () => {
       agent.connected = true;
       invalidate();
-      return undefined;
     },
     onText: (text) => {
       const m = JSON.parse(text);
@@ -75,11 +72,9 @@ function connectTerm() {
         agent.choosing = true;
       }
       invalidate();
-      return undefined;
     },
     onBinary: (bytes) => {
       if (term.length > 0) term[0].write(bytes);
-      return undefined;
     },
     onClose: () => {
       agent.connected = false;
@@ -87,9 +82,7 @@ function connectTerm() {
       invalidate();
       setTimeout(() => {
         connectTerm();
-        return undefined;
       }, 1500);
-      return undefined;
     },
   });
   sock.length = 0;
@@ -102,7 +95,6 @@ function mountTerm() {
   const el = document.getElementById("agent-term");
   const t = createTerm(el, (data) => {
     send({ t: "input", data: data });
-    return undefined;
   });
   term.push(t);
   t.fit();
@@ -122,7 +114,6 @@ function fitTerm() {
 export function typeIntoAgent(text) {
   send({ t: "input", data: text });
   if (term.length > 0) term[0].focus();
-  return undefined;
 }
 
 export function loadAgents() {
@@ -130,9 +121,9 @@ export function loadAgents() {
     .then((r) => {
       state.agents = r.agents;
       invalidate();
-      return Promise.resolve(true);
+      return true;
     })
-    .catch((e) => Promise.resolve(false));
+    .catch((e) => false);
 }
 
 /** function suggestions() => String[] */
@@ -185,12 +176,10 @@ export function agentPanel(b) {
     if (id === "") agent.choosing = true;
     else startAgent(id);
     invalidate();
-    return undefined;
   });
   if (agent.running) {
     iconButton(b, "stop", "small ghost", "stop", "Stop the agent", () => {
       send({ t: "stop" });
-      return undefined;
     });
   }
   paneControls(b, "agent");
@@ -225,13 +214,11 @@ export function agentPanel(b) {
   b.open("div", "wrap", "term-wrap");
   b.on("resize", (e) => {
     fitTerm();
-    return undefined;
   });
   b.leaf("div", "term", "term", "");
   b.attr("id", "agent-term");
   b.on("mount", (e) => {
     mountTerm();
-    return undefined;
   });
 
   const showChooser = agent.connected && !agent.running && (agent.choosing || preferred() === "" || agent.exitCode >= 0 || agent.error !== "");
@@ -245,7 +232,6 @@ export function agentPanel(b) {
       b.attr("title", a.available ? a.command.join(" ") : `Install: ${a.hint}`);
       b.on("click", (e) => {
         startAgent(a.id);
-        return undefined;
       });
       b.leaf("b", "n", "", a.name);
       b.leaf("span", "c", "", a.available ? a.command.join(" ") : "not installed");
@@ -263,11 +249,9 @@ export function agentPanel(b) {
     b.on("pointerenter", (e) => hint(`Suggest to the agent: “${s}” (press Enter in the terminal to send)`));
     b.on("click", (e) => {
       typeIntoAgent(s);
-      return undefined;
     });
   }
   b.close();
 
   b.close();
-  return undefined;
 }

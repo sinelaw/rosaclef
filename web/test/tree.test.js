@@ -8,7 +8,6 @@ let failures = 0;
 function check(name, ok) {
   if (!ok) failures = failures + 1;
   console.log(`${ok ? "ok  " : "FAIL"} ${name}`);
-  return undefined;
 }
 
 const state = { items /*: String[] */: ["a", "b", "c"], clicks: 0, title: "Hello" };
@@ -21,12 +20,10 @@ const ui = mount(mem.backend, (b) => {
     b.leaf("li", it, "item", it);
     b.on("click", (e) => {
       state.clicks = state.clicks + 1;
-      return undefined;
     });
   }
   b.close();
   b.close();
-  return undefined;
 });
 
 ui.flush();

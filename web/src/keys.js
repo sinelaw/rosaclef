@@ -86,7 +86,6 @@ export function installKeys() {
         noteOn(ch.id, 60 + i, 0.85);
       }
     }
-    return undefined;
   });
   listenWindow("keyup", (e) => {
     const k = e.key;
@@ -96,6 +95,5 @@ export function installKeys() {
       const ch = currentChannel();
       if (ch) noteOff(ch.id, 60 + PIANO.indexOf(k));
     }
-    return undefined;
   });
 }

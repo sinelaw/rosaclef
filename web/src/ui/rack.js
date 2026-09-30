@@ -41,10 +41,8 @@ function toggleStep(pat, ch, step) {
   commit(() => {
     if (i >= 0) pat.notes.splice(i, 1);
     else pat.notes.push({ channel: ch.id, pitch: stepPitch(ch), start: step * STEP, length: STEP, velocity: 0.8 });
-    return undefined;
   });
   if (i < 0) preview(ch.id, stepPitch(ch), 0.8);
-  return undefined;
 }
 
 /** A tiny piano-roll preview of one channel's notes (canvas leaf). */
@@ -70,15 +68,12 @@ function miniRoll(b, pat, ch, width) {
       g.globalAlpha = 0.5 + n.velocity * 0.5;
       g.fillRect(x, y, Math.max(2, (n.length / pat.length) * w - 1), Math.max(2, nh - 1));
     }
-    return undefined;
   });
   b.style("width", `${width}px`);
   b.on("click", (e) => {
     selectChannel(ch.id);
     showDock("piano");
-    return undefined;
   });
-  return undefined;
 }
 
 /** function rackRow(b: Builder, pat: Pattern, ch: Channel, idx: Int) => Undefined */
@@ -93,20 +88,16 @@ function rackRow(b, pat, ch, idx) {
   b.on("click", (e) => {
     commit(() => {
       ch.mute = !ch.mute;
-      return undefined;
     });
-    return undefined;
   });
 
   const pan = shownValue(`channel/${ch.id}/pan`, ch.pan);
   const vol = shownValue(`channel/${ch.id}/volume`, ch.volume);
   knobAt(b, "pan", "small", (pan + 1) / 2, "", `Pan ${Math.round(pan * 100)}`, 0.5, `channel/${ch.id}/pan`, (v) => {
     ch.pan = Math.round((v * 2 - 1) * 100) / 100;
-    return undefined;
   });
   knobAt(b, "vol", "small", vol / 1.25, "", `Volume ${Math.round(vol * 100)}%`, 0.64, `channel/${ch.id}/volume`, (v) => {
     ch.volume = Math.round(v * 125) / 100;
-    return undefined;
   });
 
   b.leaf("div", "ins", "ch-ins", insertIndex(ch.mixer) === 0 ? "M" : String(insertIndex(ch.mixer)));
@@ -122,20 +113,16 @@ function rackRow(b, pat, ch, idx) {
       const i = Math.max(0, Math.min(max, i0 + Math.round((y0 - m.clientY) / 12)));
       ch.mixer = insertIx(i);
       changed(true);
-      return undefined;
     }, (u) => undefined);
-    return undefined;
   });
 
   b.open("div", "name", "ch-name");
   b.on("click", (e) => {
     selectChannel(ch.id);
-    return undefined;
   });
   b.on("dblclick", (e) => {
     selectChannel(ch.id);
     showDock("piano");
-    return undefined;
   });
   b.leaf("i", "sw", "swatch", "");
   b.style("--c", ch.color);
@@ -164,11 +151,9 @@ function rackRow(b, pat, ch, idx) {
             return undefined;
           }
           toggleStep(pat, ch, s);
-          return undefined;
         });
         b.on("contextmenu", (e) => {
           e.preventDefault();
-          return undefined;
         });
         b.on("wheel", (e) => {
           if (ni < 0) return undefined;
@@ -177,7 +162,6 @@ function rackRow(b, pat, ch, idx) {
           const n = pat.notes[ni];
           n.velocity = Math.max(0.05, Math.min(1, Math.round((n.velocity - e.deltaY / 1000) * 100) / 100));
           changed(true);
-          return undefined;
         });
       }
       b.close();
@@ -187,7 +171,6 @@ function rackRow(b, pat, ch, idx) {
     miniRoll(b, pat, ch, steps * 25 + Math.ceil(steps / 4) * 5);
   }
   b.close();
-  return undefined;
 }
 
 // ------------------------------------------------------------------ inspector
@@ -212,9 +195,9 @@ function pluginSpecs(dev) {
         }
         pluginParams.push({ key: key, params: specs });
         invalidate();
-        return Promise.resolve(true);
+        return true;
       })
-      .catch((e) => Promise.resolve(false));
+      .catch((e) => false);
   }
   /** const none: ParamSpec[] */
   const none = [];
@@ -241,7 +224,6 @@ export function deviceControls(b, dev, spec, target) {
         b.leaf("label", "l", "", o.label);
         textInput(b, "in", "", getOption(dev, o), o.doc, (v) => {
           commit(() => setOption(dev, o.key, v));
-          return undefined;
         });
         b.close();
         continue;
@@ -250,7 +232,6 @@ export function deviceControls(b, dev, spec, target) {
       b.leaf("label", "l", "", o.label);
       select(b, "sel", "", getOption(dev, o), o.choices, o.choices, o.doc, (v) => {
         commit(() => setOption(dev, o.key, v));
-        return undefined;
       });
       b.close();
     }
@@ -288,7 +269,6 @@ export function deviceControls(b, dev, spec, target) {
     b.close();
     b.close();
   }
-  return undefined;
 }
 
 /** Preset picker for an instrument (applies params and options). */
@@ -311,12 +291,9 @@ function presetPicker(b, dev) {
       }
       dev.params = fresh.params;
       dev.options = fresh.options;
-      return undefined;
     });
-    return undefined;
   });
   b.close();
-  return undefined;
 }
 
 /** function inspector(b: Builder) => Undefined */
@@ -344,9 +321,7 @@ function inspector(b) {
   textInput(b, "in", "", ch.name, "", (v) => {
     commit(() => {
       ch.name = v;
-      return undefined;
     });
-    return undefined;
   });
   b.close();
 
@@ -358,9 +333,7 @@ function inspector(b) {
     b.on("click", (e) => {
       commit(() => {
         ch.color = c;
-        return undefined;
       });
-      return undefined;
     });
   }
   b.close();
@@ -371,19 +344,15 @@ function inspector(b) {
   b.open("div", "actions", "rack-add");
   button(b, "roll", "small", "Piano roll", "Edit this channel's notes (F7)", () => {
     showDock("piano");
-    return undefined;
   });
   button(b, "dup", "small", "Duplicate", "Duplicate this channel", () => {
     duplicateChannel(ch);
-    return undefined;
   });
   button(b, "del", "small danger", "Delete", "Delete this channel and its notes", () => {
     deleteChannel(ch);
-    return undefined;
   });
   b.close();
   b.close();
-  return undefined;
 }
 
 /** function duplicateChannel(ch: Channel) => Undefined */
@@ -403,10 +372,8 @@ function duplicateChannel(ch) {
       mute: false,
       mixer: ch.mixer,
     });
-    return undefined;
   });
   selectChannel(id);
-  return undefined;
 }
 
 /** function deleteChannel(ch: Channel) => Undefined */
@@ -416,9 +383,7 @@ function deleteChannel(ch) {
     p.channels = p.channels.filter((c) => c.id !== ch.id);
     for (const pat of p.patterns) pat.notes = pat.notes.filter((n) => n.channel !== ch.id);
     retargetLanes((t) => (t.startsWith(`channel/${ch.id}/`) ? "" : t));
-    return undefined;
   });
-  return undefined;
 }
 
 /** function rack(b: Builder) => Undefined */
@@ -439,7 +404,6 @@ export function rack(b) {
   b.close();
   inspector(b);
   b.close();
-  return undefined;
 }
 
 /** function rackTools(b: Builder) => Undefined */
@@ -451,9 +415,6 @@ export function rackTools(b) {
   select(b, "len", "", String(pat.length), lengths, lengths.map((x) => `${Number(x) / 4} bar${x === "4" ? "" : "s"}`), "Pattern length", (v) => {
     commit(() => {
       pat.length = Number(v);
-      return undefined;
     });
-    return undefined;
   });
-  return undefined;
 }

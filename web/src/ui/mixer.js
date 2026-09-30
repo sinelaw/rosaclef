@@ -32,7 +32,6 @@ function strip(b, ins, i) {
   b.open("div", `s${i}`, cls);
   b.on("pointerdown", (e) => {
     if (!sel) selectInsert(ix);
-    return undefined;
   });
   b.on("pointerenter", (e) => hint(users.length > 0 ? `${ins.name} — fed by ${users.join(", ")}` : `${ins.name}`));
   b.leaf("div", "num", "strip-num", i === 0 ? "MASTER" : `INSERT ${i}`);
@@ -43,10 +42,8 @@ function strip(b, ins, i) {
     if (name !== "") {
       commit(() => {
         ins.name = name;
-        return undefined;
       });
     }
-    return undefined;
   });
 
   b.open("div", "fx", "strip-fx");
@@ -66,13 +63,11 @@ function strip(b, ins, i) {
   const vol = shownValue(`insert/${i}/volume`, ins.volume);
   knobAt(b, "pan", "small", (pan + 1) / 2, "", `Balance ${panText(pan)}`, 0.5, `insert/${i}/pan`, (v) => {
     ins.pan = Math.round((v * 2 - 1) * 100) / 100;
-    return undefined;
   });
 
   b.open("div", "faders", "strip-faders");
   faderAt(b, "vol", volToFader(vol), `${ins.name}: ${dbText(vol)}`, volToFader(1), `insert/${i}/volume`, (t) => {
     ins.volume = faderToVol(t);
-    return undefined;
   });
   meter(b, "meter", l, r);
   b.close();
@@ -82,22 +77,17 @@ function strip(b, ins, i) {
   button(b, "m", ins.mute ? "small m on" : "small m", "M", "Mute", () => {
     commit(() => {
       ins.mute = !ins.mute;
-      return undefined;
     });
-    return undefined;
   });
   if (i > 0) {
     button(b, "s", ins.solo ? "small s on" : "small s", "S", "Solo", () => {
       commit(() => {
         ins.solo = !ins.solo;
-        return undefined;
       });
-      return undefined;
     });
   }
   b.close();
   b.close();
-  return undefined;
 }
 
 /** function fxPanel(b: Builder) => Undefined */
@@ -126,9 +116,7 @@ function fxPanel(b) {
     button(b, "on", fx.enabled ? "small on" : "small", fx.enabled ? "On" : "Off", "Bypass", () => {
       commit(() => {
         fx.enabled = !fx.enabled;
-        return undefined;
       });
-      return undefined;
     });
     iconButton(b, "up", "small ghost", "undo", "Move up", () => {
       if (k === 0) return undefined;
@@ -137,17 +125,13 @@ function fxPanel(b) {
         ins.effects[k - 1] = ins.effects[k];
         ins.effects[k] = a;
         remapEffects(i, (j) => (j === k ? k - 1 : j === k - 1 ? k : j));
-        return undefined;
       });
-      return undefined;
     });
     iconButton(b, "del", "small ghost danger", "trash", "Remove effect", () => {
       commit(() => {
         ins.effects.splice(k, 1);
         remapEffects(i, (j) => (j === k ? -1 : j > k ? j - 1 : j));
-        return undefined;
       });
-      return undefined;
     });
     b.close();
     if (spec) deviceControls(b, fx, spec, `insert/${i}/effect/${k}/`);
@@ -184,12 +168,9 @@ function fxPanel(b) {
       } else {
         ins.effects.push(newDevice(v));
       }
-      return undefined;
     });
-    return undefined;
   });
   b.close();
-  return undefined;
 }
 
 /** function mixer(b: Builder) => Undefined */
@@ -201,7 +182,6 @@ export function mixer(b) {
   b.close();
   fxPanel(b);
   b.close();
-  return undefined;
 }
 
 /** function mixerTools(b: Builder) => Undefined */
@@ -210,9 +190,6 @@ export function mixerTools(b) {
     commit(() => {
       const n = state.project.mixer.inserts.length;
       state.project.mixer.inserts.push({ name: `Insert ${n}`, volume: 1, pan: 0, mute: false, solo: false, effects: [] });
-      return undefined;
     });
-    return undefined;
   });
-  return undefined;
 }

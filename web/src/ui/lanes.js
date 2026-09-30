@@ -174,7 +174,6 @@ function selectLane(lane) {
     reportContext();
     invalidate();
   }
-  return undefined;
 }
 
 /** function isSelPoint(lane: AutomationLane, k: Int) => Boolean */
@@ -209,12 +208,9 @@ function dragPoint(e, lane, idx, r, info, zoom, begun) {
     pt.value = tidy(info, valueOf(r, u));
     hint(`${info.label}: ${formatValue(info, pt.value)} at ${barBeat(pt.beat, state.project.transport.beatsPerBar)}`);
     changed(true);
-    return undefined;
   }, (u) => {
     reportContext();
-    return undefined;
   });
-  return undefined;
 }
 
 /** Alt-drag: bend the segment that ends at point `idx` (drag up raises its middle). */
@@ -230,9 +226,7 @@ function dragCurve(e, lane, idx, r, info) {
     pt.curve = Math.round(Math.max(-1, Math.min(1, c0 + (rising ? -d : d))) * 100) / 100;
     hint(`${info.label}: curve ${fmt(pt.curve, 2)} (0 = straight)`);
     changed(true);
-    return undefined;
   }, (u) => undefined);
-  return undefined;
 }
 
 /** function deletePoint(lane: AutomationLane, idx: Int) => Undefined */
@@ -243,11 +237,9 @@ function deletePoint(lane, idx) {
   }
   commit(() => {
     lane.points.splice(idx, 1);
-    return undefined;
   });
   auto.points = [];
   reportContext();
-  return undefined;
 }
 
 /** function typeValue(lane: AutomationLane, idx: Int, info: TargetInfo) => Undefined */
@@ -262,9 +254,7 @@ function typeValue(lane, idx, info) {
   const hi = info.open ? 1000000000 : info.spec.max;
   commit(() => {
     pt.value = Math.max(lo, Math.min(hi, v));
-    return undefined;
   });
-  return undefined;
 }
 
 /** Pointer down in the automation section (content coordinates). */
@@ -321,7 +311,6 @@ export function onAutoDown(e, lg, x, y) {
   changed(true);
   reportContext();
   dragPoint(e, lane, idx, r, info, lg.zoom, true);
-  return undefined;
 }
 
 /** Double-click in the automation section: type a point's value. */
@@ -335,7 +324,6 @@ export function onAutoDblClick(e, lg, x, y) {
   const info = targetInfo(lane.target);
   const hit = hitPoint(laneBoxes(lane, displayRange(info, lane), lg.zoom, lg.top + laneTop(k)), x, y);
   if (hit >= 0) typeValue(lane, hit, info);
-  return undefined;
 }
 
 /** Hint-bar text for the pointer over the automation section. */
@@ -372,7 +360,6 @@ export function autoHeads(b, top) {
   b.on("click", (e) => {
     auto.collapsed = !auto.collapsed;
     invalidate();
-    return undefined;
   });
   b.leaf("span", "chev", "auto-chev", "▾");
   b.leaf("span", "t", "auto-divtitle", "Automation");
@@ -394,7 +381,6 @@ export function autoHeads(b, top) {
     b.style("--c", lane.color);
     b.on("pointerdown", (e) => {
       selectLane(lane);
-      return undefined;
     });
 
     b.open("div", "r1", "auto-row");
@@ -406,9 +392,7 @@ export function autoHeads(b, top) {
       const at2 = PALETTE.indexOf(lane.color);
       commit(() => {
         lane.color = PALETTE[(at2 + 1) % PALETTE.length];
-        return undefined;
       });
-      return undefined;
     });
     b.leaf("span", "name", "auto-name", lane.name !== "" ? lane.name : lane.id);
     b.attr("title", `${lane.name} — double-click to rename`);
@@ -417,10 +401,8 @@ export function autoHeads(b, top) {
       if (name !== "") {
         commit(() => {
           lane.name = name;
-          return undefined;
         });
       }
-      return undefined;
     });
     b.close();
 
@@ -436,18 +418,14 @@ export function autoHeads(b, top) {
       e.stopPropagation();
       commit(() => {
         lane.mute = !lane.mute;
-        return undefined;
       });
-      return undefined;
     });
     iconButton(b, "del", "small ghost danger", "trash", "Delete this automation lane", () => {
       removeLane(lane.id);
-      return undefined;
     });
     b.close();
     b.close();
   }
-  return undefined;
 }
 
 /** Draw a lane's curve over the visible range (canvas coordinates). */
@@ -486,7 +464,6 @@ function paintCurve(g2, w, h, lane, r, zoom, x0) {
       if (xc <= w + 2) g2.lineTo(xc, Y(c.value));
     }
     g2.lineTo(w + 2, Y(laneValueAt(pts, (x0 + w + 2) / zoom)));
-    return undefined;
   }
   const alpha = lane.mute ? 0.35 : 1;
   trace();
@@ -506,7 +483,6 @@ function paintCurve(g2, w, h, lane, r, zoom, x0) {
   g2.shadowColor = lane.color;
   g2.shadowBlur = 6;
   g2.stroke();
-  return undefined;
 }
 
 /** Lane rows in the playlist content (below the tracks). */
@@ -551,7 +527,6 @@ export function autoBody(b, lg) {
     }
     b.close();
   }
-  return undefined;
 }
 
 // ------------------------------------------------------------------ menu
@@ -562,12 +537,10 @@ function menuItem(b, key, icon, label, onClick) {
   b.on("click", (e) => {
     closeMenu();
     onClick();
-    return undefined;
   });
   glyph(b, icon);
   b.leaf("span", "l", "", label);
   b.close();
-  return undefined;
 }
 
 /** The right-click menu of automatable controls (rendered by the shell). */
@@ -578,7 +551,6 @@ export function automationMenu(b) {
   b.open("div", "auto-menu-root", "auto-menu-root");
   automationMenuBody(b);
   b.close();
-  return undefined;
 }
 
 /** function automationMenuBody(b: Builder) => Undefined */
@@ -592,19 +564,16 @@ function automationMenuBody(b) {
   b.on("pointerdown", (e) => {
     e.preventDefault();
     closeMenu();
-    return undefined;
   });
   b.on("contextmenu", (e) => {
     e.preventDefault();
     closeMenu();
-    return undefined;
   });
   b.open("div", "auto-menu", "auto-menu");
   b.style("left", `min(${m.x}px, calc(100vw - 250px))`);
   b.style("top", `min(${m.y}px, calc(100vh - 170px))`);
   b.on("contextmenu", (e) => {
     e.preventDefault();
-    return undefined;
   });
   b.leaf("div", "t", "auto-menu-title", info.label);
   b.leaf("div", "s", "auto-menu-sub", target);
@@ -619,12 +588,9 @@ function automationMenuBody(b) {
     menuItem(b, "mute", "mute", muted ? "Unmute automation" : "Mute automation", () => {
       commit(() => {
         for (const l of state.project.automation) if (l.id === id) l.mute = !muted;
-        return undefined;
       });
-      return undefined;
     });
     menuItem(b, "rm", "trash", "Remove automation", () => removeLane(id));
   }
   b.close();
-  return undefined;
 }

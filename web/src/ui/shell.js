@@ -28,13 +28,11 @@ function tab(b, id, label, icon, key) {
   b.on("dblclick", (e) => {
     e.stopPropagation();
     toggleWorkMax("dock");
-    return undefined;
   });
   glyph(b, icon);
   b.leaf("span", "l", "", label);
   b.leaf("kbd", "k", "", key);
   b.close();
-  return undefined;
 }
 
 /** function studio(b: Builder) => Undefined */
@@ -77,7 +75,6 @@ export function studio(b) {
   b.attr("title", plMode === "min" ? "Playlist — click to restore" : "Playlist — double-click to maximize");
   b.on("click", (e) => {
     if (workMode("playlist") === "min") setWork("playlist", "open");
-    return undefined;
   });
   glyph(b, "playlist");
   b.leaf("span", "l", "", "Playlist");
@@ -102,14 +99,11 @@ export function studio(b) {
     drag(e, (m) => {
       layoutState.dockH = Math.max(18, Math.min(82, h0 + ((y0 - m.clientY) / total) * 100));
       invalidate();
-      return undefined;
     }, (u) => {
       layoutState.dragging = false;
       saveLayout();
       invalidate();
-      return undefined;
     });
-    return undefined;
   });
 
   b.open("section", "dock", `pane pane-dock ${workMode("dock")}`);
@@ -151,15 +145,12 @@ export function studio(b) {
     drag(e, (m) => {
       layoutState.agentW = Math.max(300, Math.min(1600, w0 + (x0 - m.clientX)));
       invalidate();
-      return undefined;
     }, (u) => {
       layoutState.dragging = false;
       layoutState.agentW = sideSizes(window.innerWidth).agentW;
       saveLayout();
       invalidate();
-      return undefined;
     });
-    return undefined;
   });
   b.close();
 
@@ -177,5 +168,4 @@ export function studio(b) {
   toastView(b);
   automationMenu(b);
   b.close();
-  return undefined;
 }
