@@ -162,6 +162,7 @@ pub async fn run(cfg: Config) -> Result<()> {
                 .layer(axum::extract::DefaultBodyLimit::max(512 << 20)),
         )
         .route("/api/peaks", get(get_peaks))
+        .route("/api/transcribe", get(get_transcription))
         .route("/api/render", post(render))
         .route("/api/agents", get(get_agents))
         .route("/api/info", get(get_info))
@@ -771,6 +772,30 @@ async fn get_peaks(State(app): State<Shared>, Query(q): Query<PeaksQuery>) -> Re
         Ok(Ok((duration, sr, peaks))) => {
             Json(json!({"duration": duration, "sampleRate": sr, "peaks": peaks})).into_response()
         }
+        Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct TranscribeQuery {
+    path: String,
+    /// "melody" (default) or "drums".
+    mode: Option<String>,
+}
+
+/// Voice to notes: the notes (or drum hits) in a recorded take.
+async fn get_transcription(State(app): State<Shared>, Query(q): Query<TranscribeQuery>) -> Response {
+    let Some(path) = app.folder().resolve(&q.path) else {
+        return (StatusCode::BAD_REQUEST, "invalid path").into_response();
+    };
+    if !path.is_file() {
+        return (StatusCode::NOT_FOUND, format!("{} does not exist", q.path)).into_response();
+    }
+    let mode = q.mode.unwrap_or_default();
+    let res = tokio::task::spawn_blocking(move || crate::decode::decode_file(&rosaclef_fs::DiskFs, &path).map(|d| rosaclef_studio::transcribe::transcribe(&d, &mode))).await;
+    match res {
+        Ok(Ok(t)) => Json(t).into_response(),
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }

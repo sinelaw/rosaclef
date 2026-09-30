@@ -9,9 +9,10 @@ import { toast } from "./toast.js";
 import { paneHeader, paneControls, revealDock } from "./panes.js";
 import { insertIx } from "#brands";
 
-/** Add a channel with a new instrument; returns its id. */
-/** function addChannel(type: String, name: String, setup: (Device) => Undefined) => String */
-export function addChannel(type, name, setup) {
+/** Add a channel with a new instrument as part of the current edit (inside
+ * `commit`); returns its id. */
+/** function pushChannel(type: String, name: String, setup: (Device) => Undefined) => String */
+export function pushChannel(type, name, setup) {
   const p = state.project;
   const id = uniqueId(
     name,
@@ -23,8 +24,16 @@ export function addChannel(type, name, setup) {
   let mixer = 1;
   while (mixer < p.mixer.inserts.length && p.channels.some((c) => c.mixer === insertIx(mixer))) mixer = mixer + 1;
   if (mixer >= p.mixer.inserts.length) mixer = 0;
+  p.channels.push({ id: id, name: name, color: paletteColor(p.channels.length), instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(mixer) });
+  return id;
+}
+
+/** Add a channel with a new instrument; returns its id. */
+/** function addChannel(type: String, name: String, setup: (Device) => Undefined) => String */
+export function addChannel(type, name, setup) {
+  let id = "";
   commit(() => {
-    p.channels.push({ id: id, name: name, color: paletteColor(p.channels.length), instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(mixer) });
+    id = pushChannel(type, name, setup);
   });
   selectChannel(id);
   return id;

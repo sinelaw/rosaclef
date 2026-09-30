@@ -71,7 +71,7 @@ with what the producer is doing. **Read it whenever they say "this", "here",
 "these notes", "the selected…", "what I just did", or refer to a part of the
 song without naming it.** Fields (full schema in `.rosaclef/context.schema.json`):
 
-- `focus` — panel they last touched: `playlist`, `channel rack`, `piano roll`, `mixer`, `browser`, `agent`.
+- `focus` — panel they last touched: `playlist`, `channel rack`, `piano roll`, `voice to notes`, `mixer`, `browser`, `agent`.
 - `transport` — `playing`, `mode` (`song` / `pattern`), playhead `positionBeats` and `position` (`bar:beat:tick`), `bpm`.
 - `selection` — the selected `pattern`, `channel`, mixer `insert` and playlist `track`; `notes`
   (selected notes of the selected pattern, each with its `index` in that pattern's `notes`) and

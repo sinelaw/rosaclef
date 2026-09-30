@@ -13,6 +13,7 @@ pub mod folder;
 pub mod guide;
 pub mod library;
 pub mod render;
+pub mod transcribe;
 
 pub use folder::Folder;
 pub use library::Library;

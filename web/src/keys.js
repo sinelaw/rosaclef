@@ -9,6 +9,7 @@ import { deleteSelectedClips } from "./ui/playlist.js";
 import { auto, closeMenu } from "./automation.js";
 import { openDock, paneShortcut } from "./ui/panes.js";
 import { pressKey, releaseKey } from "./ui/keyboard.js";
+import { voice, startTake, stopTake } from "./ui/voice.js";
 
 // Lower keyboard row plays C4..C5 on the selected channel.
 const PIANO = ["z", "s", "x", "d", "c", "v", "g", "b", "h", "n", "j", "m", ","];
@@ -53,6 +54,7 @@ export function installKeys() {
       togglePlay();
     } else if (k === "Escape") {
       if (auto.menu.open) closeMenu();
+      else if (voice.status === "recording") stopTake();
       else stop();
     } else if (k === "F6") {
       e.preventDefault();
@@ -60,13 +62,18 @@ export function installKeys() {
     } else if (k === "F7") {
       e.preventDefault();
       openDock("piano");
+    } else if (k === "F8") {
+      e.preventDefault();
+      openDock("voice");
     } else if (k === "F9") {
       e.preventDefault();
       openDock("mixer");
     } else if (k === "l" || k === "L") {
       setMode(state.mode === "pattern" ? "song" : "pattern");
     } else if (k === "r" || k === "R") {
-      record();
+      // In the Voice dock, R records a take to turn into notes.
+      if (state.dock === "voice") startTake();
+      else record();
     } else if (k === "Delete" || k === "Backspace") {
       if (state.dock === "piano" && state.selection.length > 0) deleteSelection();
       else deleteSelectedClips();

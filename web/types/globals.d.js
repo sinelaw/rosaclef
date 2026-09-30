@@ -46,6 +46,16 @@
 
 /** type Issue = { severity: String, path: String, message: String } */
 
+// ------------------------------------------------------------ voice to notes
+// A take analyzed by GET /api/transcribe (crates/studio/src/transcribe.rs):
+// seconds and fractional MIDI pitches, before quantizing (web/src/voice.js).
+
+/** type VoiceNote = { start: Number, end: Number, pitch: Number, velocity: Number } */
+/** type VoiceHit = { time: Number, strength: Number, velocity: Number, centroid: Number, low: Number, high: Number, tone: Number, kind: String } */
+/** type Take = { mode: String, duration: Number, step: Number, level: Number[], contour: Number[], notes: VoiceNote[], hits: VoiceHit[] } */
+/** A note the Voice panel places: `lane` is "melody" or a drum ("kick", "snare", "hat"); `raw` is where it was sung (beats); `src` indexes the take's notes or hits. */
+/** type Placed = { lane: String, pitch: Number, start: Number, length: Number, velocity: Number, raw: Number, src: Int } */
+
 // ---------------------------------------------------------------- catalog
 
 /** type ParamSpec = { key: String, label: String, min: Number, max: Number, default: Number, unit: String, curve: String, integer: Boolean, doc: String } */
