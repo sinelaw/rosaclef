@@ -119,6 +119,13 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
     return out;
   });
   assert(hidden.length === 0, `every Voice control is reachable on a phone (not: ${hidden.join(", ")})`);
+  assert(
+    await page.evaluate(() => {
+      const v = document.querySelector(".voice");
+      return v.scrollWidth <= v.clientWidth;
+    }),
+    "the Voice panel does not scroll sideways on a phone"
+  );
   await page.close();
 }
 

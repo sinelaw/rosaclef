@@ -1,13 +1,16 @@
 // The Voice dock (F8): sing, hum, whistle or beatbox into the microphone and
 // get notes. A melody take becomes a piano-roll pattern (quantized, snapped
 // to a scale); a beatbox take becomes a drum loop on kick, snare and hat
-// channels. The take is analyzed once by the server (GET /api/transcribe);
-// every setting here re-shapes the result instantly (../voice.js), and "Add
-// to song" makes it a pattern with a clip on the playlist (one undo step).
+// channels. It is a flow of three steps:
+//  1. Take — record, open or pick a recording; the server analyzes it
+//     (GET /api/transcribe);
+//  2. Shape — the settings re-shape the result instantly (../voice.js), as
+//     many rounds as it takes, heard with Play before anything changes;
+//  3. Add to song — a pattern and a playlist clip (one undo step).
 
-import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview, pickFiles, uploadFile } from "#platform";
-import { state, commit, invalidate, hint, selectPattern, currentChannel } from "../store.js";
-import { uniqueId, paletteColor, setOption, optionValue, snapDown } from "../model.js";
+import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview, pickFiles, uploadFile, audioPost } from "#platform";
+import { state, commit, invalidate, hint, selectPattern, currentChannel, currentPattern } from "../store.js";
+import { uniqueId, paletteColor, setOption, optionValue, snapDown, newDevice, cloneProject, projectJson } from "../model.js";
 import { startAudio, play, stop, setMode } from "../audio.js";
 import {
   SCALES,
@@ -64,7 +67,12 @@ export const voice = {
     { key: "hat", value: "" },
   ],
   repeat: 1,
+  /** The take is playing (Listen). */
   playing: false,
+  /** The shaped result is playing (Play), and what was sent for it. */
+  previewing: false,
+  previewKey: "",
+  previewAt: 0,
   settings /*: VoiceSettings */: {
     detail: 2,
     grid: 0.25,
@@ -114,6 +122,7 @@ export function voiceResult() {
 
 /** function analyze(path: String) => Undefined */
 function analyze(path) {
+  stopResult();
   const mode = voice.mode;
   voice.path = path;
   voice.status = "analyzing";
@@ -162,6 +171,7 @@ export async function startTake() {
   }
   stopPreview();
   voice.playing = false;
+  stopResult();
   await startAudio();
   const ok = await recStart().catch((e) => false);
   if (!ok) {
@@ -229,6 +239,28 @@ function pickTake(path) {
   voice.origin = 0;
   voice.at = -1;
   analyze(path);
+}
+
+/** Listen to the take (again: stop). */
+function listenTake() {
+  if (voice.playing) {
+    stopPreview();
+    voice.playing = false;
+    return undefined;
+  }
+  if (voice.path === "") return undefined;
+  stopResult();
+  voice.playing = true;
+  previewAudio(
+    `/files/${voice.path
+      .split("/")
+      .map((x) => encodeURIComponent(x))
+      .join("/")}`,
+    () => {
+      voice.playing = false;
+      invalidate();
+    }
+  );
 }
 
 /** Analyze the current take again (after a change of mind, or an update). */
@@ -325,19 +357,121 @@ function laneValue(lanes, lane) {
   return "";
 }
 
+/** The existing channel a lane goes to, "" when it needs a new one. */
+/** function existingLaneChannel(lane: String) => String */
+function existingLaneChannel(lane) {
+  if (lane === "melody") return melodyTarget();
+  const chosen = chosenDrum(lane);
+  if (chosen !== "" && channelExists(chosen)) return chosen;
+  return drumChannel(lane);
+}
+
 /** The channel for a lane, created if needed (call inside `commit`). */
 /** function laneChannel(lane: String) => String */
 function laneChannel(lane) {
-  if (lane === "melody") {
-    const id = melodyTarget();
-    return id !== "" ? id : pushChannel("synth", "Voice", (d) => undefined);
-  }
-  const chosen = chosenDrum(lane);
-  if (chosen !== "" && channelExists(chosen)) return chosen;
-  const found = drumChannel(lane);
-  if (found !== "") return found;
+  const id = existingLaneChannel(lane);
+  if (id !== "") return id;
+  if (lane === "melody") return pushChannel("synth", "Voice", (d) => undefined);
   const name = lane === "kick" ? "Kick" : lane === "snare" ? "Snare" : "Hat";
   return pushChannel("drum", name, (d) => setOption(d, "kind", lane));
+}
+
+// ------------------------------------------------------------------ listening
+
+/** The pattern the result plays as while shaping it. */
+const PREVIEW = "voice-preview";
+
+/** What the preview plays: the notes and where they go (to notice changes). */
+/** function previewKey(r: VoiceResult) => String */
+function previewKey(r) {
+  const lanes = DRUMS.concat(["melody"])
+    .map((l) => existingLaneChannel(l))
+    .join(",");
+  const notes = r.notes.map((n) => `${n.lane}:${n.pitch}:${n.start}:${n.length}:${n.velocity}`).join(" ");
+  return `${r.length}|${lanes}|${notes}`;
+}
+
+/** The song as it is plus the result as a pattern (and any channel it still
+ * needs), for the engine to play; the project itself is left alone. */
+/** function previewJson(r: VoiceResult) => String */
+function previewJson(r) {
+  const p = cloneProject(state.project);
+  const drums = voice.take.mode === "drums";
+  /** const lanes: KS[] */
+  const lanes = [];
+  for (const lane of drums ? DRUMS : ["melody"]) {
+    let id = existingLaneChannel(lane);
+    if (id === "") {
+      id = `${PREVIEW}-${lane}`;
+      const dev = newDevice(drums ? "drum" : "synth");
+      if (drums) setOption(dev, "kind", lane);
+      p.channels.push({ id: id, name: id, color: "#d4af37", instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(0) });
+    }
+    lanes.push({ key: lane, value: id });
+  }
+  p.patterns.push({
+    id: PREVIEW,
+    name: "Voice preview",
+    color: "#d4af37",
+    length: r.length,
+    notes: r.notes.map((n) => {
+      return { channel: laneValue(lanes, n.lane), pitch: n.pitch, start: n.start, length: n.length, velocity: n.velocity };
+    }),
+  });
+  return projectJson(p);
+}
+
+/** Send the result to the engine (again, when the settings changed it). */
+/** function sendPreview(r: VoiceResult) => Undefined */
+function sendPreview(r) {
+  const key = previewKey(r);
+  if (key === voice.previewKey) return undefined;
+  voice.previewKey = key;
+  audioPost({ t: "project", json: previewJson(r) });
+}
+
+/** Play the shaped result, looping, in the browser engine. */
+export async function playResult() {
+  const r = voiceResult();
+  if (r.notes.length === 0) return false;
+  stopPreview();
+  voice.playing = false;
+  await startAudio();
+  voice.previewKey = "";
+  sendPreview(r);
+  audioPost({ t: "mode", pattern: PREVIEW });
+  audioPost({ t: "seek", beat: 0 });
+  audioPost({ t: "play" });
+  voice.previewing = true;
+  voice.previewAt = now();
+  previewTick();
+  invalidate();
+  return true;
+}
+
+/** Stop the result and give the engine the song back. */
+export function stopResult() {
+  if (!voice.previewing) return undefined;
+  voice.previewing = false;
+  voice.previewKey = "";
+  audioPost({ t: "stop" });
+  audioPost({ t: "project", json: projectJson(state.project) });
+  const pat = currentPattern();
+  audioPost({ t: "mode", pattern: state.mode === "pattern" && pat ? pat.id : "" });
+  invalidate();
+}
+
+/** While the result plays: follow the settings, and notice the transport
+ * stopping it. */
+function previewTick() {
+  if (!voice.previewing) return undefined;
+  if (state.output === "browser" && !state.playing && now() - voice.previewAt > 800) {
+    stopResult();
+    return undefined;
+  }
+  sendPreview(voiceResult());
+  invalidate();
+  setTimeout(previewTick, 120);
 }
 
 // ------------------------------------------------------------------ insert
@@ -359,6 +493,7 @@ function freeTrack(lo, hi, name) {
 
 /** Add the result as a new pattern with a clip on the playlist. */
 export function addToSong() {
+  stopResult();
   const r = voiceResult();
   if (r.notes.length === 0) {
     toast("Nothing to add", voice.path === "" ? "Record a take first." : "No notes pass the current settings.", "error");
@@ -485,16 +620,18 @@ function hzText(v) {
 const GRIDS = [0, 0.125, 0.25, 0.5, 1, 1 / 6, 1 / 3];
 const GRID_LABELS = ["Off", "1/32", "1/16", "1/8", "Beat", "1/16 T", "1/8 T"];
 
+/** The settings of step 2, in three groups: what is detected, when the
+ * notes fall, and (melody) which notes they are. */
 /** function settingsView(b: Builder) => Undefined */
 function settingsView(b) {
   const s = voice.settings;
   const drums = voice.mode === "drums";
   b.open("div", "set", "voice-settings");
 
+  b.open("div", "detect", "voice-group");
+  b.leaf("div", "t", "voice-group-title", "Detection");
+  b.open("div", "row", "voice-row");
   if (!drums) {
-    b.open("div", "notes", "voice-group");
-    b.leaf("div", "t", "voice-group-title", "Notes");
-    b.open("div", "row", "voice-row");
     const last = DETAILS.length - 1;
     dial(
       b,
@@ -507,12 +644,28 @@ function settingsView(b) {
         s.detail = Math.round(v * last);
       }
     );
-    b.close();
-    b.close();
+    toggle(b, "dyn", "Dynamics", s.dynamics, "Velocities follow how loud each note was sung", (v) => {
+      s.dynamics = v;
+    });
+  } else {
+    dial(b, "sens", "Sensitivity", `${Math.round(s.sensitivity * 100)}%`, s.sensitivity, "Higher keeps quieter hits (ghost notes)", (v) => {
+      s.sensitivity = Math.round(v * 50) / 50;
+    });
+    dial(b, "kick", "Kick below", hzText(s.kickBelow), hzUnit(s.kickBelow, 200, 3000), "Hits darker than this are kicks", (v) => {
+      s.kickBelow = Math.min(unitHz(v, 200, 3000), s.hatAbove - 100);
+    });
+    dial(b, "hat", "Hat above", hzText(s.hatAbove), hzUnit(s.hatAbove, 1500, 12000), "Hits brighter than this are hats (in between: snares)", (v) => {
+      s.hatAbove = Math.max(unitHz(v, 1500, 12000), s.kickBelow + 100);
+    });
+    toggle(b, "dyn", "Accents", s.dynamics, "Velocities follow how hard each hit was", (v) => {
+      s.dynamics = v;
+    });
   }
+  b.close();
+  b.close();
 
   b.open("div", "q", "voice-group");
-  b.leaf("div", "t", "voice-group-title", "Quantize");
+  b.leaf("div", "t", "voice-group-title", "Timing");
   b.open("div", "row", "voice-row");
   choice(
     b,
@@ -555,7 +708,7 @@ function settingsView(b) {
   if (!drums) {
     const k = resolveKey(voice.take, s);
     b.open("div", "tune", "voice-group");
-    b.leaf("div", "t", "voice-group-title", "Auto-tune");
+    b.leaf("div", "t", "voice-group-title", "Pitch");
     b.open("div", "row", "voice-row");
     /** const keys: String[] */
     const keys = ["-1"];
@@ -575,34 +728,13 @@ function settingsView(b) {
       s.scale,
       SCALES.map((x) => x.id),
       SCALES.map((x) => x.label),
-      "Scale the notes are snapped to (Chromatic: the nearest semitone)",
+      "Scale the notes are snapped to (auto-tune; Chromatic: the nearest semitone)",
       (v) => {
         s.scale = v;
       }
     );
     choice(b, "oct", "Octave", String(s.octave), ["-2", "-1", "0", "1", "2"], ["−2", "−1", "0", "+1", "+2"], "Move the notes by octaves", (v) => {
       s.octave = Math.round(Number(v));
-    });
-    toggle(b, "dyn", "Dynamics", s.dynamics, "Velocities follow how loud each note was sung", (v) => {
-      s.dynamics = v;
-    });
-    b.close();
-    b.close();
-  } else {
-    b.open("div", "sort", "voice-group");
-    b.leaf("div", "t", "voice-group-title", "Hits");
-    b.open("div", "row", "voice-row");
-    dial(b, "sens", "Sensitivity", `${Math.round(s.sensitivity * 100)}%`, s.sensitivity, "Higher keeps quieter hits (ghost notes)", (v) => {
-      s.sensitivity = Math.round(v * 50) / 50;
-    });
-    dial(b, "kick", "Kick below", hzText(s.kickBelow), hzUnit(s.kickBelow, 200, 3000), "Hits darker than this are kicks", (v) => {
-      s.kickBelow = Math.min(unitHz(v, 200, 3000), s.hatAbove - 100);
-    });
-    dial(b, "hat", "Hat above", hzText(s.hatAbove), hzUnit(s.hatAbove, 1500, 12000), "Hits brighter than this are hats (in between: snares)", (v) => {
-      s.hatAbove = Math.max(unitHz(v, 1500, 12000), s.kickBelow + 100);
-    });
-    toggle(b, "dyn", "Accents", s.dynamics, "Velocities follow how hard each hit was", (v) => {
-      s.dynamics = v;
     });
     b.close();
     b.close();
@@ -895,6 +1027,12 @@ function previewView(b, r) {
     b.canvas("c", voice.take.mode === "drums" ? "voice-canvas drums" : "voice-canvas", (g, w, h) => {
       if (voice.take.mode === "drums") paintDrums(g, w, h, r);
       else paintMelody(g, w, h, r);
+      // Where the result is while it plays.
+      if (voice.previewing && state.playing && r.length > 0) {
+        const x = Math.round(((state.position % r.length) / r.length) * w) + 0.5;
+        g.fillStyle = "rgba(246, 238, 221, 0.9)";
+        g.fillRect(x, 0, 1.5, h);
+      }
     });
     b.on("pointerdown", (e) => clickHit(e));
     if (voice.take.mode === "drums") b.on("pointerenter", (e) => hint("Click a hit to make it the next drum (kick → snare → hat)"));
@@ -938,14 +1076,25 @@ function summary(r) {
   return `${r.notes.length} notes · ${scale} · ${barText}`;
 }
 
-/** function voicePanel(b: Builder) => Undefined */
-export function voicePanel(b) {
-  const r = voiceResult();
-  const rec = voice.status === "recording";
-  b.open("div", "voice", `voice ${voice.mode}`);
-  b.open("div", "grid", "voice-grid");
+/** A step's title bar: its number, name and purpose. Leaves the bar open
+ * for buttons; the caller closes it. */
+/** function stepHead(b: Builder, n: String, title: String, sub: String) => Undefined */
+function stepHead(b, n, title, sub) {
+  b.open("div", "head", "voice-step-head");
+  b.leaf("span", "n", "voice-step-num", n);
+  b.open("div", "t", "voice-step-titles");
+  b.leaf("div", "title", "voice-step-title", title);
+  b.leaf("div", "sub", "voice-step-sub", sub);
+  b.close();
+}
 
-  b.open("div", "side", "voice-side");
+/** Step 1: what to turn into notes — a new take or a recording. */
+/** function takeStep(b: Builder) => Undefined */
+function takeStep(b) {
+  const rec = voice.status === "recording";
+  b.open("section", "take", "voice-step voice-take");
+  stepHead(b, "1", "Take", "Record, open or pick a recording");
+  b.close();
   b.open("div", "mode", "seg");
   button(b, "melody", voice.mode === "melody" ? "small on" : "small", "Melody", "Sing, hum or whistle: notes for the piano roll", () => setVoiceMode("melody"));
   button(b, "drums", voice.mode === "drums" ? "small on" : "small", "Beatbox", "Vocal percussion: a kick / snare / hat loop", () => setVoiceMode("drums"));
@@ -996,47 +1145,71 @@ export function voicePanel(b) {
   b.open("div", "acts", "voice-actions");
   button(b, "open", "small", "Open a recording…", "Analyze an audio file from this device (it is added to the project's samples)", () => openRecording());
   if (voice.path !== "") {
-    button(b, "again", "small", "Analyze again", "Run the analysis on this take again (in the current mode)", () => analyzeAgain());
-    button(b, "listen", voice.playing ? "small on" : "small", voice.playing ? "Stop" : "Listen", "Play the recording", () => {
-      if (voice.playing) {
-        stopPreview();
-        voice.playing = false;
-        return undefined;
-      }
-      voice.playing = true;
-      previewAudio(
-        `/files/${voice.path
-          .split("/")
-          .map((x) => encodeURIComponent(x))
-          .join("/")}`,
-        () => {
-          voice.playing = false;
-          invalidate();
-        }
-      );
-    });
+    button(b, "listen", voice.playing ? "small on" : "small", voice.playing ? "Stop" : "Listen", "Play the recording", () => listenTake());
   }
   b.close();
   b.close();
+}
 
-  settingsView(b);
-
-  b.open("div", "main", "voice-main");
+/** Step 2: shape the result — the preview and the settings, as many rounds
+ * as it takes (the settings apply instantly; Analyze again re-reads the take). */
+/** function shapeStep(b: Builder, r: VoiceResult, ready: Boolean) => Undefined */
+function shapeStep(b, r, ready) {
+  b.open("section", "shape", ready ? "voice-step voice-shape" : "voice-step voice-shape waiting");
+  stepHead(b, "2", "Shape", ready ? "Adjust and listen until it sounds right — changes apply at once" : "Waiting for a take");
+  b.open("div", "acts", "voice-actions");
+  if (ready) {
+    iconButton(
+      b,
+      "play",
+      voice.previewing ? "small on" : "small",
+      voice.previewing ? "stop" : "play",
+      voice.previewing ? "Stop the result" : "Play the result, looping, on its channels (the song is not changed; settings apply as it plays)",
+      () => {
+        if (voice.previewing) stopResult();
+        else playResult();
+      }
+    );
+    button(b, "take", voice.playing ? "small on" : "small", voice.playing ? "Stop" : "Take", "Listen to the recording, to compare", () => listenTake());
+  }
+  if (voice.path !== "") button(b, "again", "small", "Analyze again", "Run the analysis on this take again (in the current mode)", () => analyzeAgain());
+  b.close();
+  b.close();
   previewView(b, r);
-  b.open("div", "foot", "voice-foot");
+  settingsView(b);
+  b.close();
+}
+
+/** Step 3: put the result in the song. */
+/** function addStep(b: Builder, r: VoiceResult, ready: Boolean) => Undefined */
+function addStep(b, r, ready) {
+  b.open("section", "add", ready ? "voice-step voice-add" : "voice-step voice-add waiting");
+  stepHead(b, "3", "Add to song", "A new pattern and a clip on the playlist");
+  b.close();
   b.leaf("div", "sum", "voice-summary", summary(r));
   targetView(b);
   button(
     b,
     "add",
-    r.notes.length > 0 ? "gold" : "",
+    r.notes.length > 0 ? "gold voice-addbtn" : "voice-addbtn",
     "Add to song",
     "A new pattern with these notes, placed on the playlist at the playhead (Ctrl+Z undoes it)",
     () => addToSong()
   );
   b.close();
-  b.close();
+}
 
+/** The Voice panel: take → shape → add, left to right when there is room,
+ * top to bottom when there is not (voice.css). */
+/** function voicePanel(b: Builder) => Undefined */
+export function voicePanel(b) {
+  const r = voiceResult();
+  const ready = voice.take.mode !== "" && voice.status === "idle";
+  b.open("div", "voice", `voice ${voice.mode}`);
+  b.open("div", "flow", "voice-flow");
+  takeStep(b);
+  shapeStep(b, r, ready);
+  addStep(b, r, ready && r.notes.length > 0);
   b.close();
   b.close();
 }
