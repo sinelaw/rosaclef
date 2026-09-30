@@ -202,9 +202,9 @@ export function melodyNotes(take, s, bpm, origin, aligned) {
     const pitch = Math.max(0, Math.min(127, snapPitch(n.pitch + 12 * s.octave, k.key, steps)));
     const note = { lane: "melody", pitch: pitch, start: round4(start), length: round4(end - start), velocity: s.dynamics ? n.velocity : 0.8, raw: raw, src: i };
     // Two notes on one grid slot: the longer one wins.
-    const last = out.length > 0 ? out[out.length - 1] : undefined;
-    if (last && Math.abs(last.start - note.start) < 1e-6) {
-      if (note.length > last.length) out[out.length - 1] = note;
+    const at = out.length - 1;
+    if (at >= 0 && Math.abs(out[at].start - note.start) < 1e-6) {
+      if (note.length > out[at].length) out[at] = note;
       continue;
     }
     out.push(note);

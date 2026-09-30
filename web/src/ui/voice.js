@@ -6,7 +6,7 @@
 // to song" makes it a pattern with a clip on the playlist (one undo step).
 
 import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview } from "#platform";
-import { state, commit, invalidate, hint, selectPattern } from "../store.js";
+import { state, commit, invalidate, hint, selectPattern, currentChannel } from "../store.js";
 import { uniqueId, paletteColor, setOption, optionValue, snapDown } from "../model.js";
 import { startAudio, play, stop, setMode } from "../audio.js";
 import {
@@ -173,9 +173,9 @@ export async function startTake() {
   if (voice.playAlong !== "off") {
     if (state.playing) stop();
     setMode(voice.playAlong);
-    const from = state.position;
-    voice.origin = from - snapDown(from, bpb);
-    if (voice.playAlong === "song") voice.at = snapDown(from, bpb);
+    const pos = state.position;
+    voice.origin = pos - snapDown(pos, bpb);
+    if (voice.playAlong === "song") voice.at = snapDown(pos, bpb);
     play();
   }
   voice.status = "recording";
@@ -272,8 +272,23 @@ function melodyTarget() {
   const m = voice.melodyChannel;
   if (m === "new") return "";
   if (m !== "auto") return channelExists(m) ? m : "";
-  const cur = state.project.channels.find((c) => c.id === state.channel);
-  return cur && cur.instrument.type !== "drum" ? cur.id : "";
+  return melodicSelection();
+}
+
+/** The selected channel when it is not a drum, else "". */
+/** function melodicSelection() => String */
+function melodicSelection() {
+  const cur = currentChannel();
+  if (!cur) return "";
+  return cur.instrument.type === "drum" ? "" : cur.id;
+}
+
+/** function laneValue(lanes: KS[], lane: String) => String */
+function laneValue(lanes, lane) {
+  for (const l of lanes) {
+    if (l.key === lane) return l.value;
+  }
+  return "";
 }
 
 /** The channel for a lane, created if needed (call inside `commit`). */
@@ -295,10 +310,10 @@ function laneChannel(lane) {
 
 /** A playlist track with room between two beats: the selected one, else the
  * first free one, else a new track (call inside `commit`). */
-/** function freeTrack(from: Number, to: Number, name: String) => TrackIx */
-function freeTrack(from, to, name) {
+/** function freeTrack(lo: Number, hi: Number, name: String) => TrackIx */
+function freeTrack(lo, hi, name) {
   const p = state.project;
-  const busy = (i) => p.playlist.clips.some((c) => trackIndex(c.track) === i && c.start < to - 1e-6 && c.start + c.length > from + 1e-6);
+  const busy = (i) => p.playlist.clips.some((c) => trackIndex(c.track) === i && c.start < hi - 1e-6 && c.start + c.length > lo + 1e-6);
   const sel = trackIndex(state.track);
   if (sel < p.playlist.tracks.length && !busy(sel)) return state.track;
   for (let i = 0; i < p.playlist.tracks.length; i++) {
@@ -341,8 +356,7 @@ export function addToSong() {
       color: paletteColor(p.patterns.length + 2),
       length: r.length,
       notes: r.notes.map((n) => {
-        const lane = lanes.find((l) => l.key === n.lane);
-        return { channel: lane ? lane.value : "", pitch: n.pitch, start: n.start, length: n.length, velocity: Math.round(n.velocity * 1000) / 1000 };
+        return { channel: laneValue(lanes, n.lane), pitch: n.pitch, start: n.start, length: n.length, velocity: Math.round(n.velocity * 1000) / 1000 };
       }),
     });
     start = voice.at >= 0 ? voice.at : snapDown(state.position, bpb);
@@ -551,9 +565,9 @@ function targetView(b) {
   if (!drums) {
     /** const ids: String[] */
     const ids = ["auto", "new"];
-    const cur = chs.find((c) => c.id === state.channel);
+    const sel = melodicSelection();
     /** const names: String[] */
-    const names = [cur && cur.instrument.type !== "drum" ? `Selected (${cur.name})` : "Selected (new channel)", "New channel"];
+    const names = [sel !== "" ? `Selected (${channelName(sel)})` : "Selected (new channel)", "New channel"];
     for (const c of chs) {
       if (c.instrument.type === "drum") continue;
       ids.push(c.id);
