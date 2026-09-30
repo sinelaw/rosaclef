@@ -1,0 +1,12 @@
+[package]
+name = "rosaclef-import"
+description = "Import LMMS projects (.mmp/.mmpz) and Standard MIDI Files into Rosaclef projects"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rosaclef-core.workspace = true
+anyhow = "1"
+roxmltree = "0.21"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

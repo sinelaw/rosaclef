@@ -1,0 +1,6 @@
+{
+  "paths": {
+    "#platform": ["./types/platform.d.js"],
+    "#brands": ["./types/brands.d.js"]
+  }
+}

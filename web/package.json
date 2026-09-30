@@ -1,0 +1,14 @@
+{
+  "name": "rosaclef-web",
+  "private": true,
+  "type": "module",
+  "description": "Rosaclef studio UI: plain ES modules type-checked with inty (no build step)",
+  "imports": {
+    "#brands": "./lib/brands.js",
+    "#platform": "./lib/platform.js"
+  },
+  "scripts": {
+    "check": "./check.sh",
+    "test": "node test/tree.test.js"
+  }
+}

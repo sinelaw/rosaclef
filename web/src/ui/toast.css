@@ -1,0 +1,10 @@
+/* Toast notifications (toast.js). */
+
+.toasts { position: fixed; right: calc(var(--agent-w) + 16px); bottom: 38px; display: flex; flex-direction: column; gap: 8px; z-index: 50; pointer-events: none; }
+.toast { pointer-events: auto; min-width: 260px; max-width: 380px; padding: 10px 14px; border-radius: 12px; background: linear-gradient(180deg, #221d27, #141117); border: 1px solid var(--line-3); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), var(--glow); cursor: pointer; animation: rise 0.25s ease-out; }
+.toast-title { font: 600 16px/1.2 var(--serif); color: var(--gold-hi); }
+.toast-body { margin-top: 3px; color: var(--muted); white-space: pre-wrap; font-size: 11px; font-family: var(--mono); }
+.toast-error { border-color: rgba(224, 112, 126, 0.6); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 16px rgba(224, 112, 126, 0.3); }
+.toast-error .toast-title { color: #f2a0aa; }
+.toast-agent .toast-title::before { content: "✦ "; }
+@keyframes rise { from { transform: translateY(8px); opacity: 0; } }

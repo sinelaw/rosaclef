@@ -1,0 +1,10 @@
+[package]
+name = "rosaclef-clap-testplug"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+clap-sys = "0.5"

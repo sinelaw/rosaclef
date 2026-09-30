@@ -1,0 +1,9 @@
+[package]
+name = "rosaclef-engine"
+description = "Portable Rosaclef audio engine (native and WebAssembly)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rosaclef-core.workspace = true
