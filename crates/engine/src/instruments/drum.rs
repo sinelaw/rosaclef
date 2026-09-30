@@ -38,6 +38,9 @@ impl Kind {
 
 const HAT_RATIOS: [f32; 6] = [205.3, 304.4, 369.6, 522.7, 540.0, 800.0];
 const MAX_DRUM_VOICES: usize = 12;
+/// Onset ramp and end fade of every hit, in seconds.
+const ONSET: f32 = 0.0004;
+const FADE: f32 = 0.005;
 
 #[derive(Clone, Default)]
 struct Voice {
@@ -186,17 +189,21 @@ impl Instrument for Drum {
                         v.phase[0] = (v.phase[0] + f * dt).fract();
                         v.phase[1] = (v.phase[1] + f * 1.78 * dt).fract();
                         let body = ((v.phase[0] * TAU).sin() + 0.5 * (v.phase[1] * TAU).sin()) * (-t / (0.08 * decay)).exp();
-                        let hiss = v.f1.process(noise, FilterMode::Highpass);
-                        let hiss = v.f2.process(hiss, FilterMode::Lowpass) * (-t / (0.17 * decay)).exp();
-                        let crack = noise * (-t / 0.003).exp() * snap;
-                        body * (0.9 - tone * 0.4) + hiss * (0.55 + tone * 0.6) + crack * 0.4
+                        // One band-limited noise source feeds both the sustained hiss and the
+                        // stick crack (raw white noise here sounded fizzy and harsh).
+                        let band = v.f2.process(v.f1.process(noise, FilterMode::Highpass), FilterMode::Lowpass);
+                        let hiss = band * (-t / (0.17 * decay)).exp();
+                        let crack = band * (-t / 0.003).exp() * snap;
+                        body * (0.9 - tone * 0.4) + hiss * (0.55 + tone * 0.6) + crack * 0.6
                     }
                     Kind::Clap => {
                         let mut env = 0.0;
                         for k in 0..3 {
                             let start = k as f32 * (0.009 + 0.004 * (1.0 - snap));
                             if t >= start {
-                                env += (-(t - start) / 0.0045).exp();
+                                // Each burst re-attacks over 0.3 ms rather than in one sample.
+                                let u = t - start;
+                                env += (u * (1.0 / 0.0003)).min(1.0) * (-u / 0.0045).exp();
                             }
                         }
                         let tail_start = 0.028;
@@ -243,6 +250,10 @@ impl Instrument for Drum {
                         v.f1.process(noise, FilterMode::Highpass) * env * 0.9
                     }
                 };
+                // A 0.4 ms onset and a 5 ms fade before the voice stops: no step at
+                // either end (the first sample used to jump straight to full level).
+                let edge = (t * (1.0 / ONSET)).min(1.0) * ((v.len - t) * (1.0 / FADE)).clamp(0.0, 1.0);
+                let s = s * edge;
                 let out = if drive > 0.0 { (s * drive_gain).tanh() * drive_norm } else { s } * amp;
                 left[i] += out;
                 right[i] += out;

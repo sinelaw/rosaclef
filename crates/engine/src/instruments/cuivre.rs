@@ -116,6 +116,9 @@ struct Voice {
     active: bool,
     key: u8,
     vel: f32,
+    /// Velocity gain as applied, gliding to (0.35 + 0.65 * vel) so that a
+    /// retrigger at a new velocity doesn't step the output mid-waveform.
+    vgain: f32,
     age: u64,
     /// Current (gliding) pitch in semitones and its target.
     note: f32,
@@ -156,6 +159,7 @@ impl Voice {
             active: false,
             key: 0,
             vel: 0.0,
+            vgain: 0.0,
             age: 0,
             note: 60.0,
             target: 60.0,
@@ -194,6 +198,7 @@ impl Voice {
         self.ph2 = self.rng.unit();
         self.phs = 0.0;
         self.fresh = true;
+        self.vgain = -1.0;
         self.env.level = 0.0;
         self.fenv.level = 0.0;
         // Start the drift somewhere on its path rather than always at zero.
@@ -518,10 +523,16 @@ impl Instrument for Cuivre {
             mix1: 1.0 - 0.25 * p.mix2,
         };
         let mono = p.voicing != Voicing::Poly;
-        let out_gain = |v: &Voice| {
-            let amp = p.gain * OUT_SCALE * (0.35 + 0.65 * v.vel);
+        // Velocity gain glides over ~3 ms (see Voice::vgain).
+        let vg_c = settle_coef(0.003, sr);
+        let out_gain = |v: &mut Voice| {
+            let target = 0.35 + 0.65 * v.vel;
+            if v.vgain < 0.0 {
+                v.vgain = target;
+            }
+            let amp = p.gain * OUT_SCALE;
             let (pl, pr) = if mono { (1.0, 1.0) } else { pan_gains(v.tol[3] * 0.3) };
-            (amp * pl, amp * pr)
+            (target, amp * pl, amp * pr)
         };
         // Voices are rendered in pairs: their filters are independent serial
         // chains, so the CPU can overlap them.
@@ -537,11 +548,13 @@ impl Instrument for Cuivre {
         while j + 1 < count {
             let (lo, hi) = self.voices.split_at_mut(active[j + 1]);
             let (a, b) = (&mut lo[active[j]], &mut hi[0]);
-            let (al, ar) = out_gain(a);
-            let (bl, br) = out_gain(b);
+            let (ta, al, ar) = out_gain(a);
+            let (tb, bl, br) = out_gain(b);
             for i in 0..n {
-                let ya = tick(a, &p, &k);
-                let yb = tick(b, &p, &k);
+                a.vgain = ta + (a.vgain - ta) * vg_c;
+                b.vgain = tb + (b.vgain - tb) * vg_c;
+                let ya = tick(a, &p, &k) * a.vgain;
+                let yb = tick(b, &p, &k) * b.vgain;
                 left[i] += ya * al + yb * bl;
                 right[i] += ya * ar + yb * br;
             }
@@ -549,9 +562,10 @@ impl Instrument for Cuivre {
         }
         if j < count {
             let v = &mut self.voices[active[j]];
-            let (gl, gr) = out_gain(v);
+            let (tv, gl, gr) = out_gain(v);
             for i in 0..n {
-                let y = tick(v, &p, &k);
+                v.vgain = tv + (v.vgain - tv) * vg_c;
+                let y = tick(v, &p, &k) * v.vgain;
                 left[i] += y * gl;
                 right[i] += y * gr;
             }
