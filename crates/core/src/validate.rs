@@ -59,7 +59,10 @@ pub fn parse_and_validate(text: &str) -> Checked {
     match serde_path_to_error::deserialize::<_, Project>(de) {
         Ok(project) => {
             let issues = validate(&project);
-            Checked { project: Some(project), issues }
+            Checked {
+                project: Some(project),
+                issues,
+            }
         }
         Err(err) => {
             let path = err.path().to_string();
@@ -67,7 +70,11 @@ pub fn parse_and_validate(text: &str) -> Checked {
             let inner = err.into_inner();
             Checked {
                 project: None,
-                issues: vec![Issue { severity: Severity::Error, path, message: inner.to_string() }],
+                issues: vec![Issue {
+                    severity: Severity::Error,
+                    path,
+                    message: inner.to_string(),
+                }],
             }
         }
     }
@@ -78,14 +85,21 @@ pub fn value_and_validate(value: serde_json::Value) -> Checked {
     match serde_path_to_error::deserialize::<_, Project>(value) {
         Ok(project) => {
             let issues = validate(&project);
-            Checked { project: Some(project), issues }
+            Checked {
+                project: Some(project),
+                issues,
+            }
         }
         Err(err) => {
             let path = err.path().to_string();
             let path = if path == "." { String::new() } else { path };
             Checked {
                 project: None,
-                issues: vec![Issue { severity: Severity::Error, path, message: err.into_inner().to_string() }],
+                issues: vec![Issue {
+                    severity: Severity::Error,
+                    path,
+                    message: err.into_inner().to_string(),
+                }],
             }
         }
     }
@@ -97,20 +111,35 @@ struct V {
 
 impl V {
     fn err(&mut self, path: impl Into<String>, message: impl Into<String>) {
-        self.issues.push(Issue { severity: Severity::Error, path: path.into(), message: message.into() });
+        self.issues.push(Issue {
+            severity: Severity::Error,
+            path: path.into(),
+            message: message.into(),
+        });
     }
     fn warn(&mut self, path: impl Into<String>, message: impl Into<String>) {
-        self.issues.push(Issue { severity: Severity::Warning, path: path.into(), message: message.into() });
+        self.issues.push(Issue {
+            severity: Severity::Warning,
+            path: path.into(),
+            message: message.into(),
+        });
     }
     fn range(&mut self, path: &str, v: f64, min: f64, max: f64) {
         if !v.is_finite() || v < min || v > max {
-            self.err(path, format!("value {v} is outside the allowed range {min}..{max}"));
+            self.err(
+                path,
+                format!("value {v} is outside the allowed range {min}..{max}"),
+            );
         }
     }
 }
 
 fn valid_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
 fn valid_color(c: &str) -> bool {
@@ -122,7 +151,10 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     let mut v = V { issues: vec![] };
 
     if p.format != FORMAT {
-        v.err("format", format!("unsupported format {:?}, expected {:?}", p.format, FORMAT));
+        v.err(
+            "format",
+            format!("unsupported format {:?}, expected {:?}", p.format, FORMAT),
+        );
     }
     v.range("transport.bpm", p.transport.bpm, 20.0, 999.0);
     if p.transport.beats_per_bar == 0 || p.transport.beats_per_bar > 32 {
@@ -132,7 +164,10 @@ pub fn validate(p: &Project) -> Vec<Issue> {
 
     // Mixer.
     if p.mixer.inserts.is_empty() {
-        v.err("mixer.inserts", "there must be at least one insert (index 0 is the master)");
+        v.err(
+            "mixer.inserts",
+            "there must be at least one insert (index 0 is the master)",
+        );
     }
     if p.mixer.inserts.len() > 128 {
         v.err("mixer.inserts", "at most 128 inserts are supported");
@@ -142,7 +177,12 @@ pub fn validate(p: &Project) -> Vec<Issue> {
         v.range(&format!("{path}.volume"), ins.volume, 0.0, 2.0);
         v.range(&format!("{path}.pan"), ins.pan, -1.0, 1.0);
         for (j, fx) in ins.effects.iter().enumerate() {
-            check_device(&mut v, &format!("{path}.effects[{j}]"), fx, Category::Effect);
+            check_device(
+                &mut v,
+                &format!("{path}.effects[{j}]"),
+                fx,
+                Category::Effect,
+            );
         }
     }
     let n_inserts = p.mixer.inserts.len();
@@ -152,10 +192,19 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     for (i, ch) in p.channels.iter().enumerate() {
         let path = format!("channels[{i}]");
         if !valid_id(&ch.id) {
-            v.err(format!("{path}.id"), format!("invalid id {:?}: use 1-64 characters from [A-Za-z0-9_.-]", ch.id));
+            v.err(
+                format!("{path}.id"),
+                format!(
+                    "invalid id {:?}: use 1-64 characters from [A-Za-z0-9_.-]",
+                    ch.id
+                ),
+            );
         }
         if !channel_ids.insert(ch.id.as_str()) {
-            v.err(format!("{path}.id"), format!("duplicate channel id {:?}", ch.id));
+            v.err(
+                format!("{path}.id"),
+                format!("duplicate channel id {:?}", ch.id),
+            );
         }
         if !valid_color(&ch.color) {
             v.err(format!("{path}.color"), "colors are #rrggbb hex strings");
@@ -163,9 +212,20 @@ pub fn validate(p: &Project) -> Vec<Issue> {
         v.range(&format!("{path}.volume"), ch.volume, 0.0, 1.5);
         v.range(&format!("{path}.pan"), ch.pan, -1.0, 1.0);
         if ch.mixer.index() >= n_inserts {
-            v.err(format!("{path}.mixer"), format!("mixer insert {} does not exist (there are {n_inserts})", ch.mixer));
+            v.err(
+                format!("{path}.mixer"),
+                format!(
+                    "mixer insert {} does not exist (there are {n_inserts})",
+                    ch.mixer
+                ),
+            );
         }
-        check_device(&mut v, &format!("{path}.instrument"), &ch.instrument, Category::Instrument);
+        check_device(
+            &mut v,
+            &format!("{path}.instrument"),
+            &ch.instrument,
+            Category::Instrument,
+        );
     }
 
     // Patterns.
@@ -173,25 +233,43 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     for (i, pat) in p.patterns.iter().enumerate() {
         let path = format!("patterns[{i}]");
         if !valid_id(&pat.id) {
-            v.err(format!("{path}.id"), format!("invalid id {:?}: use 1-64 characters from [A-Za-z0-9_.-]", pat.id));
+            v.err(
+                format!("{path}.id"),
+                format!(
+                    "invalid id {:?}: use 1-64 characters from [A-Za-z0-9_.-]",
+                    pat.id
+                ),
+            );
         }
         if !pattern_ids.insert(pat.id.as_str()) {
-            v.err(format!("{path}.id"), format!("duplicate pattern id {:?}", pat.id));
+            v.err(
+                format!("{path}.id"),
+                format!("duplicate pattern id {:?}", pat.id),
+            );
         }
         if !valid_color(&pat.color) {
             v.err(format!("{path}.color"), "colors are #rrggbb hex strings");
         }
         if !(pat.length > 0.0 && pat.length <= 4096.0) {
-            v.err(format!("{path}.length"), "pattern length must be in (0, 4096] beats");
+            v.err(
+                format!("{path}.length"),
+                "pattern length must be in (0, 4096] beats",
+            );
         }
         let mut beyond = 0;
         for (j, n) in pat.notes.iter().enumerate() {
             let np = format!("{path}.notes[{j}]");
             if !channel_ids.contains(n.channel.as_str()) {
-                v.err(format!("{np}.channel"), format!("unknown channel {:?}", n.channel));
+                v.err(
+                    format!("{np}.channel"),
+                    format!("unknown channel {:?}", n.channel),
+                );
             }
             if !(0..=127).contains(&n.pitch) {
-                v.err(format!("{np}.pitch"), "pitch must be a MIDI note number 0..127");
+                v.err(
+                    format!("{np}.pitch"),
+                    "pitch must be a MIDI note number 0..127",
+                );
             }
             if !(n.start >= 0.0 && n.start.is_finite()) {
                 v.err(format!("{np}.start"), "start must be >= 0");
@@ -205,7 +283,13 @@ pub fn validate(p: &Project) -> Vec<Issue> {
             }
         }
         if beyond > 0 {
-            v.warn(format!("{path}.notes"), format!("{beyond} note(s) start after the pattern length ({}) and will never play", pat.length));
+            v.warn(
+                format!("{path}.notes"),
+                format!(
+                    "{beyond} note(s) start after the pattern length ({}) and will never play",
+                    pat.length
+                ),
+            );
         }
     }
 
@@ -216,19 +300,34 @@ pub fn validate(p: &Project) -> Vec<Issue> {
         match (c.pattern.is_empty(), c.sample.is_empty()) {
             (false, true) => {
                 if !pattern_ids.contains(c.pattern.as_str()) {
-                    v.err(format!("{path}.pattern"), format!("unknown pattern {:?}", c.pattern));
+                    v.err(
+                        format!("{path}.pattern"),
+                        format!("unknown pattern {:?}", c.pattern),
+                    );
                 }
             }
             (true, false) => {
                 check_relative_path(&mut v, &format!("{path}.sample"), &c.sample);
                 if c.mixer.index() >= n_inserts {
-                    v.err(format!("{path}.mixer"), format!("mixer insert {} does not exist", c.mixer));
+                    v.err(
+                        format!("{path}.mixer"),
+                        format!("mixer insert {} does not exist", c.mixer),
+                    );
                 }
             }
-            _ => v.err(&path, "a clip needs exactly one of \"pattern\" or \"sample\""),
+            _ => v.err(
+                &path,
+                "a clip needs exactly one of \"pattern\" or \"sample\"",
+            ),
         }
         if c.track.index() >= n_tracks {
-            v.err(format!("{path}.track"), format!("track {} does not exist (there are {n_tracks} tracks)", c.track));
+            v.err(
+                format!("{path}.track"),
+                format!(
+                    "track {} does not exist (there are {n_tracks} tracks)",
+                    c.track
+                ),
+            );
         }
         if !(c.start >= 0.0 && c.start.is_finite()) {
             v.err(format!("{path}.start"), "start must be >= 0");
@@ -252,10 +351,19 @@ fn check_automation(v: &mut V, p: &Project) {
     for (i, lane) in p.automation.iter().enumerate() {
         let path = format!("automation[{i}]");
         if !valid_id(&lane.id) {
-            v.err(format!("{path}.id"), format!("invalid id {:?}: use 1-64 characters from [A-Za-z0-9_.-]", lane.id));
+            v.err(
+                format!("{path}.id"),
+                format!(
+                    "invalid id {:?}: use 1-64 characters from [A-Za-z0-9_.-]",
+                    lane.id
+                ),
+            );
         }
         if !lane_ids.insert(lane.id.as_str()) {
-            v.err(format!("{path}.id"), format!("duplicate automation lane id {:?}", lane.id));
+            v.err(
+                format!("{path}.id"),
+                format!("duplicate automation lane id {:?}", lane.id),
+            );
         }
         if !valid_color(&lane.color) {
             v.err(format!("{path}.color"), "colors are #rrggbb hex strings");
@@ -267,7 +375,10 @@ fn check_automation(v: &mut V, p: &Project) {
             }
             Ok(t) => {
                 if let Some((_, j)) = targets.iter().find(|(o, _)| *o == t) {
-                    v.err(format!("{path}.target"), format!("automation[{j}] already automates {t}; use one lane per target"));
+                    v.err(
+                        format!("{path}.target"),
+                        format!("automation[{j}] already automates {t}; use one lane per target"),
+                    );
                 }
                 let info = match t.resolve(p) {
                     Ok(info) => Some(info),
@@ -281,7 +392,10 @@ fn check_automation(v: &mut V, p: &Project) {
             }
         };
         if lane.points.is_empty() {
-            v.err(format!("{path}.points"), "an automation lane needs at least one point");
+            v.err(
+                format!("{path}.points"),
+                "an automation lane needs at least one point",
+            );
         }
         let mut prev = 0.0f64;
         for (j, pt) in lane.points.iter().enumerate() {
@@ -289,13 +403,21 @@ fn check_automation(v: &mut V, p: &Project) {
             if !(pt.beat >= 0.0 && pt.beat.is_finite()) {
                 v.err(format!("{pp}.beat"), "beat must be >= 0");
             } else if pt.beat < prev {
-                v.err(format!("{pp}.beat"), format!("points must be sorted by beat ({} comes after {})", pt.beat, prev));
+                v.err(
+                    format!("{pp}.beat"),
+                    format!(
+                        "points must be sorted by beat ({} comes after {})",
+                        pt.beat, prev
+                    ),
+                );
             } else {
                 prev = pt.beat;
             }
             match &info {
                 Some(info) => v.range(&format!("{pp}.value"), pt.value, info.min, info.max),
-                None if !pt.value.is_finite() => v.err(format!("{pp}.value"), "value must be a finite number"),
+                None if !pt.value.is_finite() => {
+                    v.err(format!("{pp}.value"), "value must be a finite number")
+                }
                 None => {}
             }
             v.range(&format!("{pp}.curve"), pt.curve, -1.0, 1.0);
@@ -305,15 +427,33 @@ fn check_automation(v: &mut V, p: &Project) {
 
 fn check_relative_path(v: &mut V, path: &str, file: &str) {
     if file.starts_with('/') || file.split(['/', '\\']).any(|seg| seg == "..") {
-        v.err(path, format!("{file:?} must be a path relative to the project folder (no '..')"));
+        v.err(
+            path,
+            format!("{file:?} must be a path relative to the project folder (no '..')"),
+        );
     }
 }
 
 fn check_device(v: &mut V, path: &str, d: &Device, category: Category) {
     let Some(spec): Option<&DeviceSpec> = catalog::device_in(&d.kind, category) else {
-        let known: Vec<_> = catalog::DEVICES.iter().filter(|s| s.category == category).map(|s| s.kind).collect();
-        let what = if category == Category::Instrument { "instrument" } else { "effect" };
-        v.err(format!("{path}.type"), format!("unknown {what} type {:?}; expected one of {}", d.kind, known.join(", ")));
+        let known: Vec<_> = catalog::DEVICES
+            .iter()
+            .filter(|s| s.category == category)
+            .map(|s| s.kind)
+            .collect();
+        let what = if category == Category::Instrument {
+            "instrument"
+        } else {
+            "effect"
+        };
+        v.err(
+            format!("{path}.type"),
+            format!(
+                "unknown {what} type {:?}; expected one of {}",
+                d.kind,
+                known.join(", ")
+            ),
+        );
         return;
     };
     if !spec.open_params {
@@ -321,7 +461,14 @@ fn check_device(v: &mut V, path: &str, d: &Device, category: Category) {
             match spec.param(k) {
                 None => {
                     let keys: Vec<_> = spec.params.iter().map(|p| p.key).collect();
-                    v.err(format!("{path}.params.{k}"), format!("unknown parameter for {:?}; expected one of {}", spec.kind, keys.join(", ")));
+                    v.err(
+                        format!("{path}.params.{k}"),
+                        format!(
+                            "unknown parameter for {:?}; expected one of {}",
+                            spec.kind,
+                            keys.join(", ")
+                        ),
+                    );
                 }
                 Some(ps) => {
                     v.range(&format!("{path}.params.{k}"), *val, ps.min, ps.max);
@@ -336,11 +483,21 @@ fn check_device(v: &mut V, path: &str, d: &Device, category: Category) {
         match spec.option(k) {
             None => {
                 let keys: Vec<_> = spec.options.iter().map(|o| o.key).collect();
-                v.err(format!("{path}.options.{k}"), format!("unknown option for {:?}; expected one of {}", spec.kind, keys.join(", ")));
+                v.err(
+                    format!("{path}.options.{k}"),
+                    format!(
+                        "unknown option for {:?}; expected one of {}",
+                        spec.kind,
+                        keys.join(", ")
+                    ),
+                );
             }
             Some(os) => {
                 if !os.choices.is_empty() && !os.choices.contains(&val.as_str()) {
-                    v.err(format!("{path}.options.{k}"), format!("{val:?} is not one of {}", os.choices.join(", ")));
+                    v.err(
+                        format!("{path}.options.{k}"),
+                        format!("{val:?} is not one of {}", os.choices.join(", ")),
+                    );
                 }
             }
         }
@@ -349,6 +506,9 @@ fn check_device(v: &mut V, path: &str, d: &Device, category: Category) {
         check_relative_path(v, &format!("{path}.options.sample"), d.option("sample"));
     }
     if d.kind == "plugin" && d.option("path").is_empty() {
-        v.err(format!("{path}.options.path"), "plugin devices need options.path");
+        v.err(
+            format!("{path}.options.path"),
+            "plugin devices need options.path",
+        );
     }
 }

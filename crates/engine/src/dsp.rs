@@ -28,7 +28,10 @@ pub fn cents(c: f32) -> f32 {
 #[inline]
 pub fn pan_gains(pan: f32) -> (f32, f32) {
     let a = (pan.clamp(-1.0, 1.0) + 1.0) * 0.25 * PI;
-    (a.cos() * std::f32::consts::SQRT_2, a.sin() * std::f32::consts::SQRT_2)
+    (
+        a.cos() * std::f32::consts::SQRT_2,
+        a.sin() * std::f32::consts::SQRT_2,
+    )
 }
 
 /// Coefficient of a one-pole smoother that settles in roughly `time` seconds.
@@ -209,7 +212,14 @@ impl Biquad {
         let a = 10f32.powf(gain_db / 40.0);
         let alpha = sw / (2.0 * q.max(0.05));
         let (b0, b1, b2, a0, a1, a2) = match kind {
-            BiquadKind::Peak => (1.0 + alpha * a, -2.0 * cw, 1.0 - alpha * a, 1.0 + alpha / a, -2.0 * cw, 1.0 - alpha / a),
+            BiquadKind::Peak => (
+                1.0 + alpha * a,
+                -2.0 * cw,
+                1.0 - alpha * a,
+                1.0 + alpha / a,
+                -2.0 * cw,
+                1.0 - alpha / a,
+            ),
             BiquadKind::LowShelf => {
                 let s = 2.0 * a.sqrt() * alpha;
                 (
@@ -232,8 +242,22 @@ impl Biquad {
                     (a + 1.0) - (a - 1.0) * cw - s,
                 )
             }
-            BiquadKind::Lowpass => ((1.0 - cw) / 2.0, 1.0 - cw, (1.0 - cw) / 2.0, 1.0 + alpha, -2.0 * cw, 1.0 - alpha),
-            BiquadKind::Highpass => ((1.0 + cw) / 2.0, -(1.0 + cw), (1.0 + cw) / 2.0, 1.0 + alpha, -2.0 * cw, 1.0 - alpha),
+            BiquadKind::Lowpass => (
+                (1.0 - cw) / 2.0,
+                1.0 - cw,
+                (1.0 - cw) / 2.0,
+                1.0 + alpha,
+                -2.0 * cw,
+                1.0 - alpha,
+            ),
+            BiquadKind::Highpass => (
+                (1.0 + cw) / 2.0,
+                -(1.0 + cw),
+                (1.0 + cw) / 2.0,
+                1.0 + alpha,
+                -2.0 * cw,
+                1.0 - alpha,
+            ),
             BiquadKind::Bandpass => (alpha, 0.0, -alpha, 1.0 + alpha, -2.0 * cw, 1.0 - alpha),
         };
         self.b0 = b0 / a0;
@@ -298,7 +322,14 @@ pub struct Adsr {
 
 impl Default for Adsr {
     fn default() -> Self {
-        Adsr { stage: Stage::Idle, level: 0.0, attack_step: 1.0, decay_coef: 0.0, sustain: 1.0, release_coef: 0.0 }
+        Adsr {
+            stage: Stage::Idle,
+            level: 0.0,
+            attack_step: 1.0,
+            decay_coef: 0.0,
+            sustain: 1.0,
+            release_coef: 0.0,
+        }
     }
 }
 
@@ -379,7 +410,11 @@ impl Ramp {
     /// advances to the target.
     pub fn block(&mut self, n: usize) -> (f32, f32) {
         let start = self.current;
-        let inc = if n == 0 { 0.0 } else { (self.target - start) / n as f32 };
+        let inc = if n == 0 {
+            0.0
+        } else {
+            (self.target - start) / n as f32
+        };
         self.current = self.target;
         (start, inc)
     }

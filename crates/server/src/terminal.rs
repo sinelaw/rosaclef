@@ -40,12 +40,33 @@ pub fn presets() -> Vec<Preset> {
         hint,
     };
     vec![
-        mk("claude", "Claude Code", &["claude"], "npm i -g @anthropic-ai/claude-code"),
+        mk(
+            "claude",
+            "Claude Code",
+            &["claude"],
+            "npm i -g @anthropic-ai/claude-code",
+        ),
         mk("codex", "Codex CLI", &["codex"], "npm i -g @openai/codex"),
-        mk("gemini", "Gemini CLI", &["gemini"], "npm i -g @google/gemini-cli"),
+        mk(
+            "gemini",
+            "Gemini CLI",
+            &["gemini"],
+            "npm i -g @google/gemini-cli",
+        ),
         mk("opencode", "OpenCode", &["opencode"], "see opencode.ai"),
-        mk("aider", "Aider", &["aider", "--read", "AGENTS.md"], "pip install aider-chat"),
-        Preset { id: "shell", name: "Shell", command: vec![shell.clone()], available: true, hint: "" },
+        mk(
+            "aider",
+            "Aider",
+            &["aider", "--read", "AGENTS.md"],
+            "pip install aider-chat",
+        ),
+        Preset {
+            id: "shell",
+            name: "Shell",
+            command: vec![shell.clone()],
+            available: true,
+            hint: "",
+        },
     ]
 }
 
@@ -149,27 +170,60 @@ impl Terminal {
         if let Some(mut s) = taken {
             let _ = s.child.kill();
             let code = s.child.wait().ok().map(|st| st.exit_code());
-            let agent = self.status.lock().get("agent").cloned().unwrap_or(Value::Null);
-            self.set_status(json!({"t": "status", "running": false, "agent": agent, "exitCode": code}));
+            let agent = self
+                .status
+                .lock()
+                .get("agent")
+                .cloned()
+                .unwrap_or(Value::Null);
+            self.set_status(
+                json!({"t": "status", "running": false, "agent": agent, "exitCode": code}),
+            );
         }
     }
 
-    fn start(self: &Arc<Self>, agent: &str, custom: Option<&str>, cols: u16, rows: u16) -> Result<(), String> {
+    fn start(
+        self: &Arc<Self>,
+        agent: &str,
+        custom: Option<&str>,
+        cols: u16,
+        rows: u16,
+    ) -> Result<(), String> {
         self.stop();
-        *self.last.lock() = Some(Launch { agent: agent.to_string(), custom: custom.map(|c| c.to_string()), cols, rows });
+        *self.last.lock() = Some(Launch {
+            agent: agent.to_string(),
+            custom: custom.map(|c| c.to_string()),
+            cols,
+            rows,
+        });
         let env = self.env.lock().clone();
-        let (name, argv): (String, Vec<String>) = if let Some(cmd) = custom.filter(|c| !c.trim().is_empty()) {
-            ("Custom".into(), vec!["/bin/sh".into(), "-c".into(), cmd.to_string()])
-        } else {
-            let p = presets().into_iter().find(|p| p.id == agent).ok_or_else(|| format!("unknown agent {agent:?}"))?;
-            if !p.available {
-                return Err(format!("{} is not installed (not found on PATH). Install it with: {}", p.name, p.hint));
-            }
-            (p.name.to_string(), p.command)
-        };
+        let (name, argv): (String, Vec<String>) =
+            if let Some(cmd) = custom.filter(|c| !c.trim().is_empty()) {
+                (
+                    "Custom".into(),
+                    vec!["/bin/sh".into(), "-c".into(), cmd.to_string()],
+                )
+            } else {
+                let p = presets()
+                    .into_iter()
+                    .find(|p| p.id == agent)
+                    .ok_or_else(|| format!("unknown agent {agent:?}"))?;
+                if !p.available {
+                    return Err(format!(
+                        "{} is not installed (not found on PATH). Install it with: {}",
+                        p.name, p.hint
+                    ));
+                }
+                (p.name.to_string(), p.command)
+            };
         let pty = native_pty_system();
         let pair = pty
-            .openpty(PtySize { rows: rows.max(5), cols: cols.max(20), pixel_width: 0, pixel_height: 0 })
+            .openpty(PtySize {
+                rows: rows.max(5),
+                cols: cols.max(20),
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .map_err(|e| e.to_string())?;
         let mut cmd = CommandBuilder::new(&argv[0]);
         cmd.args(&argv[1..]);
@@ -188,13 +242,21 @@ impl Terminal {
                 cmd.env("PATH", format!("{}{sep}{path}", dir.display()));
             }
         }
-        let child = pair.slave.spawn_command(cmd).map_err(|e| format!("failed to start {}: {e}", argv[0]))?;
+        let child = pair
+            .slave
+            .spawn_command(cmd)
+            .map_err(|e| format!("failed to start {}: {e}", argv[0]))?;
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         self.scrollback.lock().clear();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        *self.session.lock() = Some(Session { id, master: pair.master, writer, child });
+        *self.session.lock() = Some(Session {
+            id,
+            master: pair.master,
+            writer,
+            child,
+        });
         self.set_status(json!({"t": "status", "running": true, "agent": agent, "name": name}));
 
         let me = self.clone();
@@ -219,7 +281,9 @@ impl Terminal {
             };
             if let Some(mut s) = mine {
                 let code = s.child.wait().ok().map(|st| st.exit_code());
-                me.set_status(json!({"t": "status", "running": false, "agent": agent, "exitCode": code}));
+                me.set_status(
+                    json!({"t": "status", "running": false, "agent": agent, "exitCode": code}),
+                );
             }
         });
         Ok(())
@@ -238,7 +302,12 @@ impl Terminal {
             l.rows = rows;
         }
         if let Some(s) = self.session.lock().as_ref() {
-            let _ = s.master.resize(PtySize { rows: rows.max(5), cols: cols.max(20), pixel_width: 0, pixel_height: 0 });
+            let _ = s.master.resize(PtySize {
+                rows: rows.max(5),
+                cols: cols.max(20),
+                pixel_width: 0,
+                pixel_height: 0,
+            });
         }
     }
 }
@@ -274,7 +343,9 @@ pub async fn serve(term: Arc<Terminal>, socket: WebSocket) {
     });
     while let Some(Ok(msg)) = stream.next().await {
         let Message::Text(text) = msg else { continue };
-        let Ok(v) = serde_json::from_str::<Value>(&text) else { continue };
+        let Ok(v) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
         let num = |k: &str, d: u64| v.get(k).and_then(|x| x.as_u64()).unwrap_or(d) as u16;
         match v.get("t").and_then(|t| t.as_str()).unwrap_or("") {
             "input" => {
@@ -284,11 +355,21 @@ pub async fn serve(term: Arc<Terminal>, socket: WebSocket) {
             }
             "resize" => term.resize(num("cols", 80), num("rows", 24)),
             "start" => {
-                let agent = v.get("agent").and_then(|a| a.as_str()).unwrap_or("shell").to_string();
-                let custom = v.get("command").and_then(|c| c.as_str()).map(|s| s.to_string());
+                let agent = v
+                    .get("agent")
+                    .and_then(|a| a.as_str())
+                    .unwrap_or("shell")
+                    .to_string();
+                let custom = v
+                    .get("command")
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string());
                 let (cols, rows) = (num("cols", 80), num("rows", 24));
                 let t2 = term.clone();
-                let res = tokio::task::spawn_blocking(move || t2.start(&agent, custom.as_deref(), cols, rows)).await;
+                let res = tokio::task::spawn_blocking(move || {
+                    t2.start(&agent, custom.as_deref(), cols, rows)
+                })
+                .await;
                 let err = match res {
                     Ok(Ok(())) => None,
                     Ok(Err(e)) => Some(e),

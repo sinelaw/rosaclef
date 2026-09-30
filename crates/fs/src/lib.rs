@@ -55,7 +55,12 @@ pub trait Fs: Send + Sync {
     fn now_ms(&self) -> f64;
 
     fn read_to_string(&self, path: &Path) -> io::Result<String> {
-        String::from_utf8(self.read(path)?).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {e}", path.display())))
+        String::from_utf8(self.read(path)?).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("{}: {e}", path.display()),
+            )
+        })
     }
 
     fn exists(&self, path: &Path) -> bool {
@@ -72,7 +77,11 @@ pub trait Fs: Send + Sync {
 
     /// Write `text` unless the file already holds exactly that.
     fn write_if_changed(&self, path: &Path, text: &str) -> io::Result<()> {
-        if self.read(path).map(|t| t == text.as_bytes()).unwrap_or(false) {
+        if self
+            .read(path)
+            .map(|t| t == text.as_bytes())
+            .unwrap_or(false)
+        {
             return Ok(());
         }
         self.write(path, text.as_bytes())
@@ -92,7 +101,10 @@ pub fn disk() -> SharedFs {
 }
 
 fn millis(t: io::Result<std::time::SystemTime>) -> f64 {
-    t.ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as f64).unwrap_or(0.0)
+    t.ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as f64)
+        .unwrap_or(0.0)
 }
 
 impl Fs for DiskFs {
@@ -103,18 +115,28 @@ impl Fs for DiskFs {
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         let dir = path.parent().unwrap_or(Path::new("."));
         std::fs::create_dir_all(dir)?;
-        let tmp = dir.join(format!(".{}.tmp", path.file_name().and_then(|n| n.to_str()).unwrap_or("file")));
+        let tmp = dir.join(format!(
+            ".{}.tmp",
+            path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+        ));
         std::fs::write(&tmp, bytes).map_err(|e| with_path(e, "writing", &tmp))?;
         std::fs::rename(&tmp, path).map_err(|e| with_path(e, "renaming into", path))
     }
 
     fn metadata(&self, path: &Path) -> io::Result<Meta> {
         let m = std::fs::metadata(path)?;
-        Ok(Meta { is_dir: m.is_dir(), len: m.len(), modified: millis(m.modified()) })
+        Ok(Meta {
+            is_dir: m.is_dir(),
+            len: m.len(),
+            modified: millis(m.modified()),
+        })
     }
 
     fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>> {
-        let mut out: Vec<PathBuf> = std::fs::read_dir(path)?.flatten().map(|e| e.path()).collect();
+        let mut out: Vec<PathBuf> = std::fs::read_dir(path)?
+            .flatten()
+            .map(|e| e.path())
+            .collect();
         out.sort();
         Ok(out)
     }
@@ -128,7 +150,9 @@ impl Fs for DiskFs {
     }
 
     fn copy(&self, from: &Path, to: &Path) -> io::Result<()> {
-        std::fs::copy(from, to).map(|_| ()).map_err(|e| with_path(e, "copying", from))
+        std::fs::copy(from, to)
+            .map(|_| ())
+            .map_err(|e| with_path(e, "copying", from))
     }
 
     fn remove_file(&self, path: &Path) -> io::Result<()> {

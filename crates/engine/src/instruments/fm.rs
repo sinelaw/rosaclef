@@ -61,7 +61,12 @@ impl Instrument for Fm {
         self.vel_sens = d.param("velocity") as f32;
         self.detune = d.param("detune") as f32;
         self.gain = d.param("gain") as f32;
-        self.env_times = (d.param("attack") as f32, d.param("decay") as f32, d.param("sustain") as f32, d.param("release") as f32);
+        self.env_times = (
+            d.param("attack") as f32,
+            d.param("decay") as f32,
+            d.param("sustain") as f32,
+            d.param("release") as f32,
+        );
         let (a, dd, s, r) = self.env_times;
         for v in &mut self.voices {
             v.env.set(a, dd, s, r, self.sr);
@@ -72,15 +77,32 @@ impl Instrument for Fm {
         match ev {
             NoteKind::On { key, velocity } => {
                 self.clock += 1;
-                let i = pick_voice(&self.voices, |v| v.active, |v| v.env.is_released(), |v| v.age);
+                let i = pick_voice(
+                    &self.voices,
+                    |v| v.active,
+                    |v| v.env.is_released(),
+                    |v| v.age,
+                );
                 let (a, d, s, r) = self.env_times;
                 let v = &mut self.voices[i];
-                *v = Voice { active: true, key, velocity, age: self.clock, freq: midi_to_hz(key as f32), idx_env: 1.0, ..Default::default() };
+                *v = Voice {
+                    active: true,
+                    key,
+                    velocity,
+                    age: self.clock,
+                    freq: midi_to_hz(key as f32),
+                    idx_env: 1.0,
+                    ..Default::default()
+                };
                 v.env.set(a, d, s, r, self.sr);
                 v.env.trigger();
             }
             NoteKind::Off { key } => {
-                for v in self.voices.iter_mut().filter(|v| v.active && v.key == key && !v.env.is_released()) {
+                for v in self
+                    .voices
+                    .iter_mut()
+                    .filter(|v| v.active && v.key == key && !v.env.is_released())
+                {
                     v.env.release();
                 }
             }

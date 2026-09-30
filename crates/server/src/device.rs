@@ -36,9 +36,15 @@ pub struct Native {
 
 impl Native {
     pub fn start(project: Project, folder: &Folder) -> Result<Native> {
-        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(String, Option<String>, u32, Arc<Mutex<Engine>>)>>();
+        let (ready_tx, ready_rx) =
+            std::sync::mpsc::channel::<Result<(String, Option<String>, u32, Arc<Mutex<Engine>>)>>();
         let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
-        let rec = Arc::new(Recording { active: AtomicBool::new(false), buf: Mutex::new(vec![]), channels: Mutex::new(1), sample_rate: Mutex::new(48000) });
+        let rec = Arc::new(Recording {
+            active: AtomicBool::new(false),
+            buf: Mutex::new(vec![]),
+            channels: Mutex::new(1),
+            sample_rate: Mutex::new(48000),
+        });
         let rec2 = rec.clone();
         // cpal streams are not Send on every platform: own them on a thread.
         std::thread::spawn(move || {
@@ -137,8 +143,18 @@ impl Native {
                 }
             }
         });
-        let (device, input, sample_rate, engine) = ready_rx.recv().map_err(|_| anyhow!("audio thread failed"))??;
-        let n = Native { engine, stop: stop_tx, device, input, sample_rate, rec, rec_start: Mutex::new(None) };
+        let (device, input, sample_rate, engine) = ready_rx
+            .recv()
+            .map_err(|_| anyhow!("audio thread failed"))??;
+        let n = Native {
+            engine,
+            stop: stop_tx,
+            device,
+            input,
+            sample_rate,
+            rec,
+            rec_start: Mutex::new(None),
+        };
         n.load_missing_samples(folder);
         Ok(n)
     }
@@ -151,7 +167,10 @@ impl Native {
     fn load_missing_samples(&self, folder: &Folder) {
         let missing: Vec<String> = {
             let e = self.engine.lock();
-            e.required_samples().into_iter().filter(|p| !e.has_sample(p)).collect()
+            e.required_samples()
+                .into_iter()
+                .filter(|p| !e.has_sample(p))
+                .collect()
         };
         for path in missing {
             if let Some(file) = folder.resolve(&path) {
@@ -227,7 +246,11 @@ pub async fn handle(app: Arc<App>, t: &str, v: &Value) -> Option<Value> {
             match t {
                 "native.play" => {
                     let pattern = s("pattern");
-                    e.set_mode(if pattern.is_empty() { PlayMode::Song } else { PlayMode::Pattern(pattern) });
+                    e.set_mode(if pattern.is_empty() {
+                        PlayMode::Song
+                    } else {
+                        PlayMode::Pattern(pattern)
+                    });
                     e.play();
                 }
                 "native.pause" => e.pause(),
@@ -241,7 +264,11 @@ pub async fn handle(app: Arc<App>, t: &str, v: &Value) -> Option<Value> {
                 "native.note" => {
                     let key = v.get("key").and_then(|k| k.as_u64()).unwrap_or(60).min(127) as u8;
                     if v.get("on").and_then(|o| o.as_bool()).unwrap_or(false) {
-                        e.note_on(&s("channel"), key, v.get("velocity").and_then(|x| x.as_f64()).unwrap_or(0.8) as f32);
+                        e.note_on(
+                            &s("channel"),
+                            key,
+                            v.get("velocity").and_then(|x| x.as_f64()).unwrap_or(0.8) as f32,
+                        );
                     } else {
                         e.note_off(&s("channel"), key);
                     }
@@ -275,7 +302,9 @@ fn finish_recording(app: &Arc<App>) {
         let sr = *n.rec.sample_rate.lock();
         (data, channels, sr, start)
     };
-    let Some((start_beat, track)) = start else { return };
+    let Some((start_beat, track)) = start else {
+        return;
+    };
     if data.is_empty() {
         return;
     }
@@ -286,10 +315,23 @@ fn finish_recording(app: &Arc<App>) {
         left.push(f[0]);
         right.push(*f.get(1).unwrap_or(&f[0]));
     }
-    let audio = rosaclef_engine::render::Audio { sample_rate: sr as f32, left, right };
-    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let rel = rosaclef_studio::library::unique_sample_path(&app.folder(), &format!("take-{stamp}.wav"));
-    if folder::write_atomic(&app.folder().dir.join(&rel), &rosaclef_engine::render::encode_wav(&audio, 24)).is_err() {
+    let audio = rosaclef_engine::render::Audio {
+        sample_rate: sr as f32,
+        left,
+        right,
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let rel =
+        rosaclef_studio::library::unique_sample_path(&app.folder(), &format!("take-{stamp}.wav"));
+    if folder::write_atomic(
+        &app.folder().dir.join(&rel),
+        &rosaclef_engine::render::encode_wav(&audio, 24),
+    )
+    .is_err()
+    {
         return;
     }
     let mut project = app.project();

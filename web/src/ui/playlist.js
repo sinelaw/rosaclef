@@ -205,26 +205,39 @@ function onLaneDown(e, g) {
       commit(() => {
         for (const o of orig) {
           const c = p.playlist.clips[o.i];
-          p.playlist.clips.push({ pattern: c.pattern, sample: c.sample, track: c.track, start: c.start, length: c.length, offset: c.offset, gain: c.gain, mixer: c.mixer });
+          p.playlist.clips.push({
+            pattern: c.pattern,
+            sample: c.sample,
+            track: c.track,
+            start: c.start,
+            length: c.length,
+            offset: c.offset,
+            gain: c.gain,
+            mixer: c.mixer,
+          });
         }
       });
     }
     const x0 = e.clientX;
     const y0 = e.clientY;
     begin();
-    drag(e, (m) => {
-      const db = (m.clientX - x0) / g.zoom;
-      const dt = Math.round((m.clientY - y0) / g.trackH);
-      for (const o of orig) {
-        const c = p.playlist.clips[o.i];
-        if (resizing) c.length = Math.max(snap, snapTo(o.length + db, snap));
-        else {
-          c.start = Math.max(0, snapTo(o.start + db, snap));
-          c.track = trackIx(Math.max(0, Math.min(p.playlist.tracks.length - 1, o.track + dt)));
+    drag(
+      e,
+      (m) => {
+        const db = (m.clientX - x0) / g.zoom;
+        const dt = Math.round((m.clientY - y0) / g.trackH);
+        for (const o of orig) {
+          const c = p.playlist.clips[o.i];
+          if (resizing) c.length = Math.max(snap, snapTo(o.length + db, snap));
+          else {
+            c.start = Math.max(0, snapTo(o.start + db, snap));
+            c.track = trackIx(Math.max(0, Math.min(p.playlist.tracks.length - 1, o.track + dt)));
+          }
         }
-      }
-      changed(true);
-    }, (u) => undefined);
+        changed(true);
+      },
+      (u) => undefined,
+    );
     return undefined;
   }
 
@@ -238,11 +251,15 @@ function onLaneDown(e, g) {
   state.clipSelection = [clipIx(idx)];
   changed(true);
   const x0 = e.clientX;
-  drag(e, (m) => {
-    const db = (m.clientX - x0) / g.zoom;
-    p.playlist.clips[idx].length = Math.max(snap, snapTo(pat.length + db, snap));
-    changed(true);
-  }, (u) => undefined);
+  drag(
+    e,
+    (m) => {
+      const db = (m.clientX - x0) / g.zoom;
+      p.playlist.clips[idx].length = Math.max(snap, snapTo(pat.length + db, snap));
+      changed(true);
+    },
+    (u) => undefined,
+  );
 }
 
 /** Drop a sample (from the browser or the desktop) onto a track. */
@@ -255,7 +272,16 @@ function dropSample(path, x, y, g) {
     .then((r) => {
       const beats = Number(r.duration) / (60 / p.transport.bpm);
       commit(() => {
-        p.playlist.clips.push({ pattern: "", sample: path, track: trackIx(track), start: start, length: Math.max(0.25, Math.round(beats * 100) / 100), offset: 0, gain: 1, mixer: insertIx(0) });
+        p.playlist.clips.push({
+          pattern: "",
+          sample: path,
+          track: trackIx(track),
+          start: start,
+          length: Math.max(0.25, Math.round(beats * 100) / 100),
+          offset: 0,
+          gain: 1,
+          mixer: insertIx(0),
+        });
       });
       return true;
     })
@@ -537,10 +563,17 @@ function followPlayhead(g) {
 
 /** function followButton(b: Builder) => Undefined */
 export function followButton(b) {
-  iconButton(b, "follow", state.follow ? "small on" : "small", "follow", state.follow ? "Follow playback: on — the view scrolls with the playhead" : "Follow playback: off", () => {
-    state.follow = !state.follow;
-    invalidate();
-  });
+  iconButton(
+    b,
+    "follow",
+    state.follow ? "small on" : "small",
+    "follow",
+    state.follow ? "Follow playback: on — the view scrolls with the playhead" : "Follow playback: off",
+    () => {
+      state.follow = !state.follow;
+      invalidate();
+    },
+  );
 }
 
 /** function playlistTools(b: Builder) => Undefined */
@@ -549,10 +582,19 @@ export function playlistTools(b) {
   followButton(b);
   b.leaf("span", "l", "label", "Paint");
   const ids = state.project.patterns.map((x) => x.id);
-  select(b, "pat", "", state.pattern, ids, state.project.patterns.map((x) => x.name), "Pattern placed by clicking an empty lane", (v) => {
-    selectPattern(v);
-    followPattern();
-  });
+  select(
+    b,
+    "pat",
+    "",
+    state.pattern,
+    ids,
+    state.project.patterns.map((x) => x.name),
+    "Pattern placed by clicking an empty lane",
+    (v) => {
+      selectPattern(v);
+      followPattern();
+    },
+  );
   if (pat) {
     b.leaf("span", "sw", "swatch", "");
     b.style("--c", pat.color);

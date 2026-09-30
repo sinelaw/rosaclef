@@ -1,0 +1,2 @@
+# Python tooling (tools/*.py): ruff check and ruff format.
+line-length = 120

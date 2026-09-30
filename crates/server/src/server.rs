@@ -78,7 +78,12 @@ pub struct App {
     plugins: Mutex<Option<Vec<rosaclef_clap::PluginDescriptor>>>,
     #[cfg(feature = "device-audio")]
     native: Mutex<Option<crate::device::Native>>,
-    watcher: Mutex<Option<(notify::RecommendedWatcher, tokio::sync::mpsc::UnboundedSender<PathBuf>)>>,
+    watcher: Mutex<
+        Option<(
+            notify::RecommendedWatcher,
+            tokio::sync::mpsc::UnboundedSender<PathBuf>,
+        )>,
+    >,
     /// Serializes project switches (and library operations on the open project).
     pub(crate) switching: Mutex<()>,
 }
@@ -89,9 +94,14 @@ pub async fn run(cfg: Config) -> Result<()> {
     let checked = cfg.folder.load()?;
     let text = cfg.folder.read_text()?;
     let (project, issues) = match checked.project {
-        Some(p) if checked.issues.iter().all(|i| i.severity != Severity::Error) => (p, checked.issues),
+        Some(p) if checked.issues.iter().all(|i| i.severity != Severity::Error) => {
+            (p, checked.issues)
+        }
         _ => {
-            eprintln!("warning: {} is invalid; starting from an empty project until it is fixed:", cfg.folder.project_path().display());
+            eprintln!(
+                "warning: {} is invalid; starting from an empty project until it is fixed:",
+                cfg.folder.project_path().display()
+            );
             for i in &checked.issues {
                 eprintln!("  {i}");
             }
@@ -103,10 +113,18 @@ pub async fn run(cfg: Config) -> Result<()> {
     let app = Arc::new(App {
         folder: RwLock::new(cfg.folder.clone()),
         library: Library::new(rosaclef_fs::disk(), cfg.library.clone(), &crate::exe()),
-        doc: Mutex::new(Doc { project, rev: 1, last_hash: folder::hash(&text), issues }),
+        doc: Mutex::new(Doc {
+            project,
+            rev: 1,
+            last_hash: folder::hash(&text),
+            issues,
+        }),
         tx,
         next_client: AtomicU64::new(1),
-        term: Arc::new(Terminal::new(AgentEnv { dir: cfg.folder.dir.clone(), url: url.clone() })),
+        term: Arc::new(Terminal::new(AgentEnv {
+            dir: cfg.folder.dir.clone(),
+            url: url.clone(),
+        })),
         url: url.clone(),
         plugins: Mutex::new(None),
         #[cfg(feature = "device-audio")]
@@ -125,11 +143,24 @@ pub async fn run(cfg: Config) -> Result<()> {
         .route("/ws", get(ws_handler))
         .route("/ws/term", get(term_handler))
         .route("/api/project", get(get_project).put(put_project))
-        .route("/api/schema", get(|| async { ([(header::CONTENT_TYPE, "application/json")], rosaclef_core::schema::schema_text()) }))
+        .route(
+            "/api/schema",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "application/json")],
+                    rosaclef_core::schema::schema_text(),
+                )
+            }),
+        )
         .route("/api/catalog", get(get_catalog))
         .route("/api/plugins", get(get_plugins))
         .route("/api/plugins/params", get(get_plugin_params))
-        .route("/api/samples", get(list_samples).post(upload_sample).layer(axum::extract::DefaultBodyLimit::max(512 << 20)))
+        .route(
+            "/api/samples",
+            get(list_samples)
+                .post(upload_sample)
+                .layer(axum::extract::DefaultBodyLimit::max(512 << 20)),
+        )
         .route("/api/peaks", get(get_peaks))
         .route("/api/render", post(render))
         .route("/api/agents", get(get_agents))
@@ -155,8 +186,12 @@ pub async fn run(cfg: Config) -> Result<()> {
 /// Reject cross-site requests (a web page on another origin must not be able
 /// to drive the terminal or rewrite the project).
 pub(crate) fn same_origin(headers: &HeaderMap) -> bool {
-    let Some(origin) = headers.get(header::ORIGIN).and_then(|o| o.to_str().ok()) else { return true };
-    let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) else { return false };
+    let Some(origin) = headers.get(header::ORIGIN).and_then(|o| o.to_str().ok()) else {
+        return true;
+    };
+    let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) else {
+        return false;
+    };
     let origin_host = origin.split("://").nth(1).unwrap_or("");
     origin_host == host
 }
@@ -171,7 +206,10 @@ pub(crate) struct Stale;
 
 impl std::fmt::Display for Stale {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "the edit was made for another project (the studio switched projects)")
+        write!(
+            f,
+            "the edit was made for another project (the studio switched projects)"
+        )
     }
 }
 
@@ -179,7 +217,10 @@ impl std::error::Error for Stale {}
 
 impl App {
     fn broadcast(&self, exclude: u64, v: Value) {
-        let _ = self.tx.send(Broadcast { exclude, text: v.to_string().into() });
+        let _ = self.tx.send(Broadcast {
+            exclude,
+            text: v.to_string().into(),
+        });
     }
 
     /// Snapshot of the open project folder.
@@ -198,7 +239,14 @@ impl App {
     /// Accept a new project version from a client or the HTTP API.
     /// `expect_folder` (sent by UI clients) guards against edits that were
     /// made for a project that has since been closed.
-    pub(crate) fn apply(&self, project: Project, issues: Vec<Issue>, origin: &str, exclude: u64, expect_folder: Option<&str>) -> Result<u64> {
+    pub(crate) fn apply(
+        &self,
+        project: Project,
+        issues: Vec<Issue>,
+        origin: &str,
+        exclude: u64,
+        expect_folder: Option<&str>,
+    ) -> Result<u64> {
         let rev = {
             // The doc lock also serializes against project switches.
             let mut doc = self.doc.lock();
@@ -246,21 +294,33 @@ impl App {
     pub(crate) fn switch_to(&self, target: Folder) -> Result<()> {
         let _guard = self.switching.lock();
         if !target.project_path().is_file() {
-            bail!("{} has no {}", target.dir.display(), rosaclef_core::PROJECT_FILE);
+            bail!(
+                "{} has no {}",
+                target.dir.display(),
+                rosaclef_core::PROJECT_FILE
+            );
         }
         target.init(false)?;
         let text = target.read_text()?;
         let checked = validate::parse_and_validate(&text);
         if !checked.is_ok() {
             let msgs: Vec<String> = checked.errors().take(3).map(|i| i.to_string()).collect();
-            bail!("the project is invalid and cannot be opened:\n{}", msgs.join("\n"));
+            bail!(
+                "the project is invalid and cannot be opened:\n{}",
+                msgs.join("\n")
+            );
         }
         let project = checked.project.expect("checked");
         crate::guide::write(&target, &crate::exe())?;
         {
             let mut doc = self.doc.lock();
             *self.folder.write() = target.clone();
-            *doc = Doc { project: project.clone(), rev: 1, last_hash: folder::hash(&text), issues: checked.issues };
+            *doc = Doc {
+                project: project.clone(),
+                rev: 1,
+                last_hash: folder::hash(&text),
+                issues: checked.issues,
+            };
         }
         self.repoint(&target, &project);
         println!("  ⇄ opened {}", target.dir.display());
@@ -298,9 +358,15 @@ impl App {
         }
         write_status(self);
         self.update_native(project);
-        self.term.set_env(AgentEnv { dir: target.dir.clone(), url: self.url.clone() });
+        self.term.set_env(AgentEnv {
+            dir: target.dir.clone(),
+            url: self.url.clone(),
+        });
         if let Err(e) = self.term.restart() {
-            eprintln!("warning: could not restart the agent in {}: {e}", target.dir.display());
+            eprintln!(
+                "warning: could not restart the agent in {}: {e}",
+                target.dir.display()
+            );
         }
         self.broadcast(0, self.welcome("switched", 0));
     }
@@ -320,7 +386,10 @@ fn write_status(app: &App) {
     let doc = app.doc.lock();
     let ok = doc.issues.iter().all(|i| i.severity != Severity::Error);
     let v = json!({"ok": ok, "rev": doc.rev, "issues": doc.issues});
-    let _ = folder::write_atomic(&app.folder().state_path("status.json"), (serde_json::to_string_pretty(&v).unwrap() + "\n").as_bytes());
+    let _ = folder::write_atomic(
+        &app.folder().state_path("status.json"),
+        (serde_json::to_string_pretty(&v).unwrap() + "\n").as_bytes(),
+    );
 }
 
 fn write_invalid_status(app: &App, issues: &[Issue]) {
@@ -331,13 +400,19 @@ fn write_invalid_status(app: &App, issues: &[Issue]) {
         "note": "project.json on disk is invalid; the studio keeps using the last valid version until it is fixed",
         "issues": issues
     });
-    let _ = folder::write_atomic(&app.folder().state_path("status.json"), (serde_json::to_string_pretty(&v).unwrap() + "\n").as_bytes());
+    let _ = folder::write_atomic(
+        &app.folder().state_path("status.json"),
+        (serde_json::to_string_pretty(&v).unwrap() + "\n").as_bytes(),
+    );
 }
 
 // ---------------------------------------------------------------- watching
 
 /// A file watcher on `dir` that forwards changed paths to `tx`.
-fn make_watcher(tx: tokio::sync::mpsc::UnboundedSender<PathBuf>, dir: &std::path::Path) -> Result<notify::RecommendedWatcher> {
+fn make_watcher(
+    tx: tokio::sync::mpsc::UnboundedSender<PathBuf>,
+    dir: &std::path::Path,
+) -> Result<notify::RecommendedWatcher> {
     use notify::{RecursiveMode, Watcher};
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         if let Ok(ev) = res {
@@ -367,7 +442,9 @@ fn spawn_watcher(app: Shared) -> Result<()> {
             let folder = app.folder();
             let project_path = folder.project_path();
             let samples_dir = folder.dir.join(folder::SAMPLES_DIR);
-            if paths.iter().any(|p| p.file_name() == project_path.file_name() && p.parent() == project_path.parent()) {
+            if paths.iter().any(|p| {
+                p.file_name() == project_path.file_name() && p.parent() == project_path.parent()
+            }) {
                 reload_from_disk(&app);
             }
             if paths.iter().any(|p| p.starts_with(&samples_dir)) {
@@ -387,7 +464,9 @@ fn reload_from_disk(app: &App) {
     // cannot pair the old folder's text with the new document.
     let outcome = {
         let mut doc = app.doc.lock();
-        let Ok(text) = app.folder().read_text() else { return };
+        let Ok(text) = app.folder().read_text() else {
+            return;
+        };
         let h = folder::hash(&text);
         if doc.last_hash == h {
             return;
@@ -415,7 +494,10 @@ fn reload_from_disk(app: &App) {
             app.update_native(&project);
         }
         Outcome::Invalid(issues) => {
-            println!("  ✗ project.json on disk is invalid ({} issue(s))", issues.len());
+            println!(
+                "  ✗ project.json on disk is invalid ({} issue(s))",
+                issues.len()
+            );
             app.broadcast(0, json!({"t": "invalid", "issues": issues}));
             write_invalid_status(app, &issues);
         }
@@ -424,18 +506,27 @@ fn reload_from_disk(app: &App) {
 
 // --------------------------------------------------------------- websocket
 
-async fn ws_handler(State(app): State<Shared>, headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
+async fn ws_handler(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
-    ws.max_message_size(64 << 20).on_upgrade(move |socket| client(app, socket))
+    ws.max_message_size(64 << 20)
+        .on_upgrade(move |socket| client(app, socket))
 }
 
 async fn client(app: Shared, socket: WebSocket) {
     let id = app.next_client.fetch_add(1, Ordering::Relaxed);
     let (mut sink, mut stream) = socket.split();
     let welcome = app.welcome("welcome", id);
-    if sink.send(Message::Text(welcome.to_string().into())).await.is_err() {
+    if sink
+        .send(Message::Text(welcome.to_string().into()))
+        .await
+        .is_err()
+    {
         return;
     }
     let (out_tx, mut out_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -459,7 +550,9 @@ async fn client(app: Shared, socket: WebSocket) {
     });
     while let Some(Ok(msg)) = stream.next().await {
         let Message::Text(text) = msg else { continue };
-        let Ok(v) = serde_json::from_str::<Value>(&text) else { continue };
+        let Ok(v) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
         let reply = handle_client_message(&app, id, v).await;
         if let Some(r) = reply {
             let _ = out_tx.send(r.to_string());
@@ -472,7 +565,8 @@ async fn handle_client_message(app: &Shared, id: u64, v: Value) -> Option<Value>
     let t = v.get("t").and_then(|t| t.as_str()).unwrap_or("");
     match t {
         "put" => {
-            let checked = validate::value_and_validate(v.get("project").cloned().unwrap_or(Value::Null));
+            let checked =
+                validate::value_and_validate(v.get("project").cloned().unwrap_or(Value::Null));
             if !checked.is_ok() {
                 return Some(json!({"t": "rejected", "issues": checked.issues}));
             }
@@ -485,7 +579,8 @@ async fn handle_client_message(app: &Shared, id: u64, v: Value) -> Option<Value>
             }
         }
         "context" => {
-            let mut ctx = rosaclef_core::context::normalize(v.get("context").cloned().unwrap_or(Value::Null));
+            let mut ctx =
+                rosaclef_core::context::normalize(v.get("context").cloned().unwrap_or(Value::Null));
             ctx.seq = CONTEXT_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
             ctx.updated_at = now_rfc3339();
             for e in &mut ctx.recent_edits {
@@ -493,7 +588,10 @@ async fn handle_client_message(app: &Shared, id: u64, v: Value) -> Option<Value>
                     e.at = ctx.updated_at.clone();
                 }
             }
-            let _ = folder::write_atomic(&app.folder().state_path("context.json"), (serde_json::to_string_pretty(&ctx).unwrap() + "\n").as_bytes());
+            let _ = folder::write_atomic(
+                &app.folder().state_path("context.json"),
+                (serde_json::to_string_pretty(&ctx).unwrap() + "\n").as_bytes(),
+            );
             None
         }
         #[cfg(feature = "device-audio")]
@@ -557,7 +655,11 @@ async fn put_project(State(app): State<Shared>, headers: HeaderMap, body: Bytes)
     }
     let checked = validate::parse_and_validate(&String::from_utf8_lossy(&body));
     if !checked.is_ok() {
-        return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"ok": false, "issues": checked.issues}))).into_response();
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({"ok": false, "issues": checked.issues})),
+        )
+            .into_response();
     }
     match app.apply(checked.project.unwrap(), checked.issues, "api", 0, None) {
         Ok(rev) => Json(json!({"ok": true, "rev": rev})).into_response(),
@@ -580,7 +682,9 @@ async fn get_catalog(State(app): State<Shared>) -> impl IntoResponse {
     })
     .await
     .unwrap_or_default();
-    Json(json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": plugins}))
+    Json(
+        json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": plugins}),
+    )
 }
 
 #[derive(Deserialize)]
@@ -588,9 +692,14 @@ struct PluginsQuery {
     rescan: Option<bool>,
 }
 
-async fn get_plugins(State(app): State<Shared>, Query(q): Query<PluginsQuery>) -> impl IntoResponse {
+async fn get_plugins(
+    State(app): State<Shared>,
+    Query(q): Query<PluginsQuery>,
+) -> impl IntoResponse {
     let rescan = q.rescan.unwrap_or(false);
-    let plugins = tokio::task::spawn_blocking(move || cached_plugins(&app, rescan)).await.unwrap_or_default();
+    let plugins = tokio::task::spawn_blocking(move || cached_plugins(&app, rescan))
+        .await
+        .unwrap_or_default();
     Json(json!({"plugins": plugins}))
 }
 
@@ -601,7 +710,10 @@ struct ParamsQuery {
 }
 
 async fn get_plugin_params(Query(q): Query<ParamsQuery>) -> Response {
-    let res = tokio::task::spawn_blocking(move || rosaclef_clap::params(&q.path, q.id.as_deref().unwrap_or(""))).await;
+    let res = tokio::task::spawn_blocking(move || {
+        rosaclef_clap::params(&q.path, q.id.as_deref().unwrap_or(""))
+    })
+    .await;
     match res {
         Ok(Ok(params)) => Json(json!({"params": params})).into_response(),
         Ok(Err(e)) => (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response(),
@@ -618,7 +730,12 @@ struct UploadQuery {
     name: String,
 }
 
-async fn upload_sample(State(app): State<Shared>, headers: HeaderMap, Query(q): Query<UploadQuery>, body: Bytes) -> Response {
+async fn upload_sample(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<UploadQuery>,
+    body: Bytes,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -645,9 +762,15 @@ async fn get_peaks(State(app): State<Shared>, Query(q): Query<PeaksQuery>) -> Re
         return (StatusCode::NOT_FOUND, format!("{} does not exist", q.path)).into_response();
     }
     let n = q.n.unwrap_or(1024);
-    let res = tokio::task::spawn_blocking(move || crate::decode::decode_file(&rosaclef_fs::DiskFs, &path).map(|d| (d.duration(), d.sample_rate, crate::decode::peaks(&d, n)))).await;
+    let res = tokio::task::spawn_blocking(move || {
+        crate::decode::decode_file(&rosaclef_fs::DiskFs, &path)
+            .map(|d| (d.duration(), d.sample_rate, crate::decode::peaks(&d, n)))
+    })
+    .await;
     match res {
-        Ok(Ok((duration, sr, peaks))) => Json(json!({"duration": duration, "sampleRate": sr, "peaks": peaks})).into_response(),
+        Ok(Ok((duration, sr, peaks))) => {
+            Json(json!({"duration": duration, "sampleRate": sr, "peaks": peaks})).into_response()
+        }
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -662,7 +785,11 @@ struct RenderReq {
     sample_rate: Option<u32>,
 }
 
-async fn render(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<RenderReq>) -> Response {
+async fn render(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<RenderReq>,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -670,7 +797,10 @@ async fn render(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<R
     let folder = app.folder();
     let res = tokio::task::spawn_blocking(move || -> Result<Value> {
         let scope = match req.pattern.clone().filter(|p| !p.is_empty()) {
-            Some(id) => RenderScope::Pattern { id, loops: req.loops.unwrap_or(1) },
+            Some(id) => RenderScope::Pattern {
+                id,
+                loops: req.loops.unwrap_or(1),
+            },
             None => RenderScope::Song,
         };
         let bits = req.bits.filter(|b| [16, 24, 32].contains(b)).unwrap_or(24);
@@ -679,10 +809,22 @@ async fn render(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<R
             Some(p) if !p.is_empty() => format!("{title}-{p}"),
             _ => title,
         };
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         let rel = format!("{}/{name}-{stamp}.wav", folder::RENDERS_DIR);
-        let (audio, warnings) = render_project(&folder, project, &scope, req.sample_rate.unwrap_or(48000) as f32, install_plugin_host);
-        folder::write_atomic(&folder.dir.join(&rel), &rosaclef_engine::render::encode_wav(&audio, bits))?;
+        let (audio, warnings) = render_project(
+            &folder,
+            project,
+            &scope,
+            req.sample_rate.unwrap_or(48000) as f32,
+            install_plugin_host,
+        );
+        folder::write_atomic(
+            &folder.dir.join(&rel),
+            &rosaclef_engine::render::encode_wav(&audio, bits),
+        )?;
         let (peak_db, rms_db) = levels_db(&audio);
         Ok(json!({
             "path": rel,
@@ -717,7 +859,11 @@ async fn get_info(State(app): State<Shared>) -> impl IntoResponse {
 
 // ---------------------------------------------------------------- terminal
 
-async fn term_handler(State(app): State<Shared>, headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
+async fn term_handler(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -735,7 +881,8 @@ async fn serve_file(State(app): State<Shared>, req: Request) -> Response {
     match ServeDir::new(dir).oneshot(req).await {
         Ok(res) => {
             let mut res = res.map(Body::new);
-            res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+            res.headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
             res
         }
         Err(e) => match e {},

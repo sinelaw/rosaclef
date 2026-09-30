@@ -160,7 +160,12 @@ fn imports_a_song() {
     let im = import(SONG.as_bytes(), "song");
     let p = &im.project;
     let checked = validate::validate(p);
-    assert!(checked.iter().all(|i| i.severity != validate::Severity::Error), "{checked:?}");
+    assert!(
+        checked
+            .iter()
+            .all(|i| i.severity != validate::Severity::Error),
+        "{checked:?}"
+    );
 
     // Transport.
     assert_eq!(p.transport.bpm, 128.0);
@@ -193,62 +198,211 @@ fn imports_a_song() {
     let pad = &p.channels[3];
     assert_eq!(pad.instrument.kind, "synth");
     let acid = &p.channels[4];
-    assert_eq!(acid.instrument.kind, "cuivre", "LB302 becomes the Cuivre virtual analog");
+    assert_eq!(
+        acid.instrument.kind, "cuivre",
+        "LB302 becomes the Cuivre virtual analog"
+    );
     assert_eq!(acid.instrument.option("wave1"), "saw");
-    assert_eq!(acid.instrument.option("filter"), "ladder", "db24 selects the 4-pole ladder");
-    assert_eq!(acid.instrument.option("mode"), "legato", "LB302 slide plays legato");
+    assert_eq!(
+        acid.instrument.option("filter"),
+        "ladder",
+        "db24 selects the 4-pole ladder"
+    );
+    assert_eq!(
+        acid.instrument.option("mode"),
+        "legato",
+        "LB302 slide plays legato"
+    );
     assert!(acid.instrument.param("resonance") > 0.5);
-    assert!(acid.instrument.param("glide") > 0.01, "LB302 slide becomes glide");
-    assert_eq!(acid.mixer.0, 0, "routing to a missing FX channel falls back to the master");
+    assert!(
+        acid.instrument.param("glide") > 0.01,
+        "LB302 slide becomes glide"
+    );
+    assert_eq!(
+        acid.mixer.0, 0,
+        "routing to a missing FX channel falls back to the master"
+    );
 
     // Pitches: LMMS key 57 = A4 = MIDI 69.
-    let lead_patterns: Vec<_> = p.patterns.iter().filter(|x| x.notes.iter().any(|n| n.channel == lead.id)).collect();
-    assert_eq!(lead_patterns.len(), 2, "identical LMMS patterns are deduplicated");
+    let lead_patterns: Vec<_> = p
+        .patterns
+        .iter()
+        .filter(|x| x.notes.iter().any(|n| n.channel == lead.id))
+        .collect();
+    assert_eq!(
+        lead_patterns.len(),
+        2,
+        "identical LMMS patterns are deduplicated"
+    );
     let a = lead_patterns[0];
     assert_eq!(a.length, 4.0);
-    assert_eq!((a.notes[0].pitch, a.notes[0].start, a.notes[0].length, a.notes[0].velocity), (69, 0.0, 1.0, 1.0));
-    assert_eq!((a.notes[1].pitch, a.notes[1].start, a.notes[1].length, a.notes[1].velocity), (72, 2.0, 0.5, 0.5));
+    assert_eq!(
+        (
+            a.notes[0].pitch,
+            a.notes[0].start,
+            a.notes[0].length,
+            a.notes[0].velocity
+        ),
+        (69, 0.0, 1.0, 1.0)
+    );
+    assert_eq!(
+        (
+            a.notes[1].pitch,
+            a.notes[1].start,
+            a.notes[1].length,
+            a.notes[1].velocity
+        ),
+        (72, 2.0, 0.5, 0.5)
+    );
     let b = lead_patterns[1];
     assert_eq!(b.name, "Break");
     assert_eq!(b.length, 8.0);
-    assert_eq!((b.notes[0].pitch, b.notes[0].start, b.notes[0].length), (60, 4.0, 2.0));
+    assert_eq!(
+        (b.notes[0].pitch, b.notes[0].start, b.notes[0].length),
+        (60, 4.0, 2.0)
+    );
     assert_eq!(p.channels[4].id, acid.id);
-    let acid_note = p.patterns.iter().flat_map(|x| &x.notes).find(|n| n.channel == acid.id).unwrap();
+    let acid_note = p
+        .patterns
+        .iter()
+        .flat_map(|x| &x.notes)
+        .find(|n| n.channel == acid.id)
+        .unwrap();
     assert_eq!(acid_note.pitch, 45);
     assert_eq!(acid_note.length, 0.25);
 
     // Playlist tracks mirror LMMS tracks (plus padding).
-    let tracks: Vec<(&str, bool)> = p.playlist.tracks.iter().map(|t| (t.name.as_str(), t.mute)).collect();
-    assert_eq!(&tracks[..6], &[("Lead", false), ("Beat/Bassline 0", false), ("Fill", false), ("Vocals", true), ("Pad", false), ("Acid", false)]);
-    let clips_on = |t: u32| p.playlist.clips.iter().filter(move |c| c.track.0 == t).collect::<Vec<_>>();
-    let lead_clips: Vec<(f64, f64, &str)> = clips_on(0).iter().map(|c| (c.start, c.length, c.pattern.as_str())).collect();
-    assert_eq!(lead_clips, [(0.0, 4.0, a.id.as_str()), (8.0, 4.0, a.id.as_str()), (16.0, 8.0, b.id.as_str())]);
+    let tracks: Vec<(&str, bool)> = p
+        .playlist
+        .tracks
+        .iter()
+        .map(|t| (t.name.as_str(), t.mute))
+        .collect();
+    assert_eq!(
+        &tracks[..6],
+        &[
+            ("Lead", false),
+            ("Beat/Bassline 0", false),
+            ("Fill", false),
+            ("Vocals", true),
+            ("Pad", false),
+            ("Acid", false)
+        ]
+    );
+    let clips_on = |t: u32| {
+        p.playlist
+            .clips
+            .iter()
+            .filter(move |c| c.track.0 == t)
+            .collect::<Vec<_>>()
+    };
+    let lead_clips: Vec<(f64, f64, &str)> = clips_on(0)
+        .iter()
+        .map(|c| (c.start, c.length, c.pattern.as_str()))
+        .collect();
+    assert_eq!(
+        lead_clips,
+        [
+            (0.0, 4.0, a.id.as_str()),
+            (8.0, 4.0, a.id.as_str()),
+            (16.0, 8.0, b.id.as_str())
+        ]
+    );
 
     // Beat+Bassline: one multi-channel pattern per B&B, clips where bbtcos are.
-    let bb0 = p.patterns.iter().find(|x| x.name == "Beat/Bassline 0").unwrap();
+    let bb0 = p
+        .patterns
+        .iter()
+        .find(|x| x.name == "Beat/Bassline 0")
+        .unwrap();
     assert_eq!(bb0.length, 4.0);
-    let kicks: Vec<(i32, f64, f64)> = bb0.notes.iter().filter(|n| n.channel == kick.id).map(|n| (n.pitch, n.start, n.length)).collect();
-    assert_eq!(kicks, [(60, 0.0, 0.25), (60, 1.0, 0.25), (60, 2.0, 0.25), (60, 3.0, 0.25)]);
-    let hats: Vec<(i32, f64, f64)> = bb0.notes.iter().filter(|n| n.channel == hat.id).map(|n| (n.pitch, n.start, n.velocity)).collect();
+    let kicks: Vec<(i32, f64, f64)> = bb0
+        .notes
+        .iter()
+        .filter(|n| n.channel == kick.id)
+        .map(|n| (n.pitch, n.start, n.length))
+        .collect();
+    assert_eq!(
+        kicks,
+        [
+            (60, 0.0, 0.25),
+            (60, 1.0, 0.25),
+            (60, 2.0, 0.25),
+            (60, 3.0, 0.25)
+        ]
+    );
+    let hats: Vec<(i32, f64, f64)> = bb0
+        .notes
+        .iter()
+        .filter(|n| n.channel == hat.id)
+        .map(|n| (n.pitch, n.start, n.velocity))
+        .collect();
     assert_eq!(hats, [(69, 0.5, 1.0)]);
     let fill = p.patterns.iter().find(|x| x.name == "Fill").unwrap();
     assert_eq!(fill.notes.len(), 1);
-    let bb_clips: Vec<(f64, f64, &str)> = clips_on(1).iter().map(|c| (c.start, c.length, c.pattern.as_str())).collect();
-    assert_eq!(bb_clips, [(0.0, 8.0, bb0.id.as_str()), (16.0, 4.0, bb0.id.as_str())]);
-    let fill_clips: Vec<(f64, f64, &str)> = clips_on(2).iter().map(|c| (c.start, c.length, c.pattern.as_str())).collect();
+    let bb_clips: Vec<(f64, f64, &str)> = clips_on(1)
+        .iter()
+        .map(|c| (c.start, c.length, c.pattern.as_str()))
+        .collect();
+    assert_eq!(
+        bb_clips,
+        [(0.0, 8.0, bb0.id.as_str()), (16.0, 4.0, bb0.id.as_str())]
+    );
+    let fill_clips: Vec<(f64, f64, &str)> = clips_on(2)
+        .iter()
+        .map(|c| (c.start, c.length, c.pattern.as_str()))
+        .collect();
     assert_eq!(fill_clips, [(24.0, 4.0, fill.id.as_str())]);
 
     // Sample track: audio clips, copied samples, missing file warning.
     let audio = clips_on(3);
     assert_eq!(audio.len(), 2);
-    assert_eq!((audio[0].sample.as_str(), audio[0].start, audio[0].length, audio[0].offset, audio[0].gain, audio[0].mixer.0), ("samples/vox.wav", 4.0, 16.0, 1.0, 0.5, 3));
+    assert_eq!(
+        (
+            audio[0].sample.as_str(),
+            audio[0].start,
+            audio[0].length,
+            audio[0].offset,
+            audio[0].gain,
+            audio[0].mixer.0
+        ),
+        ("samples/vox.wav", 4.0, 16.0, 1.0, 0.5, 3)
+    );
     assert_eq!(audio[1].sample, "samples/missing.wav");
-    let copies: Vec<(&str, String)> = im.samples.iter().map(|s| (s.to.as_str(), s.from.file_name().unwrap().to_string_lossy().to_string())).collect();
-    assert_eq!(copies, [("samples/hat.wav", "hat.wav".to_string()), ("samples/vox.wav", "vox.wav".to_string())]);
+    let copies: Vec<(&str, String)> = im
+        .samples
+        .iter()
+        .map(|s| {
+            (
+                s.to.as_str(),
+                s.from.file_name().unwrap().to_string_lossy().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        copies,
+        [
+            ("samples/hat.wav", "hat.wav".to_string()),
+            ("samples/vox.wav", "vox.wav".to_string())
+        ]
+    );
 
     // Mixer: FX channels become inserts; track effects get their own insert.
-    let ins: Vec<(&str, f64, bool)> = p.mixer.inserts.iter().map(|i| (i.name.as_str(), i.volume, i.mute)).collect();
-    assert_eq!(&ins[..4], &[("Master", 1.0, false), ("Lead Bus", 0.8, false), ("Drums", 1.2, false), ("Vox", 1.0, true)]);
+    let ins: Vec<(&str, f64, bool)> = p
+        .mixer
+        .inserts
+        .iter()
+        .map(|i| (i.name.as_str(), i.volume, i.mute))
+        .collect();
+    assert_eq!(
+        &ins[..4],
+        &[
+            ("Master", 1.0, false),
+            ("Lead Bus", 0.8, false),
+            ("Drums", 1.2, false),
+            ("Vox", 1.0, true)
+        ]
+    );
     assert_eq!(p.mixer.inserts[1].effects[0].kind, "delay");
     assert!((p.mixer.inserts[1].effects[0].param("time") - 0.25 * 128.0 / 60.0).abs() < 1e-9);
     assert_eq!(p.mixer.inserts[0].effects.last().unwrap().kind, "limiter");
@@ -258,8 +412,22 @@ fn imports_a_song() {
     assert_eq!(p.mixer.inserts[4].effects[0].param("mix"), 0.4);
 
     // Everything approximated or skipped is reported.
-    for needle in ["zynaddsubfx", "missing.wav", "FX 9", "from FX 2 to FX 1", "automation", "louder than 100%", "Kicker was approximated", "LB302", "reverbsc"] {
-        assert!(has_warning(&im, needle), "no warning mentioning {needle:?} in {:#?}", im.warnings);
+    for needle in [
+        "zynaddsubfx",
+        "missing.wav",
+        "FX 9",
+        "from FX 2 to FX 1",
+        "automation",
+        "louder than 100%",
+        "Kicker was approximated",
+        "LB302",
+        "reverbsc",
+    ] {
+        assert!(
+            has_warning(&im, needle),
+            "no warning mentioning {needle:?} in {:#?}",
+            im.warnings
+        );
     }
 }
 

@@ -60,7 +60,10 @@ fn header(input: &[u8]) -> (Value, &[u8]) {
     }
     let n = u32::from_le_bytes([input[0], input[1], input[2], input[3]]) as usize;
     let n = n.min(input.len() - 4);
-    (serde_json::from_slice(&input[4..4 + n]).unwrap_or(Value::Null), &input[4 + n..])
+    (
+        serde_json::from_slice(&input[4..4 + n]).unwrap_or(Value::Null),
+        &input[4 + n..],
+    )
 }
 
 /// Build an envelope.
@@ -75,7 +78,10 @@ pub fn envelope(h: &Value, bytes: &[u8]) -> Vec<u8> {
 
 impl Backend {
     pub fn new() -> Backend {
-        Backend { mem: Arc::new(MemFs::new()), host: None }
+        Backend {
+            mem: Arc::new(MemFs::new()),
+            host: None,
+        }
     }
 
     pub fn host(&self) -> Option<&Host> {
@@ -95,11 +101,19 @@ impl Backend {
         let mut resp_body: Vec<u8> = vec![];
 
         // Terminal state to restore if the call must be retried.
-        let shell_before = self.host.as_ref().and_then(|h| h.shells.get(&client).cloned());
+        let shell_before = self
+            .host
+            .as_ref()
+            .and_then(|h| h.shells.get(&client).cloned());
 
         match (op, self.host.as_mut()) {
             ("boot", _) => {
-                for e in h.get("entries").and_then(|e| e.as_array()).into_iter().flatten() {
+                for e in h
+                    .get("entries")
+                    .and_then(|e| e.as_array())
+                    .into_iter()
+                    .flatten()
+                {
                     let path = e.get("path").and_then(|p| p.as_str()).unwrap_or("");
                     let modified = e.get("modified").and_then(|m| m.as_f64()).unwrap_or(0.0);
                     if e.get("dir").and_then(|d| d.as_bool()).unwrap_or(false) {
@@ -149,7 +163,11 @@ impl Backend {
             }
         }
 
-        let mut out = self.host.as_mut().map(|h| std::mem::take(&mut h.out)).unwrap_or_default();
+        let mut out = self
+            .host
+            .as_mut()
+            .map(|h| std::mem::take(&mut h.out))
+            .unwrap_or_default();
         let need = self.mem.take_missing();
         if !need.is_empty() {
             // Retry once the contents are loaded: nothing of this call counts.
@@ -233,7 +251,11 @@ pub unsafe extern "C" fn rc_free(ptr: *mut u8, len: usize) {
 /// `ptr`/`len` must describe readable memory.
 #[no_mangle]
 pub unsafe extern "C" fn rc_call(ptr: *const u8, len: usize) -> usize {
-    let input = if ptr.is_null() || len == 0 { &[][..] } else { std::slice::from_raw_parts(ptr, len) };
+    let input = if ptr.is_null() || len == 0 {
+        &[][..]
+    } else {
+        std::slice::from_raw_parts(ptr, len)
+    };
     let reply = BACKEND.with(|b| b.borrow_mut().call(input));
     let n = reply.len();
     RESULT.with(|r| *r.borrow_mut() = reply);

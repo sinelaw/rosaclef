@@ -54,13 +54,28 @@ pub struct Response {
 
 impl Response {
     fn json(v: Value) -> Response {
-        Response { status: 200, content_type: "application/json".into(), body: v.to_string().into_bytes(), blob: None }
+        Response {
+            status: 200,
+            content_type: "application/json".into(),
+            body: v.to_string().into_bytes(),
+            blob: None,
+        }
     }
     fn text(status: u16, s: impl Into<String>) -> Response {
-        Response { status, content_type: "text/plain; charset=utf-8".into(), body: s.into().into_bytes(), blob: None }
+        Response {
+            status,
+            content_type: "text/plain; charset=utf-8".into(),
+            body: s.into().into_bytes(),
+            blob: None,
+        }
     }
     fn bytes(content_type: &str, body: Vec<u8>) -> Response {
-        Response { status: 200, content_type: content_type.into(), body, blob: None }
+        Response {
+            status: 200,
+            content_type: content_type.into(),
+            body,
+            blob: None,
+        }
     }
 }
 
@@ -110,7 +125,13 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        let hex = if b[i] == b'%' && i + 2 < b.len() { std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) } else { None };
+        let hex = if b[i] == b'%' && i + 2 < b.len() {
+            std::str::from_utf8(&b[i + 1..i + 3])
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+        } else {
+            None
+        };
         match (b[i], hex) {
             (b'+', _) => out.push(b' '),
             (_, Some(v)) => {
@@ -154,9 +175,18 @@ impl Host {
         let fs: SharedFs = mem.clone();
         let library = Library::new(fs.clone(), LIBRARY, EXE);
         fs.create_dir_all(Path::new(LIBRARY))?;
-        let remembered = fs.read_to_string(Path::new(STATE_FILE)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).map(|v| str_field(&v, "current")).unwrap_or_default();
+        let remembered = fs
+            .read_to_string(Path::new(STATE_FILE))
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .map(|v| str_field(&v, "current"))
+            .unwrap_or_default();
         let listed = library.list(Path::new(""));
-        let pick = listed.iter().find(|p| p.name == remembered && !p.invalid).or_else(|| listed.iter().find(|p| !p.invalid)).map(|p| p.name.clone());
+        let pick = listed
+            .iter()
+            .find(|p| p.name == remembered && !p.invalid)
+            .or_else(|| listed.iter().find(|p| !p.invalid))
+            .map(|p| p.name.clone());
         let name = match pick {
             Some(n) => n,
             None => library.create(&library.unique_name("Demo"), true)?.name(),
@@ -167,7 +197,11 @@ impl Host {
             mem,
             library,
             folder,
-            doc: Doc { project, rev: 1, issues },
+            doc: Doc {
+                project,
+                rev: 1,
+                issues,
+            },
             context: Value::Null,
             ws_clients: vec![],
             shells: HashMap::new(),
@@ -188,14 +222,19 @@ impl Host {
         let checked = folder.load()?;
         if !checked.is_ok() {
             let msgs: Vec<String> = checked.errors().take(3).map(|i| i.to_string()).collect();
-            bail!("the project is invalid and cannot be opened:\n{}", msgs.join("\n"));
+            bail!(
+                "the project is invalid and cannot be opened:\n{}",
+                msgs.join("\n")
+            );
         }
         Ok((checked.project.expect("checked"), checked.issues))
     }
 
     fn remember(&self) -> Result<()> {
         let v = json!({"current": self.folder.name()});
-        Ok(self.fs().write_if_changed(Path::new(STATE_FILE), &(v.to_string() + "\n"))?)
+        Ok(self
+            .fs()
+            .write_if_changed(Path::new(STATE_FILE), &(v.to_string() + "\n"))?)
     }
 
     pub fn project(&self) -> &Project {
@@ -205,11 +244,23 @@ impl Host {
     // ------------------------------------------------------------ messages
 
     fn send(&mut self, to: Option<u64>, exclude: u64, chan: &'static str, v: Value) {
-        self.out.push(Out { to, exclude, chan, text: v.to_string(), raw: false });
+        self.out.push(Out {
+            to,
+            exclude,
+            chan,
+            text: v.to_string(),
+            raw: false,
+        });
     }
 
     pub(crate) fn term_out(&mut self, client: u64, text: String) {
-        self.out.push(Out { to: Some(client), exclude: 0, chan: "term", text, raw: true });
+        self.out.push(Out {
+            to: Some(client),
+            exclude: 0,
+            chan: "term",
+            text,
+            raw: true,
+        });
     }
 
     pub(crate) fn term_json(&mut self, client: u64, v: Value) {
@@ -245,12 +296,20 @@ impl Host {
     }
 
     pub fn ws_message(&mut self, client: u64, text: &str) {
-        let Ok(v) = serde_json::from_str::<Value>(text) else { return };
+        let Ok(v) = serde_json::from_str::<Value>(text) else {
+            return;
+        };
         match v.get("t").and_then(|t| t.as_str()).unwrap_or("") {
             "put" => {
-                let checked = validate::value_and_validate(v.get("project").cloned().unwrap_or(Value::Null));
+                let checked =
+                    validate::value_and_validate(v.get("project").cloned().unwrap_or(Value::Null));
                 if !checked.is_ok() {
-                    self.send(Some(client), 0, "ws", json!({"t": "rejected", "issues": checked.issues}));
+                    self.send(
+                        Some(client),
+                        0,
+                        "ws",
+                        json!({"t": "rejected", "issues": checked.issues}),
+                    );
                     return;
                 }
                 // An edit made for a project that has since been closed is dropped.
@@ -261,11 +320,18 @@ impl Host {
                 }
                 match self.apply(checked.project.unwrap(), checked.issues, "ui", client) {
                     Ok(rev) => self.send(Some(client), 0, "ws", json!({"t": "ack", "rev": rev})),
-                    Err(e) => self.send(Some(client), 0, "ws", json!({"t": "error", "message": e.to_string()})),
+                    Err(e) => self.send(
+                        Some(client),
+                        0,
+                        "ws",
+                        json!({"t": "error", "message": e.to_string()}),
+                    ),
                 }
             }
             "context" => {
-                let mut ctx = rosaclef_core::context::normalize(v.get("context").cloned().unwrap_or(Value::Null));
+                let mut ctx = rosaclef_core::context::normalize(
+                    v.get("context").cloned().unwrap_or(Value::Null),
+                );
                 ctx.updated_at = rosaclef_studio::rfc3339(self.fs().now_ms());
                 self.context = serde_json::to_value(&ctx).unwrap_or(Value::Null);
             }
@@ -277,7 +343,13 @@ impl Host {
     }
 
     /// Accept a new version of the song and tell every other page.
-    pub fn apply(&mut self, project: Project, issues: Vec<Issue>, origin: &str, exclude: u64) -> Result<u64> {
+    pub fn apply(
+        &mut self,
+        project: Project,
+        issues: Vec<Issue>,
+        origin: &str,
+        exclude: u64,
+    ) -> Result<u64> {
         self.folder.write_project(&project)?;
         self.doc.rev += 1;
         self.doc.project = project;
@@ -296,7 +368,11 @@ impl Host {
         }
         let (project, issues) = Self::load(&target)?;
         self.folder = target;
-        self.doc = Doc { project, rev: 1, issues };
+        self.doc = Doc {
+            project,
+            rev: 1,
+            issues,
+        };
         self.remember()?;
         let w = self.welcome("switched", 0);
         self.send(None, 0, "ws", w);
@@ -341,7 +417,14 @@ impl Host {
         }
     }
 
-    fn route(&mut self, client: u64, method: &str, path: &str, q: &BTreeMap<String, String>, body: &[u8]) -> Result<Response> {
+    fn route(
+        &mut self,
+        client: u64,
+        method: &str,
+        path: &str,
+        q: &BTreeMap<String, String>,
+        body: &[u8],
+    ) -> Result<Response> {
         let qs = |k: &str| q.get(k).cloned().unwrap_or_default();
         if let Some(rel) = path.strip_prefix("/files/") {
             return self.serve_file(rel);
@@ -355,7 +438,10 @@ impl Host {
                 "native": {"available": false, "enabled": false},
                 "backend": "local",
             })),
-            ("GET", "/api/project") => Response::bytes("application/json", format::to_string(&self.doc.project).into_bytes()),
+            ("GET", "/api/project") => Response::bytes(
+                "application/json",
+                format::to_string(&self.doc.project).into_bytes(),
+            ),
             ("PUT", "/api/project") => {
                 let checked = validate::parse_and_validate(&String::from_utf8_lossy(body));
                 if !checked.is_ok() {
@@ -366,10 +452,17 @@ impl Host {
                 let rev = self.apply(checked.project.unwrap(), checked.issues, "api", 0)?;
                 Response::json(json!({"ok": true, "rev": rev}))
             }
-            ("GET", "/api/schema") => Response::bytes("application/json", rosaclef_core::schema::schema_text().into_bytes()),
-            ("GET", "/api/catalog") => Response::json(json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": []})),
+            ("GET", "/api/schema") => Response::bytes(
+                "application/json",
+                rosaclef_core::schema::schema_text().into_bytes(),
+            ),
+            ("GET", "/api/catalog") => Response::json(
+                json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": []}),
+            ),
             ("GET", "/api/plugins") => Response::json(json!({"plugins": []})),
-            ("GET", "/api/plugins/params") => Response::text(400, "CLAP plugins run in the native Rosaclef studio only"),
+            ("GET", "/api/plugins/params") => {
+                Response::text(400, "CLAP plugins run in the native Rosaclef studio only")
+            }
             ("GET", "/api/agents") => Response::json(json!({"agents": [{
                 "id": "shell",
                 "name": "Rosaclef shell",
@@ -377,7 +470,9 @@ impl Host {
                 "available": true,
                 "hint": "",
             }]})),
-            ("GET", "/api/samples") => Response::json(json!({"samples": self.folder.list_samples()})),
+            ("GET", "/api/samples") => {
+                Response::json(json!({"samples": self.folder.list_samples()}))
+            }
             ("POST", "/api/samples") => {
                 let rel = unique_sample_path(&self.folder, &qs("name"));
                 self.folder.write(&rel, body)?;
@@ -390,7 +485,9 @@ impl Host {
                     v.get("pattern").and_then(|p| p.as_str()).unwrap_or(""),
                     v.get("loops").and_then(|x| x.as_u64()).unwrap_or(1) as u32,
                     v.get("bits").and_then(|x| x.as_u64()).unwrap_or(24) as u16,
-                    v.get("sampleRate").and_then(|x| x.as_u64()).unwrap_or(48000) as u32,
+                    v.get("sampleRate")
+                        .and_then(|x| x.as_u64())
+                        .unwrap_or(48000) as u32,
                     None,
                 )?;
                 Response::json(r)
@@ -403,7 +500,10 @@ impl Host {
             })),
             ("POST", "/api/projects") => {
                 let v = body_json(body)?;
-                let f = self.library.create(str_field(&v, "name").trim(), v.get("demo").and_then(|d| d.as_bool()).unwrap_or(false))?;
+                let f = self.library.create(
+                    str_field(&v, "name").trim(),
+                    v.get("demo").and_then(|d| d.as_bool()).unwrap_or(false),
+                )?;
                 Response::json(json!({"name": f.name()}))
             }
             ("POST", "/api/projects/open") => {
@@ -419,7 +519,10 @@ impl Host {
             }
             ("POST", "/api/projects/rename") => {
                 let v = body_json(body)?;
-                let (name, to) = (str_field(&v, "name"), str_field(&v, "to").trim().to_string());
+                let (name, to) = (
+                    str_field(&v, "name"),
+                    str_field(&v, "to").trim().to_string(),
+                );
                 self.rename_project(&name, &to)?;
                 Response::json(json!({"name": to}))
             }
@@ -431,9 +534,15 @@ impl Host {
                 }
                 let name = library::sanitize_name(&import_name(q, fallback));
                 let im = if lmms {
-                    rosaclef_import::lmms::import(body, &rosaclef_import::lmms::Options::new(&name))?
+                    rosaclef_import::lmms::import(
+                        body,
+                        &rosaclef_import::lmms::Options::new(&name),
+                    )?
                 } else {
-                    rosaclef_import::midi::import(body, &rosaclef_import::midi::Options::new(&name))?
+                    rosaclef_import::midi::import(
+                        body,
+                        &rosaclef_import::midi::Options::new(&name),
+                    )?
                 };
                 let (name, warnings) = self.library.save_imported(&name, &im)?;
                 Response::json(json!({"name": name, "warnings": warnings}))
@@ -453,7 +562,10 @@ impl Host {
                 let name = &p["/api/projects/".len()..];
                 let dir = self.library.project_dir(name)?;
                 if dir == self.folder.dir {
-                    return Ok(Response::text(409, format!("{name:?} is open; open another project before deleting it")));
+                    return Ok(Response::text(
+                        409,
+                        format!("{name:?} is open; open another project before deleting it"),
+                    ));
                 }
                 let trashed = self.library.trash(name)?;
                 Response::json(json!({"trashed": trashed.display().to_string()}))
@@ -463,7 +575,9 @@ impl Host {
                 "folder": self.folder.dir.display().to_string(),
                 "files": library::files(&self.folder, qs("dir").trim_matches('/'), &self.doc.project)?,
             })),
-            ("DELETE", "/api/files") => Response::json(json!({"trashed": library::trash_path(&self.folder, &qs("path"))?})),
+            ("DELETE", "/api/files") => {
+                Response::json(json!({"trashed": library::trash_path(&self.folder, &qs("path"))?}))
+            }
             ("POST", "/api/files/rename") => {
                 let v = body_json(body)?;
                 let from = str_field(&v, "path");
@@ -486,23 +600,37 @@ impl Host {
             }
             _ => {
                 let _ = client;
-                Response::text(404, format!("{method} {path}: not available in the browser studio"))
+                Response::text(
+                    404,
+                    format!("{method} {path}: not available in the browser studio"),
+                )
             }
         })
     }
 
     fn serve_file(&self, rel: &str) -> Result<Response> {
-        let p = self.folder.resolve(rel).ok_or_else(|| anyhow!("invalid path"))?;
+        let p = self
+            .folder
+            .resolve(rel)
+            .ok_or_else(|| anyhow!("invalid path"))?;
         let content_type = content_type(&p);
         match self.mem.blob(&p) {
             Some((_, true)) => Ok(Response::bytes(content_type, self.fs().read(&p)?)),
-            Some((blob, false)) => Ok(Response { status: 200, content_type: content_type.into(), body: vec![], blob: Some(blob) }),
+            Some((blob, false)) => Ok(Response {
+                status: 200,
+                content_type: content_type.into(),
+                body: vec![],
+                blob: Some(blob),
+            }),
             None => Ok(Response::text(404, format!("{rel} does not exist"))),
         }
     }
 
     fn peaks(&mut self, rel: &str, n: usize) -> Result<Response> {
-        let p = self.folder.resolve(rel).ok_or_else(|| anyhow!("invalid path"))?;
+        let p = self
+            .folder
+            .resolve(rel)
+            .ok_or_else(|| anyhow!("invalid path"))?;
         let Some((blob, _)) = self.mem.blob(&p) else {
             return Ok(Response::text(404, format!("{rel} does not exist")));
         };
@@ -521,7 +649,14 @@ impl Host {
     }
 
     /// Render the song (or a pattern) into `renders/` (or `out`).
-    pub fn render(&mut self, pattern: &str, loops: u32, bits: u16, sample_rate: u32, out: Option<&str>) -> Result<Value> {
+    pub fn render(
+        &mut self,
+        pattern: &str,
+        loops: u32,
+        bits: u16,
+        sample_rate: u32,
+        out: Option<&str>,
+    ) -> Result<Value> {
         let project = self.doc.project.clone();
         self.ensure_loaded(&required_samples(&project))?;
         let scope = if pattern.is_empty() {
@@ -530,17 +665,34 @@ impl Host {
             if project.pattern(pattern).is_none() {
                 bail!("no pattern with id {pattern:?}");
             }
-            RenderScope::Pattern { id: pattern.to_string(), loops: loops.max(1) }
+            RenderScope::Pattern {
+                id: pattern.to_string(),
+                loops: loops.max(1),
+            }
         };
-        let bits = if [16, 24, 32].contains(&bits) { bits } else { 24 };
+        let bits = if [16, 24, 32].contains(&bits) {
+            bits
+        } else {
+            24
+        };
         let title = slug(&project.meta.title);
-        let name = if pattern.is_empty() { title } else { format!("{title}-{pattern}") };
+        let name = if pattern.is_empty() {
+            title
+        } else {
+            format!("{title}-{pattern}")
+        };
         let stamp = (self.fs().now_ms() / 1000.0).floor() as i64;
         let rel = match out {
             Some(o) => o.to_string(),
             None => format!("{}/{name}-{stamp}.wav", folder::RENDERS_DIR),
         };
-        let (audio, warnings) = render_project(&self.folder, project, &scope, sample_rate.clamp(8000, 192000) as f32, |_| {});
+        let (audio, warnings) = render_project(
+            &self.folder,
+            project,
+            &scope,
+            sample_rate.clamp(8000, 192000) as f32,
+            |_| {},
+        );
         self.folder.write(&rel, &encode_wav(&audio, bits))?;
         let (peak_db, rms_db) = levels_db(&audio);
         Ok(json!({
@@ -593,7 +745,8 @@ impl Host {
     }
 
     fn import_midi_into(&mut self, body: &[u8]) -> Result<Response> {
-        let im = rosaclef_import::midi::import(body, &rosaclef_import::midi::Options::new("import"))?;
+        let im =
+            rosaclef_import::midi::import(body, &rosaclef_import::midi::Options::new("import"))?;
         let mut project = self.doc.project.clone();
         let before = project.channels.len();
         let mut warnings = im.warnings;
@@ -605,7 +758,9 @@ impl Host {
         }
         let added = project.channels.len() - before;
         self.apply(project, issues, "import", 0)?;
-        Ok(Response::json(json!({"channels": added, "warnings": warnings})))
+        Ok(Response::json(
+            json!({"channels": added, "warnings": warnings}),
+        ))
     }
 }
 
@@ -613,11 +768,19 @@ fn import_name(q: &BTreeMap<String, String>, fallback: &str) -> String {
     if let Some(n) = q.get("name").map(|n| n.trim()).filter(|n| !n.is_empty()) {
         return n.to_string();
     }
-    q.get("filename").and_then(|f| Path::new(f).file_stem()).map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| fallback.to_string())
+    q.get("filename")
+        .and_then(|f| Path::new(f).file_stem())
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 fn content_type(p: &Path) -> &'static str {
-    match p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+    match p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("wav") | Some("wave") => "audio/wav",
         Some("mp3") => "audio/mpeg",
         Some("flac") => "audio/flac",

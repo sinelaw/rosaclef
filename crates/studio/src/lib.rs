@@ -20,8 +20,21 @@ pub use rosaclef_fs as fs;
 
 /// A file-name friendly form of a title (`My Song!` → `my-song`).
 pub fn slug(s: &str) -> String {
-    let s: String = s.chars().map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect();
-    let s = s.split('-').filter(|x| !x.is_empty()).collect::<Vec<_>>().join("-");
+    let s: String = s
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let s = s
+        .split('-')
+        .filter(|x| !x.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
     if s.is_empty() {
         "untitled".into()
     } else {

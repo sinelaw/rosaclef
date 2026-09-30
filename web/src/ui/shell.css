@@ -11,45 +11,127 @@
   height: 100%;
   transition: grid-template-columns 0.28s var(--ease-pane);
 }
-.studio.dragging, .studio.dragging .pane-dock { transition: none; }
+.studio.dragging,
+.studio.dragging .pane-dock {
+  transition: none;
+}
 
-.topbar { grid-area: top; }
-.side-browser { grid-area: browser; }
-.workspace { grid-area: work; }
-.side-agent { grid-area: agent; }
-.hintbar { grid-area: hint; }
-.keyboard { grid-area: keys; }
-.navbar { grid-area: nav; }
+.topbar {
+  grid-area: top;
+}
+.side-browser {
+  grid-area: browser;
+}
+.workspace {
+  grid-area: work;
+}
+.side-agent {
+  grid-area: agent;
+}
+.hintbar {
+  grid-area: hint;
+}
+.keyboard {
+  grid-area: keys;
+}
+.navbar {
+  grid-area: nav;
+}
 
 /* ---------------------------------------------------------------- side panels (panes.js) */
 
 /* The column animates and clips; the panel keeps its own width so its
    content (the terminal) is not refitted while it slides or hides. */
-.side { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
-.side > .browser, .side > .agent { position: absolute; top: 0; bottom: 0; }
-.side > .browser { left: 0; width: max(100%, var(--browser-w)); }
-.side > .agent { right: 0; width: var(--agent-w); box-shadow: none; }
-.side-browser { background: var(--lacquer); }
-.side-agent { background: #0b0a0d; box-shadow: -12px 0 30px rgba(0, 0, 0, 0.5); }
-.side.min > .browser, .side.min > .agent { visibility: hidden; }
-.side-agent .agent-resize { left: 0; }
-/* A narrow agent panel shrinks its agent picker, never its window buttons. */
-.side-agent .agent-head > * { flex-shrink: 0; }
-.side-agent .agent-head > .select { flex: 0 4 auto; min-width: 64px; }
-.side-agent .agent-head > .agent-title { flex: 0 1 auto; min-width: 76px; overflow: hidden; white-space: nowrap; }
-.side-agent .agent-head > .spacer { flex: 1 1 0; }
-.side > .agent { container-type: inline-size; }
-@container (max-width: 400px) {
-  .side-agent .agent-head > .agent-mark { display: none; }
-  .side-agent .agent-head > .agent-title { min-width: 0; }
+.side {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
-.side.min .agent-resize { display: none; }
+.side > .browser,
+.side > .agent {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.side > .browser {
+  left: 0;
+  width: max(100%, var(--browser-w));
+}
+.side > .agent {
+  right: 0;
+  width: var(--agent-w);
+  box-shadow: none;
+}
+.side-browser {
+  background: var(--lacquer);
+}
+.side-agent {
+  background: #0b0a0d;
+  box-shadow: -12px 0 30px rgba(0, 0, 0, 0.5);
+}
+.side.min > .browser,
+.side.min > .agent {
+  visibility: hidden;
+}
+.side-agent .agent-resize {
+  left: 0;
+}
+/* A narrow agent panel shrinks its agent picker, never its window buttons. */
+.side-agent .agent-head > * {
+  flex-shrink: 0;
+}
+.side-agent .agent-head > .select {
+  flex: 0 4 auto;
+  min-width: 64px;
+}
+.side-agent .agent-head > .agent-title {
+  flex: 0 1 auto;
+  min-width: 76px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.side-agent .agent-head > .spacer {
+  flex: 1 1 0;
+}
+.side > .agent {
+  container-type: inline-size;
+}
+@container (max-width: 400px) {
+  .side-agent .agent-head > .agent-mark {
+    display: none;
+  }
+  .side-agent .agent-head > .agent-title {
+    min-width: 0;
+  }
+}
+.side.min .agent-resize {
+  display: none;
+}
 
 /* A maximized browser lays its lists out in columns and scrolls as a whole. */
-.side-browser.max .browser { overflow-y: auto; }
-.side-browser.max .panel-head { flex: none; position: sticky; top: 0; z-index: 2; background: linear-gradient(180deg, #1a171e, #141217); }
-.side-browser.max .browser-body { flex: none; overflow: visible; column-width: 250px; column-gap: 18px; column-rule: 1px solid var(--line); padding: 2px 6px 24px; }
-.side-browser.max .b-section { break-inside: avoid; padding-top: 1px; }
+.side-browser.max .browser {
+  overflow-y: auto;
+}
+.side-browser.max .panel-head {
+  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, #1a171e, #141217);
+}
+.side-browser.max .browser-body {
+  flex: none;
+  overflow: visible;
+  column-width: 250px;
+  column-gap: 18px;
+  column-rule: 1px solid var(--line);
+  padding: 2px 6px 24px;
+}
+.side-browser.max .b-section {
+  break-inside: avoid;
+  padding-top: 1px;
+}
 
 /* The rail a minimized side panel collapses to. */
 .rail {
@@ -65,12 +147,27 @@
   background: linear-gradient(180deg, #17141b, #0d0b10);
   transition: background 0.2s;
 }
-.side.min .rail { display: flex; animation: rail-in 0.32s var(--ease-pane) both; }
-@keyframes rail-in { from { opacity: 0; } }
-.rail-browser { border-right: 1px solid var(--line); }
-.rail-agent { border-left: 1px solid var(--line-2); }
-.rail:hover { background: linear-gradient(180deg, #201b24, #110f14); }
-.rail .winctl { margin: 0; }
+.side.min .rail {
+  display: flex;
+  animation: rail-in 0.32s var(--ease-pane) both;
+}
+@keyframes rail-in {
+  from {
+    opacity: 0;
+  }
+}
+.rail-browser {
+  border-right: 1px solid var(--line);
+}
+.rail-agent {
+  border-left: 1px solid var(--line-2);
+}
+.rail:hover {
+  background: linear-gradient(180deg, #201b24, #110f14);
+}
+.rail .winctl {
+  margin: 0;
+}
 .rail-mark {
   display: grid;
   place-items: center;
@@ -82,20 +179,46 @@
   background: radial-gradient(circle at 35% 30%, #2e2618, #0f0c08);
   color: var(--gold);
 }
-.rail-mark .glyph { width: 12px; height: 12px; }
-.rail-agent .rail-mark { border-color: var(--line-3); color: var(--gold-hi); box-shadow: var(--glow); }
-.rail-mark .glyph-spark path { fill: currentColor; stroke: none; }
+.rail-mark .glyph {
+  width: 12px;
+  height: 12px;
+}
+.rail-agent .rail-mark {
+  border-color: var(--line-3);
+  color: var(--gold-hi);
+  box-shadow: var(--glow);
+}
+.rail-mark .glyph-spark path {
+  fill: currentColor;
+  stroke: none;
+}
 .rail-label {
   writing-mode: vertical-rl;
   font: 600 14px/1 var(--serif);
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: var(--champagne);
-  transition: color 0.15s, text-shadow 0.15s;
+  transition:
+    color 0.15s,
+    text-shadow 0.15s;
 }
-.rail-agent .rail-label { font-size: 18px; font-style: italic; letter-spacing: 0.06em; text-transform: none; color: var(--gold-hi); }
-.rail:hover .rail-label { color: var(--gold-hi); text-shadow: 0 0 12px rgba(212, 175, 55, 0.5); }
-.rail-line { flex: 1; width: 1px; min-height: 20px; background: linear-gradient(180deg, var(--line-3), transparent); }
+.rail-agent .rail-label {
+  font-size: 18px;
+  font-style: italic;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--gold-hi);
+}
+.rail:hover .rail-label {
+  color: var(--gold-hi);
+  text-shadow: 0 0 12px rgba(212, 175, 55, 0.5);
+}
+.rail-line {
+  flex: 1;
+  width: 1px;
+  min-height: 20px;
+  background: linear-gradient(180deg, var(--line-3), transparent);
+}
 
 /* ---------------------------------------------------------------- window buttons (panes.js) */
 
@@ -109,7 +232,9 @@
   border-radius: 8px;
   border: 1px solid var(--line);
   background: rgba(6, 5, 8, 0.55);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 240, 200, 0.03);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 240, 200, 0.03);
 }
 .winbtn {
   display: grid;
@@ -122,14 +247,35 @@
   background: transparent;
   color: var(--gold);
   opacity: 0.85;
-  transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s,
+    opacity 0.15s;
 }
-.winbtn .glyph { width: 14px; height: 14px; stroke-width: 1.6; }
-.winbtn:hover { opacity: 1; color: var(--gold-hi); background: rgba(212, 175, 55, 0.09); border-color: var(--line-2); box-shadow: 0 0 10px rgba(212, 175, 55, 0.28); }
-.winbtn:active { transform: translateY(0.5px); }
-.winbtn:focus-visible { outline: 1px solid var(--line-3); outline-offset: 1px; }
-.panel-head .winctl { margin-left: auto; }
-
+.winbtn .glyph {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.6;
+}
+.winbtn:hover {
+  opacity: 1;
+  color: var(--gold-hi);
+  background: rgba(212, 175, 55, 0.09);
+  border-color: var(--line-2);
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.28);
+}
+.winbtn:active {
+  transform: translateY(0.5px);
+}
+.winbtn:focus-visible {
+  outline: 1px solid var(--line-3);
+  outline-offset: 1px;
+}
+.panel-head .winctl {
+  margin-left: auto;
+}
 
 /* ---------------------------------------------------------------- workspace */
 
@@ -140,27 +286,75 @@
   min-height: 0;
   background: var(--ob-1);
 }
-.pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative; }
-.pane-top { flex: 1 1 0; min-height: 38px; }
-.pane-dock { flex: 0 1 var(--dock-h); min-height: 39px; border-top: 1px solid var(--line-2); box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45); transition: flex-basis 0.28s var(--ease-pane); }
-.splitter { height: 5px; margin: -3px 0; cursor: ns-resize; position: relative; z-index: 3; }
-.splitter:hover { background: linear-gradient(180deg, transparent, rgba(212, 175, 55, 0.35), transparent); }
-.splitter.off { display: none; }
-
-/* A minimized workspace pane keeps only its tab strip. */
-.pane.min { overflow: hidden; }
-.pane.min > .dock-body { visibility: hidden; }
-.pane.min > .tabs { border-bottom-color: transparent; }
-/* A folded pane's tools are out of reach anyway; keep its strip calm. */
-.pane.min > .tabs > .tools { visibility: hidden; }
-.pane-top.min > .tabs .tab { cursor: pointer; }
-
-@media (prefers-reduced-motion: reduce) {
-  .studio, .pane-dock { transition: none; }
-  .side.min .rail { animation: none; }
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+.pane-top {
+  flex: 1 1 0;
+  min-height: 38px;
+}
+.pane-dock {
+  flex: 0 1 var(--dock-h);
+  min-height: 39px;
+  border-top: 1px solid var(--line-2);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+  transition: flex-basis 0.28s var(--ease-pane);
+}
+.splitter {
+  height: 5px;
+  margin: -3px 0;
+  cursor: ns-resize;
+  position: relative;
+  z-index: 3;
+}
+.splitter:hover {
+  background: linear-gradient(180deg, transparent, rgba(212, 175, 55, 0.35), transparent);
+}
+.splitter.off {
+  display: none;
 }
 
-.tabs { display: flex; align-items: flex-end; gap: 2px; height: 38px; padding: 0 10px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #141117, #0e0c11); }
+/* A minimized workspace pane keeps only its tab strip. */
+.pane.min {
+  overflow: hidden;
+}
+.pane.min > .dock-body {
+  visibility: hidden;
+}
+.pane.min > .tabs {
+  border-bottom-color: transparent;
+}
+/* A folded pane's tools are out of reach anyway; keep its strip calm. */
+.pane.min > .tabs > .tools {
+  visibility: hidden;
+}
+.pane-top.min > .tabs .tab {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio,
+  .pane-dock {
+    transition: none;
+  }
+  .side.min .rail {
+    animation: none;
+  }
+}
+
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 38px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #141117, #0e0c11);
+}
 .tab {
   display: inline-flex;
   align-items: center;
@@ -176,9 +370,20 @@
   letter-spacing: 0.08em;
   cursor: pointer;
 }
-.tab .glyph { width: 14px; height: 14px; }
-.tab kbd { font: 500 9px/1 var(--mono); color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
-.tab:hover { color: var(--champagne); }
+.tab .glyph {
+  width: 14px;
+  height: 14px;
+}
+.tab kbd {
+  font: 500 9px/1 var(--mono);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+.tab:hover {
+  color: var(--champagne);
+}
 .tab.on {
   color: var(--gold-hi);
   background: linear-gradient(180deg, #211d27, var(--ob-2));
@@ -186,37 +391,150 @@
   box-shadow: 0 -4px 14px rgba(212, 175, 55, 0.08);
   position: relative;
 }
-.tab.on::before { content: ""; position: absolute; left: 12px; right: 12px; top: -1px; height: 2px; border-radius: 2px; background: var(--metal); }
-.tools { display: flex; align-items: center; gap: 8px; margin-left: auto; padding-bottom: 5px; min-width: 0; overflow: clip; overflow-clip-margin: 6px; }
-.tabs > .tab { flex: none; white-space: nowrap; }
-.tabs > .winctl { flex: none; margin: 0 0 5px 10px; }
+.tab.on::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--metal);
+}
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-bottom: 5px;
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 6px;
+}
+.tabs > .tab {
+  flex: none;
+  white-space: nowrap;
+}
+.tabs > .winctl {
+  flex: none;
+  margin: 0 0 5px 10px;
+}
 /* Narrow panes: drop key hints and labels, then inactive tab names, before
    the tools clip; the window buttons always stay visible. */
-.pane { container-type: inline-size; }
+.pane {
+  container-type: inline-size;
+}
 @container (max-width: 760px) {
-  .tabs .tab kbd, .tabs .tools .label { display: none; }
-  .tabs .tab { padding: 0 10px; }
+  .tabs .tab kbd,
+  .tabs .tools .label {
+    display: none;
+  }
+  .tabs .tab {
+    padding: 0 10px;
+  }
 }
 @container (max-width: 640px) {
-  .tabs .tab:not(.on) > span { display: none; }
-  .tabs .tools { gap: 5px; }
+  .tabs .tab:not(.on) > span {
+    display: none;
+  }
+  .tabs .tools {
+    gap: 5px;
+  }
 }
-.tools .label { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+.tools .label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
 
-.dock-body { flex: 1; min-height: 0; background: var(--ob-2); position: relative; }
+.dock-body {
+  flex: 1;
+  min-height: 0;
+  background: var(--ob-2);
+  position: relative;
+}
 
 /* ---------------------------------------------------------------- hint bar, toasts, banners */
 
-.hintbar { display: flex; align-items: center; gap: 14px; padding: 0 12px; border-top: 1px solid var(--line); background: linear-gradient(180deg, #110f14, #09080b); color: var(--muted); font-size: 11px; }
-.hintbar .hint { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--serif); font-size: 14px; font-style: italic; color: var(--champagne); }
-.hintbar .meta { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.hintbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 12px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, #110f14, #09080b);
+  color: var(--muted);
+  font-size: 11px;
+}
+.hintbar .hint {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--serif);
+  font-size: 14px;
+  font-style: italic;
+  color: var(--champagne);
+}
+.hintbar .meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
 
-.banner { display: flex; gap: 10px; align-items: center; padding: 7px 12px; background: linear-gradient(90deg, rgba(156, 74, 87, 0.45), rgba(92, 29, 43, 0.2)); border-bottom: 1px solid rgba(224, 112, 126, 0.4); color: #f3c0c6; font-size: 11.5px; }
-.banner code { font-family: var(--mono); font-size: 10.5px; color: #fff; }
+.banner {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 12px;
+  background: linear-gradient(90deg, rgba(156, 74, 87, 0.45), rgba(92, 29, 43, 0.2));
+  border-bottom: 1px solid rgba(224, 112, 126, 0.4);
+  color: #f3c0c6;
+  font-size: 11.5px;
+}
+.banner code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #fff;
+}
 
-.overlay { position: fixed; inset: 0; background: rgba(4, 3, 6, 0.72); backdrop-filter: blur(4px); display: grid; place-items: center; z-index: 60; }
-.dialog { width: min(420px, calc(100vw - 32px)); padding: 20px 22px; border-radius: 16px; background: linear-gradient(180deg, #1f1b24, #121015); border: 1px solid var(--line-3); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), var(--glow); }
-.dialog h2 { margin: 0 0 6px; font: italic 600 26px/1.1 var(--serif); color: var(--gold-hi); }
-.dialog p { margin: 0 0 14px; color: var(--muted); font: 15px/1.4 var(--serif); }
-.dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-.dialog a { color: var(--gold-hi); }
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 3, 6, 0.72);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+}
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 20px 22px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #1f1b24, #121015);
+  border: 1px solid var(--line-3);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.7),
+    var(--glow);
+}
+.dialog h2 {
+  margin: 0 0 6px;
+  font: italic 600 26px/1.1 var(--serif);
+  color: var(--gold-hi);
+}
+.dialog p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font: 15px/1.4 var(--serif);
+}
+.dialog .row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+.dialog a {
+  color: var(--gold-hi);
+}

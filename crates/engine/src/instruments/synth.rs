@@ -90,7 +90,8 @@ impl Instrument for Synth {
             wave1: Wave::parse(d.option("wave1")),
             wave2: Wave::parse(d.option("wave2")),
             mode: FilterMode::parse(d.option("filter")),
-            osc2_ratio: 2f32.powf(d.param("osc2Semi") as f32 / 12.0) * cents(d.param("osc2Detune") as f32),
+            osc2_ratio: 2f32.powf(d.param("osc2Semi") as f32 / 12.0)
+                * cents(d.param("osc2Detune") as f32),
             osc2_mix: d.param("osc2Mix") as f32,
             sub: d.param("sub") as f32,
             unison: (d.param("unison") as usize).clamp(1, MAX_UNISON),
@@ -102,7 +103,12 @@ impl Instrument for Synth {
             glide: d.param("glide") as f32,
             gain: d.param("gain") as f32,
         };
-        self.env_times = (d.param("attack") as f32, d.param("decay") as f32, d.param("sustain") as f32, d.param("release") as f32);
+        self.env_times = (
+            d.param("attack") as f32,
+            d.param("decay") as f32,
+            d.param("sustain") as f32,
+            d.param("release") as f32,
+        );
         let (a, dd, s, r) = self.env_times;
         for v in &mut self.voices {
             v.env.set(a, dd, s, r, sr);
@@ -113,9 +119,18 @@ impl Instrument for Synth {
         match ev {
             NoteKind::On { key, velocity } => {
                 self.clock += 1;
-                let i = pick_voice(&self.voices, |v| v.active, |v| v.env.is_released(), |v| v.age);
+                let i = pick_voice(
+                    &self.voices,
+                    |v| v.active,
+                    |v| v.env.is_released(),
+                    |v| v.age,
+                );
                 let target = midi_to_hz(key as f32);
-                let start = if self.p.glide > 0.001 && self.last_freq > 0.0 { self.last_freq } else { target };
+                let start = if self.p.glide > 0.001 && self.last_freq > 0.0 {
+                    self.last_freq
+                } else {
+                    target
+                };
                 self.last_freq = target;
                 let (a, d, s, r) = self.env_times;
                 let sr = self.sr;
@@ -141,7 +156,11 @@ impl Instrument for Synth {
                 v.counter = 0;
             }
             NoteKind::Off { key } => {
-                for v in self.voices.iter_mut().filter(|v| v.active && v.key == key && !v.env.is_released()) {
+                for v in self
+                    .voices
+                    .iter_mut()
+                    .filter(|v| v.active && v.key == key && !v.env.is_released())
+                {
                     v.env.release();
                 }
             }
@@ -163,7 +182,11 @@ impl Instrument for Synth {
         let mut pan_l = [1f32; MAX_UNISON];
         let mut pan_r = [1f32; MAX_UNISON];
         for u in 0..n_uni {
-            let pos = if n_uni == 1 { 0.0 } else { u as f32 / (n_uni - 1) as f32 * 2.0 - 1.0 };
+            let pos = if n_uni == 1 {
+                0.0
+            } else {
+                u as f32 / (n_uni - 1) as f32 * 2.0 - 1.0
+            };
             detune[u] = cents(pos * p.spread);
             let (l, r) = pan_gains(pos * 0.8);
             pan_l[u] = l;
@@ -192,7 +215,8 @@ impl Instrument for Synth {
                 for u in 0..n_uni {
                     let dt1 = (f1 * detune[u] / sr).min(0.49);
                     let dt2 = (f2 * detune[u] / sr).min(0.49);
-                    let s = osc(p.wave1, v.phase1[u], dt1, &mut self.rng) * mix1 + osc(p.wave2, v.phase2[u], dt2, &mut self.rng) * mix2;
+                    let s = osc(p.wave1, v.phase1[u], dt1, &mut self.rng) * mix1
+                        + osc(p.wave2, v.phase2[u], dt2, &mut self.rng) * mix2;
                     v.phase1[u] += dt1;
                     if v.phase1[u] >= 1.0 {
                         v.phase1[u] -= 1.0;

@@ -61,7 +61,9 @@ impl Sampler {
 
     fn bounds(&self, len: usize) -> (f64, f64) {
         let a = (self.start.min(self.end) as f64 * len as f64).floor();
-        let b = (self.start.max(self.end) as f64 * len as f64).ceil().min(len as f64);
+        let b = (self.start.max(self.end) as f64 * len as f64)
+            .ceil()
+            .min(len as f64);
         (a, b.max(a + 1.0))
     }
 }
@@ -104,7 +106,12 @@ impl Instrument for Sampler {
                     _ => key as f32 - self.root + self.tune,
                 };
                 let step = ratio * 2f64.powf(semis as f64 / 12.0);
-                let i = pick_voice(&self.voices, |v| v.active, |v| v.env.is_released(), |v| v.age);
+                let i = pick_voice(
+                    &self.voices,
+                    |v| v.active,
+                    |v| v.env.is_released(),
+                    |v| v.age,
+                );
                 let v = &mut self.voices[i];
                 v.active = true;
                 v.key = key;
@@ -133,7 +140,9 @@ impl Instrument for Sampler {
     }
 
     fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
-        let Some(sample) = self.sample.clone() else { return };
+        let Some(sample) = self.sample.clone() else {
+            return;
+        };
         let (a, b) = self.bounds(sample.len());
         let ch_l = &sample.channels[0];
         let ch_r = sample.channels.get(1).unwrap_or(ch_l);

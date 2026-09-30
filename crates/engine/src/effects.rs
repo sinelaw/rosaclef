@@ -43,9 +43,27 @@ pub struct Eq3 {
 impl Effect for Eq3 {
     fn set_device(&mut self, d: &Device, ctx: &Ctx) {
         for ch in &mut self.bands {
-            ch[0].set(BiquadKind::LowShelf, d.param("lowFreq") as f32, 0.707, d.param("low") as f32, ctx.sr);
-            ch[1].set(BiquadKind::Peak, d.param("midFreq") as f32, d.param("midQ") as f32, d.param("mid") as f32, ctx.sr);
-            ch[2].set(BiquadKind::HighShelf, d.param("highFreq") as f32, 0.707, d.param("high") as f32, ctx.sr);
+            ch[0].set(
+                BiquadKind::LowShelf,
+                d.param("lowFreq") as f32,
+                0.707,
+                d.param("low") as f32,
+                ctx.sr,
+            );
+            ch[1].set(
+                BiquadKind::Peak,
+                d.param("midFreq") as f32,
+                d.param("midQ") as f32,
+                d.param("mid") as f32,
+                ctx.sr,
+            );
+            ch[2].set(
+                BiquadKind::HighShelf,
+                d.param("highFreq") as f32,
+                0.707,
+                d.param("high") as f32,
+                ctx.sr,
+            );
         }
     }
     fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
@@ -72,7 +90,11 @@ pub struct Filter {
 
 impl Default for Filter {
     fn default() -> Self {
-        Filter { svf: Default::default(), mode: FilterMode::Lowpass, mix: 1.0 }
+        Filter {
+            svf: Default::default(),
+            mode: FilterMode::Lowpass,
+            mix: 1.0,
+        }
     }
 }
 
@@ -81,7 +103,11 @@ impl Effect for Filter {
         self.mode = FilterMode::parse(d.option("mode"));
         self.mix = d.param("mix") as f32;
         for s in &mut self.svf {
-            s.set(d.param("cutoff") as f32, d.param("resonance") as f32, ctx.sr);
+            s.set(
+                d.param("cutoff") as f32,
+                d.param("resonance") as f32,
+                ctx.sr,
+            );
         }
     }
     fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
@@ -107,7 +133,10 @@ struct DelayLine {
 
 impl DelayLine {
     fn new(len: usize) -> DelayLine {
-        DelayLine { buf: vec![0.0; len.max(4)], w: 0 }
+        DelayLine {
+            buf: vec![0.0; len.max(4)],
+            w: 0,
+        }
     }
     #[inline]
     fn write(&mut self, x: f32) {
@@ -208,7 +237,11 @@ struct Comb {
 
 impl Comb {
     fn new(n: usize) -> Comb {
-        Comb { buf: vec![0.0; n.max(1)], i: 0, store: 0.0 }
+        Comb {
+            buf: vec![0.0; n.max(1)],
+            i: 0,
+            store: 0.0,
+        }
     }
     #[inline]
     fn process(&mut self, x: f32, feedback: f32, damp: f32) -> f32 {
@@ -227,7 +260,10 @@ struct Allpass {
 
 impl Allpass {
     fn new(n: usize) -> Allpass {
-        Allpass { buf: vec![0.0; n.max(1)], i: 0 }
+        Allpass {
+            buf: vec![0.0; n.max(1)],
+            i: 0,
+        }
     }
     #[inline]
     fn process(&mut self, x: f32) -> f32 {
@@ -262,8 +298,14 @@ impl Reverb {
         let scale = sr / 44100.0;
         let mk = |extra: usize| -> (Vec<Comb>, Vec<Allpass>) {
             (
-                COMBS.iter().map(|n| Comb::new(((n + extra) as f32 * scale) as usize)).collect(),
-                ALLPASSES.iter().map(|n| Allpass::new(((n + extra) as f32 * scale) as usize)).collect(),
+                COMBS
+                    .iter()
+                    .map(|n| Comb::new(((n + extra) as f32 * scale) as usize))
+                    .collect(),
+                ALLPASSES
+                    .iter()
+                    .map(|n| Allpass::new(((n + extra) as f32 * scale) as usize))
+                    .collect(),
             )
         };
         let (cl, al) = mk(0);
@@ -337,7 +379,14 @@ pub struct Chorus {
 impl Chorus {
     fn new(sr: f32) -> Chorus {
         let n = (sr * 0.06) as usize;
-        Chorus { sr, lines: [DelayLine::new(n), DelayLine::new(n)], phase: 0.0, rate: 0.6, depth: 0.5, mix: 0.4 }
+        Chorus {
+            sr,
+            lines: [DelayLine::new(n), DelayLine::new(n)],
+            phase: 0.0,
+            rate: 0.6,
+            depth: 0.5,
+            mix: 0.4,
+        }
     }
 }
 
@@ -392,12 +441,20 @@ impl Effect for Drive {
         let pre = 1.0 + self.amount * 24.0;
         let norm = 1.0 / pre.sqrt().max(1.0);
         let r = self.dc_coef;
-        for ((buf, tone), dc) in [left, right].into_iter().zip(self.tone.iter_mut()).zip(self.dc.iter_mut()) {
+        for ((buf, tone), dc) in [left, right]
+            .into_iter()
+            .zip(self.tone.iter_mut())
+            .zip(self.dc.iter_mut())
+        {
             for x in buf.iter_mut() {
                 // Asymmetric curve adds even harmonics, like a tube stage;
                 // the DC it creates is removed afterwards.
                 let v = *x * pre;
-                let sat = if v >= 0.0 { v.tanh() } else { (v * 0.8).tanh() / 0.8 };
+                let sat = if v >= 0.0 {
+                    v.tanh()
+                } else {
+                    (v * 0.8).tanh() / 0.8
+                };
                 let wet = tone.process(dc.process(sat * norm * 1.6, r));
                 *x = mix(*x, wet, self.mix) * self.output;
             }
@@ -441,7 +498,11 @@ impl Effect for Compressor {
                 let x = over + knee / 2.0;
                 (1.0 - 1.0 / self.ratio) * x * x / (2.0 * knee)
             };
-            let coef = if gr > self.env_db { self.attack } else { self.release };
+            let coef = if gr > self.env_db {
+                self.attack
+            } else {
+                self.release
+            };
             self.env_db = gr + (self.env_db - gr) * coef;
             let g = db_to_gain(-self.env_db) * self.makeup;
             left[i] *= g;
@@ -492,8 +553,16 @@ impl Effect for Limiter {
         for i in 0..left.len() {
             let (xl, xr) = (left[i] * self.input, right[i] * self.input);
             let peak = xl.abs().max(xr.abs());
-            let target = if peak > self.ceiling { self.ceiling / peak } else { 1.0 };
-            let coef = if target < self.gain { self.attack } else { self.release };
+            let target = if peak > self.ceiling {
+                self.ceiling / peak
+            } else {
+                1.0
+            };
+            let coef = if target < self.gain {
+                self.attack
+            } else {
+                self.release
+            };
             self.gain = target + (self.gain - target) * coef;
             self.buf[0][self.w] = xl;
             self.buf[1][self.w] = xr;

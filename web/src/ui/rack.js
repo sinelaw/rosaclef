@@ -109,11 +109,15 @@ function rackRow(b, pat, ch, idx) {
     const y0 = e.clientY;
     const i0 = insertIndex(ch.mixer);
     const max = state.project.mixer.inserts.length - 1;
-    drag(e, (m) => {
-      const i = Math.max(0, Math.min(max, i0 + Math.round((y0 - m.clientY) / 12)));
-      ch.mixer = insertIx(i);
-      changed(true);
-    }, (u) => undefined);
+    drag(
+      e,
+      (m) => {
+        const i = Math.max(0, Math.min(max, i0 + Math.round((y0 - m.clientY) / 12)));
+        ch.mixer = insertIx(i);
+        changed(true);
+      },
+      (u) => undefined,
+    );
   });
 
   b.open("div", "name", "ch-name");
@@ -191,7 +195,17 @@ function pluginSpecs(dev) {
         /** const specs: ParamSpec[] */
         const specs = [];
         for (const pp of r.params) {
-          specs.push({ key: String(pp.id), label: String(pp.name), min: Number(pp.min), max: Number(pp.max), default: Number(pp.default), unit: "", curve: "linear", integer: pp.stepped === true, doc: String(pp.module) });
+          specs.push({
+            key: String(pp.id),
+            label: String(pp.name),
+            min: Number(pp.min),
+            max: Number(pp.max),
+            default: Number(pp.default),
+            unit: "",
+            curve: "linear",
+            integer: pp.stepped === true,
+            doc: String(pp.module),
+          });
         }
         pluginParams.push({ key: key, params: specs });
         invalidate();
@@ -366,7 +380,12 @@ function duplicateChannel(ch) {
       id: id,
       name: `${ch.name} ${n}`,
       color: ch.color,
-      instrument: { type: ch.instrument.type, enabled: true, params: ch.instrument.params.map((x) => ({ key: x.key, value: x.value })), options: ch.instrument.options.map((x) => ({ key: x.key, value: x.value })) },
+      instrument: {
+        type: ch.instrument.type,
+        enabled: true,
+        params: ch.instrument.params.map((x) => ({ key: x.key, value: x.value })),
+        options: ch.instrument.options.map((x) => ({ key: x.key, value: x.value })),
+      },
       volume: ch.volume,
       pan: ch.pan,
       mute: false,
@@ -412,9 +431,18 @@ export function rackTools(b) {
   if (!pat) return undefined;
   b.leaf("span", "l", "label", "Length");
   const lengths = ["4", "8", "12", "16", "32", "64"];
-  select(b, "len", "", String(pat.length), lengths, lengths.map((x) => `${Number(x) / 4} bar${x === "4" ? "" : "s"}`), "Pattern length", (v) => {
-    commit(() => {
-      pat.length = Number(v);
-    });
-  });
+  select(
+    b,
+    "len",
+    "",
+    String(pat.length),
+    lengths,
+    lengths.map((x) => `${Number(x) / 4} bar${x === "4" ? "" : "s"}`),
+    "Pattern length",
+    (v) => {
+      commit(() => {
+        pat.length = Number(v);
+      });
+    },
+  );
 }

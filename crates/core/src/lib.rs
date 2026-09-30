@@ -4,9 +4,9 @@
 pub mod automation;
 pub mod catalog;
 pub mod context;
-pub mod presets;
 pub mod format;
 pub mod model;
+pub mod presets;
 pub mod schema;
 pub mod validate;
 
@@ -20,7 +20,14 @@ pub fn summary(p: &Project) -> String {
     use std::fmt::Write;
     let mut s = String::new();
     let t = &p.transport;
-    let _ = writeln!(s, "\"{}\" — {} BPM, {}/4, swing {}", p.meta.title, format::format_f64(t.bpm), t.beats_per_bar, format::format_f64(t.swing));
+    let _ = writeln!(
+        s,
+        "\"{}\" — {} BPM, {}/4, swing {}",
+        p.meta.title,
+        format::format_f64(t.bpm),
+        t.beats_per_bar,
+        format::format_f64(t.swing)
+    );
     let _ = writeln!(s, "\nChannels ({}):", p.channels.len());
     for (i, c) in p.channels.iter().enumerate() {
         let detail = match c.instrument.kind.as_str() {
@@ -29,7 +36,14 @@ pub fn summary(p: &Project) -> String {
             "plugin" => format!("plugin {}", c.instrument.option("path")),
             k => k.to_string(),
         };
-        let _ = writeln!(s, "  [{i}] {:<14} {:<22} → insert {}{}", c.id, detail, c.mixer, if c.mute { " (muted)" } else { "" });
+        let _ = writeln!(
+            s,
+            "  [{i}] {:<14} {:<22} → insert {}{}",
+            c.id,
+            detail,
+            c.mixer,
+            if c.mute { " (muted)" } else { "" }
+        );
     }
     let _ = writeln!(s, "\nPatterns ({}):", p.patterns.len());
     for pat in &p.patterns {
@@ -41,7 +55,15 @@ pub fn summary(p: &Project) -> String {
             }
         }
         let per: Vec<String> = per.iter().map(|(c, n)| format!("{c}:{n}")).collect();
-        let _ = writeln!(s, "  {:<14} \"{}\" {} beats, {} notes [{}]", pat.id, pat.name, format::format_f64(pat.length), pat.notes.len(), per.join(" "));
+        let _ = writeln!(
+            s,
+            "  {:<14} \"{}\" {} beats, {} notes [{}]",
+            pat.id,
+            pat.name,
+            format::format_f64(pat.length),
+            pat.notes.len(),
+            per.join(" ")
+        );
     }
     let secs = automation::TempoMap::new(p).seconds_at(p.song_length());
     let _ = writeln!(
@@ -60,8 +82,16 @@ pub fn summary(p: &Project) -> String {
             .iter()
             .filter(|c| c.track.index() == ti)
             .map(|c| {
-                let what = if c.pattern.is_empty() { c.sample.clone() } else { c.pattern.clone() };
-                format!("{what}@{}+{}", format::format_f64(c.start), format::format_f64(c.length))
+                let what = if c.pattern.is_empty() {
+                    c.sample.clone()
+                } else {
+                    c.pattern.clone()
+                };
+                format!(
+                    "{what}@{}+{}",
+                    format::format_f64(c.start),
+                    format::format_f64(c.length)
+                )
             })
             .collect();
         if !clips.is_empty() {
@@ -70,22 +100,47 @@ pub fn summary(p: &Project) -> String {
     }
     let _ = writeln!(s, "\nMixer ({} inserts):", p.mixer.inserts.len());
     for (i, ins) in p.mixer.inserts.iter().enumerate() {
-        let used = i == 0 || p.channels.iter().any(|c| c.mixer.index() == i) || !ins.effects.is_empty();
+        let used =
+            i == 0 || p.channels.iter().any(|c| c.mixer.index() == i) || !ins.effects.is_empty();
         if !used {
             continue;
         }
         let fx: Vec<&str> = ins.effects.iter().map(|e| e.kind.as_str()).collect();
-        let _ = writeln!(s, "  [{i}] {:<12} vol {} pan {} fx [{}]", ins.name, format::format_f64(ins.volume), format::format_f64(ins.pan), fx.join(", "));
+        let _ = writeln!(
+            s,
+            "  [{i}] {:<12} vol {} pan {} fx [{}]",
+            ins.name,
+            format::format_f64(ins.volume),
+            format::format_f64(ins.pan),
+            fx.join(", ")
+        );
     }
     if !p.automation.is_empty() {
         let _ = writeln!(s, "\nAutomation ({} lanes):", p.automation.len());
         for lane in &p.automation {
-            let (lo, hi) = lane.points.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), pt| (lo.min(pt.value), hi.max(pt.value)));
+            let (lo, hi) = lane
+                .points
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), pt| {
+                    (lo.min(pt.value), hi.max(pt.value))
+                });
             let span = match (lane.points.first(), lane.points.last()) {
-                (Some(a), Some(b)) => format!("beats {}..{}", format::format_f64(a.beat), format::format_f64(b.beat)),
+                (Some(a), Some(b)) => format!(
+                    "beats {}..{}",
+                    format::format_f64(a.beat),
+                    format::format_f64(b.beat)
+                ),
                 _ => "no points".into(),
             };
-            let range = if lane.points.is_empty() { String::new() } else { format!(", values {}..{}", format::format_f64(lo), format::format_f64(hi)) };
+            let range = if lane.points.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", values {}..{}",
+                    format::format_f64(lo),
+                    format::format_f64(hi)
+                )
+            };
             let _ = writeln!(
                 s,
                 "  {:<14} {:<28} {} points, {span}{range}{}",
@@ -113,22 +168,37 @@ pub fn presets_markdown() -> String {
 pub fn catalog_markdown() -> String {
     use std::fmt::Write;
     let mut s = String::new();
-    for (title, cat) in [("Instruments", catalog::Category::Instrument), ("Effects", catalog::Category::Effect)] {
+    for (title, cat) in [
+        ("Instruments", catalog::Category::Instrument),
+        ("Effects", catalog::Category::Effect),
+    ] {
         let _ = writeln!(s, "### {title}\n");
         for d in catalog::DEVICES.iter().filter(|d| d.category == cat) {
             let _ = writeln!(s, "#### `{}` — {}\n\n{}\n", d.kind, d.label, d.doc);
             if !d.options.is_empty() {
                 let _ = writeln!(s, "| option | values | default | |\n|---|---|---|---|");
                 for o in d.options {
-                    let values = if o.choices.is_empty() { "text".to_string() } else { o.choices.join(" \\| ") };
-                    let _ = writeln!(s, "| `{}` | {} | `{}` | {} |", o.key, values, o.default, o.doc);
+                    let values = if o.choices.is_empty() {
+                        "text".to_string()
+                    } else {
+                        o.choices.join(" \\| ")
+                    };
+                    let _ = writeln!(
+                        s,
+                        "| `{}` | {} | `{}` | {} |",
+                        o.key, values, o.default, o.doc
+                    );
                 }
                 s.push('\n');
             }
             if !d.params.is_empty() {
                 let _ = writeln!(s, "| param | range | default | |\n|---|---|---|---|");
                 for p in d.params {
-                    let unit = if p.unit.is_empty() { String::new() } else { format!(" {}", p.unit) };
+                    let unit = if p.unit.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {}", p.unit)
+                    };
                     let int = if p.integer { " (integer)" } else { "" };
                     let _ = writeln!(
                         s,
@@ -167,7 +237,12 @@ mod tests {
             id: "lead".into(),
             name: "Lead".into(),
             color: "#ffffff".into(),
-            instrument: Device { kind: "synth".into(), enabled: true, params: [("cutoff".into(), 99999.0)].into(), options: Default::default() },
+            instrument: Device {
+                kind: "synth".into(),
+                enabled: true,
+                params: [("cutoff".into(), 99999.0)].into(),
+                options: Default::default(),
+            },
             volume: 0.8,
             pan: 0.0,
             mute: false,
@@ -186,7 +261,10 @@ mod tests {
             target: target.into(),
             color: "#8a6bb0".into(),
             mute: false,
-            points: points.iter().map(|&(beat, value, curve)| AutomationPoint { beat, value, curve }).collect(),
+            points: points
+                .iter()
+                .map(|&(beat, value, curve)| AutomationPoint { beat, value, curve })
+                .collect(),
         }
     }
 
@@ -208,13 +286,32 @@ mod tests {
     #[test]
     fn automation_round_trips_and_validates() {
         let mut p = with_pad();
-        p.automation.push(lane("pad-cutoff", "channel/pad/cutoff", &[(0.0, 400.0, 0.0), (32.0, 6000.0, 0.4)]));
-        p.automation.push(lane("tempo", "tempo", &[(0.0, 120.0, 0.0), (16.0, 128.0, 0.0)]));
-        p.automation.push(lane("fade", "insert/0/volume", &[(0.0, 1.0, 0.0), (8.0, 0.0, -0.5)]));
-        p.automation.push(lane("lim", "insert/0/effect/0/ceiling", &[(0.0, -1.0, 0.0)]));
+        p.automation.push(lane(
+            "pad-cutoff",
+            "channel/pad/cutoff",
+            &[(0.0, 400.0, 0.0), (32.0, 6000.0, 0.4)],
+        ));
+        p.automation.push(lane(
+            "tempo",
+            "tempo",
+            &[(0.0, 120.0, 0.0), (16.0, 128.0, 0.0)],
+        ));
+        p.automation.push(lane(
+            "fade",
+            "insert/0/volume",
+            &[(0.0, 1.0, 0.0), (8.0, 0.0, -0.5)],
+        ));
+        p.automation.push(lane(
+            "lim",
+            "insert/0/effect/0/ceiling",
+            &[(0.0, -1.0, 0.0)],
+        ));
         let text = format::to_string(&p);
         // Points stay one per line.
-        assert!(text.contains("\n        { \"beat\": 32, \"value\": 6000, \"curve\": 0.4 }"), "{text}");
+        assert!(
+            text.contains("\n        { \"beat\": 32, \"value\": 6000, \"curve\": 0.4 }"),
+            "{text}"
+        );
         let checked = validate::parse_and_validate(&text);
         assert!(checked.is_ok(), "{:?}", checked.issues);
         assert_eq!(checked.project.unwrap(), p);
@@ -226,15 +323,26 @@ mod tests {
     #[test]
     fn automation_errors_have_paths() {
         let mut p = with_pad();
-        p.automation.push(lane("a", "channel/pad/cutoff", &[(4.0, 400.0, 0.0), (2.0, 99999.0, 3.0)]));
-        p.automation.push(lane("a", "channel/lead/volume", &[(0.0, 0.5, 0.0)]));
+        p.automation.push(lane(
+            "a",
+            "channel/pad/cutoff",
+            &[(4.0, 400.0, 0.0), (2.0, 99999.0, 3.0)],
+        ));
+        p.automation
+            .push(lane("a", "channel/lead/volume", &[(0.0, 0.5, 0.0)]));
         p.automation.push(lane("b", "insert/0/effect/3/mix", &[]));
         p.automation.push(lane("c", "bpm", &[(0.0, 120.0, 0.0)]));
-        p.automation.push(lane("d", "channel/pad/cutoff", &[(-1.0, 400.0, 0.0)]));
+        p.automation
+            .push(lane("d", "channel/pad/cutoff", &[(-1.0, 400.0, 0.0)]));
         p.automation.push(lane("e", "tempo", &[(0.0, 10.0, 0.0)]));
-        p.automation.push(lane("f", "channel/pad/nope", &[(0.0, 1.0, 0.0)]));
+        p.automation
+            .push(lane("f", "channel/pad/nope", &[(0.0, 1.0, 0.0)]));
         let issues = validate::validate(&p);
-        let has = |path: &str, needle: &str| issues.iter().any(|i| i.path == path && i.message.contains(needle));
+        let has = |path: &str, needle: &str| {
+            issues
+                .iter()
+                .any(|i| i.path == path && i.message.contains(needle))
+        };
         assert!(has("automation[0].points[1].beat", "sorted"), "{issues:?}");
         assert!(has("automation[0].points[1].value", "range"));
         assert!(has("automation[0].points[1].curve", "range"));

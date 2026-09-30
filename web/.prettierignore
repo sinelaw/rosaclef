@@ -1,0 +1,4 @@
+# Third-party code and build outputs.
+vendor/
+node_modules/
+*.wasm

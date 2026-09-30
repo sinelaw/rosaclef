@@ -24,7 +24,11 @@ let exporting = false;
 function exportSong() {
   if (exporting) return;
   exporting = true;
-  toast("Rendering mixdown…", state.backend === "local" ? "The engine renders the song offline, in your browser." : "The native engine renders the song offline (plugins included).", "info");
+  toast(
+    "Rendering mixdown…",
+    state.backend === "local" ? "The engine renders the song offline, in your browser." : "The native engine renders the song offline (plugins included).",
+    "info",
+  );
   sendJson("/api/render", "POST", { bits: 24 })
     .then((r) => {
       exporting = false;
@@ -91,12 +95,16 @@ export function topbar(b) {
     begin();
     const y0 = e.clientY;
     const bpm0 = p.transport.bpm;
-    drag(e, (m) => {
-      const step = m.shiftKey ? 0.05 : 0.5;
-      const v = Math.round((bpm0 + (y0 - m.clientY) * step) * 100) / 100;
-      state.project.transport.bpm = Math.max(20, Math.min(400, v));
-      changed(true);
-    }, (u) => undefined);
+    drag(
+      e,
+      (m) => {
+        const step = m.shiftKey ? 0.05 : 0.5;
+        const v = Math.round((bpm0 + (y0 - m.clientY) * step) * 100) / 100;
+        state.project.transport.bpm = Math.max(20, Math.min(400, v));
+        changed(true);
+      },
+      (u) => undefined,
+    );
   });
   lcd(b, "bpm", "Tempo", fmt(shownValue("tempo", p.transport.bpm), 2), "BPM");
   if (isAutomated("tempo")) b.leaf("i", "auto", "auto-dot", "");
@@ -117,7 +125,14 @@ export function topbar(b) {
   if (state.nativeAvailable) {
     b.open("div", "out", "seg");
     button(b, "browser", state.output === "browser" ? "on" : "", "Browser", "Play through the WebAssembly engine in this browser", () => setOutput("browser"));
-    button(b, "native", state.output === "native" ? "on" : "", "Studio", "Play through the native engine on the server's audio device (plugins, lowest latency)", () => setOutput("native"));
+    button(
+      b,
+      "native",
+      state.output === "native" ? "on" : "",
+      "Studio",
+      "Play through the native engine on the server's audio device (plugins, lowest latency)",
+      () => setOutput("native"),
+    );
     b.close();
   }
 
@@ -134,9 +149,16 @@ export function topbar(b) {
     b.close();
   }
 
-  iconButton(b, "keys", keyboard.shown ? "kb-toggle on" : "kb-toggle", "keys", keyboard.shown ? "Hide the on-screen piano" : "Show the on-screen piano (plays the selected channel)", () => {
-    toggleKeyboard();
-  });
+  iconButton(
+    b,
+    "keys",
+    keyboard.shown ? "kb-toggle on" : "kb-toggle",
+    "keys",
+    keyboard.shown ? "Hide the on-screen piano" : "Show the on-screen piano (plays the selected channel)",
+    () => {
+      toggleKeyboard();
+    },
+  );
   iconButton(b, "undo", "", "undo", "Undo (Ctrl+Z) — includes the agent's edits", () => {
     undo();
   });

@@ -261,7 +261,8 @@ mod tests {
 
     #[test]
     fn unknown_fields_are_dropped_and_missing_defaulted() {
-        let c = normalize(json!({"focus": "piano roll", "bogus": 1, "transport": {"playing": true}}));
+        let c =
+            normalize(json!({"focus": "piano roll", "bogus": 1, "transport": {"playing": true}}));
         assert_eq!(c.focus, "piano roll");
         assert!(c.transport.playing);
         assert!(c.selection.notes.is_empty());

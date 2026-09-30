@@ -524,7 +524,11 @@ impl Instrument for Dedale {
                 g.phase = 0.0;
                 g.step = 0;
                 g.generate(&p);
-                g.rng = Rng::new((p.seed + 1).wrapping_mul(0x85EB_CA6B) ^ (key as u32).wrapping_mul(0xC2B2_AE35) ^ (slot as u32 + 1));
+                g.rng = Rng::new(
+                    (p.seed + 1).wrapping_mul(0x85EB_CA6B)
+                        ^ (key as u32).wrapping_mul(0xC2B2_AE35)
+                        ^ (slot as u32 + 1),
+                );
                 self.fire_step(slot);
             }
             NoteKind::Off { key } => {
@@ -605,11 +609,17 @@ impl Instrument for Dedale {
                         v.released = true;
                     }
                     // Flushed to zero before it reaches the (slow) subnormal range.
-                    v.fenv = if v.fenv > 1e-6 { v.fenv * v.fenv_coef } else { 0.0 };
+                    v.fenv = if v.fenv > 1e-6 {
+                        v.fenv * v.fenv_coef
+                    } else {
+                        0.0
+                    };
                     let s = match sound {
                         Sound::Pluck => {
                             if v.counter.is_multiple_of(CONTROL) {
-                                let fc = f * (1.2 + tone * 5.0) * (1.0 + (4.0 + 10.0 * tone) * v.fenv) + 80.0;
+                                let fc =
+                                    f * (1.2 + tone * 5.0) * (1.0 + (4.0 + 10.0 * tone) * v.fenv)
+                                        + 80.0;
                                 v.svf.set(fc.min(18000.0), 0.15 + 0.2 * tone, sr);
                             }
                             let dt2 = dt * 1.0035;
@@ -647,11 +657,16 @@ impl Instrument for Dedale {
                             }
                             let nz = v.noise();
                             let body = v.svf.process(nz, FilterMode::Bandpass) * 1.6;
-                            let click = v.svf2.process(nz, FilterMode::Highpass) * v.fenv * (0.3 + 0.5 * tone);
+                            let click = v.svf2.process(nz, FilterMode::Highpass)
+                                * v.fenv
+                                * (0.3 + 0.5 * tone);
                             // Metallic partials: three inharmonic squares, only in the attack.
                             let m = if v.fenv > 0.0 {
                                 let sq = |ph: f32| if ph < 0.5 { 1.0 } else { -1.0 };
-                                (sq(v.ph[0]) + sq(v.ph[1]) * 0.8 + sq(v.ph[2]) * 0.6) * 0.06 * v.fenv * (0.4 + tone)
+                                (sq(v.ph[0]) + sq(v.ph[1]) * 0.8 + sq(v.ph[2]) * 0.6)
+                                    * 0.06
+                                    * v.fenv
+                                    * (0.4 + tone)
                             } else {
                                 0.0
                             };

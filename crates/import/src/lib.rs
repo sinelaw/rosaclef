@@ -37,7 +37,10 @@ pub struct Imported {
 }
 
 /// Colors used for imported channels and patterns (the studio palette).
-pub const PALETTE: [&str; 10] = ["#d4af37", "#c97b84", "#e8d5b0", "#8e3b46", "#3f8f7a", "#4a6fa5", "#8a6bb0", "#b08d57", "#d98c5f", "#6fa3a0"];
+pub const PALETTE: [&str; 10] = [
+    "#d4af37", "#c97b84", "#e8d5b0", "#8e3b46", "#3f8f7a", "#4a6fa5", "#8a6bb0", "#b08d57",
+    "#d98c5f", "#6fa3a0",
+];
 
 pub(crate) fn color(i: usize) -> String {
     PALETTE[i % PALETTE.len()].to_string()
@@ -54,7 +57,9 @@ pub(crate) struct Ids {
 
 impl Ids {
     pub fn with(existing: impl IntoIterator<Item = String>) -> Ids {
-        Ids { taken: existing.into_iter().collect() }
+        Ids {
+            taken: existing.into_iter().collect(),
+        }
     }
 
     /// Keep `id` if it is free, otherwise derive a fresh one from it.
@@ -70,7 +75,13 @@ impl Ids {
     pub fn make(&mut self, name: &str) -> String {
         let mut base: String = name
             .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
+            })
             .collect::<String>()
             .split('-')
             .filter(|s| !s.is_empty())
@@ -122,8 +133,14 @@ impl Warnings {
 /// Set a numeric parameter, clamped into the catalog range (rounded for
 /// integer parameters). Unknown keys are ignored.
 pub(crate) fn set_param(dev: &mut Device, key: &str, value: f64) {
-    let Some(spec) = catalog::device(&dev.kind).and_then(|d| d.param(key)) else { return };
-    let mut v = if value.is_finite() { value } else { spec.default };
+    let Some(spec) = catalog::device(&dev.kind).and_then(|d| d.param(key)) else {
+        return;
+    };
+    let mut v = if value.is_finite() {
+        value
+    } else {
+        spec.default
+    };
     v = v.clamp(spec.min, spec.max);
     if spec.integer {
         v = v.round();
@@ -133,7 +150,9 @@ pub(crate) fn set_param(dev: &mut Device, key: &str, value: f64) {
 
 /// Set a textual option if it is legal for the device.
 pub(crate) fn set_option(dev: &mut Device, key: &str, value: &str) {
-    let Some(spec) = catalog::device(&dev.kind).and_then(|d| d.option(key)) else { return };
+    let Some(spec) = catalog::device(&dev.kind).and_then(|d| d.option(key)) else {
+        return;
+    };
     if spec.choices.is_empty() || spec.choices.contains(&value) {
         dev.options.insert(key.to_string(), value.to_string());
     }
@@ -164,15 +183,25 @@ pub(crate) fn beats(ticks: f64, per_beat: f64) -> f64 {
 pub(crate) fn pad_tracks(p: &mut Project, min: usize) {
     while p.playlist.tracks.len() < min {
         let n = p.playlist.tracks.len() + 1;
-        p.playlist.tracks.push(rosaclef_core::Track { name: format!("Track {n}"), mute: false });
+        p.playlist.tracks.push(rosaclef_core::Track {
+            name: format!("Track {n}"),
+            mute: false,
+        });
     }
 }
 
 /// Final check: the importers must always produce a valid project.
 pub(crate) fn ensure_valid(p: &Project) -> Result<()> {
-    let errors: Vec<String> = validate::validate(p).into_iter().filter(|i| i.severity == Severity::Error).map(|i| i.to_string()).collect();
+    let errors: Vec<String> = validate::validate(p)
+        .into_iter()
+        .filter(|i| i.severity == Severity::Error)
+        .map(|i| i.to_string())
+        .collect();
     if !errors.is_empty() {
-        bail!("internal error: the imported project is invalid:\n{}", errors.join("\n"));
+        bail!(
+            "internal error: the imported project is invalid:\n{}",
+            errors.join("\n")
+        );
     }
     Ok(())
 }
@@ -198,7 +227,10 @@ pub fn merge_into(base: &mut Project, add: Project) -> Vec<String> {
     insert_map.insert(0, InsertIx::MASTER);
     for (i, ins) in add.mixer.inserts.into_iter().enumerate().skip(1) {
         if base.mixer.inserts.len() >= MAX_INSERTS {
-            warnings.add(format!("no free mixer insert for \"{}\"; routed to the master", ins.name));
+            warnings.add(format!(
+                "no free mixer insert for \"{}\"; routed to the master",
+                ins.name
+            ));
             insert_map.insert(i as u32, InsertIx::MASTER);
             continue;
         }

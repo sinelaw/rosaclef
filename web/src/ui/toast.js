@@ -15,9 +15,12 @@ export function toast(title, body, kind) {
   toasts.push({ id: id, title: title, body: body, kind: kind, until: Date.now() + (kind === "error" ? 9000 : 4500) });
   if (toasts.length > 4) toasts.shift();
   invalidate();
-  setTimeout(() => {
-    expire();
-  }, kind === "error" ? 9100 : 4600);
+  setTimeout(
+    () => {
+      expire();
+    },
+    kind === "error" ? 9100 : 4600,
+  );
 }
 
 export function expire() {

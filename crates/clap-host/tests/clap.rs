@@ -17,19 +17,37 @@ fn test_plugin() -> &'static Path {
     static PLUGIN: OnceLock<PathBuf> = OnceLock::new();
     PLUGIN.get_or_init(|| {
         let out = Command::new(env!("CARGO"))
-            .args(["build", "-p", "rosaclef-clap-testplug", "--message-format=json"])
+            .args([
+                "build",
+                "-p",
+                "rosaclef-clap-testplug",
+                "--message-format=json",
+            ])
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .expect("run cargo build");
-        assert!(out.status.success(), "building the test plugin failed:\n{}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "building the test plugin failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         // Find the cdylib among the build artifacts.
         let mut lib = None;
         for line in String::from_utf8_lossy(&out.stdout).lines() {
-            let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-            if msg["reason"] != "compiler-artifact" || msg["target"]["name"] != "rosaclef_clap_testplug" {
+            let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            if msg["reason"] != "compiler-artifact"
+                || msg["target"]["name"] != "rosaclef_clap_testplug"
+            {
                 continue;
             }
-            for f in msg["filenames"].as_array().into_iter().flatten().filter_map(|f| f.as_str()) {
+            for f in msg["filenames"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|f| f.as_str())
+            {
                 if [".so", ".dylib", ".dll"].iter().any(|ext| f.ends_with(ext)) {
                     lib = Some(PathBuf::from(f));
                 }
@@ -47,7 +65,8 @@ fn test_plugin() -> &'static Path {
 fn plugin_device(id: &str, params: &[(&str, f64)]) -> Device {
     let mut d = Device::new("plugin");
     d.options.insert("format".into(), "clap".into());
-    d.options.insert("path".into(), test_plugin().to_string_lossy().into_owned());
+    d.options
+        .insert("path".into(), test_plugin().to_string_lossy().into_owned());
     d.options.insert("id".into(), id.into());
     for (k, v) in params {
         d.params.insert((*k).into(), *v);
@@ -90,7 +109,16 @@ fn lists_params() {
     let path = test_plugin().to_string_lossy().into_owned();
     let p = params(&path, SINE).unwrap();
     assert_eq!(p.len(), 1);
-    assert_eq!((p[0].id.as_str(), p[0].name.as_str(), p[0].min, p[0].max, p[0].default), ("0", "Gain", 0.0, 1.0, 0.5));
+    assert_eq!(
+        (
+            p[0].id.as_str(),
+            p[0].name.as_str(),
+            p[0].min,
+            p[0].max,
+            p[0].default
+        ),
+        ("0", "Gain", 0.0, 1.0, 0.5)
+    );
     let p = params(&path, GAIN).unwrap();
     assert_eq!((p[0].min, p[0].max, p[0].default), (0.0, 2.0, 1.0));
     // Empty id picks the first plugin.
@@ -102,10 +130,22 @@ fn lists_params() {
 #[test]
 fn instrument_plays_notes() {
     let host = ClapHost::new();
-    let mut p = host.load(&plugin_device(SINE, &[]), true, 48000.0, 128).unwrap();
+    let mut p = host
+        .load(&plugin_device(SINE, &[]), true, 48000.0, 128)
+        .unwrap();
     let mut l = vec![0f32; 128];
     let mut r = vec![0f32; 128];
-    p.process(&[NoteEvent { offset: 10, kind: NoteKind::On { key: 69, velocity: 1.0 } }], &mut l, &mut r);
+    p.process(
+        &[NoteEvent {
+            offset: 10,
+            kind: NoteKind::On {
+                key: 69,
+                velocity: 1.0,
+            },
+        }],
+        &mut l,
+        &mut r,
+    );
     assert_eq!(peak(&l[..10]), 0.0, "silent before the note");
     assert_eq!(peak(&r[..10]), 0.0);
     assert!(peak(&l[10..]) > 0.0, "sound after the note");
@@ -130,7 +170,14 @@ fn instrument_plays_notes() {
     }
     // Back up, then AllOff releases the note.
     p.set_param("0", 1.0);
-    p.process(&[NoteEvent { offset: 0, kind: NoteKind::AllOff }], &mut l, &mut r);
+    p.process(
+        &[NoteEvent {
+            offset: 0,
+            kind: NoteKind::AllOff,
+        }],
+        &mut l,
+        &mut r,
+    );
     for _ in 0..40 {
         p.process(&[], &mut l, &mut r);
     }
@@ -140,10 +187,22 @@ fn instrument_plays_notes() {
 #[test]
 fn load_params_are_applied() {
     let host = ClapHost::new();
-    let mut p = host.load(&plugin_device(SINE, &[("0", 0.0)]), true, 48000.0, 128).unwrap();
+    let mut p = host
+        .load(&plugin_device(SINE, &[("0", 0.0)]), true, 48000.0, 128)
+        .unwrap();
     let mut l = vec![0f32; 128];
     let mut r = vec![0f32; 128];
-    p.process(&[NoteEvent { offset: 0, kind: NoteKind::On { key: 60, velocity: 1.0 } }], &mut l, &mut r);
+    p.process(
+        &[NoteEvent {
+            offset: 0,
+            kind: NoteKind::On {
+                key: 60,
+                velocity: 1.0,
+            },
+        }],
+        &mut l,
+        &mut r,
+    );
     p.process(&[], &mut l, &mut r);
     assert_eq!(peak(&l), 0.0);
 }
@@ -151,7 +210,9 @@ fn load_params_are_applied() {
 #[test]
 fn gain_effect_doubles_input() {
     let host = ClapHost::new();
-    let mut p = host.load(&plugin_device(GAIN, &[("0", 2.0)]), false, 48000.0, 128).unwrap();
+    let mut p = host
+        .load(&plugin_device(GAIN, &[("0", 2.0)]), false, 48000.0, 128)
+        .unwrap();
     let mut l: Vec<f32> = (0..128).map(|i| (i as f32 * 0.1).sin() * 0.25).collect();
     let mut r: Vec<f32> = l.iter().map(|x| -x).collect();
     let (l0, r0) = (l.clone(), r.clone());
@@ -165,9 +226,17 @@ fn gain_effect_doubles_input() {
 #[test]
 fn load_errors() {
     let host = ClapHost::new();
-    assert!(host.load(&plugin_device("dev.rosaclef.missing", &[]), true, 48000.0, 128).is_err());
+    assert!(host
+        .load(
+            &plugin_device("dev.rosaclef.missing", &[]),
+            true,
+            48000.0,
+            128
+        )
+        .is_err());
     let mut d = plugin_device(SINE, &[]);
-    d.options.insert("path".into(), "/nonexistent/x.clap".into());
+    d.options
+        .insert("path".into(), "/nonexistent/x.clap".into());
     assert!(host.load(&d, true, 48000.0, 128).is_err());
     d.options.insert("format".into(), "vst3".into());
     assert!(host.load(&d, true, 48000.0, 128).is_err());
@@ -186,7 +255,13 @@ fn engine_renders_plugin_instrument() {
         mute: false,
         mixer: rosaclef_core::InsertIx(1),
     });
-    project.patterns[0].notes.push(Note { channel: "sine".into(), pitch: 60, start: 0.0, length: 1.0, velocity: 0.9 });
+    project.patterns[0].notes.push(Note {
+        channel: "sine".into(),
+        pitch: 60,
+        start: 0.0,
+        length: 1.0,
+        velocity: 0.9,
+    });
     project.playlist.clips.push(Clip {
         pattern: "pattern-1".into(),
         sample: String::new(),
@@ -200,9 +275,23 @@ fn engine_renders_plugin_instrument() {
     let mut engine = Engine::new(48000.0);
     engine.set_plugin_host(Arc::new(ClapHost::new()));
     engine.set_project(project);
-    assert!(engine.device_errors.is_empty(), "{:?}", engine.device_errors);
-    let audio = render(&mut engine, &RenderScope::Pattern { id: "pattern-1".into(), loops: 1 });
-    assert!(engine.device_errors.is_empty(), "{:?}", engine.device_errors);
+    assert!(
+        engine.device_errors.is_empty(),
+        "{:?}",
+        engine.device_errors
+    );
+    let audio = render(
+        &mut engine,
+        &RenderScope::Pattern {
+            id: "pattern-1".into(),
+            loops: 1,
+        },
+    );
+    assert!(
+        engine.device_errors.is_empty(),
+        "{:?}",
+        engine.device_errors
+    );
     assert!(audio.peak() > 0.01, "peak {}", audio.peak());
     assert!(audio.rms() > 0.001);
 }

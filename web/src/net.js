@@ -19,7 +19,10 @@ export function send(m) {
 
 /** function issueText(issues: Issue[]) => String */
 function issueText(issues) {
-  return issues.slice(0, 3).map((i) => (i.path === "" ? i.message : `${i.path}: ${i.message}`)).join("\n");
+  return issues
+    .slice(0, 3)
+    .map((i) => (i.path === "" ? i.message : `${i.path}: ${i.message}`))
+    .join("\n");
 }
 
 /** function onMessage(text: String) => Undefined */
@@ -37,7 +40,11 @@ function onMessage(text) {
     if (t === "switched") projectSwitched();
     else if (state.backend === "local" && loadPref("rosaclef.localIntro") === "") {
       savePref("rosaclef.localIntro", "shown");
-      toast("Welcome to the browser studio", "Your projects are saved in this browser. Back them up from Projects → Download (.zip); open the same zip in the native studio to use your own coding agent.", "info");
+      toast(
+        "Welcome to the browser studio",
+        "Your projects are saved in this browser. Back them up from Projects → Download (.zip); open the same zip in the native studio to use your own coding agent.",
+        "info",
+      );
     }
   } else if (t === "project") {
     state.rev = Number(m.rev);

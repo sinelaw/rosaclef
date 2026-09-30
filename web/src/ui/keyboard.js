@@ -165,7 +165,9 @@ export function keyboardStrip(b, compact) {
       invalidate();
     }
   });
-  b.on("pointerenter", (e) => hint(ch ? `Play ${ch.name} — slide for a glissando; lower on a key is louder · Z–M on the keyboard plays C4–C5` : "Select a channel to play it"));
+  b.on("pointerenter", (e) =>
+    hint(ch ? `Play ${ch.name} — slide for a glissando; lower on a key is louder · Z–M on the keyboard plays C4–C5` : "Select a channel to play it"),
+  );
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });
@@ -179,13 +181,17 @@ export function keyboardStrip(b, compact) {
     const h = e.targetHeight;
     let pitch = pitchAt(e.clientX - left, e.clientY - top, h);
     pressKey(source, pitch, velocityAt(e.clientY - top, h));
-    drag(e, (m) => {
-      const p = pitchAt(m.clientX - left, m.clientY - top, h);
-      if (p === pitch) return undefined;
-      pitch = p;
-      if (p < 0) releaseKey(source);
-      else pressKey(source, p, velocityAt(m.clientY - top, h));
-    }, (u) => releaseKey(source));
+    drag(
+      e,
+      (m) => {
+        const p = pitchAt(m.clientX - left, m.clientY - top, h);
+        if (p === pitch) return undefined;
+        pitch = p;
+        if (p < 0) releaseKey(source);
+        else pressKey(source, p, velocityAt(m.clientY - top, h));
+      },
+      (u) => releaseKey(source),
+    );
   });
   for (let i = 0; i < whites.length; i++) {
     const p = whites[i];

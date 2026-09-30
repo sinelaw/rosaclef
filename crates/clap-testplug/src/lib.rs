@@ -40,7 +40,8 @@ struct Features<const N: usize>([*const c_char; N]);
 // SAFETY: the pointers refer to immutable 'static string literals.
 unsafe impl<const N: usize> Sync for Features<N> {}
 
-static SINE_FEATURES: Features<3> = Features([c"instrument".as_ptr(), c"synthesizer".as_ptr(), null()]);
+static SINE_FEATURES: Features<3> =
+    Features([c"instrument".as_ptr(), c"synthesizer".as_ptr(), null()]);
 static GAIN_FEATURES: Features<2> = Features([c"audio-effect".as_ptr(), null()]);
 
 static SINE_DESC: clap_plugin_descriptor = clap_plugin_descriptor {
@@ -118,7 +119,10 @@ unsafe extern "C" fn factory_count(_f: *const clap_plugin_factory) -> u32 {
     2
 }
 
-unsafe extern "C" fn factory_descriptor(_f: *const clap_plugin_factory, index: u32) -> *const clap_plugin_descriptor {
+unsafe extern "C" fn factory_descriptor(
+    _f: *const clap_plugin_factory,
+    index: u32,
+) -> *const clap_plugin_descriptor {
     match index {
         0 => &SINE_DESC,
         1 => &GAIN_DESC,
@@ -126,22 +130,30 @@ unsafe extern "C" fn factory_descriptor(_f: *const clap_plugin_factory, index: u
     }
 }
 
-unsafe extern "C" fn factory_create(_f: *const clap_plugin_factory, host: *const clap_host, id: *const c_char) -> *const clap_plugin {
+unsafe extern "C" fn factory_create(
+    _f: *const clap_plugin_factory,
+    host: *const clap_host,
+    id: *const c_char,
+) -> *const clap_plugin {
     if id.is_null() || host.is_null() {
         return null();
     }
     let id = CStr::from_ptr(id);
-    let (kind, desc): (Kind, &'static clap_plugin_descriptor) = if id == CStr::from_ptr(SINE_DESC.id) {
-        (Kind::Sine, &SINE_DESC)
-    } else if id == CStr::from_ptr(GAIN_DESC.id) {
-        (Kind::Gain, &GAIN_DESC)
-    } else {
-        return null();
-    };
+    let (kind, desc): (Kind, &'static clap_plugin_descriptor) =
+        if id == CStr::from_ptr(SINE_DESC.id) {
+            (Kind::Sine, &SINE_DESC)
+        } else if id == CStr::from_ptr(GAIN_DESC.id) {
+            (Kind::Gain, &GAIN_DESC)
+        } else {
+            return null();
+        };
     let state = Box::into_raw(Box::new(State {
         kind,
         gain: AtomicU64::new(kind.gain_range().2.to_bits()),
-        audio: UnsafeCell::new(Audio { sr: 48000.0, voices: [Voice::default(); VOICES] }),
+        audio: UnsafeCell::new(Audio {
+            sr: 48000.0,
+            voices: [Voice::default(); VOICES],
+        }),
     }));
     let plugin = Box::new(clap_plugin {
         desc,
@@ -198,7 +210,8 @@ impl State {
     fn set_gain(&self, v: f64) {
         let (lo, hi, _) = self.kind.gain_range();
         if v.is_finite() {
-            self.gain.store(v.clamp(lo, hi).to_bits(), Ordering::Relaxed);
+            self.gain
+                .store(v.clamp(lo, hi).to_bits(), Ordering::Relaxed);
         }
     }
 }
@@ -245,7 +258,10 @@ unsafe extern "C" fn plugin_reset(p: *const clap_plugin) {
 
 unsafe extern "C" fn plugin_on_main_thread(_p: *const clap_plugin) {}
 
-unsafe extern "C" fn plugin_get_extension(p: *const clap_plugin, id: *const c_char) -> *const c_void {
+unsafe extern "C" fn plugin_get_extension(
+    p: *const clap_plugin,
+    id: *const c_char,
+) -> *const c_void {
     if id.is_null() {
         return null();
     }
@@ -284,7 +300,15 @@ unsafe fn handle_event(st: &State, audio: Option<&mut Audio>, ev: *const clap_ev
                 .voices
                 .iter()
                 .position(|v| !v.active)
-                .unwrap_or_else(|| audio.voices.iter().enumerate().min_by_key(|(_, v)| v.age).map(|(i, _)| i).unwrap_or(0));
+                .unwrap_or_else(|| {
+                    audio
+                        .voices
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|(_, v)| v.age)
+                        .map(|(i, _)| i)
+                        .unwrap_or(0)
+                });
             let freq = 440.0 * 2f32.powf((e.key as f32 - 69.0) / 12.0);
             audio.voices[idx] = Voice {
                 active: true,
@@ -300,7 +324,11 @@ unsafe fn handle_event(st: &State, audio: Option<&mut Audio>, ev: *const clap_ev
         CLAP_EVENT_NOTE_OFF if st.kind == Kind::Sine => {
             let Some(audio) = audio else { return };
             let e = &*(ev as *const clap_event_note);
-            for v in audio.voices.iter_mut().filter(|v| v.active && (e.key < 0 || v.key == e.key)) {
+            for v in audio
+                .voices
+                .iter_mut()
+                .filter(|v| v.active && (e.key < 0 || v.key == e.key))
+            {
                 v.releasing = true;
             }
         }
@@ -309,7 +337,14 @@ unsafe fn handle_event(st: &State, audio: Option<&mut Audio>, ev: *const clap_ev
 }
 
 /// Render the synth voices into `l`/`r` for frames `from..to`.
-fn render_sine(audio: &mut Audio, gain: f32, l: &mut [f32], mut r: Option<&mut [f32]>, from: usize, to: usize) {
+fn render_sine(
+    audio: &mut Audio,
+    gain: f32,
+    l: &mut [f32],
+    mut r: Option<&mut [f32]>,
+    from: usize,
+    to: usize,
+) {
     let sr = audio.sr.max(1.0);
     let att = 1.0 / (ATTACK_S * sr);
     let rel = 1.0 / (RELEASE_S * sr);
@@ -336,7 +371,10 @@ fn render_sine(audio: &mut Audio, gain: f32, l: &mut [f32], mut r: Option<&mut [
     }
 }
 
-unsafe extern "C" fn plugin_process(p: *const clap_plugin, process: *const clap_process) -> clap_process_status {
+unsafe extern "C" fn plugin_process(
+    p: *const clap_plugin,
+    process: *const clap_process,
+) -> clap_process_status {
     if p.is_null() || process.is_null() {
         return CLAP_PROCESS_ERROR;
     }
@@ -366,7 +404,11 @@ unsafe extern "C" fn plugin_process(p: *const clap_plugin, process: *const clap_
     match st.kind {
         Kind::Sine => {
             let out_l = std::slice::from_raw_parts_mut(*out.data32, n);
-            let mut out_r = if out.channel_count >= 2 { Some(std::slice::from_raw_parts_mut(*out.data32.add(1), n)) } else { None };
+            let mut out_r = if out.channel_count >= 2 {
+                Some(std::slice::from_raw_parts_mut(*out.data32.add(1), n))
+            } else {
+                None
+            };
             let mut pos = 0usize;
             while pos < n {
                 // Apply every event due at `pos`, then render up to the next one.
@@ -404,14 +446,20 @@ unsafe extern "C" fn plugin_process(p: *const clap_plugin, process: *const clap_
             let gain = st.gain() as f32;
             // Input channel pointers (empty when there is no usable input).
             let inputs: &[*mut f32] = match pr.audio_inputs.as_ref() {
-                Some(b) if pr.audio_inputs_count >= 1 && !b.data32.is_null() => std::slice::from_raw_parts(b.data32, b.channel_count as usize),
+                Some(b) if pr.audio_inputs_count >= 1 && !b.data32.is_null() => {
+                    std::slice::from_raw_parts(b.data32, b.channel_count as usize)
+                }
                 _ => &[],
             };
             let out_ch = out.channel_count.min(2) as usize;
             for c in 0..out_ch {
                 let dst = *out.data32.add(c);
                 // Read then write each sample so in-place buffers work too.
-                let src: *const f32 = if inputs.is_empty() { null() } else { inputs[c.min(inputs.len() - 1)] };
+                let src: *const f32 = if inputs.is_empty() {
+                    null()
+                } else {
+                    inputs[c.min(inputs.len() - 1)]
+                };
                 for i in 0..n {
                     let x = if src.is_null() { 0.0 } else { *src.add(i) };
                     *dst.add(i) = x * gain;
@@ -449,7 +497,11 @@ unsafe fn write_cstr(dst: *mut c_char, cap: usize, s: &str) {
     *dst.add(n) = 0;
 }
 
-unsafe extern "C" fn params_get_info(p: *const clap_plugin, index: u32, info: *mut clap_param_info) -> bool {
+unsafe extern "C" fn params_get_info(
+    p: *const clap_plugin,
+    index: u32,
+    info: *mut clap_param_info,
+) -> bool {
     if index != 0 || info.is_null() {
         return false;
     }
@@ -474,7 +526,13 @@ unsafe extern "C" fn params_get_value(p: *const clap_plugin, id: clap_id, out: *
     true
 }
 
-unsafe extern "C" fn params_value_to_text(_p: *const clap_plugin, id: clap_id, value: f64, buf: *mut c_char, cap: u32) -> bool {
+unsafe extern "C" fn params_value_to_text(
+    _p: *const clap_plugin,
+    id: clap_id,
+    value: f64,
+    buf: *mut c_char,
+    cap: u32,
+) -> bool {
     if id != 0 {
         return false;
     }
@@ -482,11 +540,20 @@ unsafe extern "C" fn params_value_to_text(_p: *const clap_plugin, id: clap_id, v
     true
 }
 
-unsafe extern "C" fn params_text_to_value(_p: *const clap_plugin, id: clap_id, text: *const c_char, out: *mut f64) -> bool {
+unsafe extern "C" fn params_text_to_value(
+    _p: *const clap_plugin,
+    id: clap_id,
+    text: *const c_char,
+    out: *mut f64,
+) -> bool {
     if id != 0 || text.is_null() || out.is_null() {
         return false;
     }
-    match CStr::from_ptr(text).to_str().ok().and_then(|s| s.trim().parse::<f64>().ok()) {
+    match CStr::from_ptr(text)
+        .to_str()
+        .ok()
+        .and_then(|s| s.trim().parse::<f64>().ok())
+    {
         Some(v) => {
             *out = v;
             true
@@ -495,9 +562,15 @@ unsafe extern "C" fn params_text_to_value(_p: *const clap_plugin, id: clap_id, t
     }
 }
 
-unsafe extern "C" fn params_flush(p: *const clap_plugin, inp: *const clap_input_events, _out: *const clap_output_events) {
+unsafe extern "C" fn params_flush(
+    p: *const clap_plugin,
+    inp: *const clap_input_events,
+    _out: *const clap_output_events,
+) {
     let Some(list) = inp.as_ref() else { return };
-    let (Some(size), Some(get)) = (list.size, list.get) else { return };
+    let (Some(size), Some(get)) = (list.size, list.get) else {
+        return;
+    };
     let st = state(p);
     for i in 0..size(list) {
         handle_event(st, None, get(list, i));
@@ -506,7 +579,10 @@ unsafe extern "C" fn params_flush(p: *const clap_plugin, inp: *const clap_input_
 
 // ------------------------------------------------------------- audio ports
 
-static AUDIO_PORTS: clap_plugin_audio_ports = clap_plugin_audio_ports { count: Some(audio_ports_count), get: Some(audio_ports_get) };
+static AUDIO_PORTS: clap_plugin_audio_ports = clap_plugin_audio_ports {
+    count: Some(audio_ports_count),
+    get: Some(audio_ports_get),
+};
 
 unsafe extern "C" fn audio_ports_count(p: *const clap_plugin, is_input: bool) -> u32 {
     match (state(p).kind, is_input) {
@@ -515,29 +591,50 @@ unsafe extern "C" fn audio_ports_count(p: *const clap_plugin, is_input: bool) ->
     }
 }
 
-unsafe extern "C" fn audio_ports_get(p: *const clap_plugin, index: u32, is_input: bool, info: *mut clap_audio_port_info) -> bool {
+unsafe extern "C" fn audio_ports_get(
+    p: *const clap_plugin,
+    index: u32,
+    is_input: bool,
+    info: *mut clap_audio_port_info,
+) -> bool {
     if index >= audio_ports_count(p, is_input) || info.is_null() {
         return false;
     }
     let info = &mut *info;
     info.id = 0;
-    write_cstr(info.name.as_mut_ptr(), info.name.len(), if is_input { "Input" } else { "Output" });
+    write_cstr(
+        info.name.as_mut_ptr(),
+        info.name.len(),
+        if is_input { "Input" } else { "Output" },
+    );
     info.flags = CLAP_AUDIO_PORT_IS_MAIN;
     info.channel_count = 2;
     info.port_type = CLAP_PORT_STEREO.as_ptr();
-    info.in_place_pair = if state(p).kind == Kind::Gain { 0 } else { CLAP_INVALID_ID };
+    info.in_place_pair = if state(p).kind == Kind::Gain {
+        0
+    } else {
+        CLAP_INVALID_ID
+    };
     true
 }
 
 // -------------------------------------------------------------- note ports
 
-static NOTE_PORTS: clap_plugin_note_ports = clap_plugin_note_ports { count: Some(note_ports_count), get: Some(note_ports_get) };
+static NOTE_PORTS: clap_plugin_note_ports = clap_plugin_note_ports {
+    count: Some(note_ports_count),
+    get: Some(note_ports_get),
+};
 
 unsafe extern "C" fn note_ports_count(_p: *const clap_plugin, is_input: bool) -> u32 {
     u32::from(is_input)
 }
 
-unsafe extern "C" fn note_ports_get(_p: *const clap_plugin, index: u32, is_input: bool, info: *mut clap_note_port_info) -> bool {
+unsafe extern "C" fn note_ports_get(
+    _p: *const clap_plugin,
+    index: u32,
+    is_input: bool,
+    info: *mut clap_note_port_info,
+) -> bool {
     if !is_input || index != 0 || info.is_null() {
         return false;
     }

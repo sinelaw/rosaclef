@@ -192,25 +192,29 @@ function dragPoint(e, lane, idx, r, info, zoom, begun) {
   const x0 = e.clientX;
   const y0 = e.clientY;
   const gesture = { begun: begun };
-  drag(e, (m) => {
-    if (!gesture.begun) {
-      if (Math.abs(m.clientX - x0) + Math.abs(m.clientY - y0) < 3) return undefined;
-      gesture.begun = true;
-      begin();
-    }
-    const fine = m.shiftKey;
-    const lo = idx > 0 ? lane.points[idx - 1].beat : 0;
-    const hi = idx + 1 < lane.points.length ? lane.points[idx + 1].beat : 1000000;
-    let beat = b0 + ((m.clientX - x0) * (fine ? 0.25 : 1)) / zoom;
-    if (!fine) beat = snapTo(beat, state.snap);
-    pt.beat = Math.max(lo, Math.min(hi, Math.max(0, beat)));
-    const u = u0 - ((m.clientY - y0) / (LANE_H - 2 * PAD)) * (fine ? 0.2 : 1);
-    pt.value = tidy(info, valueOf(r, u));
-    hint(`${info.label}: ${formatValue(info, pt.value)} at ${barBeat(pt.beat, state.project.transport.beatsPerBar)}`);
-    changed(true);
-  }, (u) => {
-    reportContext();
-  });
+  drag(
+    e,
+    (m) => {
+      if (!gesture.begun) {
+        if (Math.abs(m.clientX - x0) + Math.abs(m.clientY - y0) < 3) return undefined;
+        gesture.begun = true;
+        begin();
+      }
+      const fine = m.shiftKey;
+      const lo = idx > 0 ? lane.points[idx - 1].beat : 0;
+      const hi = idx + 1 < lane.points.length ? lane.points[idx + 1].beat : 1000000;
+      let beat = b0 + ((m.clientX - x0) * (fine ? 0.25 : 1)) / zoom;
+      if (!fine) beat = snapTo(beat, state.snap);
+      pt.beat = Math.max(lo, Math.min(hi, Math.max(0, beat)));
+      const u = u0 - ((m.clientY - y0) / (LANE_H - 2 * PAD)) * (fine ? 0.2 : 1);
+      pt.value = tidy(info, valueOf(r, u));
+      hint(`${info.label}: ${formatValue(info, pt.value)} at ${barBeat(pt.beat, state.project.transport.beatsPerBar)}`);
+      changed(true);
+    },
+    (u) => {
+      reportContext();
+    },
+  );
 }
 
 /** Alt-drag: bend the segment that ends at point `idx` (drag up raises its middle). */
@@ -221,12 +225,16 @@ function dragCurve(e, lane, idx, r, info) {
   const rising = unitOf(r, pt.value) >= unitOf(r, lane.points[idx - 1].value);
   const c0 = pt.curve;
   const y0 = e.clientY;
-  drag(e, (m) => {
-    const d = (y0 - m.clientY) / 90;
-    pt.curve = Math.round(Math.max(-1, Math.min(1, c0 + (rising ? -d : d))) * 100) / 100;
-    hint(`${info.label}: curve ${fmt(pt.curve, 2)} (0 = straight)`);
-    changed(true);
-  }, (u) => undefined);
+  drag(
+    e,
+    (m) => {
+      const d = (y0 - m.clientY) / 90;
+      pt.curve = Math.round(Math.max(-1, Math.min(1, c0 + (rising ? -d : d))) * 100) / 100;
+      hint(`${info.label}: curve ${fmt(pt.curve, 2)} (0 = straight)`);
+      changed(true);
+    },
+    (u) => undefined,
+  );
 }
 
 /** function deletePoint(lane: AutomationLane, idx: Int) => Undefined */
@@ -330,7 +338,10 @@ export function onAutoDblClick(e, lg, x, y) {
 /** function autoHint(lg: LaneGeo, x: Number, y: Number) => String */
 export function autoHint(lg, x, y) {
   const rel = y - lg.top;
-  if (rel < DIV_H) return auto.collapsed ? "Automation — click to show the lanes" : "Automation — click to fold the lanes · right-click any knob, fader or the tempo to automate it";
+  if (rel < DIV_H)
+    return auto.collapsed
+      ? "Automation — click to show the lanes"
+      : "Automation — click to fold the lanes · right-click any knob, fader or the tempo to automate it";
   const lanes = state.project.automation;
   const k = Math.floor((rel - DIV_H) / LANE_H);
   if (auto.collapsed || k < 0 || k >= lanes.length) return "";

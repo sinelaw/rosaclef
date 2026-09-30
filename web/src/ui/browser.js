@@ -13,7 +13,10 @@ import { insertIx } from "#brands";
 /** function addChannel(type: String, name: String, setup: (Device) => Undefined) => String */
 export function addChannel(type, name, setup) {
   const p = state.project;
-  const id = uniqueId(name, p.channels.map((c) => c.id));
+  const id = uniqueId(
+    name,
+    p.channels.map((c) => c.id),
+  );
   const dev = newDevice(type);
   setup(dev);
   // Route to the first insert no channel uses yet (FL-style one insert per channel).
@@ -31,7 +34,10 @@ export function addChannel(type, name, setup) {
 export function addPattern() {
   const p = state.project;
   const n = p.patterns.length + 1;
-  const id = uniqueId(`pattern-${n}`, p.patterns.map((x) => x.id));
+  const id = uniqueId(
+    `pattern-${n}`,
+    p.patterns.map((x) => x.id),
+  );
   commit(() => {
     p.patterns.push({ id: id, name: `Pattern ${n}`, color: paletteColor(n + 2), length: 4, notes: [] });
   });

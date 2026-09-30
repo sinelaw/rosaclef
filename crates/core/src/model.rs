@@ -12,7 +12,9 @@ use std::collections::BTreeMap;
 pub const FORMAT: &str = "rosaclef/1";
 
 /// Index of a mixer insert (`mixer.inserts[i]`; 0 is the master bus).
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default,
+)]
 #[serde(transparent)]
 pub struct InsertIx(pub u32);
 
@@ -24,7 +26,9 @@ impl InsertIx {
 }
 
 /// Index of a playlist track (`playlist.tracks[i]`).
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default,
+)]
 #[serde(transparent)]
 pub struct TrackIx(pub u32);
 
@@ -299,8 +303,15 @@ impl Project {
         Project {
             schema: String::new(),
             format: FORMAT.into(),
-            meta: Meta { title: title.into(), ..Default::default() },
-            transport: Transport { bpm: 120.0, beats_per_bar: 4, swing: 0.0 },
+            meta: Meta {
+                title: title.into(),
+                ..Default::default()
+            },
+            transport: Transport {
+                bpm: 120.0,
+                beats_per_bar: 4,
+                swing: 0.0,
+            },
             channels: vec![],
             patterns: vec![Pattern {
                 id: "pattern-1".into(),
@@ -310,7 +321,12 @@ impl Project {
                 notes: vec![],
             }],
             playlist: Playlist {
-                tracks: (1..=8).map(|i| Track { name: format!("Track {i}"), mute: false }).collect(),
+                tracks: (1..=8)
+                    .map(|i| Track {
+                        name: format!("Track {i}"),
+                        mute: false,
+                    })
+                    .collect(),
                 clips: vec![],
             },
             mixer: Mixer { inserts },
@@ -337,19 +353,34 @@ impl Project {
 
     /// End of the arrangement in beats (end of the last clip).
     pub fn song_length(&self) -> f64 {
-        self.playlist.clips.iter().map(|c| c.start + c.length).fold(0.0, f64::max)
+        self.playlist
+            .clips
+            .iter()
+            .map(|c| c.start + c.length)
+            .fold(0.0, f64::max)
     }
 }
 
 impl Insert {
     pub fn new(name: &str) -> Insert {
-        Insert { name: name.into(), volume: 1.0, pan: 0.0, mute: false, solo: false, effects: vec![] }
+        Insert {
+            name: name.into(),
+            volume: 1.0,
+            pan: 0.0,
+            mute: false,
+            solo: false,
+            effects: vec![],
+        }
     }
 }
 
 impl Device {
     pub fn new(kind: &str) -> Device {
-        Device { kind: kind.into(), enabled: true, ..Default::default() }
+        Device {
+            kind: kind.into(),
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     /// Numeric parameter, falling back to the catalog default.

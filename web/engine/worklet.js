@@ -24,10 +24,19 @@ function utf8Decode(bytes) {
   for (let i = 0; i < bytes.length; ) {
     const b = bytes[i];
     let c;
-    if (b < 0x80) { c = b; i += 1; }
-    else if (b < 0xe0) { c = ((b & 31) << 6) | (bytes[i + 1] & 63); i += 2; }
-    else if (b < 0xf0) { c = ((b & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63); i += 3; }
-    else { c = ((b & 7) << 18) | ((bytes[i + 1] & 63) << 12) | ((bytes[i + 2] & 63) << 6) | (bytes[i + 3] & 63); i += 4; }
+    if (b < 0x80) {
+      c = b;
+      i += 1;
+    } else if (b < 0xe0) {
+      c = ((b & 31) << 6) | (bytes[i + 1] & 63);
+      i += 2;
+    } else if (b < 0xf0) {
+      c = ((b & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63);
+      i += 3;
+    } else {
+      c = ((b & 7) << 18) | ((bytes[i + 1] & 63) << 12) | ((bytes[i + 2] & 63) << 6) | (bytes[i + 3] & 63);
+      i += 4;
+    }
     s += String.fromCodePoint(c);
   }
   return s;
@@ -41,7 +50,9 @@ class RosaclefProcessor extends AudioWorkletProcessor {
     this.frame = 0;
     this.recording = false;
     // Messages that arrive before the WebAssembly module is ready wait for it.
-    this.ready = new Promise((resolve) => { this.resolveReady = resolve; });
+    this.ready = new Promise((resolve) => {
+      this.resolveReady = resolve;
+    });
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
 
@@ -54,7 +65,11 @@ class RosaclefProcessor extends AudioWorkletProcessor {
 
   withStr(str, fn) {
     const [ptr, len] = this.bytes(str);
-    try { return fn(ptr, len); } finally { this.wasm.rc_free(ptr, len); }
+    try {
+      return fn(ptr, len);
+    } finally {
+      this.wasm.rc_free(ptr, len);
+    }
   }
 
   result() {
@@ -78,9 +93,7 @@ class RosaclefProcessor extends AudioWorkletProcessor {
       case "project": {
         const status = this.withStr(m.json, (p, l) => w.rc_set_project(p, l));
         const res = this.result();
-        this.port.postMessage(status === 0
-          ? { t: "loaded", missing: JSON.parse(res || "[]") }
-          : { t: "loadError", message: res });
+        this.port.postMessage(status === 0 ? { t: "loaded", missing: JSON.parse(res || "[]") } : { t: "loadError", message: res });
         break;
       }
       case "sample": {
@@ -94,13 +107,27 @@ class RosaclefProcessor extends AudioWorkletProcessor {
         w.rc_free(ptr, bytes);
         break;
       }
-      case "play": w.rc_play(); break;
-      case "pause": w.rc_pause(); break;
-      case "stop": w.rc_stop(); break;
-      case "mode": this.withStr(m.pattern, (p, l) => w.rc_set_mode(p, l)); break;
-      case "seek": w.rc_seek(m.beat); break;
-      case "note": this.withStr(m.channel, (p, l) => w.rc_note(p, l, m.key, m.velocity, m.on ? 1 : 0)); break;
-      case "record": this.recording = m.on; break;
+      case "play":
+        w.rc_play();
+        break;
+      case "pause":
+        w.rc_pause();
+        break;
+      case "stop":
+        w.rc_stop();
+        break;
+      case "mode":
+        this.withStr(m.pattern, (p, l) => w.rc_set_mode(p, l));
+        break;
+      case "seek":
+        w.rc_seek(m.beat);
+        break;
+      case "note":
+        this.withStr(m.channel, (p, l) => w.rc_note(p, l, m.key, m.velocity, m.on ? 1 : 0));
+        break;
+      case "record":
+        this.recording = m.on;
+        break;
     }
   }
 

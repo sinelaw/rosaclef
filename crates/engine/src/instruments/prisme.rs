@@ -51,7 +51,18 @@ impl Spectrum {
 }
 
 /// Drawbar-like organ registration: (harmonic, level).
-const ORGAN: [(usize, f32); 10] = [(1, 1.0), (2, 0.8), (3, 0.65), (4, 0.5), (5, 0.18), (6, 0.35), (8, 0.3), (10, 0.1), (12, 0.14), (16, 0.1)];
+const ORGAN: [(usize, f32); 10] = [
+    (1, 1.0),
+    (2, 0.8),
+    (3, 0.65),
+    (4, 0.5),
+    (5, 0.18),
+    (6, 0.35),
+    (8, 0.3),
+    (10, 0.1),
+    (12, 0.14),
+    (16, 0.1),
+];
 /// Bell partial ratios (hum, prime, tierce, quint, nominal, ...) and levels.
 const BELL: [(f32, f32); 14] = [
     (0.5, 0.35),
@@ -70,7 +81,12 @@ const BELL: [(f32, f32); 14] = [
     (11.6, 0.08),
 ];
 /// "Aah" formants: (centre Hz, half bandwidth Hz, gain).
-const FORMANTS: [(f32, f32, f32); 4] = [(750.0, 130.0, 1.0), (1200.0, 150.0, 0.6), (2700.0, 200.0, 0.25), (3500.0, 250.0, 0.15)];
+const FORMANTS: [(f32, f32, f32); 4] = [
+    (750.0, 130.0, 1.0),
+    (1200.0, 150.0, 0.6),
+    (2700.0, 200.0, 0.25),
+    (3500.0, 250.0, 0.15),
+];
 
 /// Base ratio and level of partial slot `i` (0-based) for a fundamental `f0`.
 fn recipe(spec: Spectrum, i: usize, f0: f32) -> (f32, f32) {
@@ -78,7 +94,14 @@ fn recipe(spec: Spectrum, i: usize, f0: f32) -> (f32, f32) {
     match spec {
         Spectrum::Saw => (k, 1.0 / k),
         Spectrum::Square => (k, if i.is_multiple_of(2) { 1.0 / k } else { 0.0 }),
-        Spectrum::Organ => (k, ORGAN.iter().find(|(h, _)| *h == i + 1).map(|(_, a)| *a).unwrap_or(0.0)),
+        Spectrum::Organ => (
+            k,
+            ORGAN
+                .iter()
+                .find(|(h, _)| *h == i + 1)
+                .map(|(_, a)| *a)
+                .unwrap_or(0.0),
+        ),
         Spectrum::Bell => {
             if i < BELL.len() {
                 BELL[i]
@@ -99,7 +122,11 @@ fn recipe(spec: Spectrum, i: usize, f0: f32) -> (f32, f32) {
         Spectrum::Glass => {
             // Sparse, increasingly spaced harmonics with slowly falling levels.
             let h = if i == 0 { 1.0 } else { (k.powf(1.55)).round() };
-            let a = if i == 0 { 1.0 } else { 0.55 * (i as f32).powf(-0.3) };
+            let a = if i == 0 {
+                1.0
+            } else {
+                0.55 * (i as f32).powf(-0.3)
+            };
             (h, a)
         }
     }
@@ -136,7 +163,11 @@ impl Params {
     fn derive_unison(&mut self) {
         let n = self.unison;
         for u in 0..MAX_UNISON {
-            let pos = if n <= 1 { 0.0 } else { u as f32 / (n - 1) as f32 * 2.0 - 1.0 };
+            let pos = if n <= 1 {
+                0.0
+            } else {
+                u as f32 / (n - 1) as f32 * 2.0 - 1.0
+            };
             self.det[u] = cents(pos * self.detune * 0.5);
             let (l, r) = pan_gains(pos * 0.75);
             self.pan_l[u] = l;
@@ -222,7 +253,11 @@ impl Voice {
         let tilt = -(1.0 - p.brightness) * 1.3;
         let even_g = 1.0 + p.odd_even.min(0.0);
         let odd_g = 1.0 - p.odd_even.max(0.0);
-        let max_det = if p.unison > 1 { cents(p.detune * 0.5) } else { 1.0 };
+        let max_det = if p.unison > 1 {
+            cents(p.detune * 0.5)
+        } else {
+            1.0
+        };
         let limit = 0.45 * sr;
         let mut sum2 = 0.0;
         for i in 0..MAX_PARTIALS {
@@ -251,7 +286,11 @@ impl Voice {
         let sd = p.spectral_decay * p.spectral_decay;
         for i in 0..p.partials {
             let f = self.freq[i];
-            self.base[i] = if f * max_det < limit { self.base[i] * norm } else { 0.0 };
+            self.base[i] = if f * max_det < limit {
+                self.base[i] * norm
+            } else {
+                0.0
+            };
             // Higher partials die away faster: rate grows with the distance
             // (in Hz) from the fundamental.
             let rate = sd * (f - f1).max(0.0) / 250.0;
@@ -259,7 +298,11 @@ impl Voice {
         }
         for u in 0..p.unison {
             for i in 0..MAX_PARTIALS {
-                let w = if self.base[i] > 0.0 { (self.freq[i] * p.det[u] / sr).clamp(0.0, 0.49) as f64 * std::f64::consts::TAU } else { 0.0 };
+                let w = if self.base[i] > 0.0 {
+                    (self.freq[i] * p.det[u] / sr).clamp(0.0, 0.49) as f64 * std::f64::consts::TAU
+                } else {
+                    0.0
+                };
                 let (s, c) = w.sin_cos();
                 self.rot_c[u][i / LANES][i % LANES] = c as f32;
                 self.rot_s[u][i / LANES][i % LANES] = s as f32;
@@ -347,7 +390,11 @@ impl Voice {
         self.out_l = [0.0; CR];
         self.out_r = [0.0; CR];
         // Only blocks up to the last audible partial are synthesised.
-        let last = (0..n).rev().find(|&i| self.amp[i] > SILENT || target[i] > SILENT).map(|i| i + 1).unwrap_or(0);
+        let last = (0..n)
+            .rev()
+            .find(|&i| self.amp[i] > SILENT || target[i] > SILENT)
+            .map(|i| i + 1)
+            .unwrap_or(0);
         let nb = last.div_ceil(LANES);
         if nb == 0 {
             self.amp[..n].copy_from_slice(&target[..n]);
@@ -371,7 +418,8 @@ impl Voice {
                 let tf = t as f32;
                 let mut acc = [0f32; LANES];
                 for b in 0..nb {
-                    let (r, m, c, s, a, d) = (&mut re[b], &mut im[b], &rc[b], &rs[b], &a0[b], &da[b]);
+                    let (r, m, c, s, a, d) =
+                        (&mut re[b], &mut im[b], &rc[b], &rs[b], &a0[b], &da[b]);
                     for j in 0..LANES {
                         let nr = r[j] * c[j] - m[j] * s[j];
                         let nm = r[j] * s[j] + m[j] * c[j];
@@ -400,7 +448,13 @@ impl Voice {
 }
 
 fn set_env(env: &mut Adsr, p: &Params, sr: f32) {
-    env.set(p.attack.max(0.0015), p.decay, p.sustain, p.release.max(0.005), sr);
+    env.set(
+        p.attack.max(0.0015),
+        p.decay,
+        p.sustain,
+        p.release.max(0.005),
+        sr,
+    );
 }
 
 pub struct Prisme {
@@ -438,7 +492,13 @@ impl Prisme {
             uni_norm: 1.0,
         };
         p.derive_unison();
-        Prisme { sr, p, voices: (0..VOICES).map(|_| Voice::new()).collect(), rng: Rng::new(0x9a15e), clock: 0 }
+        Prisme {
+            sr,
+            p,
+            voices: (0..VOICES).map(|_| Voice::new()).collect(),
+            rng: Rng::new(0x9a15e),
+            clock: 0,
+        }
     }
 }
 
@@ -478,7 +538,12 @@ impl Instrument for Prisme {
         match ev {
             NoteKind::On { key, velocity } => {
                 self.clock += 1;
-                let i = pick_voice(&self.voices, |v| v.active, |v| v.env.is_released(), |v| v.age);
+                let i = pick_voice(
+                    &self.voices,
+                    |v| v.active,
+                    |v| v.env.is_released(),
+                    |v| v.age,
+                );
                 let seed = self.rng.next_u32();
                 let v = &mut self.voices[i];
                 if v.active && v.env.level > 1e-4 {
@@ -511,7 +576,9 @@ impl Instrument for Prisme {
     }
 
     fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
-        let Prisme { sr, p, voices, rng, .. } = self;
+        let Prisme {
+            sr, p, voices, rng, ..
+        } = self;
         let sr = *sr;
         for v in voices.iter_mut().filter(|v| v.active) {
             let mut vel_gain = (0.25 + 0.75 * v.velocity) * p.gain * p.uni_norm;

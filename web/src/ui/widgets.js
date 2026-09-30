@@ -92,11 +92,15 @@ export function knobAt(b, key, cls, v, label, tip, dflt, target, onSet) {
     begin();
     const y0 = e.clientY;
     const v0 = v;
-    drag(e, (m) => {
-      const scale = m.shiftKey ? 900 : 180;
-      onSet(clamp01(v0 + (y0 - m.clientY) / scale));
-      changed(true);
-    }, (u) => undefined);
+    drag(
+      e,
+      (m) => {
+        const scale = m.shiftKey ? 900 : 180;
+        onSet(clamp01(v0 + (y0 - m.clientY) / scale));
+        changed(true);
+      },
+      (u) => undefined,
+    );
   });
   b.on("dblclick", (e) => {
     commit(() => onSet(dflt));
@@ -162,11 +166,15 @@ export function faderAt(b, key, v, tip, dflt, target, onSet) {
     const v0 = grabbed ? v : pos;
     if (!grabbed) onSet(pos);
     changed(true);
-    drag(e, (m) => {
-      const scale = m.shiftKey ? h * 5 : h;
-      onSet(clamp01(v0 + (y0 - m.clientY) / scale));
-      changed(true);
-    }, (u) => undefined);
+    drag(
+      e,
+      (m) => {
+        const scale = m.shiftKey ? h * 5 : h;
+        onSet(clamp01(v0 + (y0 - m.clientY) / scale));
+        changed(true);
+      },
+      (u) => undefined,
+    );
   });
   b.on("dblclick", (e) => {
     commit(() => onSet(dflt));
@@ -183,7 +191,10 @@ export function faderAt(b, key, v, tip, dflt, target, onSet) {
 /** function meter(b: Builder, key: String, l: Number, r: Number) => Undefined */
 export function meter(b, key, l, r) {
   b.open("div", key, "meter");
-  for (const ch of [{ side: "l", v: l }, { side: "r", v: r }]) {
+  for (const ch of [
+    { side: "l", v: l },
+    { side: "r", v: r },
+  ]) {
     const side = ch.side;
     const v = ch.v;
     // Map -60..+6 dB onto 0..1.

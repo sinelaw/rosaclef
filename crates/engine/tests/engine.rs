@@ -17,9 +17,33 @@ fn drum_project() -> Project {
     let mut p = Project::empty("t");
     let mut dev = Device::new("drum");
     dev.options.insert("kind".into(), "kick".into());
-    p.channels.push(Channel { id: "k".into(), name: "Kick".into(), color: "#ffffff".into(), instrument: dev, volume: 1.0, pan: 0.0, mute: false, mixer: InsertIx(1) });
-    p.patterns[0].notes.push(Note { channel: "k".into(), pitch: 60, start: 0.0, length: 0.25, velocity: 1.0 });
-    p.playlist.clips.push(Clip { pattern: "pattern-1".into(), sample: String::new(), track: TrackIx(0), start: 0.0, length: 16.0, offset: 0.0, gain: 1.0, mixer: InsertIx::MASTER });
+    p.channels.push(Channel {
+        id: "k".into(),
+        name: "Kick".into(),
+        color: "#ffffff".into(),
+        instrument: dev,
+        volume: 1.0,
+        pan: 0.0,
+        mute: false,
+        mixer: InsertIx(1),
+    });
+    p.patterns[0].notes.push(Note {
+        channel: "k".into(),
+        pitch: 60,
+        start: 0.0,
+        length: 0.25,
+        velocity: 1.0,
+    });
+    p.playlist.clips.push(Clip {
+        pattern: "pattern-1".into(),
+        sample: String::new(),
+        track: TrackIx(0),
+        start: 0.0,
+        length: 16.0,
+        offset: 0.0,
+        gain: 1.0,
+        mixer: InsertIx::MASTER,
+    });
     p
 }
 
@@ -31,7 +55,11 @@ fn onsets(left: &[f32], sr: f32) -> Vec<f32> {
         if quiet && x.abs() > 0.05 {
             out.push(i as f32 / sr);
             quiet = false;
-        } else if !quiet && left[i.saturating_sub(2000)..=i].iter().all(|y| y.abs() < 0.01) {
+        } else if !quiet
+            && left[i.saturating_sub(2000)..=i]
+                .iter()
+                .all(|y| y.abs() < 0.01)
+        {
             quiet = true;
         }
     }
@@ -43,13 +71,25 @@ fn demo_song_renders_with_healthy_levels() {
     let mut e = Engine::new(48000.0);
     e.set_project(demo());
     let project = demo();
-    let end = project.playlist.clips.iter().map(|c| c.start + c.length).fold(0.0, f64::max);
+    let end = project
+        .playlist
+        .clips
+        .iter()
+        .map(|c| c.start + c.length)
+        .fold(0.0, f64::max);
     // The demo automates its tempo (a sag in the Fall, a closing ritardando),
     // so the song's length in seconds follows the tempo map, not the project BPM.
     let song_seconds = TempoMap::new(&project).seconds_at(end);
-    assert!(song_seconds > end * 60.0 / project.transport.bpm, "the demo's tempo automation slows it down");
+    assert!(
+        song_seconds > end * 60.0 / project.transport.bpm,
+        "the demo's tempo automation slows it down"
+    );
     let a = render(&mut e, &RenderScope::Song);
-    assert!(a.duration() > song_seconds && a.duration() < song_seconds + 9.0, "duration {}", a.duration());
+    assert!(
+        a.duration() > song_seconds && a.duration() < song_seconds + 9.0,
+        "duration {}",
+        a.duration()
+    );
     assert!(a.peak() > 0.3 && a.peak() <= 1.0, "peak {}", a.peak());
     assert!(a.rms() > 0.02, "rms {}", a.rms());
     assert!(a.left.iter().all(|x| x.is_finite()));
@@ -119,8 +159,14 @@ fn project_updates_keep_instruments() {
     let mut l = vec![0.0; 4800];
     let mut r = vec![0.0; 4800];
     e.process(&mut l, &mut r);
-    p.channels[0].instrument.params.insert("cutoff".into(), 800.0);
+    p.channels[0]
+        .instrument
+        .params
+        .insert("cutoff".into(), 800.0);
     e.set_project(p);
     e.process(&mut l, &mut r);
-    assert!(l.iter().any(|x| x.abs() > 0.01), "note was cut by the update");
+    assert!(
+        l.iter().any(|x| x.abs() > 0.01),
+        "note was cut by the update"
+    );
 }
