@@ -9,7 +9,9 @@ import { connect, installSync } from "./net.js";
 import { installEngine, startAudio } from "./audio.js";
 import { installKeys } from "./keys.js";
 import { loadAgents } from "./ui/agent.js";
+import { loadLayout } from "./ui/panes.js";
 
+loadLayout();
 const ui = mount(domBackend("app"), studio);
 hooks.mark = ui.mark;
 

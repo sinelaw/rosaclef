@@ -2,11 +2,12 @@
 // computer-keyboard piano.
 
 import { listenWindow } from "#platform";
-import { state, undo, redo, showDock, currentChannel } from "./store.js";
+import { state, undo, redo, currentChannel } from "./store.js";
 import { togglePlay, stop, setMode, record, noteOn, noteOff } from "./audio.js";
 import { deleteSelection, selectAll, transpose, quantize, duplicateSelection, setTool } from "./ui/pianoroll.js";
 import { deleteSelectedClips } from "./ui/playlist.js";
 import { auto, closeMenu } from "./automation.js";
+import { openDock, paneShortcut } from "./ui/panes.js";
 
 // Lower keyboard row plays C4..C5 on the selected channel.
 const PIANO = ["z", "s", "x", "d", "c", "v", "g", "b", "h", "n", "j", "m", ","];
@@ -19,6 +20,11 @@ export function installKeys() {
     if (e.typing) return undefined;
     const k = e.key;
     const mod = e.ctrlKey || e.metaKey;
+    // Ctrl+Alt+B/A/P/D/0: minimize, maximize and restore the panels.
+    if (mod && e.altKey && paneShortcut(e.code)) {
+      e.preventDefault();
+      return undefined;
+    }
     if (mod && (k === "z" || k === "Z")) {
       e.preventDefault();
       if (e.shiftKey) redo();
@@ -49,13 +55,13 @@ export function installKeys() {
       else stop();
     } else if (k === "F6") {
       e.preventDefault();
-      showDock("rack");
+      openDock("rack");
     } else if (k === "F7") {
       e.preventDefault();
-      showDock("piano");
+      openDock("piano");
     } else if (k === "F9") {
       e.preventDefault();
-      showDock("mixer");
+      openDock("mixer");
     } else if (k === "l" || k === "L") {
       setMode(state.mode === "pattern" ? "song" : "pattern");
     } else if (k === "r" || k === "R") {

@@ -5,6 +5,7 @@
 import { connectRaw, wsUrl, createTerm, getJson } from "#platform";
 import { state, invalidate, currentPattern, currentChannel, hint, setFocus } from "../store.js";
 import { iconButton, button, select, glyph } from "./widgets.js";
+import { paneHeader, paneControls } from "./panes.js";
 import { insertIndex } from "#brands";
 
 const agent = {
@@ -150,6 +151,12 @@ function suggestions() {
   ];
 }
 
+/** The agent's status light (also shown on its collapsed rail). */
+/** function agentDot() => String */
+export function agentDot() {
+  return agent.running ? "status-dot live" : agent.connected ? "status-dot warn" : "status-dot bad";
+}
+
 /** function agentPanel(b: Builder) => Undefined */
 export function agentPanel(b) {
   const pat = currentPattern();
@@ -158,6 +165,7 @@ export function agentPanel(b) {
   b.on("pointerdown", (e) => setFocus("agent"));
 
   b.open("div", "head", "agent-head");
+  paneHeader(b, "agent");
   b.open("div", "mark", "agent-mark");
   glyph(b, "spark");
   b.close();
@@ -166,7 +174,7 @@ export function agentPanel(b) {
   b.leaf("span", "s", "", agent.running ? `${agent.name} · live` : agent.connected ? "agent idle" : "connecting…");
   b.close();
   b.leaf("div", "sp", "spacer", "");
-  b.leaf("div", "dot", agent.running ? "status-dot live" : agent.connected ? "status-dot warn" : "status-dot bad", "");
+  b.leaf("div", "dot", agentDot(), "");
   const ids = state.agents.map((a) => a.id);
   const names = state.agents.map((a) => (a.available ? a.name : `${a.name} (not installed)`));
   if (ids.length > 0) {
@@ -185,6 +193,7 @@ export function agentPanel(b) {
       return undefined;
     });
   }
+  paneControls(b, "agent");
   b.close();
 
   // What the agent can see right now (also written to .rosaclef/context.json).

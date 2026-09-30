@@ -22,6 +22,7 @@ function enrich(e) {
   const src = e.target || {};
   const extra = {
     typing: isTyping(e.target),
+    onControl: !!(src.closest && src.closest("button, select, input, textarea, a, .knob, .fader, .lcd")),
     value: src.value !== undefined ? String(src.value) : "",
     checked: !!src.checked,
     targetLeft: r ? r.left : 0,
@@ -358,6 +359,15 @@ export function confirmBox(msg) {
 export function promptBox(msg, def) {
   const r = window.prompt(msg, def);
   return r === null ? "" : r;
+}
+
+/** A small persisted UI preference; "" when absent or storage is unavailable. */
+export function loadPref(key) {
+  try { return localStorage.getItem(key) ?? ""; } catch (_) { return ""; }
+}
+
+export function savePref(key, value) {
+  try { localStorage.setItem(key, value); } catch (_) { /* private mode, quota: not persisted */ }
 }
 
 export function fmt(n, digits) {

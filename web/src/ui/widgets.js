@@ -322,6 +322,9 @@ const ICONS = [
   { name: "plug", d: "M9 3.5v5M15 3.5v5M6.5 8.5h11v3a5.5 5.5 0 0 1-11 0zM12 17v3.5" },
   { name: "follow", d: "M3.5 12h12M11.5 7.5l4.5 4.5-4.5 4.5M20 4.5v15" },
   { name: "copy", d: "M8.5 8.5h11v11h-11zM5.5 15.5h-1v-11h11v1" },
+  { name: "minimize", d: "M6 16.5h12" },
+  { name: "maximize", d: "M5.5 5.5h13v13h-13zM5.5 9h13" },
+  { name: "restore", d: "M5 10h9v9H5zM5 13h9M9 10V6h10v9h-5" },
 ];
 
 /** function glyph(b: Builder, name: String) => Undefined */
