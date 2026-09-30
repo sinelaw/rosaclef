@@ -87,11 +87,13 @@ instrument:
   ends, legato, auto-tune to a key and scale (or let it detect the key),
   octave, and velocities that follow how loud you sang. The result is a new
   pattern for the piano roll, on the selected channel or a new one.
-- **Beatbox** — kicks (a low "b"/"boom"), snares ("pf", "k") and hats ("ts")
-  become a drum loop on Atelier kick / snare / hat channels (existing ones are
-  reused). Set the grid, the sensitivity (ghost notes), where kicks end and
-  hats begin (the preview shows each hit by its tone), accents, the loop length
-  and how many times it repeats; click a hit to make it another drum.
+- **Beatbox** — kicks (a low "b"/"boom"), toms (a hummed "dum"), snares
+  ("pf", "k"), hats ("ts") and open hats (a long "tsss") become a drum loop on
+  Atelier channels (existing ones are reused). A drum recording works too:
+  several drums on one beat (a kick and a hat) are told apart, and rolls,
+  fills and ghost notes come through. Set the grid, the sensitivity (ghost
+  notes), accents, the loop length and how many times it repeats; click a hit
+  to make it another drum.
 
 It works in three steps:
 
@@ -99,7 +101,9 @@ It works in three steps:
    playing along with the pattern or the song, and the take keeps its place
    in time), **Open a recording…** from the phone or computer, or pick any
    recording in `samples/`.
-2. **Shape** — adjust the settings above and **Play** the result, looping, on
+2. **Shape** — **Crop** the take by dragging its left or right handle in
+   (the part outside is left out, and the result's time starts at the left
+   handle), adjust the settings above and **Play** the result, looping, on
    its channels; changes apply as it plays, and the song is not touched.
    **Take** plays the recording to compare; **Analyze again** re-reads it.
 3. **Add to song** — the pattern and a playlist clip, in one undoable step.

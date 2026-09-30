@@ -9,19 +9,19 @@
 //!   fit of whole semitones with a cost per note change, so glides, scoops
 //!   and vibrato do not turn into little notes of their own. The fit is
 //!   made at five detail levels, in the singer's own tuning.
-//! - **Beatbox** — vocal percussion becomes drum hits. Onsets are peaks of the
-//!   spectral flux; the first 50 ms of each hit are summed up by a *tone*
-//!   (the spectral centroid, pulled down by the share of energy below
-//!   200 Hz), which separates kicks (a low "b" or "boom"), snares ("pf",
-//!   "k") and hats ("ts", "t").
+//! - **Beatbox** — vocal percussion, or any drum recording, becomes drum
+//!   hits: kicks, toms, snares, hats and open hats, several at once when
+//!   they share a beat (`drums`).
 //!
 //! The results are raw — seconds and fractional MIDI pitches. The studio
 //! quantizes them, snaps them to a scale and maps them onto channels
 //! (`web/src/voice.js`), so those settings change instantly without
-//! analyzing the take again. `classify` is mirrored there too.
+//! analyzing the take again.
 
 use rosaclef_engine::samples::SampleData;
 use serde::Serialize;
+
+pub mod drums;
 
 /// Seconds between analysis frames (the pitch contour and the level).
 pub const STEP: f32 = 0.01;
@@ -31,10 +31,6 @@ const FMAX: f32 = 2200.0;
 /// Notes shorter than this are dropped (clicks, breaths); the studio's
 /// clean-up merges or drops longer blips.
 const MIN_NOTE: f32 = 0.05;
-
-/// Default tone boundaries between the drums (Hz).
-pub const KICK_BELOW: f32 = 900.0;
-pub const HAT_ABOVE: f32 = 4200.0;
 
 /// A note found in a melody take.
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -48,24 +44,18 @@ pub struct VoiceNote {
     pub velocity: f32,
 }
 
-/// A percussive hit found in a beatbox take.
+/// A drum hit found in a beatbox take or a drum recording (several can
+/// share a moment: a kick and a hat on the same beat).
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct Hit {
     /// Seconds from the start of the take.
     pub time: f32,
-    /// Onset strength relative to the strongest hit (0..1); the studio's
-    /// sensitivity control drops the weak ones.
+    /// How clearly the drum is there, against its typical hit in the take
+    /// (0..1); the studio's sensitivity control drops the weak ones.
     pub strength: f32,
-    /// 0..1, from the hit's peak level relative to the loudest hit.
+    /// 0..1, from the hit's level relative to the loudest of its drum.
     pub velocity: f32,
-    /// Spectral centroid of the hit's first 50 ms (Hz).
-    pub centroid: f32,
-    /// Share of the energy below 200 Hz and above 5 kHz.
-    pub low: f32,
-    pub high: f32,
-    /// What `classify` sorts on (Hz).
-    pub tone: f32,
-    /// "kick", "snare" or "hat" with the default boundaries.
+    /// "kick", "tom", "snare", "hat" or "openhat".
     pub kind: &'static str,
 }
 
@@ -107,7 +97,7 @@ pub fn transcribe(data: &SampleData, mode: &str) -> Transcription {
             contour: vec![],
             notes: vec![],
             details: vec![],
-            hits: beatbox(&x, sr),
+            hits: drums::hits(&x, sr),
         }
     } else {
         let (contour, details) = melody(&x, sr);
@@ -121,17 +111,6 @@ pub fn transcribe(data: &SampleData, mode: &str) -> Transcription {
             details,
             hits: vec![],
         }
-    }
-}
-
-/// The drum a tone stands for, given the two boundaries (Hz).
-pub fn classify(tone: f32, kick_below: f32, hat_above: f32) -> &'static str {
-    if tone < kick_below {
-        "kick"
-    } else if tone > hat_above {
-        "hat"
-    } else {
-        "snare"
     }
 }
 
@@ -667,7 +646,7 @@ fn melody(x: &[f32], sr: f32) -> (Vec<f32>, Vec<Vec<VoiceNote>>) {
     (contour, details)
 }
 
-// ------------------------------------------------------------------ beatbox
+// ------------------------------------------------------------------ spectra
 
 /// In-place radix-2 FFT (`re.len()` a power of two).
 fn fft(re: &mut [f32], im: &mut [f32], twiddle: &[(f32, f32)]) {
@@ -731,209 +710,6 @@ fn power(
     }
     fft(re, im, tw);
     (0..=n / 2).map(|k| re[k] * re[k] + im[k] * im[k]).collect()
-}
-
-/// Onset flux a hit needs at least (keeps steady tones out).
-const FLUX_FLOOR: f32 = 0.5;
-/// Band edges (Hz) for the onset flux.
-const BANDS: [f32; 4] = [250.0, 1000.0, 4000.0, 9000.0];
-
-/// Onset times (s) and strengths from the spectral flux.
-fn onsets(x: &[f32], sr: f32) -> Vec<(f32, f32)> {
-    let n = if sr > 60000.0 { 4096 } else { 2048 };
-    let hop = ((0.005 * sr) as usize).max(1);
-    let tw = twiddles(n);
-    let win: Vec<f32> = (0..n)
-        .map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / n as f32).cos())
-        .collect();
-    let (mut re, mut im) = (vec![], vec![]);
-    let frames = if x.len() > n {
-        (x.len() - n) / hop + 1
-    } else {
-        0
-    };
-    // The flux is averaged per band, then summed: a kick moves a few low
-    // bins, a hat hundreds of high ones, and both should count alike.
-    let band_of: Vec<usize> = (0..=n / 2)
-        .map(|k| {
-            BANDS
-                .iter()
-                .filter(|&&edge| k as f32 * sr / n as f32 >= edge)
-                .count()
-        })
-        .collect();
-    let mut width = vec![0f32; BANDS.len() + 1];
-    for &b in &band_of {
-        width[b] += 1.0;
-    }
-    // Each frame is compared with the one two hops back, widened over
-    // neighbouring bins ("SuperFlux", Böck & Widmer 2013): the ripple of a
-    // decaying tail then stays under it, while a new hit rises above.
-    let bins = n / 2 + 1;
-    let mut back: [Vec<f32>; 2] = [vec![0.0; bins], vec![0.0; bins]];
-    let mut rise = vec![0f32; BANDS.len() + 1];
-    let mut flux = Vec::with_capacity(frames);
-    let mut energy = Vec::with_capacity(frames);
-    for f in 0..frames {
-        let seg = &x[f * hop..f * hop + n];
-        let p = power(seg, &win, n, &tw, &mut re, &mut im);
-        rise.iter_mut().for_each(|r| *r = 0.0);
-        let cur: Vec<f32> = p.iter().map(|v| (1.0 + 10.0 * v.sqrt()).ln()).collect();
-        let reference = &back[f % 2];
-        for k in 0..bins {
-            let r = reference[k.saturating_sub(1)]
-                .max(reference[k])
-                .max(reference[(k + 1).min(bins - 1)]);
-            rise[band_of[k]] += (cur[k] - r).max(0.0);
-        }
-        back[f % 2] = cur;
-        let acc: f32 = rise
-            .iter()
-            .zip(&width)
-            .map(|(r, w)| if *w > 0.0 { r / w } else { 0.0 })
-            .sum();
-        flux.push(if f < 2 { 0.0 } else { acc });
-        energy.push(rms(seg));
-    }
-    let max_flux = flux.iter().cloned().fold(0.0, f32::max);
-    let loud = energy.iter().cloned().fold(0.0, f32::max);
-    if max_flux <= 0.0 {
-        return vec![];
-    }
-    // A peak: the largest within ±30 ms, above the local mean by a margin,
-    // with some level, and 60 ms after the previous onset.
-    let around = ((0.03 * sr) as usize / hop).max(1);
-    let (before, after) = ((0.1 * sr) as usize / hop, (0.05 * sr) as usize / hop);
-    let gap = 0.06 * sr / hop as f32;
-    let mut out: Vec<(usize, f32)> = vec![];
-    for f in 1..frames {
-        let v = flux[f];
-        let lo = f.saturating_sub(around);
-        let hi = (f + around + 1).min(frames);
-        if flux[lo..hi].iter().any(|&u| u > v) {
-            continue;
-        }
-        let (a, b) = (f.saturating_sub(before), (f + after + 1).min(frames));
-        let mean = flux[a..b].iter().sum::<f32>() / (b - a) as f32;
-        // The floor keeps steady tones (tiny wobbles in the flux) out.
-        if v < mean * 1.3 + 0.02 * max_flux || v < FLUX_FLOOR {
-            continue;
-        }
-        let e = energy[f..(f + around).min(frames)]
-            .iter()
-            .cloned()
-            .fold(0.0, f32::max);
-        if e < loud * 0.03 {
-            continue;
-        }
-        if let Some(&(last, _)) = out.last() {
-            if ((f - last) as f32) < gap {
-                continue;
-            }
-        }
-        out.push((f, v / max_flux));
-    }
-    // Refine each onset in the waveform: the start of the rise into the
-    // loudest millisecond of the frame.
-    let ms = ((0.001 * sr) as usize).max(1);
-    out.into_iter()
-        .map(|(f, s)| {
-            let a = f * hop;
-            let b = (a + n).min(x.len());
-            let env: Vec<f32> = x[a..b]
-                .chunks(ms)
-                .map(|c| c.iter().fold(0.0f32, |m, v| m.max(v.abs())))
-                .collect();
-            let (peak_at, peak) =
-                env.iter().enumerate().fold(
-                    (0, 0.0f32),
-                    |acc, (i, &v)| if v > acc.1 { (i, v) } else { acc },
-                );
-            let mut at = peak_at;
-            while at > 0 && env[at - 1] > peak * 0.25 {
-                at -= 1;
-            }
-            ((a + at * ms) as f32 / sr, s)
-        })
-        .collect()
-}
-
-/// Onsets described and classified.
-fn beatbox(x: &[f32], sr: f32) -> Vec<Hit> {
-    // Onsets are found on a copy peaking at -6 dB, whatever the input gain.
-    let peak = x.iter().fold(0.0f32, |m, v| m.max(v.abs()));
-    if peak <= 1e-6 {
-        return vec![];
-    }
-    let found = onsets(&x.iter().map(|v| v * 0.5 / peak).collect::<Vec<f32>>(), sr);
-    let len = (0.05 * sr) as usize;
-    let n = len.next_power_of_two();
-    let tw = twiddles(n);
-    // A flat window with a short fade at the end.
-    let fade = len / 8;
-    let win: Vec<f32> = (0..len)
-        .map(|i| {
-            if i + fade < len {
-                1.0
-            } else {
-                (len - i) as f32 / fade as f32
-            }
-        })
-        .collect();
-    let (mut re, mut im) = (vec![], vec![]);
-    let mut hits: Vec<Hit> = vec![];
-    let mut peaks: Vec<f32> = vec![];
-    for (i, &(t, strength)) in found.iter().enumerate() {
-        let a = (t * sr) as usize;
-        // The segment stops at the next onset.
-        let next = found
-            .get(i + 1)
-            .map(|&(u, _)| (u * sr) as usize)
-            .unwrap_or(x.len());
-        let b = (a + len).min(next).min(x.len());
-        if b <= a {
-            continue;
-        }
-        let seg = &x[a..b];
-        let p = power(seg, &win, n, &tw, &mut re, &mut im);
-        let bin = sr / n as f32;
-        let (mut total, mut low, mut high, mut moment) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
-        for (k, &v) in p.iter().enumerate().skip(1) {
-            let f = k as f32 * bin;
-            let v = v as f64;
-            total += v;
-            moment += v * f as f64;
-            if f < 200.0 {
-                low += v;
-            } else if f > 5000.0 {
-                high += v;
-            }
-        }
-        if total <= 0.0 {
-            continue;
-        }
-        let centroid = (moment / total) as f32;
-        let low = (low / total) as f32;
-        let high = (high / total) as f32;
-        let tone = centroid * (1.0 - low);
-        peaks.push(seg.iter().fold(0.0f32, |m, v| m.max(v.abs())));
-        hits.push(Hit {
-            time: round3(t),
-            strength: round3(strength),
-            velocity: 0.0,
-            centroid: centroid.round(),
-            low: round3(low),
-            high: round3(high),
-            tone: tone.round(),
-            kind: classify(tone, KICK_BELOW, HAT_ABOVE),
-        });
-    }
-    let loudest = peaks.iter().cloned().fold(0.0, f32::max).max(1e-9);
-    for (h, p) in hits.iter_mut().zip(peaks) {
-        let db = 20.0 * (p / loudest).max(1e-6).log10();
-        h.velocity = round3((0.4 + 0.6 * (1.0 + db / 24.0)).clamp(0.25, 1.0));
-    }
-    hits
 }
 
 #[cfg(test)]
@@ -1604,13 +1380,5 @@ mod tests {
             "melody",
         );
         assert_eq!(rounded(&t.notes), vec![69]);
-    }
-
-    #[test]
-    fn classify_uses_the_boundaries() {
-        assert_eq!(classify(300.0, KICK_BELOW, HAT_ABOVE), "kick");
-        assert_eq!(classify(2000.0, KICK_BELOW, HAT_ABOVE), "snare");
-        assert_eq!(classify(8000.0, KICK_BELOW, HAT_ABOVE), "hat");
-        assert_eq!(classify(2000.0, 2500.0, HAT_ABOVE), "kick");
     }
 }

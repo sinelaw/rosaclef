@@ -2,9 +2,9 @@
 // crates/studio/src/transcribe.rs) to notes on the beat grid.
 //
 // The server finds the notes (seconds, fractional pitches) or the drum hits
-// (seconds, tone) once; everything here — quantizing, snapping to a scale,
-// sorting hits into kick / snare / hat — is cheap and runs on every redraw,
-// so the settings change the result instantly.
+// (seconds, which drum) once; everything here — cropping, quantizing,
+// snapping to a scale, keeping hits by strength — is cheap and runs on every
+// redraw, so the settings change the result instantly.
 
 // ------------------------------------------------------------------ scales
 
@@ -133,14 +133,6 @@ function round4(x) {
 
 // ------------------------------------------------------------------ drums
 
-/** Mirrors `classify` in crates/studio/src/transcribe.rs. */
-/** function classify(tone: Number, kickBelow: Number, hatAbove: Number) => String */
-export function classify(tone, kickBelow, hatAbove) {
-  if (tone < kickBelow) return "kick";
-  if (tone > hatAbove) return "hat";
-  return "snare";
-}
-
 /** Onset strength a hit needs at a sensitivity (0..1). */
 /** function strengthNeeded(sensitivity: Number) => Number */
 export function strengthNeeded(sensitivity) {
@@ -148,7 +140,14 @@ export function strengthNeeded(sensitivity) {
   return 0.02 + 0.4 * s * s;
 }
 
-export const DRUMS = ["kick", "snare", "hat"];
+/** The drums a hit can be (crates/studio/src/transcribe/drums.rs). */
+export const DRUMS = ["kick", "tom", "snare", "hat", "openhat"];
+
+/** function drumLabel(kind: String) => String */
+export function drumLabel(kind) {
+  if (kind === "openhat") return "open hat";
+  return kind;
+}
 
 /** The next drum when a hit is clicked. */
 /** function nextDrum(kind: String) => String */
@@ -161,7 +160,7 @@ export function nextDrum(kind) {
 
 /** Settings shared by both modes; see the Voice panel (ui/voice.js). */
 /** `detail` picks one of the take's detail levels (0 smooth … 4 every note). */
-/** type VoiceSettings = { detail: Int, grid: Number, strength: Number, lengths: Boolean, key: Int, scale: String, octave: Int, legato: Boolean, dynamics: Boolean, sensitivity: Number, kickBelow: Number, hatAbove: Number, bars: Int } */
+/** type VoiceSettings = { detail: Int, grid: Number, strength: Number, lengths: Boolean, key: Int, scale: String, octave: Int, legato: Boolean, dynamics: Boolean, sensitivity: Number, bars: Int } */
 
 /** The detail levels of the Detail control, smoothest first (the server's
  * DETAIL_CHANGES in crates/studio/src/transcribe.rs). */
@@ -191,7 +190,12 @@ export function resolveKey(take, s) {
 /** function takeStart(take: Take, detail: Int, aligned: Boolean) => Number */
 export function takeStart(take, detail, aligned) {
   if (!aligned) return 0;
-  if (take.mode === "drums") return take.hits.length > 0 ? take.hits[0].time : 0;
+  if (take.mode === "drums") {
+    for (const h of take.hits) {
+      if (h.strength >= 0) return h.time;
+    }
+    return 0;
+  }
   const notes = sungNotes(take, detail);
   return notes.length > 0 ? notes[0].start : 0;
 }
@@ -235,8 +239,8 @@ export function melodyNotes(take, s, bpm, origin, aligned) {
   return out;
 }
 
-/** Beatbox: the hits kept by the sensitivity, sorted into drums (`kinds`
- * overrides the sorting per hit; "" = by tone) and put on the grid. */
+/** Beatbox: the hits kept by the sensitivity, on the grid, each as the drum
+ * the server heard (`kinds` overrides that per hit; "" = as heard). */
 /** function drumHits(take: Take, s: VoiceSettings, bpm: Number, origin: Number, aligned: Boolean, kinds: String[]) => Placed[] */
 export function drumHits(take, s, bpm, origin, aligned, kinds) {
   const need = strengthNeeded(s.sensitivity);
@@ -257,7 +261,7 @@ export function drumHits(take, s, bpm, origin, aligned, kinds) {
   for (let i = 0; i < take.hits.length; i++) {
     const h = take.hits[i];
     if (h.strength < need) continue;
-    const kind = i < kinds.length && kinds[i] !== "" ? kinds[i] : classify(h.tone, s.kickBelow, s.hatAbove);
+    const kind = i < kinds.length && kinds[i] !== "" ? kinds[i] : h.kind;
     const raw = origin + (h.time - t0) * bps;
     const start = round4(Math.max(0, quantize(raw, s.grid, s.strength)));
     const velocity = s.dynamics ? h.velocity : 0.8;
@@ -301,10 +305,6 @@ export function decodeTake(r) {
       time: Number(h.time),
       strength: Number(h.strength),
       velocity: Number(h.velocity),
-      centroid: Number(h.centroid),
-      low: Number(h.low),
-      high: Number(h.high),
-      tone: Number(h.tone),
       kind: String(h.kind),
     })),
   };
@@ -313,4 +313,49 @@ export function decodeTake(r) {
 /** function emptyTake() => Take */
 export function emptyTake() {
   return { mode: "", duration: 0, step: 0.01, level: [], contour: [], notes: [], details: [], hits: [] };
+}
+
+// ------------------------------------------------------------------ crop
+
+/** Shortest note a crop leaves (seconds). */
+const CROP_MIN_NOTE = 0.03;
+
+/** function clipNotes(notes: VoiceNote[], a: Number, b: Number) => VoiceNote[] */
+function clipNotes(notes, a, b) {
+  /** const out: VoiceNote[] */
+  const out = [];
+  for (const n of notes) {
+    const start = Math.max(n.start, a);
+    const end = Math.min(n.end, b);
+    if (end - start < CROP_MIN_NOTE) continue;
+    out.push({ start: round4(start - a), end: round4(end - a), pitch: n.pitch, velocity: n.velocity });
+  }
+  return out;
+}
+
+/** The part of a take between `a` and `b` seconds, with time 0 at `a`.
+ * Notes are cut at the edges (and dropped when little is left); hits
+ * outside keep their place in the list (the per-hit drum overrides index
+ * it) with strength -1, so no sensitivity keeps them. */
+/** function cropTake(take: Take, a: Number, b: Number) => Take */
+export function cropTake(take, a, b) {
+  const lo = Math.max(0, Math.min(a, take.duration));
+  const hi = Math.max(lo, Math.min(b, take.duration));
+  if (lo <= 0 && hi >= take.duration) return take;
+  const step = take.step > 0 ? take.step : 0.01;
+  const i0 = Math.round(lo / step);
+  const i1 = Math.round(hi / step);
+  return {
+    mode: take.mode,
+    duration: round4(hi - lo),
+    step: take.step,
+    level: take.level.slice(i0, i1),
+    contour: take.contour.slice(i0, i1),
+    notes: clipNotes(take.notes, lo, hi),
+    details: take.details.map((d) => clipNotes(d, lo, hi)),
+    hits: take.hits.map((h) => {
+      const inside = h.time >= lo && h.time < hi;
+      return { time: round4(h.time - lo), strength: inside ? h.strength : -1, velocity: h.velocity, kind: h.kind };
+    }),
+  };
 }
