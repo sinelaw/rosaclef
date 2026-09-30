@@ -3,11 +3,12 @@
 
 import { listenWindow } from "#platform";
 import { state, undo, redo, currentChannel } from "./store.js";
-import { togglePlay, stop, setMode, record, noteOn, noteOff } from "./audio.js";
+import { togglePlay, stop, setMode, record } from "./audio.js";
 import { deleteSelection, selectAll, transpose, quantize, duplicateSelection, setTool } from "./ui/pianoroll.js";
 import { deleteSelectedClips } from "./ui/playlist.js";
 import { auto, closeMenu } from "./automation.js";
 import { openDock, paneShortcut } from "./ui/panes.js";
+import { pressKey, releaseKey } from "./ui/keyboard.js";
 
 // Lower keyboard row plays C4..C5 on the selected channel.
 const PIANO = ["z", "s", "x", "d", "c", "v", "g", "b", "h", "n", "j", "m", ","];
@@ -80,10 +81,9 @@ export function installKeys() {
       setTool("select");
     } else {
       const i = PIANO.indexOf(k);
-      const ch = currentChannel();
-      if (i >= 0 && ch && !e.repeat && !held.includes(k)) {
+      if (i >= 0 && currentChannel() && !e.repeat && !held.includes(k)) {
         held.push(k);
-        noteOn(ch.id, 60 + i, 0.85);
+        pressKey(`k${k}`, 60 + i, 0.85);
       }
     }
   });
@@ -92,8 +92,7 @@ export function installKeys() {
     const at = held.indexOf(k);
     if (at >= 0) {
       held.splice(at, 1);
-      const ch = currentChannel();
-      if (ch) noteOff(ch.id, 60 + PIANO.indexOf(k));
+      releaseKey(`k${k}`);
     }
   });
 }

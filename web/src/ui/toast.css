@@ -8,3 +8,4 @@
 .toast-error .toast-title { color: #f2a0aa; }
 .toast-agent .toast-title::before { content: "✦ "; }
 @keyframes rise { from { transform: translateY(8px); opacity: 0; } }
+.has-keys .toasts { bottom: 104px; }

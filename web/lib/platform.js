@@ -422,8 +422,14 @@ export function fmt(n, digits) {
 
 /** Track a pointer gesture on the window until the button is released. */
 export function drag(start, onMove, onUp) {
-  const move = wrap((e) => onMove(e));
+  // Follow only the pointer that started the drag: other fingers on a touch
+  // screen are drags of their own.
+  const mine = (e) => start.pointerId === undefined || e.pointerId === start.pointerId;
+  const move = wrap((e) => {
+    if (mine(e)) onMove(e);
+  });
   const up = wrap((e) => {
+    if (!mine(e)) return;
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     window.removeEventListener("pointercancel", up);
@@ -432,6 +438,29 @@ export function drag(start, onMove, onUp) {
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
   window.addEventListener("pointercancel", up);
+}
+
+// A finger on a scrollable editor scrolls it; only a tap (lifted without
+// moving) acts, as a click there would. Mouse and pen act at once.
+export function pressOrTap(e, act) {
+  if (e.pointerType !== "touch") {
+    act(e);
+    return;
+  }
+  const id = e.pointerId;
+  const x0 = e.clientX;
+  const y0 = e.clientY;
+  const done = (u) => {
+    if (u.pointerId !== id) return;
+    window.removeEventListener("pointerup", done);
+    window.removeEventListener("pointercancel", done);
+    if (u.type !== "pointerup" || Math.hypot(u.clientX - x0, u.clientY - y0) > 10) return;
+    act(e);
+    // The finger is already up: end any drag the action started, where it began.
+    window.dispatchEvent(new PointerEvent("pointerup", { clientX: x0, clientY: y0, pointerId: id, pointerType: "touch" }));
+  };
+  window.addEventListener("pointerup", done);
+  window.addEventListener("pointercancel", done);
 }
 
 export function debounce(ms, fn) {

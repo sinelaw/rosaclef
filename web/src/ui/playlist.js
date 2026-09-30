@@ -4,12 +4,13 @@
 // clip rectangle; rendering and hit-testing read them. Clip contents (note
 // previews, waveforms) are small canvas leaves.
 
-import { drag, getJson, promptBox } from "#platform";
+import { drag, getJson, promptBox, pressOrTap } from "#platform";
 import { state, commit, begin, changed, invalidate, selectPattern, selectChannel, showDock, currentPattern, hint, reportContext } from "../store.js";
 import { snapTo, snapDown, songLength } from "../model.js";
 import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
 import { dragSample } from "./browser.js";
+import { revealDock } from "./panes.js";
 import { toast } from "./toast.js";
 import { autoHeight, autoHeads, autoBody, onAutoDown, onAutoDblClick, autoHint, revealOffset, LANE_H } from "./lanes.js";
 import { clipIx, clipIndex, trackIx, trackIndex, insertIx } from "#brands";
@@ -111,6 +112,13 @@ function patternById(id) {
   return state.project.patterns.find((p) => p.id === id);
 }
 
+/** A double click asks for the editor (on a phone, switch to it); a click only follows along. */
+/** function showEditor(name: String, reveal: Boolean) => Undefined */
+function showEditor(name, reveal) {
+  if (reveal) revealDock(name);
+  else showDock(name);
+}
+
 /** Show the editor that fits a pattern: the piano roll (with its main
  * melodic channel) for melodic patterns, the channel rack for drum-only
  * ones. `forcePiano` (double click) always opens the piano roll. */
@@ -139,10 +147,10 @@ function focusEditor(patternId, forcePiano) {
   }
   if (best !== "") {
     selectChannel(best);
-    showDock("piano");
+    showEditor("piano", forcePiano);
   } else if (bestDrum !== "") {
     selectChannel(bestDrum);
-    showDock(forcePiano ? "piano" : "rack");
+    showEditor(forcePiano ? "piano" : "rack", forcePiano);
   }
 }
 
@@ -401,7 +409,7 @@ export function playlist(b) {
     view.height = e.targetHeight;
     invalidate();
   });
-  b.on("pointerdown", (e) => onLaneDown(e, g));
+  b.on("pointerdown", (e) => pressOrTap(e, (d) => onLaneDown(d, g)));
   b.on("dblclick", (e) => {
     const y = e.clientY - e.targetTop + e.scrollTop;
     if (y >= g.height) onAutoDblClick(e, { zoom: g.zoom, top: g.height, x0: 0, x1: g.width }, e.clientX - e.targetLeft + e.scrollLeft, y);

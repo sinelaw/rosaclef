@@ -11,6 +11,9 @@
 //  - The playlist and the dock share the workspace column: `work` says which
 //    of them fills it ("split" = both). Minimizing one is maximizing the
 //    other; a collapsed pane keeps its header (tab strip).
+//  - On a phone (a window too small for the three columns) the studio shows
+//    one view at a time — browser, playlist, dock or agent — picked from a
+//    bottom navigation bar; `view` says which.
 
 import { loadPref, savePref } from "#platform";
 import { invalidate, hint, showDock } from "../store.js";
@@ -24,6 +27,9 @@ export const BROWSER_W = 236;
 export const STRIP = 38;
 /** Narrowest workspace a side panel may leave. */
 const MIN_WORK = 340;
+/** Below this width (or height) the studio switches to its one-view phone layout. */
+const COMPACT_W = 900;
+const COMPACT_H = 480;
 
 export const layoutState = {
   dockH: 46,
@@ -31,6 +37,7 @@ export const layoutState = {
   browser: "open",
   agent: "open",
   work: "split",
+  view: "playlist",
   dragging: false,
 };
 
@@ -39,6 +46,11 @@ const PREFIX = "rosaclef.layout.";
 /** function isMode(v: String) => Boolean */
 function isMode(v) {
   return v === "open" || v === "min" || v === "max";
+}
+
+/** function isView(v: String) => Boolean */
+function isView(v) {
+  return v === "browser" || v === "playlist" || v === "dock" || v === "agent";
 }
 
 /** Read the persisted layout (ignores anything malformed). */
@@ -54,6 +66,8 @@ export function loadLayout() {
   if (dh >= 18 && dh <= 82) layoutState.dockH = dh;
   const aw = Number(loadPref(PREFIX + "agentW"));
   if (aw >= 300 && aw <= 1600) layoutState.agentW = aw;
+  const v = loadPref(PREFIX + "view");
+  if (isView(v)) layoutState.view = v;
 }
 
 export function saveLayout() {
@@ -62,6 +76,7 @@ export function saveLayout() {
   savePref(PREFIX + "work", layoutState.work);
   savePref(PREFIX + "dockH", String(Math.round(layoutState.dockH * 10) / 10));
   savePref(PREFIX + "agentW", String(Math.round(layoutState.agentW)));
+  savePref(PREFIX + "view", layoutState.view);
 }
 
 function changedLayout() {
@@ -143,7 +158,24 @@ export function toggleMax(id) {
 /** function openDock(name: String) => Undefined */
 export function openDock(name) {
   if (workMode("dock") === "min") setWork("dock", "open");
+  revealDock(name);
+}
+
+/** Show a dock tab when asked to from another panel: on a phone this switches to the dock view. */
+/** function revealDock(name: String) => Undefined */
+export function revealDock(name) {
+  if (layoutState.view !== "dock") {
+    layoutState.view = "dock";
+    saveLayout();
+  }
   showDock(name);
+}
+
+/** Phone layout: show one view ("browser", "playlist", "dock" or "agent"). */
+/** function setView(v: String) => Undefined */
+export function setView(v) {
+  layoutState.view = v;
+  changedLayout();
 }
 
 /** Everything back to the default split (keeps the sizes). */
@@ -167,6 +199,12 @@ export function paneShortcut(code) {
 }
 
 // ------------------------------------------------------------------ geometry
+
+/** Whether a window of this size gets the one-view phone layout. */
+/** function isCompact(winW: Number, winH: Number) => Boolean */
+export function isCompact(winW, winH) {
+  return winW < COMPACT_W || winH < COMPACT_H;
+}
 
 /** type SideSizes = { browserCol: Number, browserW: Number, agentCol: Number, agentW: Number } */
 

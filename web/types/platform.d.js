@@ -109,6 +109,10 @@ export const fmt;
 /** const drag: (Ev, (Ev) => Undefined, (Ev) => Undefined) => Undefined */
 export const drag;
 
+/** On a touch screen, runs the action only for a tap (a finger that moves scrolls instead); otherwise at once. */
+/** const pressOrTap: (Ev, (Ev) => Undefined) => Undefined */
+export const pressOrTap;
+
 /** const debounce: (Number, () => Undefined) => () => Undefined */
 export const debounce;
 

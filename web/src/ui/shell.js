@@ -13,7 +13,8 @@ import { toastView } from "./toast.js";
 import { automationMenu } from "./lanes.js";
 import { projectsOverlay } from "./projects.js";
 import { glyph } from "./widgets.js";
-import { layoutState, sideMode, workMode, sideSizes, dockBasis, paneControls, paneHeader, paneRail, openDock, setWork, toggleWorkMax, saveLayout } from "./panes.js";
+import { keyboard, keyboardStrip } from "./keyboard.js";
+import { layoutState, sideMode, workMode, sideSizes, dockBasis, paneControls, paneHeader, paneRail, openDock, setWork, toggleWorkMax, saveLayout, isCompact, setView } from "./panes.js";
 
 /** function px(v: Number) => String */
 function px(v) {
@@ -35,10 +36,43 @@ function tab(b, id, label, icon, key) {
   b.close();
 }
 
+/** One button of the phone layout's bottom navigation bar. */
+/** function navItem(b: Builder, key: String, label: String, icon: String, on: Boolean, dot: String, onClick: () => Undefined) => Undefined */
+function navItem(b, key, label, icon, on, dot, onClick) {
+  b.open("button", key, on ? "nav-item on" : "nav-item");
+  b.attr("aria-label", label);
+  if (on) b.attr("aria-current", "page");
+  b.on("click", (e) => onClick());
+  glyph(b, icon);
+  if (dot !== "") b.leaf("span", "dot", dot, "");
+  b.leaf("span", "l", "", label);
+  b.close();
+}
+
+/** The phone layout's bottom navigation: one view at a time. */
+/** function navBar(b: Builder) => Undefined */
+function navBar(b) {
+  const v = layoutState.view;
+  b.open("nav", "nav", "navbar");
+  navItem(b, "browser", "Browser", "folder", v === "browser", "", () => setView("browser"));
+  navItem(b, "playlist", "Playlist", "playlist", v === "playlist", "", () => setView("playlist"));
+  navItem(b, "rack", "Rack", "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
+  navItem(b, "piano", "Piano", "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
+  navItem(b, "mixer", "Mixer", "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
+  navItem(b, "agent", "Maestro", "spark", v === "agent", agentDot(), () => setView("agent"));
+  b.close();
+}
+
 /** function studio(b: Builder) => Undefined */
 export function studio(b) {
   const sizes = sideSizes(window.innerWidth);
-  b.open("div", "studio", layoutState.dragging ? "studio dragging" : "studio");
+  // A phone shows one view at a time; its panels are never folded.
+  const compact = isCompact(window.innerWidth, window.innerHeight);
+  // On a phone the keys show under the editors, not over the browser or the terminal.
+  const keys = keyboard.shown && (!compact || layoutState.view === "playlist" || layoutState.view === "dock");
+  const base = compact ? `studio compact v-${layoutState.view}` : "studio";
+  const cls = keys ? `${base} has-keys` : base;
+  b.open("div", "studio", layoutState.dragging ? `${cls} dragging` : cls);
   b.style("--browser-col", px(sizes.browserCol));
   b.style("--browser-w", px(sizes.browserW));
   b.style("--agent-col", px(sizes.agentCol));
@@ -47,7 +81,7 @@ export function studio(b) {
   topbar(b);
 
   // Side panels sit in a clipping column; the rail shows when minimized.
-  b.open("div", "browser-side", `side side-browser ${sideMode("browser")}`);
+  b.open("div", "browser-side", `side side-browser ${compact ? "open" : sideMode("browser")}`);
   browser(b);
   paneRail(b, "browser", "Browser", "folder", "");
   b.close();
@@ -66,7 +100,7 @@ export function studio(b) {
     b.close();
   }
 
-  const plMode = workMode("playlist");
+  const plMode = compact ? "open" : workMode("playlist");
   b.open("section", "top", `pane pane-top ${plMode}`);
   b.on("pointerdown", (e) => setFocus("playlist"));
   b.open("div", "tabs", "tabs");
@@ -106,7 +140,7 @@ export function studio(b) {
     });
   });
 
-  b.open("section", "dock", `pane pane-dock ${workMode("dock")}`);
+  b.open("section", "dock", `pane pane-dock ${compact ? "open" : workMode("dock")}`);
   b.on("pointerdown", (e) => setFocus(state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : "channel rack"));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "dock");
@@ -129,7 +163,7 @@ export function studio(b) {
   b.close();
   b.close();
 
-  b.open("div", "agent-side", `side side-agent ${sideMode("agent")}`);
+  b.open("div", "agent-side", `side side-agent ${compact ? "open" : sideMode("agent")}`);
   agentPanel(b);
   paneRail(b, "agent", "Maestro", "spark", agentDot());
   b.leaf("div", "resize", "agent-resize", "");
@@ -154,6 +188,19 @@ export function studio(b) {
   });
   b.close();
 
+  if (keys) keyboardStrip(b, compact);
+  if (compact) navBar(b);
+  else hintBar(b);
+
+  projectsOverlay(b);
+  toastView(b);
+  automationMenu(b);
+  b.close();
+}
+
+/** The desktop's bottom line: hover hints and status. */
+/** function hintBar(b: Builder) => Undefined */
+function hintBar(b) {
   b.open("footer", "hint", "hintbar");
   b.leaf("span", "h", "hint", state.hint !== "" ? state.hint : "Space plays · F6 rack · F7 piano roll · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels");
   b.open("span", "m1", "meta");
@@ -162,10 +209,5 @@ export function studio(b) {
   b.close();
   b.leaf("span", "m2", "meta", state.output === "native" ? `Studio engine${state.nativeDevice !== "" ? " · " + state.nativeDevice : ""}` : state.audioReady ? "Browser engine · WebAssembly" : "Click anywhere to start audio");
   b.leaf("span", "m3", "meta", `rev ${state.rev}`);
-  b.close();
-
-  projectsOverlay(b);
-  toastView(b);
-  automationMenu(b);
   b.close();
 }
