@@ -161,8 +161,8 @@
 .voice-shape {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto 220px auto;
-  grid-template-areas: "head" "view" "set";
+  grid-template-rows: auto 220px auto auto;
+  grid-template-areas: "head" "view" "crop" "set";
   align-content: start;
   container-type: inline-size;
   container-name: shape;
@@ -216,6 +216,39 @@
   max-width: 440px;
   font: 14px/1.35 var(--serif);
 }
+/* The crop: the whole take between two handles, dragged in from either end. */
+.voice-crop {
+  grid-area: crop;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.voice-crop.off {
+  opacity: 0.45;
+}
+.voice-crop-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-height: 24px;
+}
+.voice-crop-span {
+  flex: 1;
+  font: 500 10.5px/1.2 var(--mono);
+  color: var(--champagne);
+}
+.voice-crop-strip {
+  position: relative;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #0f0d12, #09080b);
+  overflow: hidden;
+  cursor: ew-resize;
+  touch-action: none;
+}
 .voice-settings {
   grid-area: set;
   display: flex;
@@ -255,10 +288,11 @@
 @container shape (min-width: 560px) {
   .voice-shape {
     grid-template-columns: minmax(0, 1fr) 270px;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-areas:
       "head head"
-      "view set";
+      "view set"
+      "crop set";
     align-content: stretch;
   }
   .voice-settings {
@@ -329,7 +363,7 @@
     grid-template-columns: 190px minmax(0, 1fr) 200px;
   }
   .voice-shape {
-    grid-template-rows: auto 150px auto;
+    grid-template-rows: auto 150px auto auto;
   }
 }
 

@@ -287,7 +287,7 @@ const LAG: f32 = -0.009;
 const PRESENT: f32 = 0.02;
 /// Least share of a typical snare that counts on top of a kick.
 const ON_KICK: f32 = 0.2;
-/// Least share of a typical hat that counts on top of a kick or a snare
+/// Least share of a typical hat that counts on top of a kick, or of a snare
 /// in the middle of a roll.
 const ON_OTHER: f32 = 0.35;
 /// Hiss dying slower than this (dB/s) is an open hat's.
@@ -491,10 +491,11 @@ pub fn hits(x: &[f32], sr: f32) -> Vec<Hit> {
             snare
         };
         push("snare", snare, p.snare);
-        // Likewise the hiss a roll leaves: a hat on another drum hit right
-        // after the last moment has to be a real one.
+        // Likewise the hiss of a kick's click, or the hiss a roll leaves: a
+        // hat on a kick, or on a snare right after the last moment, has to
+        // be a real one.
         let crowded = i > 0 && m.time - ms[i - 1].time < 0.1;
-        let hat = if crowded && (low >= PRESENT || snare >= PRESENT) && hat < ON_OTHER {
+        let hat = if ((crowded && snare >= PRESENT) || low >= PRESENT) && hat < ON_OTHER {
             0.0
         } else {
             hat

@@ -5,7 +5,6 @@ import {
   scaleSteps,
   detectKey,
   quantize,
-  classify,
   melodyNotes,
   drumHits,
   loopBeats,
@@ -13,6 +12,8 @@ import {
   decodeTake,
   nextDrum,
   sungNotes,
+  cropTake,
+  takeStart,
 } from "../src/voice.js";
 
 let failures = 0;
@@ -70,8 +71,6 @@ const settings = {
   legato: false,
   dynamics: true,
   sensitivity: 0.5,
-  kickBelow: 900,
-  hatAbove: 4200,
   bars: 0,
 };
 const take = decodeTake(
@@ -111,8 +110,6 @@ const flat = melodyNotes(
     legato: false,
     dynamics: false,
     sensitivity: 0.5,
-    kickBelow: 900,
-    hatAbove: 4200,
     bars: 0,
   },
   120,
@@ -155,8 +152,6 @@ const legato = melodyNotes(
     legato: true,
     dynamics: true,
     sensitivity: 0.5,
-    kickBelow: 900,
-    hatAbove: 4200,
     bars: 0,
   },
   120,
@@ -209,8 +204,6 @@ const detailed = melodyNotes(
     legato: false,
     dynamics: true,
     sensitivity: 0.5,
-    kickBelow: 900,
-    hatAbove: 4200,
     bars: 0,
   },
   120,
@@ -221,12 +214,8 @@ check("the detail setting picks the notes", detailed.length === 2 && detailed[1]
 
 // ------------------------------------------------------------------ drums
 
-check(
-  "classify mirrors the Rust boundaries",
-  classify(300, 900, 4200) === "kick" && classify(2000, 900, 4200) === "snare" && classify(8000, 900, 4200) === "hat"
-);
 check("more sensitivity needs less strength", strengthNeeded(1) < strengthNeeded(0.5) && strengthNeeded(0.5) < strengthNeeded(0));
-check("clicking cycles the drums", nextDrum("kick") === "snare" && nextDrum("hat") === "kick");
+check("clicking cycles the drums", nextDrum("kick") === "tom" && nextDrum("hat") === "openhat" && nextDrum("openhat") === "kick");
 const beat = decodeTake(
   JSON.parse(
     JSON.stringify({
@@ -237,42 +226,19 @@ const beat = decodeTake(
       contour: [],
       notes: [],
       hits: [
-        { time: 0.2, strength: 1, velocity: 1, centroid: 200, low: 0.8, high: 0, tone: 150, kind: "kick" },
-        { time: 0.46, strength: 0.6, velocity: 0.5, centroid: 7000, low: 0, high: 0.8, tone: 7000, kind: "hat" },
-        { time: 0.71, strength: 0.8, velocity: 0.9, centroid: 2500, low: 0.1, high: 0.2, tone: 2200, kind: "snare" },
-        { time: 0.83, strength: 0.03, velocity: 0.3, centroid: 7000, low: 0, high: 0.8, tone: 7000, kind: "hat" },
-        { time: 1.2, strength: 0.9, velocity: 0.8, centroid: 250, low: 0.7, high: 0, tone: 160, kind: "kick" },
+        { time: 0.2, strength: 1, velocity: 1, kind: "kick" },
+        { time: 0.46, strength: 0.6, velocity: 0.5, kind: "hat" },
+        { time: 0.71, strength: 0.8, velocity: 0.9, kind: "snare" },
+        { time: 0.83, strength: 0.03, velocity: 0.3, kind: "hat" },
+        { time: 1.2, strength: 0.9, velocity: 0.8, kind: "tom" },
       ],
     })
   )
 );
 const hits = drumHits(beat, settings, 120, 0, true, []);
 check("weak hits are dropped", hits.length === 4);
-check("hits sorted by tone", hits.map((h) => h.lane).join(",") === "kick,hat,snare,kick");
+check("hits keep the drum the server heard", hits.map((h) => h.lane).join(",") === "kick,hat,snare,tom");
 check("hits on the grid from the first one", near(hits[0].start, 0) && near(hits[1].start, 0.5) && near(hits[2].start, 1) && near(hits[3].start, 2));
-const moved = drumHits(
-  beat,
-  {
-    detail: 2,
-    grid: 0.25,
-    strength: 1,
-    lengths: true,
-    key: 0,
-    scale: "major",
-    octave: 0,
-    legato: false,
-    dynamics: true,
-    sensitivity: 0.5,
-    kickBelow: 2500,
-    hatAbove: 4200,
-    bars: 0,
-  },
-  120,
-  0,
-  true,
-  []
-);
-check("moving the kick boundary turns the snare into a kick", moved[2].lane === "kick");
 const fixed = drumHits(beat, settings, 120, 0, true, ["", "snare"]);
 check("a clicked hit keeps its drum", fixed[1].lane === "snare" && fixed[0].lane === "kick");
 const all = drumHits(
@@ -288,8 +254,6 @@ const all = drumHits(
     legato: false,
     dynamics: true,
     sensitivity: 1,
-    kickBelow: 900,
-    hatAbove: 4200,
     bars: 0,
   },
   120,
@@ -298,6 +262,26 @@ const all = drumHits(
   []
 );
 check("full sensitivity keeps the ghost note", all.length === 5);
+
+// ------------------------------------------------------------------ crop
+
+const cut = cropTake(beat, 0.4, 1.0);
+check("a crop starts the time at its start", near(cut.duration, 0.6) && near(cut.hits[1].time, 0.06));
+check(
+  "hits outside the crop keep their place but no strength",
+  cut.hits.length === 5 && cut.hits[0].strength < 0 && cut.hits[4].strength < 0 && cut.hits[2].strength > 0
+);
+check("a cropped take starts at its first hit inside", near(takeStart(cut, 2, true), 0.06));
+const cutHits = drumHits(cut, settings, 120, 0, false, []);
+check("cropped hits count from the crop's start", cutHits.length === 2 && near(cutHits[0].start, 0) && near(cutHits[1].start, 0.5));
+const kept = drumHits(cut, settings, 120, 0, true, ["", "snare"]);
+check("a clicked hit keeps its drum after a crop", kept[0].lane === "snare");
+const sungCut = cropTake(take, 0.96, 2.0);
+check(
+  "a crop cuts notes at its edges and drops slivers",
+  sungCut.notes.length === 2 && near(sungCut.notes[0].start, 0.07) && near(sungCut.notes[1].start, 0.55) && near(sungCut.notes[1].end, 1.04)
+);
+check("an uncropped take is the take", cropTake(take, 0, 3) === take);
 
 if (failures > 0) throw new Error(`${failures} test(s) failed`);
 console.log("all voice-to-notes tests passed");

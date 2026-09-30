@@ -1,11 +1,12 @@
 // The Voice dock (F8): sing, hum, whistle or beatbox into the microphone and
 // get notes. A melody take becomes a piano-roll pattern (quantized, snapped
-// to a scale); a beatbox take becomes a drum loop on kick, snare and hat
-// channels. It is a flow of three steps:
+// to a scale); a beatbox take becomes a drum loop on kick, tom, snare, hat
+// and open-hat channels. It is a flow of three steps:
 //  1. Take — record, open or pick a recording; the server analyzes it
 //     (GET /api/transcribe);
-//  2. Shape — the settings re-shape the result instantly (../voice.js), as
-//     many rounds as it takes, heard with Play before anything changes;
+//  2. Shape — crop the take, and the settings re-shape the result instantly
+//     (../voice.js), as many rounds as it takes, heard with Play before
+//     anything changes;
 //  3. Add to song — a pattern and a playlist clip (one undo step).
 
 import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview, pickFiles, uploadFile, audioPost } from "#platform";
@@ -26,8 +27,10 @@ import {
   takeStart,
   DETAILS,
   nextDrum,
+  drumLabel,
   decodeTake,
   emptyTake,
+  cropTake,
 } from "../voice.js";
 import { button, iconButton, select, glyph, clamp01 } from "./widgets.js";
 import { pushChannel } from "./browser.js";
@@ -56,15 +59,22 @@ export const voice = {
   /** The analyzed take (a project path), "" before the first one. */
   path: "",
   take /*: Take */: emptyTake(),
-  /** Per hit: a drum chosen by clicking it, "" = sorted by tone. */
+  /** The part of the take kept (seconds): -1 = from its first note or hit
+   * (sung alone) or its start (sung along); -1 = to its end. Once the
+   * start is set, the result's time starts there. */
+  cropStart /*: Number */: -1,
+  cropEnd /*: Number */: -1,
+  /** Per hit: a drum chosen by clicking it, "" = as heard. */
   kinds /*: String[] */: [],
   /** "auto" (the selected channel if melodic, else a new one), "new" or a channel id. */
   melodyChannel: "auto",
   /** Per drum: a channel id, "" = the first matching Atelier channel (or a new one). */
   drumChannels /*: KS[] */: [
     { key: "kick", value: "" },
+    { key: "tom", value: "" },
     { key: "snare", value: "" },
     { key: "hat", value: "" },
+    { key: "openhat", value: "" },
   ],
   repeat: 1,
   /** The take is playing (Listen). */
@@ -84,29 +94,50 @@ export const voice = {
     legato: false,
     dynamics: true,
     sensitivity: 0.5,
-    kickBelow: 900,
-    hatAbove: 4200,
     bars: 0,
   },
 };
 
 // ------------------------------------------------------------------ result
 
+/** type Shaped = { take: Take, origin: Number, aligned: Boolean } */
+
+/** The kept part of the take (seconds). */
+/** function cropSpan() => Number[] */
+function cropSpan() {
+  const d = voice.take.duration;
+  const a = voice.cropStart < 0 ? 0 : Math.min(voice.cropStart, d);
+  const z = voice.cropEnd < 0 ? d : Math.max(a, Math.min(voice.cropEnd, d));
+  return [a, z];
+}
+
+/** The cropped take and where it goes: once the crop's start is set, time
+ * starts there (sung along, it keeps its place against the song). */
+/** function shaped() => Shaped */
+function shaped() {
+  const span = cropSpan();
+  const take = cropTake(voice.take, span[0], span[1]);
+  const started = voice.cropStart >= 0;
+  const bps = state.project.transport.bpm / 60;
+  return {
+    take: take,
+    origin: voice.aligned ? voice.origin : voice.origin + span[0] * bps,
+    aligned: voice.aligned && !started,
+  };
+}
+
 /** The notes the settings make of the take, and the pattern length. */
 /** function voiceResult() => VoiceResult */
 export function voiceResult() {
-  const t = voice.take;
+  const sh = shaped();
+  const t = sh.take;
   const p = state.project;
   const bpm = p.transport.bpm;
   const s = voice.settings;
   /** const empty: Placed[] */
   const empty = [];
   const all =
-    t.mode === "drums"
-      ? drumHits(t, s, bpm, voice.origin, voice.aligned, voice.kinds)
-      : t.mode === "melody"
-        ? melodyNotes(t, s, bpm, voice.origin, voice.aligned)
-        : empty;
+    t.mode === "drums" ? drumHits(t, s, bpm, sh.origin, sh.aligned, voice.kinds) : t.mode === "melody" ? melodyNotes(t, s, bpm, sh.origin, sh.aligned) : empty;
   const length = loopBeats(all, p.transport.beatsPerBar, s.bars);
   /** const notes: Placed[] */
   const notes = [];
@@ -124,6 +155,11 @@ export function voiceResult() {
 function analyze(path) {
   stopResult();
   const mode = voice.mode;
+  // A new recording is kept whole (the same one read again keeps its crop).
+  if (voice.path !== path) {
+    voice.cropStart = -1;
+    voice.cropEnd = -1;
+  }
   voice.path = path;
   voice.status = "analyzing";
   invalidate();
@@ -302,10 +338,10 @@ function channelExists(id) {
   return state.project.channels.some((c) => c.id === id);
 }
 
-/** An Atelier channel playing `kind` (a snare also takes a clap, a hat an open hat). */
+/** An Atelier channel playing `kind` (a snare also takes a clap, a hat a shaker). */
 /** function drumChannel(kind: String) => String */
 function drumChannel(kind) {
-  const also = kind === "snare" ? "clap" : kind === "hat" ? "openhat" : kind;
+  const also = kind === "snare" ? "clap" : kind === "hat" ? "shaker" : kind;
   for (const want of [kind, also]) {
     for (const c of state.project.channels) {
       if (c.instrument.type !== "drum") continue;
@@ -366,14 +402,19 @@ function existingLaneChannel(lane) {
   return drumChannel(lane);
 }
 
+/** function drumName(kind: String) => String */
+function drumName(kind) {
+  const l = drumLabel(kind);
+  return l.slice(0, 1).toUpperCase() + l.slice(1);
+}
+
 /** The channel for a lane, created if needed (call inside `commit`). */
 /** function laneChannel(lane: String) => String */
 function laneChannel(lane) {
   const id = existingLaneChannel(lane);
   if (id !== "") return id;
   if (lane === "melody") return pushChannel("synth", "Voice", (d) => undefined);
-  const name = lane === "kick" ? "Kick" : lane === "snare" ? "Snare" : "Hat";
-  return pushChannel("drum", name, (d) => setOption(d, "kind", lane));
+  return pushChannel("drum", drumName(lane), (d) => setOption(d, "kind", lane));
 }
 
 // ------------------------------------------------------------------ listening
@@ -601,22 +642,6 @@ function toggle(b, key, label, on, tip, onSet) {
   });
 }
 
-/** Hz on a log dial between lo and hi. */
-/** function hzUnit(v: Number, lo: Number, hi: Number) => Number */
-function hzUnit(v, lo, hi) {
-  return Math.log(v / lo) / Math.log(hi / lo);
-}
-
-/** function unitHz(t: Number, lo: Number, hi: Number) => Number */
-function unitHz(t, lo, hi) {
-  return Math.round((lo * Math.pow(hi / lo, t)) / 10) * 10;
-}
-
-/** function hzText(v: Number) => String */
-function hzText(v) {
-  return v >= 1000 ? `${fmt(v / 1000, 1)} kHz` : `${fmt(v, 0)} Hz`;
-}
-
 const GRIDS = [0, 0.125, 0.25, 0.5, 1, 1 / 6, 1 / 3];
 const GRID_LABELS = ["Off", "1/32", "1/16", "1/8", "Beat", "1/16 T", "1/8 T"];
 
@@ -650,12 +675,6 @@ function settingsView(b) {
   } else {
     dial(b, "sens", "Sensitivity", `${Math.round(s.sensitivity * 100)}%`, s.sensitivity, "Higher keeps quieter hits (ghost notes)", (v) => {
       s.sensitivity = Math.round(v * 50) / 50;
-    });
-    dial(b, "kick", "Kick below", hzText(s.kickBelow), hzUnit(s.kickBelow, 200, 3000), "Hits darker than this are kicks", (v) => {
-      s.kickBelow = Math.min(unitHz(v, 200, 3000), s.hatAbove - 100);
-    });
-    dial(b, "hat", "Hat above", hzText(s.hatAbove), hzUnit(s.hatAbove, 1500, 12000), "Hits brighter than this are hats (in between: snares)", (v) => {
-      s.hatAbove = Math.max(unitHz(v, 1500, 12000), s.kickBelow + 100);
     });
     toggle(b, "dyn", "Accents", s.dynamics, "Velocities follow how hard each hit was", (v) => {
       s.dynamics = v;
@@ -706,14 +725,15 @@ function settingsView(b) {
   b.close();
 
   if (!drums) {
-    const k = resolveKey(voice.take, s);
+    const cropped = shaped().take;
+    const k = resolveKey(cropped, s);
     b.open("div", "tune", "voice-group");
     b.leaf("div", "t", "voice-group-title", "Pitch");
     b.open("div", "row", "voice-row");
     /** const keys: String[] */
     const keys = ["-1"];
     /** const keyLabels: String[] */
-    const keyLabels = [voice.take.notes.length > 0 && s.key < 0 ? `Detect (${KEY_NAMES[k.key]})` : "Detect"];
+    const keyLabels = [cropped.notes.length > 0 && s.key < 0 ? `Detect (${KEY_NAMES[k.key]})` : "Detect"];
     for (let i = 0; i < 12; i++) {
       keys.push(String(i));
       keyLabels.push(KEY_NAMES[i]);
@@ -742,9 +762,10 @@ function settingsView(b) {
   b.close();
 }
 
-/** Where the result goes: channels and loop count. */
-/** function targetView(b: Builder) => Undefined */
-function targetView(b) {
+/** Where the result goes: channels (for a drum loop, of the drums in it)
+ * and loop count. */
+/** function targetView(b: Builder, r: VoiceResult) => Undefined */
+function targetView(b, r) {
   const drums = voice.mode === "drums";
   const chs = state.project.channels;
   b.open("div", "target", "voice-target");
@@ -763,7 +784,8 @@ function targetView(b) {
       voice.melodyChannel = v;
     });
   } else {
-    for (const e of voice.drumChannels) {
+    const used = voice.drumChannels.filter((e) => r.notes.some((n) => n.lane === e.key));
+    for (const e of used.length > 0 ? used : voice.drumChannels) {
       const found = drumChannel(e.key);
       /** const ids: String[] */
       const ids = [""];
@@ -773,7 +795,7 @@ function targetView(b) {
         ids.push(c.id);
         names.push(c.name);
       }
-      choice(b, e.key, e.key === "kick" ? "Kick" : e.key === "snare" ? "Snare" : "Hat", e.value, ids, names, `Channel that plays the ${e.key} hits`, (v) => {
+      choice(b, e.key, drumName(e.key), e.value, ids, names, `Channel that plays the ${drumLabel(e.key)} hits`, (v) => {
         e.value = v;
       });
     }
@@ -786,7 +808,7 @@ function targetView(b) {
 
 // ------------------------------------------------------------------ preview
 
-const DRUM_COLORS = ["#d08a93", "#46a58b", "#e8d5b0"];
+const DRUM_COLORS = ["#d08a93", "#c9965a", "#46a58b", "#e8d5b0", "#8fb8d8"];
 
 /** function drumColor(kind: String) => String */
 function drumColor(kind) {
@@ -794,11 +816,13 @@ function drumColor(kind) {
   return i >= 0 ? DRUM_COLORS[i] : "#a39780";
 }
 
-/** Tone (Hz) on the beatbox view's log axis. */
-/** function toneY(tone: Number, h: Number) => Number */
-function toneY(tone, h) {
-  const t = Math.log(Math.max(60, Math.min(16000, tone)) / 60) / Math.log(16000 / 60);
-  return 12 + (1 - t) * (h - 24);
+/** The middle of a drum's row in the beatbox view (hats on top, kicks at
+ * the bottom). */
+/** function laneY(kind: String, h: Number) => Number */
+function laneY(kind, h) {
+  const i = Math.max(0, DRUMS.indexOf(kind));
+  const row = h / DRUMS.length;
+  return h - (i + 0.5) * row;
 }
 
 /** Beat lines (bars brighter). */
@@ -819,10 +843,11 @@ function paintGrid(g, w, h, length) {
 
 /** function paintMelody(g: Ctx, w: Number, h: Number, r: VoiceResult) => Undefined */
 function paintMelody(g, w, h, r) {
-  const t = voice.take;
+  const sh = shaped();
+  const t = sh.take;
   const s = voice.settings;
   const shift = 12 * s.octave;
-  const t0 = takeStart(t, s.detail, voice.aligned);
+  const t0 = takeStart(t, s.detail, sh.aligned);
   const bps = state.project.transport.bpm / 60;
   let lo = 127;
   let hi = 0;
@@ -863,7 +888,7 @@ function paintMelody(g, w, h, r) {
   // The level under everything.
   g.fillStyle = "rgba(232, 213, 176, 0.06)";
   for (let i = 0; i < t.level.length; i++) {
-    const x = xOf(voice.origin + (i * t.step - t0) * bps);
+    const x = xOf(sh.origin + (i * t.step - t0) * bps);
     if (x < 0 || x > w) continue;
     const lh = t.level[i] * h * 0.35;
     g.fillRect(x, h - lh, Math.max(1, xOf(t.step * bps)), lh);
@@ -885,7 +910,7 @@ function paintMelody(g, w, h, r) {
   let pen = false;
   for (let i = 0; i < t.contour.length; i++) {
     const c = t.contour[i];
-    const x = xOf(voice.origin + (i * t.step - t0) * bps);
+    const x = xOf(sh.origin + (i * t.step - t0) * bps);
     if (c <= 0 || x < 0 || x > w) {
       pen = false;
       continue;
@@ -912,8 +937,7 @@ function hitDots(r, w, h) {
   /** const out: HitDot[] */
   const out = [];
   for (const n of r.notes) {
-    const hit = voice.take.hits[n.src];
-    out.push({ x: (n.start / r.length) * w, y: toneY(hit.tone, h), rawX: (n.raw / r.length) * w, lane: n.lane, src: n.src, velocity: n.velocity });
+    out.push({ x: (n.start / r.length) * w, y: laneY(n.lane, h), rawX: (n.raw / r.length) * w, lane: n.lane, src: n.src, velocity: n.velocity });
   }
   return out;
 }
@@ -921,37 +945,29 @@ function hitDots(r, w, h) {
 /** function paintDrums(g: Ctx, w: Number, h: Number, r: VoiceResult) => Undefined */
 function paintDrums(g, w, h, r) {
   const s = voice.settings;
-  paintGrid(g, w, h, r.length);
-  // The tone boundaries, with the drum each region makes.
-  const yk = toneY(s.kickBelow, h);
-  const yh = toneY(s.hatAbove, h);
-  g.fillStyle = "rgba(208, 138, 147, 0.05)";
-  g.fillRect(0, yk, w, h - yk);
-  g.fillStyle = "rgba(232, 213, 176, 0.04)";
-  g.fillRect(0, 0, w, yh);
-  g.strokeStyle = "rgba(212, 175, 55, 0.4)";
-  g.lineWidth = 1;
-  g.setLineDash([4, 4]);
-  for (const y of [yk, yh]) {
-    g.beginPath();
-    g.moveTo(0, Math.round(y) + 0.5);
-    g.lineTo(w, Math.round(y) + 0.5);
-    g.stroke();
+  // A row per drum.
+  const row = h / DRUMS.length;
+  for (let i = 0; i < DRUMS.length; i++) {
+    if (i % 2 === 1) {
+      g.fillStyle = "rgba(232, 213, 176, 0.03)";
+      g.fillRect(0, h - (i + 1) * row, w, row);
+    }
   }
-  g.setLineDash([]);
+  paintGrid(g, w, h, r.length);
   g.font = "600 9px Manrope, sans-serif";
-  g.fillStyle = drumColor("hat");
-  g.fillText("HAT", 6, Math.max(12, yh - 6));
-  g.fillStyle = drumColor("snare");
-  g.fillText("SNARE", 6, (yh + yk) / 2 + 3);
-  g.fillStyle = drumColor("kick");
-  g.fillText("KICK", 6, Math.min(h - 4, yk + 14));
+  for (const kind of DRUMS) {
+    g.fillStyle = drumColor(kind);
+    g.globalAlpha = 0.8;
+    g.fillText(drumLabel(kind).toUpperCase(), 6, laneY(kind, h) - row / 2 + 11);
+  }
+  g.globalAlpha = 1;
   // Hits the sensitivity drops, where they were played (as drumHits places them).
   const need = strengthNeeded(s.sensitivity);
-  const t = voice.take;
+  const sh = shaped();
+  const t = sh.take;
   const bps = state.project.transport.bpm / 60;
   let t0 = 0;
-  if (voice.aligned) {
+  if (sh.aligned) {
     for (const hit of t.hits) {
       if (hit.strength >= need) {
         t0 = hit.time;
@@ -961,12 +977,12 @@ function paintDrums(g, w, h, r) {
   }
   g.fillStyle = "rgba(163, 151, 128, 0.35)";
   for (const hit of t.hits) {
-    if (hit.strength >= need) continue;
-    const beat = voice.origin + (hit.time - t0) * bps;
+    if (hit.strength >= need || hit.strength < 0) continue;
+    const beat = sh.origin + (hit.time - t0) * bps;
     const x = (beat / r.length) * w;
     if (x < 0 || x > w) continue;
     g.beginPath();
-    g.arc(x, toneY(hit.tone, h), 2.5, 0, Math.PI * 2);
+    g.arc(x, laneY(hit.kind, h), 2.5, 0, Math.PI * 2);
     g.fill();
   }
   // Kept hits: where they were played → where they land.
@@ -1035,7 +1051,7 @@ function previewView(b, r) {
       }
     });
     b.on("pointerdown", (e) => clickHit(e));
-    if (voice.take.mode === "drums") b.on("pointerenter", (e) => hint("Click a hit to make it the next drum (kick → snare → hat)"));
+    if (voice.take.mode === "drums") b.on("pointerenter", (e) => hint("Click a hit to make it the next drum (kick → tom → snare → hat → open hat)"));
   } else {
     b.open("div", "empty", "voice-empty");
     glyph(b, "mic");
@@ -1051,11 +1067,136 @@ function previewView(b, r) {
       "d",
       "voice-empty-doc",
       drums
-        ? "Kicks (a low “b” or “boom”), snares (“pf”, “k”) and hats (“ts”, “t”) become a drum loop on Atelier channels. Record a take, or open a recording."
+        ? "Kicks (a low “b” or “boom”), toms (a hummed “dum”), snares (“pf”, “k”), hats (“ts”, “t”) and open hats (a long “tsss”) become a drum loop on Atelier channels. Record a take, or open a recording."
         : "The notes come out on the beat grid, snapped to a key and scale — a pattern for the piano roll. Record a take, or open a recording."
     );
     b.close();
   }
+  b.close();
+}
+
+// ------------------------------------------------------------------ crop
+
+/** function clock(t: Number) => String */
+function clock(t) {
+  const m = Math.floor(t / 60);
+  const sec = t - m * 60;
+  return `${m}:${sec < 10 ? "0" : ""}${fmt(sec, 1)}`;
+}
+
+/** The whole take, its level and what was found in it, with the kept part
+ * lit between two handles. */
+/** function paintCrop(g: Ctx, w: Number, h: Number) => Undefined */
+function paintCrop(g, w, h) {
+  const t = voice.take;
+  const d = t.duration;
+  if (d <= 0) return undefined;
+  const span = cropSpan();
+  const xOf = (sec) => (sec / d) * w;
+  g.fillStyle = "rgba(232, 213, 176, 0.35)";
+  const bw = Math.max(1, xOf(t.step));
+  for (let i = 0; i < t.level.length; i++) {
+    const lh = Math.max(1, t.level[i] * (h - 8));
+    g.fillRect(xOf(i * t.step), (h - lh) / 2, bw, lh);
+  }
+  // What was found: hits as ticks, notes as bars.
+  if (t.mode === "drums") {
+    for (const hit of t.hits) {
+      g.fillStyle = drumColor(hit.kind);
+      g.fillRect(Math.round(xOf(hit.time)), h - 6, 1.5, 6);
+    }
+  } else {
+    g.fillStyle = "#d4af37";
+    for (const n of sungNotesOf(t)) g.fillRect(xOf(n.start), h - 4, Math.max(1, xOf(n.end - n.start)), 3);
+  }
+  // Outside the crop: dimmed.
+  const xa = xOf(span[0]);
+  const xz = xOf(span[1]);
+  g.fillStyle = "rgba(9, 8, 11, 0.72)";
+  g.fillRect(0, 0, xa, h);
+  g.fillRect(xz, 0, w - xz, h);
+  // The handles.
+  g.fillStyle = "#d4af37";
+  g.shadowColor = "rgba(212, 175, 55, 0.7)";
+  g.shadowBlur = 6;
+  for (const x of [xa, xz]) {
+    g.fillRect(Math.round(x) - 1.5, 0, 3, h);
+    g.fillRect(Math.round(x) - 5, h / 2 - 9, 10, 18);
+  }
+  g.shadowBlur = 0;
+  g.strokeStyle = "rgba(212, 175, 55, 0.6)";
+  g.lineWidth = 1;
+  g.strokeRect(xa + 0.5, 0.5, Math.max(0, xz - xa - 1), h - 1);
+}
+
+/** The melody notes the crop strip marks (the chosen detail's). */
+/** function sungNotesOf(t: Take) => VoiceNote[] */
+function sungNotesOf(t) {
+  const d = voice.settings.detail;
+  return d >= 0 && d < t.details.length ? t.details[d] : t.notes;
+}
+
+/** Drag the nearer handle of the crop; a press away from it moves it there
+ * first. */
+/** function dragCrop(e: Ev) => Undefined */
+function dragCrop(e) {
+  const d = voice.take.duration;
+  if (d <= 0 || e.targetWidth <= 0) return undefined;
+  e.preventDefault();
+  const span = cropSpan();
+  const at = (e.offsetX / e.targetWidth) * d;
+  const left = Math.abs(at - span[0]) <= Math.abs(at - span[1]);
+  const gap = Math.min(0.1, d);
+  const place = (v) => {
+    const cur = cropSpan();
+    const x = Math.round(Math.max(0, Math.min(d, v)) * 1000) / 1000;
+    if (left) voice.cropStart = Math.min(x, cur[1] - gap);
+    else voice.cropEnd = x >= d ? -1 : Math.max(x, cur[0] + gap);
+    invalidate();
+  };
+  const near = Math.abs(((left ? span[0] : span[1]) / d) * e.targetWidth - e.offsetX) <= 10;
+  const v0 = near ? (left ? span[0] : span[1]) : at;
+  if (!near) place(v0);
+  const x0 = e.clientX;
+  drag(
+    e,
+    (m) => place(v0 + ((m.clientX - x0) / e.targetWidth) * d),
+    (u) => undefined
+  );
+}
+
+/** Crop: the take's two ends, dragged in; what is outside is left out and
+ * the result's time starts at the left handle. */
+/** function cropView(b: Builder) => Undefined */
+function cropView(b) {
+  const t = voice.take;
+  const has = t.mode !== "" && voice.status !== "recording" && t.duration > 0;
+  b.open("div", "crop", has ? "voice-crop" : "voice-crop off");
+  b.open("div", "head", "voice-crop-head");
+  b.leaf("span", "l", "voice-label", "Crop");
+  const span = cropSpan();
+  const cut = voice.cropStart >= 0 || voice.cropEnd >= 0;
+  b.leaf(
+    "span",
+    "span",
+    "voice-crop-span",
+    has ? (cut ? `${clock(span[0])} – ${clock(span[1])} of ${clock(t.duration)}` : `Whole take · ${clock(t.duration)}`) : ""
+  );
+  if (has && cut) {
+    button(b, "reset", "small", "Whole take", "Keep the whole take again", () => {
+      voice.cropStart = -1;
+      voice.cropEnd = -1;
+      invalidate();
+    });
+  }
+  b.close();
+  b.open("div", "strip", "voice-crop-strip");
+  if (has) {
+    b.canvas("c", "voice-canvas", (g, w, h) => paintCrop(g, w, h));
+    b.on("pointerdown", (e) => dragCrop(e));
+    b.on("pointerenter", (e) => hint("Drag the left or right handle in to cut off the start or the end of the take; the result starts at the left handle"));
+  }
+  b.close();
   b.close();
 }
 
@@ -1068,10 +1209,17 @@ function summary(r) {
   const bars = r.length / state.project.transport.beatsPerBar;
   const barText = `${fmt(bars, Math.abs(bars - Math.round(bars)) < 1e-9 ? 0 : 2)} bar${bars === 1 ? "" : "s"}`;
   if (voice.take.mode === "drums") {
-    const count = (lane) => r.notes.filter((n) => n.lane === lane).length;
-    return `${count("kick")} kicks · ${count("snare")} snares · ${count("hat")} hats · ${barText}`;
+    /** const parts: String[] */
+    const parts = [];
+    for (const lane of DRUMS) {
+      const n = r.notes.filter((x) => x.lane === lane).length;
+      if (n > 0) parts.push(`${n} ${drumLabel(lane)}${n === 1 ? "" : "s"}`);
+    }
+    if (parts.length === 0) parts.push("No hits");
+    parts.push(barText);
+    return parts.join(" · ");
   }
-  const k = resolveKey(voice.take, voice.settings);
+  const k = resolveKey(shaped().take, voice.settings);
   const scale = voice.settings.scale === "chromatic" ? "chromatic" : `${KEY_NAMES[k.key]} ${scaleLabel(k.scale).toLowerCase()}`;
   return `${r.notes.length} notes · ${scale} · ${barText}`;
 }
@@ -1097,7 +1245,9 @@ function takeStep(b) {
   b.close();
   b.open("div", "mode", "seg");
   button(b, "melody", voice.mode === "melody" ? "small on" : "small", "Melody", "Sing, hum or whistle: notes for the piano roll", () => setVoiceMode("melody"));
-  button(b, "drums", voice.mode === "drums" ? "small on" : "small", "Beatbox", "Vocal percussion: a kick / snare / hat loop", () => setVoiceMode("drums"));
+  button(b, "drums", voice.mode === "drums" ? "small on" : "small", "Beatbox", "Vocal percussion (or a drum recording): a drum loop", () =>
+    setVoiceMode("drums")
+  );
   b.close();
   b.open("div", "rec", "voice-rec");
   iconButton(
@@ -1176,6 +1326,7 @@ function shapeStep(b, r, ready) {
   b.close();
   b.close();
   previewView(b, r);
+  cropView(b);
   settingsView(b);
   b.close();
 }
@@ -1187,7 +1338,7 @@ function addStep(b, r, ready) {
   stepHead(b, "3", "Add to song", "A new pattern and a clip on the playlist");
   b.close();
   b.leaf("div", "sum", "voice-summary", summary(r));
-  targetView(b);
+  targetView(b, r);
   button(
     b,
     "add",

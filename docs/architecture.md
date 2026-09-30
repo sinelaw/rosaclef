@@ -84,14 +84,18 @@
   ~16 kHz copy (10 ms frames), confirmed by subharmonic summation, cut into
   syllables at silences and level dips and into notes by a dynamic-programming
   fit of whole semitones (a cost per note change, five detail levels, the
-  singer's own tuning) (melody); band-normalized SuperFlux onsets, each hit summed up
-  by a *tone* (spectral centroid lowered by its share below 200 Hz) that sorts
-  it into kick / snare / hat (beatbox). It returns raw seconds and fractional
-  pitches (`GET /api/transcribe`, on the server and in `rosaclef-local`).
-- `web/src/voice.js` turns that into notes on every redraw — quantizing,
-  snapping to a scale (Krumhansl–Schmuckler key detection), sorting hits with
-  the user's tone boundaries (`classify` mirrors the Rust one) — so the
-  settings in the Voice dock (`web/src/ui/voice.js`) apply instantly.
+  singer's own tuning) (melody); SuperFlux onsets band by band (low, mid,
+  high, each against its own typical hit), so one moment can hold several
+  drums, read from how much its body, click, noise and hiss rose — with the
+  spill between drums learned from the take's clear hits — into kick, tom,
+  snare, hat and open hat (beatbox, `transcribe/drums.rs`; scored against
+  beats played on the Atelier drums by `crates/studio/tests/drum_beats.rs`).
+  It returns raw seconds and fractional pitches (`GET /api/transcribe`, on
+  the server and in `rosaclef-local`).
+- `web/src/voice.js` turns that into notes on every redraw — cropping
+  (`cropTake`), quantizing, snapping to a scale (Krumhansl–Schmuckler key
+  detection), keeping hits by strength — so the settings in the Voice dock
+  (`web/src/ui/voice.js`) apply instantly.
 
 ### The UI library (`web/src/ui/tree.js`)
 
