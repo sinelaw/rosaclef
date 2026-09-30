@@ -41,7 +41,7 @@
 /** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[] } */
 /** A resolved automation target (web/src/automation.js). `kind`: tempo, swing, gain, pan or param; `open`: plugin parameter without a known range. */
 /** type TargetInfo = { ok: Boolean, kind: String, spec: ParamSpec, base: Number, label: String, color: String, open: Boolean } */
-/** type AgentPreset ={ id: String, name: String, command: String[], available: Boolean, hint: String } */
+/** type AgentPreset = { id: String, name: String, command: String[], available: Boolean, hint: String } */
 
 // --------------------------------------------------------------- platform
 
