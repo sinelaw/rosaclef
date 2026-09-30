@@ -1,5 +1,5 @@
 // Global keyboard shortcuts (FL Studio conventions where they exist) and the
-// computer-keyboard piano.
+// computer-keyboard piano (its key map lives in ui/keyboard.js).
 
 import { listenWindow } from "#platform";
 import { state, undo, redo, currentChannel } from "./store.js";
@@ -8,12 +8,10 @@ import { deleteSelection, selectAll, transpose, quantize, duplicateSelection, se
 import { deleteSelectedClips } from "./ui/playlist.js";
 import { auto, closeMenu } from "./automation.js";
 import { openDock, paneShortcut } from "./ui/panes.js";
-import { pressKey, releaseKey } from "./ui/keyboard.js";
+import { keyboard, pressKey, releaseKey, typedPitch, shiftTyped, toggleRecordKeys } from "./ui/keyboard.js";
 import { voice, startTake, stopTake } from "./ui/voice.js";
 
-// Lower keyboard row plays C4..C5 on the selected channel.
-const PIANO = ["z", "s", "x", "d", "c", "v", "g", "b", "h", "n", "j", "m", ","];
-
+/** Computer keys holding a note, by `code`. */
 /** const held: String[] */
 const held = [];
 
@@ -49,12 +47,27 @@ export function installKeys() {
       return undefined;
     }
     if (mod) return undefined;
+    // The piano first: with the typing keyboard on, its keys win over the
+    // letter shortcuts they share (off, Z–M and "," share none).
+    const pitch = typedPitch(e.code);
+    if (pitch >= 0) {
+      if (currentChannel() && !e.repeat && !held.includes(e.code)) {
+        held.push(e.code);
+        pressKey(`k${e.code}`, pitch, 0.85);
+      }
+      return undefined;
+    }
+    if (e.code === "Minus" || e.code === "Equal") {
+      shiftTyped(e.code === "Minus" ? -1 : 1);
+      return undefined;
+    }
     if (k === " ") {
       e.preventDefault();
       togglePlay();
     } else if (k === "Escape") {
       if (auto.menu.open) closeMenu();
       else if (voice.status === "recording") stopTake();
+      else if (keyboard.armed) toggleRecordKeys();
       else stop();
     } else if (k === "F6") {
       e.preventDefault();
@@ -86,20 +99,13 @@ export function installKeys() {
       setTool("draw");
     } else if (state.dock === "piano" && (k === "e" || k === "E")) {
       setTool("select");
-    } else {
-      const i = PIANO.indexOf(k);
-      if (i >= 0 && currentChannel() && !e.repeat && !held.includes(k)) {
-        held.push(k);
-        pressKey(`k${k}`, 60 + i, 0.85);
-      }
     }
   });
   listenWindow("keyup", (e) => {
-    const k = e.key;
-    const at = held.indexOf(k);
+    const at = held.indexOf(e.code);
     if (at >= 0) {
       held.splice(at, 1);
-      releaseKey(`k${k}`);
+      releaseKey(`k${e.code}`);
     }
   });
 }

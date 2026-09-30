@@ -74,7 +74,7 @@ export function topbar(b) {
   iconButton(b, "stop", "stop", "stop", "Stop and rewind", () => {
     stop();
   });
-  iconButton(b, "rec", state.recording ? "rec armed" : "rec", "record", "Record audio from the microphone onto the selected track (R)", () => {
+  iconButton(b, "rec", state.recording ? "rec armed" : "rec", "mic", "Record audio from the microphone onto the selected track (R)", () => {
     record();
   });
 

@@ -24,6 +24,8 @@ export const state = {
   mode: "song",
   playing: false,
   position: 0,
+  /** When `position` was last reported (ms, `now()`), to read the playhead between reports. */
+  positionAt: 0,
   loopLength: 0,
   meters /*: Number[] */: [],
   chMeters /*: Number[] */: [],

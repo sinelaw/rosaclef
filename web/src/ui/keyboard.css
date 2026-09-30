@@ -11,7 +11,7 @@
 }
 .kb-head {
   flex: none;
-  width: 168px;
+  width: 196px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -40,7 +40,13 @@
   color: var(--champagne);
   border-bottom: 2px solid var(--c, transparent);
 }
-.kb-oct {
+.kb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.kb-oct,
+.kb-tools {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -69,6 +75,21 @@
 .kb-shift:hover {
   color: var(--gold-hi);
   border-color: var(--line-3);
+}
+.kb-type.on {
+  color: #1a1206;
+  background: var(--metal);
+  border-color: var(--gold);
+}
+.kb-rec {
+  color: var(--rose);
+}
+.kb-rec.armed {
+  color: #fff;
+  background: radial-gradient(circle at 50% 40%, #e2717f, #8e2336);
+  border-color: rgba(255, 170, 180, 0.7);
+  box-shadow: 0 0 12px rgba(224, 112, 126, 0.6);
+  animation: pulse 1.2s ease-in-out infinite;
 }
 
 /* The keys: laid out in pixels by keyboard.js, so no padding here. */
@@ -104,6 +125,26 @@
   color: #8a7a5a;
   pointer-events: none;
 }
+/* The computer key that plays a key (keyboard.js). */
+.kb-typed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  font: 600 8px/1 var(--mono);
+  font-style: normal;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+.kb-white .kb-typed {
+  bottom: 16px;
+  color: #6f5a2e;
+}
+.kb-black .kb-typed {
+  bottom: 4px;
+  color: #b9a88a;
+}
 .kb-white.down {
   background: var(--metal);
   box-shadow:
@@ -138,9 +179,12 @@
   height: 76px;
 }
 .keyboard.compact .kb-head {
-  width: 44px;
+  width: auto;
   padding: 0 4px;
   align-items: center;
+}
+.keyboard.compact .kb-row {
+  gap: 4px;
 }
 .keyboard.compact .kb-oct {
   flex-direction: column-reverse;

@@ -610,6 +610,16 @@ export function pianoTools(b) {
   });
 }
 
+/** Scroll the grid so a note at `beat` and `pitch` is in view (recording from the keys). */
+/** function revealNote(beat: Number, pitch: Number) => Undefined */
+export function revealNote(beat, pitch) {
+  const x = beat * view.zoom;
+  if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.88) view.scrollLeft = Math.max(0, x - view.width * 0.08);
+  const y = (127 - pitch) * view.rowH;
+  if (view.centered && (y < view.scrollTop || y + view.rowH > view.scrollTop + view.height)) view.scrollTop = Math.max(0, y - view.height / 2);
+  invalidate();
+}
+
 /** function setTool(t: String) => Undefined */
 export function setTool(t) {
   view.tool = t;

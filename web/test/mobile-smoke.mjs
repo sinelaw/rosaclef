@@ -151,6 +151,28 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   await page.waitForTimeout(80);
   assert((await page.locator(".kb-white.down").count()) === 1, "desktop: the Z key lights C4");
   await page.keyboard.up("z");
+  // The typing keyboard adds the Q row; the record button writes steps into the piano roll.
+  await page.click(".kb-type");
+  await page.keyboard.down("q");
+  await page.waitForTimeout(80);
+  assert((await page.locator(".kb-white.down").count()) === 1, "desktop: with the typing keyboard, Q plays a key");
+  await page.keyboard.up("q");
+  const notes = () =>
+    page.evaluate(async () => {
+      const s = await import("/src/store.js");
+      const p = s.currentPattern();
+      return p ? p.notes.length : -1;
+    });
+  const before = await notes();
+  await page.click(".kb-rec");
+  await page.keyboard.press("z");
+  await page.keyboard.press("x");
+  await page.waitForTimeout(100);
+  assert((await notes()) === before + 2, "desktop: armed, each key adds a step to the pattern");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(80);
+  assert((await page.locator(".kb-rec.armed").count()) === 0, "Esc stops recording notes");
+  await page.click(".kb-type");
   await page.click(".kb-toggle");
   await page.waitForTimeout(100);
   assert((await page.locator(".keyboard").count()) === 0, "the toggle hides the keys");
