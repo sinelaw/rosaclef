@@ -6,7 +6,7 @@
 // rectangles; hit-testing reads the same list. Only visible rows and notes
 // become nodes.
 
-import { drag, fmt } from "#platform";
+import { drag, fmt, pressOrTap } from "#platform";
 import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, invalidate, reportContext, hint } from "../store.js";
 import { isBlackKey, noteName, snapTo, snapDown } from "../model.js";
 import { preview, noteOn, noteOff, seek } from "../audio.js";
@@ -346,7 +346,7 @@ function gridView(b, g, pat, ch) {
     }
     invalidate();
   });
-  b.on("pointerdown", (e) => onGridDown(e, pat, ch, g));
+  b.on("pointerdown", (e) => pressOrTap(e, (d) => onGridDown(d, pat, ch, g)));
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });

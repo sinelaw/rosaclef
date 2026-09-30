@@ -301,6 +301,9 @@ const ICONS = [
   { name: "minimize", d: "M6 16.5h12" },
   { name: "maximize", d: "M5.5 5.5h13v13h-13zM5.5 9h13" },
   { name: "restore", d: "M5 10h9v9H5zM5 13h9M9 10V6h10v9h-5" },
+  { name: "left", d: "M14.5 6l-6 6 6 6" },
+  { name: "right", d: "M9.5 6l6 6-6 6" },
+  { name: "keys", d: "M3.5 6.5h17v11h-17zM8.5 6.5v6.5M12 6.5v6.5M15.5 6.5v6.5M6 13h5M13 13h5M8.5 13v4.5M15.5 13v4.5" },
 ];
 
 /** function glyph(b: Builder, name: String) => Undefined */

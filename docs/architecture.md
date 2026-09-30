@@ -100,6 +100,14 @@ A small retained, reconciling tree in the spirit of
   height, the agent width — lives in one place, `web/src/ui/panes.js`
   (persisted in `localStorage`); the shell turns it into grid columns and a
   flex basis, and CSS transitions animate the change.
+- A window too small for the three columns (a phone, either way up) gets the
+  compact layout: one view at a time — browser, playlist, dock or agent —
+  picked from a bottom navigation bar (`web/src/ui/compact.css`). On a touch
+  screen a finger on the playlist or piano roll scrolls it; a tap acts as a
+  click (`pressOrTap` in `web/lib/platform.js`).
+- The on-screen piano (`web/src/ui/keyboard.js`) plays the selected channel
+  with the mouse or several fingers, and lights the keys the computer-keyboard
+  piano (`web/src/keys.js`) plays.
 
 ### Types in the frontend
 

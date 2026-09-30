@@ -8,6 +8,7 @@ import { iconButton, button, knobAt, meter } from "./widgets.js";
 import { isAutomated, shownValue, openMenu } from "../automation.js";
 import { toast } from "./toast.js";
 import { projectsButton } from "./projects.js";
+import { keyboard, toggleKeyboard } from "./keyboard.js";
 
 /** function lcd(b: Builder, key: String, label: String, value: String, unit: String) => Undefined */
 function lcd(b, key, label, value, unit) {
@@ -133,6 +134,9 @@ export function topbar(b) {
     b.close();
   }
 
+  iconButton(b, "keys", keyboard.shown ? "kb-toggle on" : "kb-toggle", "keys", keyboard.shown ? "Hide the on-screen piano" : "Show the on-screen piano (plays the selected channel)", () => {
+    toggleKeyboard();
+  });
   iconButton(b, "undo", "", "undo", "Undo (Ctrl+Z) — includes the agent's edits", () => {
     undo();
   });

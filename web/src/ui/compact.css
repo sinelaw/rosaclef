@@ -1,0 +1,140 @@
+/* The phone layout (shell.js adds .compact when the window is too small for
+   the three columns): one view at a time, picked from a bottom navigation
+   bar, and a two-row top bar. */
+
+html, body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+@supports (height: 100dvh) {
+  html, body { height: 100dvh; }
+}
+
+.studio.compact {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "top" "view" "keys" "nav";
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  transition: none;
+}
+
+/* ---------------------------------------------------------------- views */
+
+/* The views share one cell; hidden ones keep their size (the terminal is not refitted). */
+.studio.compact > .side, .studio.compact > .workspace { grid-area: view; }
+.studio.compact:not(.v-browser) > .side-browser,
+.studio.compact:not(.v-agent) > .side-agent,
+.studio.compact.v-browser > .workspace,
+.studio.compact.v-agent > .workspace { visibility: hidden; }
+.studio.compact .side > .browser, .studio.compact .side > .agent { left: 0; right: 0; width: auto; }
+.studio.compact .side-agent, .studio.compact .agent { box-shadow: none; border-left: none; }
+.studio.compact .agent-resize, .studio.compact .rail, .studio.compact .winctl, .studio.compact .splitter { display: none; }
+
+.studio.compact.v-playlist .pane-dock { display: none; }
+.studio.compact.v-dock .pane-top { display: none; }
+.studio.compact .pane-dock { flex: 1 1 0; border-top: none; box-shadow: none; transition: none; }
+
+/* The navigation bar names the view: the strips keep only their tools, scrolling sideways. */
+.studio.compact .tabs { align-items: center; padding: 0 8px; }
+.studio.compact .tabs > .tab { display: none; }
+.studio.compact .tools { flex: 1; margin-left: 0; padding-bottom: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.studio.compact .tools::-webkit-scrollbar { display: none; }
+.studio.compact .tools > * { flex: none; }
+
+.studio.compact .pl { grid-template-columns: 112px 1fr; }
+
+/* Editors with a side inspector stack it underneath. */
+.studio.compact .rack, .studio.compact .mixer { flex-direction: column; }
+.studio.compact .inspector, .studio.compact .fx-panel { width: auto; flex: 0 1 46%; min-height: 0; border-left: none; border-top: 1px solid var(--line-2); }
+
+/* ---------------------------------------------------------------- top bar */
+
+.studio.compact .topbar { flex-wrap: wrap; gap: 6px 8px; padding: 6px 10px 7px; }
+/* A line break: the transport gets the second row. */
+.studio.compact .topbar::before { content: ""; order: 4; flex-basis: 100%; height: 0; }
+.studio.compact .brand { min-width: 0; }
+.studio.compact .brand > :not(.brand-mark) { display: none; }
+.studio.compact .brand-mark { width: 30px; height: 30px; border-radius: 8px; font-size: 20px; }
+.studio.compact .pm-open { width: 32px; padding: 0; }
+.studio.compact .pm-open > span { display: none; }
+.studio.compact .song-title { flex: 1 1 0; min-width: 0; max-width: none; font-size: 17px; }
+.studio.compact .topbar > .spacer { display: none; }
+.studio.compact .transport { order: 5; flex: 1 1 0; min-width: 0; gap: 6px; padding: 4px 6px; overflow-x: auto; scrollbar-width: none; }
+.studio.compact .transport::-webkit-scrollbar { display: none; }
+.studio.compact .transport > * { flex: none; }
+.studio.compact .transport .lcd { min-width: 0; padding: 3px 8px 4px; }
+.studio.compact .topbar > .seg, .studio.compact .master-mini { order: 6; }
+.studio.compact .master-mini { display: none; }
+.studio.compact .topbar .btn.icon { width: 32px; height: 32px; }
+.studio.compact .topbar .btn.gold { height: 32px; padding: 0 10px; }
+
+/* A phone on its side: one top row, the transport scrolls within it. */
+@media (max-height: 479px) {
+  .studio.compact .topbar::before { display: none; }
+  .studio.compact .topbar { flex-wrap: nowrap; padding: 4px 10px; }
+  .studio.compact .song-title { flex: 0 1 auto; max-width: 140px; }
+  .studio.compact .transport { flex: 1 1 0; }
+  .studio.compact .topbar .btn.gold > span { font-size: 11px; }
+}
+
+/* ---------------------------------------------------------------- navigation bar */
+
+.navbar {
+  display: flex;
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  border-top: 1px solid var(--line-2);
+  background: linear-gradient(180deg, #17141b, #0b0a0d);
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.45);
+  position: relative;
+  z-index: 3;
+}
+.nav-item {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 54px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: 600 10px/1 var(--sans);
+  letter-spacing: 0.04em;
+}
+.nav-item .glyph { width: 20px; height: 20px; }
+.nav-item > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item.on { color: var(--gold-hi); }
+.nav-item.on::before { content: ""; position: absolute; top: -1px; left: 22%; right: 22%; height: 2px; border-radius: 2px; background: var(--metal); box-shadow: var(--glow); }
+.nav-item.on .glyph { filter: drop-shadow(0 0 6px rgba(212, 175, 55, 0.55)); }
+.nav-item .status-dot { position: absolute; top: 9px; left: calc(50% + 9px); width: 7px; height: 7px; }
+@media (max-height: 479px) {
+  .nav-item { flex-direction: row; gap: 6px; height: 40px; }
+  .nav-item .glyph { width: 17px; height: 17px; }
+  .nav-item .status-dot { top: 8px; left: auto; right: 8px; }
+}
+
+/* ---------------------------------------------------------------- overlays */
+
+.studio.compact .toasts { left: 12px; right: 12px; bottom: 70px; align-items: stretch; }
+.studio.compact.has-keys .toasts { bottom: 150px; }
+.studio.compact .toast { min-width: 0; max-width: none; }
+
+.studio.compact .pm { width: 100vw; height: 100%; border-radius: 0; border: none; }
+.studio.compact .pm-overlay { place-items: stretch; }
+.studio.compact .pm-head { flex-wrap: wrap; gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 14px 12px; }
+.studio.compact .pm-title { flex: 1 1 0; }
+.studio.compact .pm-title h2 { font-size: 25px; }
+.studio.compact .pm-head > .spacer { display: none; }
+/* Title and close on the first row; tabs and the busy line below. */
+.studio.compact .pm-tabs, .studio.compact .pm-busy { order: 5; }
+.studio.compact .pm-tabs { flex: 1 1 100%; }
+.studio.compact .pm-tabs .btn { flex: 1; }
+.studio.compact .pm-foot { flex-wrap: wrap; row-gap: 4px; }
+.studio.compact .pm-foot > span:first-child { flex: 1 1 100%; }
+.studio.compact .pm-lib { max-width: 100%; }
+.studio.compact .pm-body { padding: 12px 14px 18px; }
+.studio.compact .pm-tools { flex-wrap: wrap; }
+.studio.compact .pm-search { flex: 1 1 160px; width: auto; }
+.studio.compact .pm-foot { padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
+.studio.compact .pm-keys { display: none; }

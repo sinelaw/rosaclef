@@ -1,12 +1,12 @@
 // The browser (left panel): instruments, plugins, patterns, samples, project.
 
 import { uploadFile, pickFiles } from "#platform";
-import { state, commit, selectPattern, selectChannel, showDock, invalidate, hint, setFocus } from "../store.js";
+import { state, commit, selectPattern, selectChannel, invalidate, hint, setFocus } from "../store.js";
 import { newDevice, setOption, uniqueId, paletteColor, presetDevice } from "../model.js";
 import { followPattern } from "../audio.js";
 import { glyph, iconButton, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
-import { paneHeader, paneControls } from "./panes.js";
+import { paneHeader, paneControls, revealDock } from "./panes.js";
 import { insertIx } from "#brands";
 
 /** Add a channel with a new instrument; returns its id. */
@@ -46,7 +46,7 @@ function addSampler(path) {
     setOption(d, "sample", path);
     setOption(d, "mode", "oneshot");
   });
-  showDock("rack");
+  revealDock("rack");
 }
 
 /** function uploadAll(files: FileRef[]) => Undefined */
@@ -76,7 +76,7 @@ export function addPresetChannel(pr) {
     d.params = dev.params;
     d.options = dev.options;
   });
-  showDock("rack");
+  revealDock("rack");
 }
 
 const DEVICE_ICONS = [
@@ -127,7 +127,7 @@ export function browser(b) {
         return undefined;
       }
       addChannel(d.type, d.label, (dev) => undefined);
-      showDock("rack");
+      revealDock("rack");
     });
     glyph(b, icon);
     b.leaf("span", "n", "b-name", d.label);
@@ -167,7 +167,7 @@ export function browser(b) {
         setOption(dev, "path", pl.path);
         setOption(dev, "id", pl.id);
       });
-      showDock("rack");
+      revealDock("rack");
     });
     glyph(b, "plug");
     b.leaf("span", "n", "b-name", pl.name);
@@ -190,7 +190,7 @@ export function browser(b) {
       followPattern();
     });
     b.on("dblclick", (e) => {
-      showDock("piano");
+      revealDock("piano");
     });
     b.leaf("span", "sw", "swatch", "");
     b.style("--c", pat.color);
