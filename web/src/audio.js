@@ -36,7 +36,6 @@ function onEngineMessage(m) {
   } else if (m.t === "loadError") {
     toast("The audio engine rejected the project", m.message, "error");
   }
-  return undefined;
 }
 
 /** function loadSample(path: String) => Undefined */
@@ -47,13 +46,12 @@ function loadSample(path) {
     .then((d) => {
       audioPostSample(path, d);
       loaded.push(path);
-      return Promise.resolve(true);
+      return true;
     })
     .catch((e) => {
       toast("Could not load sample", path, "error");
-      return Promise.resolve(false);
+      return false;
     });
-  return undefined;
 }
 
 /** const startup: Promise<Boolean>[] */
@@ -115,7 +113,6 @@ export function installEngine() {
       sampleCache.folder = state.folder;
     }
     if (state.audioReady) audioPost({ t: "project", json: json });
-    return undefined;
   };
 }
 
@@ -171,7 +168,6 @@ export function setMode(mode) {
   if (state.output === "browser") audioPost({ t: "mode", pattern: modeTarget() });
   else if (state.playing) send({ t: "native.play", pattern: modeTarget() });
   invalidate();
-  return undefined;
 }
 
 /** Called when the selected pattern changes while in pattern mode. */
@@ -188,7 +184,6 @@ export function seek(beat) {
   else audioPost({ t: "seek", beat: beat });
   state.position = beat;
   invalidate();
-  return undefined;
 }
 
 /** function noteOn(channel: String, key: Number, velocity: Number) => Undefined */
@@ -198,14 +193,12 @@ export function noteOn(channel, key, velocity) {
     startAudio();
     audioPost({ t: "note", channel: channel, key: key, velocity: velocity, on: true });
   }
-  return undefined;
 }
 
 /** function noteOff(channel: String, key: Number) => Undefined */
 export function noteOff(channel, key) {
   if (state.output === "native") send({ t: "native.note", channel: channel, key: key, velocity: 0, on: false });
   else audioPost({ t: "note", channel: channel, key: key, velocity: 0, on: false });
-  return undefined;
 }
 
 /** Preview a short note (piano roll clicks, step toggles). */
@@ -214,9 +207,7 @@ export function preview(channel, key, velocity) {
   noteOn(channel, key, velocity);
   setTimeout(() => {
     noteOff(channel, key);
-    return undefined;
   }, 220);
-  return undefined;
 }
 
 /** function setOutput(out: String) => Undefined */
@@ -231,7 +222,6 @@ export function setOutput(out) {
     startAudio();
   }
   invalidate();
-  return undefined;
 }
 
 // ------------------------------------------------------------------ recording
@@ -252,7 +242,7 @@ export async function record() {
     return true;
   }
   await startAudio();
-  const ok = await recStart().catch((e) => Promise.resolve(false));
+  const ok = await recStart().catch((e) => false);
   if (!ok) {
     toast("Microphone unavailable", "Allow microphone access to record.", "error");
     return false;
@@ -279,7 +269,7 @@ export function stopRecording() {
   state.playing = false;
   invalidate();
   recStop(`take-${Date.now()}.wav`).then((path) => {
-    if (path === "") return Promise.resolve(false);
+    if (path === "") return false;
     commit(() => {
       state.project.playlist.clips.push({
         pattern: "",
@@ -291,9 +281,8 @@ export function stopRecording() {
         gain: 1,
         mixer: insertIx(0),
       });
-      return undefined;
     });
     toast("Recording placed on the playlist", path, "info");
-    return Promise.resolve(true);
+    return true;
   });
 }

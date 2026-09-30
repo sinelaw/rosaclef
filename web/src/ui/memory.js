@@ -25,7 +25,6 @@ function setKS(list, key, value) {
   const e = list.find((x) => x.key === key);
   if (e) e.value = value;
   else list.push({ key: key, value: value });
-  return undefined;
 }
 
 /** function memoryBackend() => MemBackend */
@@ -49,7 +48,6 @@ export function memoryBackend() {
     const p = nodes[i].parent;
     if (p >= 0) nodes[p].children = nodes[p].children.filter((c) => c !== i);
     nodes[i].parent = -1;
-    return undefined;
   }
 
   /** const backend: Backend */
@@ -63,55 +61,45 @@ export function memoryBackend() {
     setText: (h, s) => {
       ops = ops + 1;
       node(h).text = s;
-      return undefined;
     },
     setClass: (h, c) => {
       ops = ops + 1;
       node(h).cls = c;
-      return undefined;
     },
     setAttr: (h, k, v) => {
       ops = ops + 1;
       setKS(node(h).attrs, k, v);
-      return undefined;
     },
     removeAttr: (h, k) => {
       ops = ops + 1;
       node(h).attrs = node(h).attrs.filter((a) => a.key !== k);
-      return undefined;
     },
     setStyle: (h, k, v) => {
       ops = ops + 1;
       if (v === "") node(h).styles = node(h).styles.filter((a) => a.key !== k);
       else setKS(node(h).styles, k, v);
-      return undefined;
     },
     setProp: (h, k, v) => {
       ops = ops + 1;
       setKS(node(h).props, k, v);
-      return undefined;
     },
     append: (p, c) => {
       ops = ops + 1;
       detach(c);
       node(p).children.push(handleIndex(c));
       node(c).parent = handleIndex(p);
-      return undefined;
     },
     remove: (h) => {
       ops = ops + 1;
       detach(h);
       node(h).alive = false;
-      return undefined;
     },
     listen: (h, event, fn) => {
       handlers.push({ handle: h, event: event, fn: fn });
-      return undefined;
     },
     paint: (h, fn) => undefined,
     frame: (fn) => {
       frames.push(fn);
-      return undefined;
     },
   };
 

@@ -66,9 +66,7 @@ function automatable(b, target) {
     e.preventDefault();
     e.stopPropagation();
     openMenu(target, e.clientX, e.clientY);
-    return undefined;
   });
-  return undefined;
 }
 
 /** The gold "automated" dot (inside the control's node). */
@@ -78,7 +76,6 @@ function autoDot(b, target) {
     b.leaf("i", "auto", "auto-dot", "");
     b.attr("title", "Automated — right-click for the automation lane");
   }
-  return undefined;
 }
 
 /** Knob bound to an automation target (e.g. "channel/pad/pan"). */
@@ -99,20 +96,16 @@ export function knobAt(b, key, cls, v, label, tip, dflt, target, onSet) {
       const scale = m.shiftKey ? 900 : 180;
       onSet(clamp01(v0 + (y0 - m.clientY) / scale));
       changed(true);
-      return undefined;
     }, (u) => undefined);
-    return undefined;
   });
   b.on("dblclick", (e) => {
     commit(() => onSet(dflt));
-    return undefined;
   });
   b.on("wheel", (e) => {
     e.preventDefault();
     begin();
     onSet(clamp01(v - e.deltaY / 2000));
     changed(true);
-    return undefined;
   });
   b.leaf("div", "ring", "knob-ring", "");
   b.open("div", "cap", "knob-cap");
@@ -121,7 +114,6 @@ export function knobAt(b, key, cls, v, label, tip, dflt, target, onSet) {
   if (label !== "") b.leaf("span", "label", "knob-label", label);
   autoDot(b, target);
   b.close();
-  return undefined;
 }
 
 /** Knob bound to a catalog parameter. */
@@ -141,7 +133,6 @@ export function paramKnobAt(b, spec, value, target, onSet) {
   b.leaf("div", "name", "param-name", spec.label);
   b.leaf("div", "val", "param-value", paramText(spec, shown));
   b.close();
-  return undefined;
 }
 
 // ------------------------------------------------------------------ fader
@@ -175,19 +166,15 @@ export function faderAt(b, key, v, tip, dflt, target, onSet) {
       const scale = m.shiftKey ? h * 5 : h;
       onSet(clamp01(v0 + (y0 - m.clientY) / scale));
       changed(true);
-      return undefined;
     }, (u) => undefined);
-    return undefined;
   });
   b.on("dblclick", (e) => {
     commit(() => onSet(dflt));
-    return undefined;
   });
   b.leaf("div", "track", "fader-track", "");
   b.leaf("div", "cap", "fader-cap", "");
   autoDot(b, target);
   b.close();
-  return undefined;
 }
 
 // ------------------------------------------------------------------ meter
@@ -208,7 +195,6 @@ export function meter(b, key, l, r) {
     b.close();
   }
   b.close();
-  return undefined;
 }
 
 /** Mono level bar (channel rack). */
@@ -219,7 +205,6 @@ export function led(b, key, v) {
   b.leaf("div", "fill", "led-fill", "");
   b.style("transform", `scaleX(${fmt(clamp01((db + 48) / 48), 3)})`);
   b.close();
-  return undefined;
 }
 
 // ------------------------------------------------------------------ controls
@@ -231,9 +216,7 @@ export function button(b, key, cls, label, tip, onClick) {
   b.on("pointerenter", (e) => hint(tip));
   b.on("click", (e) => {
     onClick();
-    return undefined;
   });
-  return undefined;
 }
 
 /** function iconButton(b: Builder, key: String, cls: String, icon: String, tip: String, onClick: () => Undefined) => Undefined */
@@ -244,11 +227,9 @@ export function iconButton(b, key, cls, icon, tip, onClick) {
   b.on("pointerenter", (e) => hint(tip));
   b.on("click", (e) => {
     onClick();
-    return undefined;
   });
   glyph(b, icon);
   b.close();
-  return undefined;
 }
 
 /** function select(b: Builder, key: String, cls: String, value: String, choices: String[], labels: String[], tip: String, onSet: (String) => Undefined) => Undefined */
@@ -260,14 +241,12 @@ export function select(b, key, cls, value, choices, labels, tip, onSet) {
   b.on("pointerenter", (e) => hint(tip));
   b.on("change", (e) => {
     onSet(e.value);
-    return undefined;
   });
   for (let i = 0; i < choices.length; i++) {
     b.leaf("option", choices[i], "", i < labels.length ? labels[i] : choices[i]);
     b.attr("value", choices[i]);
   }
   b.close();
-  return undefined;
 }
 
 /** Text that turns into an input on double click is overkill; a plain input it is. */
@@ -279,13 +258,10 @@ export function textInput(b, key, cls, value, placeholder, onSet) {
   b.prop("value", value);
   b.on("change", (e) => {
     onSet(e.value);
-    return undefined;
   });
   b.on("keydown", (e) => {
     if (e.key === "Enter") onSet(e.value);
-    return undefined;
   });
-  return undefined;
 }
 
 // ------------------------------------------------------------------ icons
@@ -339,5 +315,4 @@ export function glyph(b, name) {
   }
   b.attr("d", d);
   b.close();
-  return undefined;
 }

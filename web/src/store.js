@@ -10,7 +10,7 @@ import { insertIx, insertIndex, trackIx, noteIndex, clipIndex } from "#brands";
 
 export const state = {
   project /*: Project */: emptyProject(),
-  rev /*: Number */: 0,
+  rev: 0,
   loaded: false,
   catalog /*: Catalog */: { devices: [], plugins: [], presets: [] },
   agents /*: AgentPreset[] */: [],
@@ -23,11 +23,11 @@ export const state = {
   dock: "rack",
   mode: "song",
   playing: false,
-  position /*: Number */: 0,
-  loopLength /*: Number */: 0,
+  position: 0,
+  loopLength: 0,
   meters /*: Number[] */: [],
   chMeters /*: Number[] */: [],
-  snap /*: Number */: 0.25,
+  snap: 0.25,
   follow: true,
   output: "browser",
   nativeAvailable: false,
@@ -95,7 +95,6 @@ function logEdits() {
 const syncSoon = debounce(120, () => {
   if (hooks.sync) hooks.sync(projectJson(state.project));
   logEdits();
-  return undefined;
 });
 
 let engineQueued = false;
@@ -106,7 +105,6 @@ function pushToEngine() {
   setTimeout(() => {
     engineQueued = false;
     if (hooks.engine) hooks.engine(projectJson(state.project));
-    return undefined;
   }, 30);
 }
 
@@ -122,7 +120,6 @@ export function commit(fn) {
   snapshot();
   fn();
   changed(true);
-  return undefined;
 }
 
 /** Start a gesture (drag): one undo step for many `change` calls. */
@@ -137,7 +134,6 @@ export function changed(structural) {
   pushToEngine();
   if (structural) invalidate();
   else tick();
-  return undefined;
 }
 
 export function undo() {
@@ -167,7 +163,6 @@ export function applyRemote(p) {
   fixSelection();
   pushToEngine();
   invalidate();
-  return undefined;
 }
 
 /** Replace the project without an undo step (initial load). */
@@ -181,7 +176,6 @@ export function load(p) {
   fixSelection();
   pushToEngine();
   invalidate();
-  return undefined;
 }
 
 /** Keep selections pointing at things that exist. */
@@ -220,7 +214,6 @@ export function selectPattern(id) {
   state.pattern = id;
   reportContext();
   invalidate();
-  return undefined;
 }
 
 /** function selectChannel(id: String) => Undefined */
@@ -228,7 +221,6 @@ export function selectChannel(id) {
   state.channel = id;
   reportContext();
   invalidate();
-  return undefined;
 }
 
 /** function selectInsert(i: InsertIx) => Undefined */
@@ -236,7 +228,6 @@ export function selectInsert(i) {
   state.insert = i;
   reportContext();
   invalidate();
-  return undefined;
 }
 
 /** function showDock(name: String) => Undefined */
@@ -244,12 +235,10 @@ export function showDock(name) {
   state.dock = name;
   reportContext();
   invalidate();
-  return undefined;
 }
 
 const contextSoon = debounce(250, () => {
   if (hooks.context) hooks.context();
-  return undefined;
 });
 
 export function reportContext() {
@@ -263,7 +252,6 @@ export function setFocus(name) {
     state.focus = name;
     reportContext();
   }
-  return undefined;
 }
 
 /** function deviceSpec(type: String, category: String) => DeviceSpec? */
@@ -277,5 +265,4 @@ export function hint(text) {
     state.hint = text;
     tick();
   }
-  return undefined;
 }

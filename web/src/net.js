@@ -15,7 +15,6 @@ let retry = 500;
 /** function send<M>(m: M) => Undefined */
 export function send(m) {
   if (sock.length > 0) sock[0].send(JSON.stringify(m));
-  return undefined;
 }
 
 /** function issueText(issues: Issue[]) => String */
@@ -84,7 +83,6 @@ function onMessage(text) {
   } else if (t === "error") {
     toast("Server error", String(m.message), "error");
   }
-  return undefined;
 }
 
 export function connect() {
@@ -93,7 +91,6 @@ export function connect() {
       state.connected = true;
       retry = 500;
       invalidate();
-      return undefined;
     },
     onText: onMessage,
     onBinary: (b) => undefined,
@@ -103,10 +100,8 @@ export function connect() {
       invalidate();
       setTimeout(() => {
         connect();
-        return undefined;
       }, retry);
       retry = Math.min(8000, retry * 2);
-      return undefined;
     },
   });
   sock.length = 0;
@@ -196,7 +191,6 @@ export function sendContext() {
 export function installSync() {
   hooks.sync = (json) => {
     send({ t: "put", folder: state.folder, project: JSON.parse(json) });
-    return undefined;
   };
   hooks.context = sendContext;
 }

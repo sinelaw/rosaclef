@@ -17,9 +17,7 @@ export function toast(title, body, kind) {
   invalidate();
   setTimeout(() => {
     expire();
-    return undefined;
   }, kind === "error" ? 9100 : 4600);
-  return undefined;
 }
 
 export function expire() {
@@ -36,7 +34,6 @@ export function dismiss(id) {
   toasts.length = 0;
   for (const t of keep) toasts.push(t);
   invalidate();
-  return undefined;
 }
 
 /** function toastView(b: Builder) => Undefined */
@@ -50,5 +47,4 @@ export function toastView(b) {
     b.close();
   }
   b.close();
-  return undefined;
 }

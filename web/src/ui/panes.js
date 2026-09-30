@@ -26,8 +26,8 @@ export const STRIP = 38;
 const MIN_WORK = 340;
 
 export const layoutState = {
-  dockH /*: Number */: 46,
-  agentW /*: Number */: 460,
+  dockH: 46,
+  agentW: 460,
   browser: "open",
   agent: "open",
   work: "split",
@@ -103,21 +103,18 @@ export function setSide(id, mode) {
   if (id === "browser") layoutState.browser = mode;
   else layoutState.agent = mode;
   changedLayout();
-  return undefined;
 }
 
 /** Minimize ⇄ restore. */
 /** function toggleSide(id: String) => Undefined */
 export function toggleSide(id) {
   setSide(id, sideMode(id) === "min" ? "open" : "min");
-  return undefined;
 }
 
 /** Maximize ⇄ restore. */
 /** function toggleSideMax(id: String) => Undefined */
 export function toggleSideMax(id) {
   setSide(id, sideMode(id) === "max" ? "open" : "max");
-  return undefined;
 }
 
 /** Put a workspace pane in a mode; the other pane takes the complement. */
@@ -128,13 +125,11 @@ export function setWork(id, mode) {
   else if (mode === "min") layoutState.work = other;
   else layoutState.work = "split";
   changedLayout();
-  return undefined;
 }
 
 /** function toggleWorkMax(id: String) => Undefined */
 export function toggleWorkMax(id) {
   setWork(id, workMode(id) === "max" ? "open" : "max");
-  return undefined;
 }
 
 /** Any panel: toggle maximize (double-click on a header). */
@@ -142,7 +137,6 @@ export function toggleWorkMax(id) {
 export function toggleMax(id) {
   if (id === "browser" || id === "agent") toggleSideMax(id);
   else toggleWorkMax(id);
-  return undefined;
 }
 
 /** Show a dock tab, restoring the dock if it was minimized (F6/F7/F9, tab clicks). */
@@ -150,7 +144,6 @@ export function toggleMax(id) {
 export function openDock(name) {
   if (workMode("dock") === "min") setWork("dock", "open");
   showDock(name);
-  return undefined;
 }
 
 /** Everything back to the default split (keeps the sizes). */
@@ -241,16 +234,13 @@ function winButton(b, key, icon, tip, onClick) {
     onClick();
     // The button under the pointer now does something else; drop the stale tip.
     hint("");
-    return undefined;
   });
   // A quick double click on a button must not also maximize via the header.
   b.on("dblclick", (e) => {
     e.stopPropagation();
-    return undefined;
   });
   glyph(b, icon);
   b.close();
-  return undefined;
 }
 
 /** Minimize / maximize / restore buttons for a panel header. */
@@ -273,7 +263,6 @@ export function paneControls(b, id) {
     else winButton(b, "max", "maximize", `Maximize the ${name} (${key}, or double-click its tabs)`, () => setWork(id, "max"));
   }
   b.close();
-  return undefined;
 }
 
 /** Double-clicking a header (not one of its controls) toggles maximize. Call right after opening the header. */
@@ -281,9 +270,7 @@ export function paneControls(b, id) {
 export function paneHeader(b, id) {
   b.on("dblclick", (e) => {
     if (!e.onControl) toggleMax(id);
-    return undefined;
   });
-  return undefined;
 }
 
 /** The slim rail a minimized side panel collapses to; clicking it restores the panel. */
@@ -296,7 +283,6 @@ export function paneRail(b, id, title, icon, dot) {
   b.on("click", (e) => {
     setSide(id, "open");
     hint("");
-    return undefined;
   });
   b.open("div", "ctl", "winctl");
   winButton(b, "restore", "restore", tip, () => setSide(id, "open"));
@@ -308,5 +294,4 @@ export function paneRail(b, id, title, icon, dot) {
   b.leaf("span", "l", "rail-label", title);
   b.leaf("span", "line", "rail-line", "");
   b.close();
-  return undefined;
 }

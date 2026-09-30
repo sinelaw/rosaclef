@@ -1,14 +1,46 @@
 # inty quirks found while building the Rosaclef frontend
 
-A running log of the issues found while type-checking `web/` with
-[inty](https://github.com/sinelaw/inty), for fixing later in inty. inty
-version: `1713277` (main, 2026-09). Each entry has a minimal repro, the
-symptom, and what Rosaclef does in the meantime.
+A log of the issues found while type-checking `web/` with
+[inty](https://github.com/sinelaw/inty). Each entry has a minimal repro, the
+symptom, and what Rosaclef did at the time. They were found with inty
+`1713277` and 0.1.1 (main, 2026-09).
 
 Legend: 🐞 bug · ⚠️ confusing diagnostic · 🐢 performance · 📚 stdlib gap · 💡 feature request
 
-Items 1–4 and 9 are being fixed on a local `rosaclef-fixes` branch of inty (not yet
-upstreamed); the others are open.
+## Status: fixed in inty `c1b4100` (main, 2026-09-30)
+
+inty's own [Rosaclef report](https://github.com/sinelaw/inty/blob/main/docs/rosaclef-report.md)
+has the status of each item, with regression tests. The idioms page is
+[patterns.md](https://github.com/sinelaw/inty/blob/main/docs/patterns.md).
+With that version:
+
+- **The whole frontend checks in one run in about 2 s** (23 files, 25 modules),
+  with no errors. Before, single modules took up to 52 minutes, and `main.js`
+  did not finish (item 7).
+- **Removed from Rosaclef:**
+  - 406 trailing `return undefined;` (item 13).
+  - 25 `Promise.resolve(…)` wrappers in `then`/`catch` callbacks (item 13).
+  - 21 `/*: Number */` field annotations (item 12).
+  - `types/newtypes.d.js`: the brands are now `nominal type X = Int` lines in
+    `globals.d.js` (items 6, 11).
+  - The one-process-per-module loop in `check.sh` (items 4, 7).
+- **Could also go**, each with a small rewrite:
+  - `{key, value}[]` entry lists → `Dict<V>` (item 10).
+  - `for … of` loops → `.find()` (item 2).
+  - Records used as pairs → tuples.
+  - Typed one-element arrays for late-set state → `T | Undefined`.
+  - `promptBox` → `window.prompt` (item 8).
+  - Enriched event rows → `DomEvent<T>` (item 9).
+- **Still worked around:**
+  - `web/engine/worklet.js` is unchecked. `extends` and an AudioWorklet lib
+    (`--lib builtin:audioworklet`) now exist, but constructors may only
+    assign fields, and typed-array views over a WASM buffer need a typed
+    helper.
+  - Generic functions in records are rank-1.
+  - A mutable `let` is not narrowed (copy it to a `const`).
+  - Event listeners get one `DomEvent<T>` shape, not one type per event name.
+
+The entries below are kept as the original log.
 
 ## 1. 🐞 Comparing deferred operands: `Number` vs `Int` inside functions
 

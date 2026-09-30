@@ -15,12 +15,12 @@ import { autoHeight, autoHeads, autoBody, onAutoDown, onAutoDblClick, autoHint, 
 import { clipIx, clipIndex, trackIx, trackIndex, insertIx } from "#brands";
 
 const view = {
-  zoom /*: Number */: 22,
-  trackH /*: Number */: 54,
-  scrollLeft /*: Number */: 0,
-  scrollTop /*: Number */: 0,
-  width /*: Number */: 900,
-  height /*: Number */: 300,
+  zoom: 22,
+  trackH: 54,
+  scrollLeft: 0,
+  scrollTop: 0,
+  width: 900,
+  height: 300,
 };
 
 /** type PGeo = { zoom: Number, trackH: Number, beats: Number, width: Number, height: Number } */
@@ -85,11 +85,10 @@ function samplePeaks(path) {
       .then((r) => {
         peaks.push({ path: path, duration: Number(r.duration), data: r.peaks });
         invalidate();
-        return Promise.resolve(true);
+        return true;
       })
-      .catch((e) => Promise.resolve(false));
+      .catch((e) => false);
   }
-  return undefined;
 }
 
 // ------------------------------------------------------------------ editing
@@ -103,7 +102,6 @@ export function deleteSelectedClips() {
     const keep = [];
     for (let i = 0; i < clips.length; i++) if (!gone.includes(i)) keep.push(clips[i]);
     state.project.playlist.clips = keep;
-    return undefined;
   });
   state.clipSelection = [];
 }
@@ -146,7 +144,6 @@ function focusEditor(patternId, forcePiano) {
     selectChannel(bestDrum);
     showDock(forcePiano ? "piano" : "rack");
   }
-  return undefined;
 }
 
 /** function onLaneDown(e: Ev, g: PGeo) => Undefined */
@@ -171,7 +168,6 @@ function onLaneDown(e, g) {
       const idx = clipIndex(boxes[k].i);
       commit(() => {
         p.playlist.clips.splice(idx, 1);
-        return undefined;
       });
       state.clipSelection = [];
     }
@@ -203,7 +199,6 @@ function onLaneDown(e, g) {
           const c = p.playlist.clips[o.i];
           p.playlist.clips.push({ pattern: c.pattern, sample: c.sample, track: c.track, start: c.start, length: c.length, offset: c.offset, gain: c.gain, mixer: c.mixer });
         }
-        return undefined;
       });
     }
     const x0 = e.clientX;
@@ -221,7 +216,6 @@ function onLaneDown(e, g) {
         }
       }
       changed(true);
-      return undefined;
     }, (u) => undefined);
     return undefined;
   }
@@ -240,9 +234,7 @@ function onLaneDown(e, g) {
     const db = (m.clientX - x0) / g.zoom;
     p.playlist.clips[idx].length = Math.max(snap, snapTo(pat.length + db, snap));
     changed(true);
-    return undefined;
   }, (u) => undefined);
-  return undefined;
 }
 
 /** Drop a sample (from the browser or the desktop) onto a track. */
@@ -256,15 +248,13 @@ function dropSample(path, x, y, g) {
       const beats = Number(r.duration) / (60 / p.transport.bpm);
       commit(() => {
         p.playlist.clips.push({ pattern: "", sample: path, track: trackIx(track), start: start, length: Math.max(0.25, Math.round(beats * 100) / 100), offset: 0, gain: 1, mixer: insertIx(0) });
-        return undefined;
       });
-      return Promise.resolve(true);
+      return true;
     })
     .catch((e) => {
       toast("Could not read sample", path, "error");
-      return Promise.resolve(false);
+      return false;
     });
-  return undefined;
 }
 
 // ------------------------------------------------------------------ render
@@ -294,7 +284,6 @@ function clipBody(b, c, w) {
         }
         if (pat.length <= 0) break;
       }
-      return undefined;
     });
   } else {
     const pk = samplePeaks(c.sample);
@@ -314,10 +303,8 @@ function clipBody(b, c, w) {
         g2.lineTo(px + 0.5, mid - pr[0] * mid * 0.95);
       }
       g2.stroke();
-      return undefined;
     });
   }
-  return undefined;
 }
 
 /** function playlist(b: Builder) => Undefined */
@@ -341,7 +328,6 @@ export function playlist(b) {
     const beat = (e.clientX - e.targetLeft + view.scrollLeft) / g.zoom;
     if (state.mode !== "song") setMode("song");
     seek(Math.max(0, snapDown(beat, bpb)));
-    return undefined;
   });
   b.open("div", "in", "");
   b.style("transform", `translateX(${-view.scrollLeft}px)`);
@@ -377,7 +363,6 @@ export function playlist(b) {
     b.on("click", (e) => {
       state.track = trackIx(t);
       invalidate();
-      return undefined;
     });
     b.leaf("span", "num", "t-num", String(t + 1));
     b.leaf("span", "name", "t-name", tr.name);
@@ -387,10 +372,8 @@ export function playlist(b) {
       if (name !== "") {
         commit(() => {
           tr.name = name;
-          return undefined;
         });
       }
-      return undefined;
     });
     b.leaf("div", "mute", tr.mute ? "ch-mute off" : "ch-mute", "");
     b.attr("title", tr.mute ? "Unmute track" : "Mute track");
@@ -398,9 +381,7 @@ export function playlist(b) {
       e.stopPropagation();
       commit(() => {
         tr.mute = !tr.mute;
-        return undefined;
       });
-      return undefined;
     });
     b.close();
   }
@@ -414,36 +395,30 @@ export function playlist(b) {
     view.scrollLeft = e.scrollLeft;
     view.scrollTop = e.scrollTop;
     invalidate();
-    return undefined;
   });
   b.on("resize", (e) => {
     view.width = e.targetWidth;
     view.height = e.targetHeight;
     invalidate();
-    return undefined;
   });
   b.on("pointerdown", (e) => onLaneDown(e, g));
   b.on("dblclick", (e) => {
     const y = e.clientY - e.targetTop + e.scrollTop;
     if (y >= g.height) onAutoDblClick(e, { zoom: g.zoom, top: g.height, x0: 0, x1: g.width }, e.clientX - e.targetLeft + e.scrollLeft, y);
-    return undefined;
   });
   b.prop("scrollLeft", String(view.scrollLeft));
   b.prop("scrollTop", String(view.scrollTop));
   b.on("contextmenu", (e) => {
     e.preventDefault();
-    return undefined;
   });
   b.on("dragover", (e) => {
     if (dragSample.path !== "") e.preventDefault();
-    return undefined;
   });
   b.on("drop", (e) => {
     if (dragSample.path === "") return undefined;
     e.preventDefault();
     dropSample(dragSample.path, e.clientX - e.targetLeft + e.scrollLeft, e.clientY - e.targetTop + e.scrollTop, g);
     dragSample.path = "";
-    return undefined;
   });
   b.on("wheel", (e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -455,7 +430,6 @@ export function playlist(b) {
       view.trackH = Math.max(28, Math.min(120, view.trackH + (e.deltaY < 0 ? 4 : -4)));
       invalidate();
     }
-    return undefined;
   });
   b.on("pointermove", (e) => {
     const y = e.clientY - e.targetTop + e.scrollTop;
@@ -467,7 +441,6 @@ export function playlist(b) {
     const bar = Math.floor(beat / bpb) + 1;
     const pat = currentPattern();
     hint(`Bar ${bar} — click to place “${pat ? pat.name : "a pattern"}”, drag clips to move, edge to resize, Alt-drag to copy, right-click to delete`);
-    return undefined;
   });
 
   b.open("div", "content", "canvas-grid");
@@ -516,7 +489,6 @@ export function playlist(b) {
 
   b.close();
   b.close();
-  return undefined;
 }
 
 /** Record the visible part of the song for the agent context. */
@@ -534,7 +506,6 @@ function reportViewport(g) {
     vp.plTrack1 = t1;
     reportContext();
   }
-  return undefined;
 }
 
 /** Scroll an automation lane into view (after "Create / Go to automation"). */
@@ -544,7 +515,6 @@ function revealLane(g) {
   if (off < 0) return undefined;
   const y = g.height + off;
   if (y < view.scrollTop || y + LANE_H > view.scrollTop + view.height) view.scrollTop = Math.max(0, y + LANE_H - view.height + 12);
-  return undefined;
 }
 
 /** Page the view along with the playhead (FL Studio style) while playing. */
@@ -555,7 +525,6 @@ function followPlayhead(g) {
   if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.88) {
     view.scrollLeft = Math.max(0, x - view.width * 0.08);
   }
-  return undefined;
 }
 
 /** function followButton(b: Builder) => Undefined */
@@ -563,9 +532,7 @@ export function followButton(b) {
   iconButton(b, "follow", state.follow ? "small on" : "small", "follow", state.follow ? "Follow playback: on — the view scrolls with the playhead" : "Follow playback: off", () => {
     state.follow = !state.follow;
     invalidate();
-    return undefined;
   });
-  return undefined;
 }
 
 /** function playlistTools(b: Builder) => Undefined */
@@ -577,7 +544,6 @@ export function playlistTools(b) {
   select(b, "pat", "", state.pattern, ids, state.project.patterns.map((x) => x.name), "Pattern placed by clicking an empty lane", (v) => {
     selectPattern(v);
     followPattern();
-    return undefined;
   });
   if (pat) {
     b.leaf("span", "sw", "swatch", "");
@@ -586,9 +552,6 @@ export function playlistTools(b) {
   iconButton(b, "addtrack", "small ghost", "plus", "Add a playlist track", () => {
     commit(() => {
       state.project.playlist.tracks.push({ name: `Track ${state.project.playlist.tracks.length + 1}`, mute: false });
-      return undefined;
     });
-    return undefined;
   });
-  return undefined;
 }

@@ -22,7 +22,6 @@ export function addChannel(type, name, setup) {
   if (mixer >= p.mixer.inserts.length) mixer = 0;
   commit(() => {
     p.channels.push({ id: id, name: name, color: paletteColor(p.channels.length), instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(mixer) });
-    return undefined;
   });
   selectChannel(id);
   return id;
@@ -35,11 +34,9 @@ export function addPattern() {
   const id = uniqueId(`pattern-${n}`, p.patterns.map((x) => x.id));
   commit(() => {
     p.patterns.push({ id: id, name: `Pattern ${n}`, color: paletteColor(n + 2), length: 4, notes: [] });
-    return undefined;
   });
   selectPattern(id);
   followPattern();
-  return undefined;
 }
 
 /** function addSampler(path: String) => Undefined */
@@ -48,10 +45,8 @@ function addSampler(path) {
   addChannel("sampler", name, (d) => {
     setOption(d, "sample", path);
     setOption(d, "mode", "oneshot");
-    return undefined;
   });
   showDock("rack");
-  return undefined;
 }
 
 /** function uploadAll(files: FileRef[]) => Undefined */
@@ -60,14 +55,13 @@ export function uploadAll(files) {
     uploadFile(`/api/samples?name=${encodeURIComponent(f.name)}`, f)
       .then((r) => {
         toast("Sample added", String(r.path), "info");
-        return Promise.resolve(true);
+        return true;
       })
       .catch((e) => {
         toast("Upload failed", String(e), "error");
-        return Promise.resolve(false);
+        return false;
       });
   }
-  return undefined;
 }
 
 /** Instrument types whose preset list is expanded in the browser. */
@@ -81,10 +75,8 @@ export function addPresetChannel(pr) {
   addChannel(pr.type, pr.name, (d) => {
     d.params = dev.params;
     d.options = dev.options;
-    return undefined;
   });
   showDock("rack");
-  return undefined;
 }
 
 const DEVICE_ICONS = [
@@ -131,13 +123,11 @@ export function browser(b) {
       if (d.type === "sampler") {
         pickFiles("audio/*", (files) => {
           uploadAll(files);
-          return undefined;
         });
         return undefined;
       }
       addChannel(d.type, d.label, (dev) => undefined);
       showDock("rack");
-      return undefined;
     });
     glyph(b, icon);
     b.leaf("span", "n", "b-name", d.label);
@@ -151,7 +141,6 @@ export function browser(b) {
         if (at >= 0) expanded.splice(at, 1);
         else expanded.push(d.type);
         invalidate();
-        return undefined;
       });
     }
     b.close();
@@ -177,10 +166,8 @@ export function browser(b) {
         setOption(dev, "format", pl.format);
         setOption(dev, "path", pl.path);
         setOption(dev, "id", pl.id);
-        return undefined;
       });
       showDock("rack");
-      return undefined;
     });
     glyph(b, "plug");
     b.leaf("span", "n", "b-name", pl.name);
@@ -201,11 +188,9 @@ export function browser(b) {
     b.on("click", (e) => {
       selectPattern(pat.id);
       followPattern();
-      return undefined;
     });
     b.on("dblclick", (e) => {
       showDock("piano");
-      return undefined;
     });
     b.leaf("span", "sw", "swatch", "");
     b.style("--c", pat.color);
@@ -223,9 +208,7 @@ export function browser(b) {
   iconButton(b, "up", "small ghost", "plus", "Import audio files into samples/", () => {
     pickFiles("audio/*", (files) => {
       uploadAll(files);
-      return undefined;
     });
-    return undefined;
   });
   b.close();
   if (state.samples.length === 0) b.leaf("div", "none", "b-empty", "Drop audio files here");
@@ -235,7 +218,6 @@ export function browser(b) {
     b.attr("draggable", "true");
     b.on("dragstart", (e) => {
       dragSample.path = s;
-      return undefined;
     });
     b.on("click", (e) => addSampler(s));
     glyph(b, "wave");
@@ -255,9 +237,7 @@ export function browser(b) {
   textInput(b, "in", "", p.meta.title, "Untitled", (v) => {
     commit(() => {
       state.project.meta.title = v;
-      return undefined;
     });
-    return undefined;
   });
   b.close();
   b.open("div", "f-author", "field");
@@ -265,9 +245,7 @@ export function browser(b) {
   textInput(b, "in", "", p.meta.author, "", (v) => {
     commit(() => {
       state.project.meta.author = v;
-      return undefined;
     });
-    return undefined;
   });
   b.close();
   b.leaf("div", "folder", "b-empty", state.folder.split("/").pop() ?? state.folder);
@@ -276,7 +254,6 @@ export function browser(b) {
 
   b.close();
   b.close();
-  return undefined;
 }
 
 /** The sample being dragged from the browser (read by the playlist). */
