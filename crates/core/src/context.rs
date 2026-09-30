@@ -16,7 +16,7 @@ pub struct UiContext {
     pub updated_at: String,
     /// Panel the producer last interacted with.
     pub focus: String,
-    /// Editor shown in the bottom dock: "channel rack", "piano roll" or "mixer".
+    /// Editor shown in the bottom dock: "channel rack", "piano roll", "voice to notes" or "mixer".
     pub dock: String,
     pub transport: TransportContext,
     pub selection: Selection,
@@ -171,8 +171,8 @@ pub fn schema() -> Value {
         "properties": {
             "seq": {"type": "integer", "description": "Increases with every write."},
             "updatedAt": {"type": "string", "format": "date-time"},
-            "focus": {"enum": ["playlist", "channel rack", "piano roll", "mixer", "browser", "agent", ""], "description": "Panel the producer last interacted with."},
-            "dock": {"enum": ["channel rack", "piano roll", "mixer", ""], "description": "Editor visible in the bottom dock."},
+            "focus": {"enum": ["playlist", "channel rack", "piano roll", "voice to notes", "mixer", "browser", "agent", ""], "description": "Panel the producer last interacted with."},
+            "dock": {"enum": ["channel rack", "piano roll", "voice to notes", "mixer", ""], "description": "Editor visible in the bottom dock."},
             "transport": {
                 "type": "object",
                 "properties": {

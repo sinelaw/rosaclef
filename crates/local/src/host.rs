@@ -479,6 +479,7 @@ impl Host {
                 Response::json(json!({"path": rel}))
             }
             ("GET", "/api/peaks") => self.peaks(&qs("path"), qs("n").parse().unwrap_or(1024))?,
+            ("GET", "/api/transcribe") => self.transcribe(&qs("path"), &qs("mode"))?,
             ("POST", "/api/render") => {
                 let v = body_json(body)?;
                 let r = self.render(
@@ -646,6 +647,19 @@ impl Host {
         let v = json!({"duration": d.duration(), "sampleRate": d.sample_rate, "peaks": decode::peaks(&d, n)});
         self.peaks.insert((blob, n), v.clone());
         Ok(Response::json(v))
+    }
+
+    /// Voice to notes: the notes (or drum hits) in a recorded take.
+    fn transcribe(&mut self, rel: &str, mode: &str) -> Result<Response> {
+        let p = self.folder.resolve(rel).ok_or_else(|| anyhow!("invalid path"))?;
+        if self.mem.blob(&p).is_none() {
+            return Ok(Response::text(404, format!("{rel} does not exist")));
+        }
+        self.ensure_loaded(&[rel.to_string()])?;
+        match decode::decode_file(self.fs().as_ref(), &p) {
+            Ok(d) => Ok(Response::json(serde_json::to_value(rosaclef_studio::transcribe::transcribe(&d, mode))?)),
+            Err(e) => Ok(Response::text(422, format!("{e:#}"))),
+        }
     }
 
     /// Render the song (or a pattern) into `renders/` (or `out`).

@@ -8,6 +8,7 @@ import { rack, rackTools } from "./rack.js";
 import { pianoRoll, pianoTools } from "./pianoroll.js";
 import { playlist, playlistTools } from "./playlist.js";
 import { mixer, mixerTools } from "./mixer.js";
+import { voicePanel, voiceTools } from "./voice.js";
 import { agentPanel, agentDot } from "./agent.js";
 import { toastView } from "./toast.js";
 import { automationMenu } from "./lanes.js";
@@ -73,6 +74,7 @@ function navBar(b) {
   navItem(b, "playlist", "Playlist", "playlist", v === "playlist", "", () => setView("playlist"));
   navItem(b, "rack", "Rack", "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
   navItem(b, "piano", "Piano", "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
+  navItem(b, "voice", "Voice", "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
   navItem(b, "mixer", "Mixer", "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
   navItem(b, "agent", "Maestro", "spark", v === "agent", agentDot(), () => setView("agent"));
   b.close();
@@ -160,15 +162,17 @@ export function studio(b) {
   });
 
   b.open("section", "dock", `pane pane-dock ${compact ? "open" : workMode("dock")}`);
-  b.on("pointerdown", (e) => setFocus(state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : "channel rack"));
+  b.on("pointerdown", (e) => setFocus(state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : state.dock === "voice" ? "voice to notes" : "channel rack"));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "dock");
   tab(b, "rack", "Channel Rack", "rack", "F6");
   tab(b, "piano", "Piano Roll", "piano", "F7");
+  tab(b, "voice", "Voice", "mic", "F8");
   tab(b, "mixer", "Mixer", "mixer", "F9");
   b.open("div", "tools", "tools");
   if (state.dock === "rack") rackTools(b);
   else if (state.dock === "piano") pianoTools(b);
+  else if (state.dock === "voice") voiceTools(b);
   else mixerTools(b);
   b.close();
   paneControls(b, "dock");
@@ -177,6 +181,7 @@ export function studio(b) {
   if (state.dock !== "piano") state.viewport.prOn = false;
   if (state.dock === "rack") rack(b);
   else if (state.dock === "piano") pianoRoll(b);
+  else if (state.dock === "voice") voicePanel(b);
   else mixer(b);
   b.close();
   b.close();
@@ -229,7 +234,7 @@ function hintBar(b) {
     "span",
     "h",
     "hint",
-    state.hint !== "" ? state.hint : "Space plays · F6 rack · F7 piano roll · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
+    state.hint !== "" ? state.hint : "Space plays · F6 rack · F7 piano roll · F8 voice · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
   );
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");

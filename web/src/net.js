@@ -166,7 +166,7 @@ export function sendContext() {
     t: "context",
     context: {
       focus: state.focus,
-      dock: state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : "channel rack",
+      dock: state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : state.dock === "voice" ? "voice to notes" : "channel rack",
       transport: {
         playing: state.playing,
         mode: state.mode,

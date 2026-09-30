@@ -78,6 +78,19 @@
   sharing the playlist's zoom and scroll; controls bound to a target open an
   automation menu on right-click and show a gold dot when automated.
 
+### Voice to notes
+
+- `rosaclef_studio::transcribe` analyzes a take once: YIN pitch tracking on a
+  ~16 kHz copy (10 ms frames) cut into notes at pitch changes, silences and
+  level dips (melody); band-normalized SuperFlux onsets, each hit summed up
+  by a *tone* (spectral centroid lowered by its share below 200 Hz) that sorts
+  it into kick / snare / hat (beatbox). It returns raw seconds and fractional
+  pitches (`GET /api/transcribe`, on the server and in `rosaclef-local`).
+- `web/src/voice.js` turns that into notes on every redraw — quantizing,
+  snapping to a scale (Krumhansl–Schmuckler key detection), sorting hits with
+  the user's tone boundaries (`classify` mirrors the Rust one) — so the
+  settings in the Voice dock (`web/src/ui/voice.js`) apply instantly.
+
 ### The UI library (`web/src/ui/tree.js`)
 
 A small retained, reconciling tree in the spirit of

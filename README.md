@@ -74,6 +74,29 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef import-midi FILE.mid [--name N] [--library LIB]` | import a Standard MIDI File as a new project |
 | `rosaclef fmt`, `schema`, `catalog`, `guide` | formatting, JSON schema, device catalog, agent guides |
 
+## Voice to notes
+
+The **Voice** tab in the bottom dock (F8) turns the microphone into an
+instrument:
+
+- **Melody** — sing, hum or whistle a line. The pitch is tracked and cut into
+  notes, which you shape before they land: quantize grid and strength, note
+  ends, legato, auto-tune to a key and scale (or let it detect the key),
+  octave, and velocities that follow how loud you sang. The result is a new
+  pattern for the piano roll, on the selected channel or a new one.
+- **Beatbox** — kicks (a low "b"/"boom"), snares ("pf", "k") and hats ("ts")
+  become a drum loop on Atelier kick / snare / hat channels (existing ones are
+  reused). Set the grid, the sensitivity (ghost notes), where kicks end and
+  hats begin (the preview shows each hit by its tone), accents, the loop length
+  and how many times it repeats; click a hit to make it another drum.
+
+Record silently (the first note starts the pattern) or play along with the
+pattern or the song (the take keeps its place in time). Any earlier take in
+`samples/` can be analyzed again. **Add to song** creates the pattern and a
+playlist clip in one undoable step. The analysis runs in Rust
+(`crates/studio/src/transcribe.rs`, `GET /api/transcribe?path=…&mode=melody|drums`),
+natively or in the browser-only build.
+
 ## A project folder
 
 ```
@@ -116,6 +139,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 cargo test --workspace                 # Rust tests (engine, validation, CLAP host)
 ./tools/build-wasm.sh                  # rebuild web/engine/rosaclef.wasm and web/local/rosaclef-local.wasm
 node web/test/tree.test.js             # UI tree tests (no browser needed)
+node web/test/voice.test.js            # voice-to-notes logic (quantize, auto-tune, drums)
 web/check.sh                           # type-check the frontend with inty
 cargo fmt --all                        # format Rust
 (cd web && npm run format)             # format JS, CSS, HTML, JSON (Prettier)
