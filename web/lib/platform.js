@@ -340,7 +340,11 @@ function normalizeMsg(m) {
 
 /** Create the AudioContext + engine worklet. Resolves with the sample rate. */
 export async function audioStart(workletUrl, wasmUrl, onMsg) {
-  ctx = new AudioContext({ latencyHint: "interactive" });
+  // "playback" gives the browser a larger output buffer than "interactive":
+  // a render call that runs late (GC, a busy core) no longer drops out.
+  // Notes played live respond a little later; the native output is the
+  // low-latency path.
+  ctx = new AudioContext({ latencyHint: "playback" });
   await ctx.audioWorklet.addModule(workletUrl);
   node = new AudioWorkletNode(ctx, "rosaclef", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
   node.connect(ctx.destination);

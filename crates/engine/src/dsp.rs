@@ -4,6 +4,18 @@ use std::f32::consts::PI;
 
 pub const TAU: f32 = 2.0 * PI;
 
+/// Zero for magnitudes far below audibility. WebAssembly has no
+/// flush-to-zero mode, so a feedback path (filter state, a reverb tail)
+/// decaying into the subnormal range would run many times slower.
+#[inline]
+pub fn flush(x: f32) -> f32 {
+    if x.abs() < 1e-20 {
+        0.0
+    } else {
+        x
+    }
+}
+
 #[inline]
 pub fn db_to_gain(db: f32) -> f32 {
     10f32.powf(db / 20.0)
@@ -170,8 +182,8 @@ impl Svf {
         let v3 = v0 - self.ic2;
         let v1 = self.a1 * self.ic1 + self.a2 * v3;
         let v2 = self.ic2 + self.a2 * self.ic1 + self.a3 * v3;
-        self.ic1 = 2.0 * v1 - self.ic1;
-        self.ic2 = 2.0 * v2 - self.ic2;
+        self.ic1 = flush(2.0 * v1 - self.ic1);
+        self.ic2 = flush(2.0 * v2 - self.ic2);
         match mode {
             FilterMode::Lowpass => v2,
             FilterMode::Bandpass => v1,
@@ -269,8 +281,8 @@ impl Biquad {
     #[inline]
     pub fn process(&mut self, x: f32) -> f32 {
         let y = self.b0 * x + self.z1;
-        self.z1 = self.b1 * x - self.a1 * y + self.z2;
-        self.z2 = self.b2 * x - self.a2 * y;
+        self.z1 = flush(self.b1 * x - self.a1 * y + self.z2);
+        self.z2 = flush(self.b2 * x - self.a2 * y);
         y
     }
     pub fn reset(&mut self) {
@@ -292,7 +304,7 @@ impl OnePole {
     }
     #[inline]
     pub fn process(&mut self, x: f32) -> f32 {
-        self.z = x * (1.0 - self.a) + self.z * self.a;
+        self.z = flush(x * (1.0 - self.a) + self.z * self.a);
         self.z
     }
     pub fn reset(&mut self) {
@@ -464,7 +476,7 @@ pub struct DcBlock {
 impl DcBlock {
     #[inline]
     pub fn process(&mut self, x: f32, r: f32) -> f32 {
-        let y = x - self.x1 + r * self.y1;
+        let y = flush(x - self.x1 + r * self.y1);
         self.x1 = x;
         self.y1 = y;
         y
