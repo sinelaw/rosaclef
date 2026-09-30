@@ -595,11 +595,11 @@ export function pianoTools(b) {
   followButton(b);
   b.leaf("span", "cl", "label", "Channel");
   select(b, "ch", "", state.channel, ids, names, "Channel to edit", (v) => selectChannel(v));
-  iconButton(b, "draw", view.tool === "draw" ? "small on" : "small", "draw", "Draw tool (P)", () => {
+  iconButton(b, "draw", view.tool === "draw" ? "small on" : "small", "draw", "Draw tool (Shift+P)", () => {
     view.tool = "draw";
     invalidate();
   });
-  iconButton(b, "select", view.tool === "select" ? "small on" : "small", "select", "Select tool (E)", () => {
+  iconButton(b, "select", view.tool === "select" ? "small on" : "small", "select", "Select tool (Shift+E)", () => {
     view.tool = "select";
     invalidate();
   });

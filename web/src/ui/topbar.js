@@ -65,8 +65,8 @@ export function topbar(b) {
 
   b.open("div", "transport", "transport");
   b.open("div", "mode", "seg");
-  button(b, "pat", state.mode === "pattern" ? "on" : "", "PAT", "Pattern mode: loop the selected pattern (L)", () => setMode("pattern"));
-  button(b, "song", state.mode === "song" ? "on" : "", "SONG", "Song mode: play the playlist arrangement (L)", () => setMode("song"));
+  button(b, "pat", state.mode === "pattern" ? "on" : "", "PAT", "Pattern mode: loop the selected pattern (Shift+L)", () => setMode("pattern"));
+  button(b, "song", state.mode === "song" ? "on" : "", "SONG", "Song mode: play the playlist arrangement (Shift+L)", () => setMode("song"));
   b.close();
   iconButton(b, "play", state.playing ? "play on" : "play", state.playing ? "pause" : "play", "Play / pause (Space)", () => {
     togglePlay();
@@ -74,7 +74,7 @@ export function topbar(b) {
   iconButton(b, "stop", "stop", "stop", "Stop and rewind", () => {
     stop();
   });
-  iconButton(b, "rec", state.recording ? "rec armed" : "rec", "mic", "Record audio from the microphone onto the selected track (R)", () => {
+  iconButton(b, "rec", state.recording ? "rec armed" : "rec", "mic", "Record audio from the microphone onto the selected track (Shift+R)", () => {
     record();
   });
 

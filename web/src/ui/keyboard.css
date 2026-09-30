@@ -11,7 +11,7 @@
 }
 .kb-head {
   flex: none;
-  width: 196px;
+  width: 168px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -75,11 +75,6 @@
 .kb-shift:hover {
   color: var(--gold-hi);
   border-color: var(--line-3);
-}
-.kb-type.on {
-  color: #1a1206;
-  background: var(--metal);
-  border-color: var(--gold);
 }
 .kb-rec {
   color: var(--rose);

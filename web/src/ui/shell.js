@@ -239,7 +239,7 @@ function hintBar(b) {
     "hint",
     state.hint !== ""
       ? state.hint
-      : "Space plays · F6 rack · F7 piano roll · F8 voice · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
+      : "Space plays · Z–/ and Q–[ play notes · Shift+L pattern/song · Shift+R records · F6 rack · F7 piano roll · F8 voice · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
   );
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");

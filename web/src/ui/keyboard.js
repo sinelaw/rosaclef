@@ -2,7 +2,8 @@
 // plays the selected channel — with the mouse, or with several fingers on a
 // touch screen (slide along the keys for a glissando; lower on a key is
 // louder). The computer-keyboard piano (keys.js) lights the same keys, and
-// its letters are printed on them.
+// its letters are printed on them; the letter shortcuts take Shift, so every
+// letter row is free to play.
 //
 // The record button writes what is played into the selected pattern: in time
 // while the pattern plays, or one step at a time (chords together) while it is
@@ -77,9 +78,8 @@ const TYPED = [
   { code: "KeyP", label: "P", semi: 28, low: false },
   { code: "BracketLeft", label: "[", semi: 29, low: false },
 ];
-/** The highest semitone of the typing piano (and of the lower row alone). */
+/** The highest semitone of the typing piano. */
 const TYPED_SPAN = 29;
-const LOW_SPAN = 12;
 /** The highest base C that keeps the typing piano in range. */
 const TYPED_TOP = 96;
 
@@ -91,9 +91,6 @@ export const keyboard = {
   width: 0,
   /** The C the Z key plays (Q plays the octave above). */
   typed: 60,
-  /** Both rows of the computer keyboard play notes (the letter shortcuts
-   * they cover are off). Off, only Z–M and "," play. */
-  typing: false,
   /** Recording what is played on the keys into the piano roll. */
   armed: false,
 };
@@ -117,7 +114,6 @@ const blacks = [];
 
 export function loadKeyboard() {
   if (loadPref(PREF + "shown") === "no") keyboard.shown = false;
-  if (loadPref(PREF + "typing") === "yes") keyboard.typing = true;
   const low = Number(loadPref(PREF + "low"));
   if (low >= LOWEST && low <= HIGHEST - 7 && low % 12 === 0) keyboard.low = low;
   const typed = Number(loadPref(PREF + "typed"));
@@ -126,7 +122,6 @@ export function loadKeyboard() {
 
 function saveKeyboard() {
   savePref(PREF + "shown", keyboard.shown ? "yes" : "no");
-  savePref(PREF + "typing", keyboard.typing ? "yes" : "no");
   savePref(PREF + "low", String(keyboard.low));
   savePref(PREF + "typed", String(keyboard.typed));
 }
@@ -152,17 +147,11 @@ function shiftOctave(by) {
   invalidate();
 }
 
-/** Whether both rows of the computer keyboard play (always while recording). */
-export function typingOn() {
-  return keyboard.typing || keyboard.armed;
-}
-
 /** The pitch a computer key plays (by `KeyboardEvent.code`), -1 for none. */
 /** function typedPitch(code: String) => Number */
 export function typedPitch(code) {
-  const all = typingOn();
   for (const k of TYPED) {
-    if (k.code === code && (all || (k.low && k.semi <= LOW_SPAN))) return keyboard.typed + k.semi;
+    if (k.code === code) return keyboard.typed + k.semi;
   }
   return -1;
 }
@@ -170,11 +159,10 @@ export function typedPitch(code) {
 /** The computer keys that play `pitch`, as printed on the on-screen key. */
 /** function typedLabel(pitch: Number) => String */
 function typedLabel(pitch) {
-  const all = typingOn();
   /** const out: String[] */
   const out = [];
   for (const k of TYPED) {
-    if (keyboard.typed + k.semi === pitch && (all || (k.low && k.semi <= LOW_SPAN))) out.push(k.label);
+    if (keyboard.typed + k.semi === pitch) out.push(k.label);
   }
   return out.join(" ");
 }
@@ -182,9 +170,7 @@ function typedLabel(pitch) {
 /** What the computer keys play, for hints. */
 function typedHint() {
   const base = keyboard.typed;
-  if (typingOn())
-    return `Z–/ play ${noteName(base)}–${noteName(base + 16)}, Q–[ play ${noteName(base + 12)}–${noteName(base + TYPED_SPAN)} · - and = change octave`;
-  return `Z–M play ${noteName(base)}–${noteName(base + LOW_SPAN)} · - and = change octave · the keyboard button adds the Q row`;
+  return `Z–/ play ${noteName(base)}–${noteName(base + 16)}, Q–[ play ${noteName(base + 12)}–${noteName(base + TYPED_SPAN)} · - and = change octave`;
 }
 
 /** Move the computer keys an octave down (-1) or up (1); the strip follows them. */
@@ -200,18 +186,9 @@ export function shiftTyped(by) {
 /** Scroll the strip so it shows the keys the computer keyboard plays. */
 function revealTyped() {
   const shown = 12 * geo.octaves;
-  const need = Math.min(shown, typingOn() ? TYPED_SPAN + 1 : LOW_SPAN + 1);
+  const need = Math.min(shown, TYPED_SPAN + 1);
   if (keyboard.typed < keyboard.low) setLow(keyboard.typed);
   else if (keyboard.typed + need > keyboard.low + shown) setLow(keyboard.typed + need - shown + 11 - ((keyboard.typed + need - shown + 11) % 12));
-}
-
-/** Turn the two-row typing keyboard on or off. */
-export function toggleTyping() {
-  keyboard.typing = !keyboard.typing;
-  revealTyped();
-  saveKeyboard();
-  hint(typedHint());
-  invalidate();
 }
 
 // ------------------------------------------------------------------ recording
@@ -402,18 +379,10 @@ export function keyboardStrip(b, compact) {
   b.leaf("span", "o", "kb-octave", noteName(keyboard.low));
   octaveButton(b, "up", "right", 1);
   b.close();
-  b.open("div", "tools", "kb-tools");
-  if (!compact) {
-    const typeTip = keyboard.typing
-      ? "Typing keyboard on: Z–/ and Q–[ play about 2½ octaves (Q, E, P, R and L play notes instead of their shortcuts) — click to turn off"
-      : "Typing keyboard: play two rows of the computer keyboard, Z–/ and Q–[ (about 2½ octaves)";
-    toolButton(b, "type", keyboard.typing ? "kb-shift kb-type on" : "kb-shift kb-type", "keys", typeTip, () => toggleTyping());
-  }
   const recTip = keyboard.armed
     ? "Stop recording notes (Esc)"
     : "Record notes from the keys into the piano roll — in time while the pattern plays (Space), one step at a time while it is stopped";
   toolButton(b, "rec", keyboard.armed ? "kb-shift kb-rec armed" : "kb-shift kb-rec", "record", recTip, () => toggleRecordKeys());
-  b.close();
   b.close();
   b.close();
 
