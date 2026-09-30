@@ -213,7 +213,18 @@ export function agentPanel(b) {
   b.close();
   b.open("span", "c3", "chip");
   b.text("View ");
-  b.leaf("b", "v", "", state.dock === "piano" ? "Piano roll" : state.dock === "mixer" ? `Mixer · ${insertIndex(state.insert)}` : state.dock === "voice" ? "Voice to notes" : "Channel rack");
+  b.leaf(
+    "b",
+    "v",
+    "",
+    state.dock === "piano"
+      ? "Piano roll"
+      : state.dock === "mixer"
+        ? `Mixer · ${insertIndex(state.insert)}`
+        : state.dock === "voice"
+          ? "Voice to notes"
+          : "Channel rack"
+  );
   b.close();
   if (state.selection.length > 0) {
     b.open("span", "c4", "chip");

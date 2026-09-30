@@ -785,7 +785,10 @@ struct TranscribeQuery {
 }
 
 /// Voice to notes: the notes (or drum hits) in a recorded take.
-async fn get_transcription(State(app): State<Shared>, Query(q): Query<TranscribeQuery>) -> Response {
+async fn get_transcription(
+    State(app): State<Shared>,
+    Query(q): Query<TranscribeQuery>,
+) -> Response {
     let Some(path) = app.folder().resolve(&q.path) else {
         return (StatusCode::BAD_REQUEST, "invalid path").into_response();
     };
@@ -793,7 +796,11 @@ async fn get_transcription(State(app): State<Shared>, Query(q): Query<Transcribe
         return (StatusCode::NOT_FOUND, format!("{} does not exist", q.path)).into_response();
     }
     let mode = q.mode.unwrap_or_default();
-    let res = tokio::task::spawn_blocking(move || crate::decode::decode_file(&rosaclef_fs::DiskFs, &path).map(|d| rosaclef_studio::transcribe::transcribe(&d, &mode))).await;
+    let res = tokio::task::spawn_blocking(move || {
+        crate::decode::decode_file(&rosaclef_fs::DiskFs, &path)
+            .map(|d| rosaclef_studio::transcribe::transcribe(&d, &mode))
+    })
+    .await;
     match res {
         Ok(Ok(t)) => Json(t).into_response(),
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
