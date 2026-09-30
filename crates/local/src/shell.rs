@@ -56,7 +56,8 @@ Files and projects
 `rosaclef <command>` works too, as in AGENTS.md. Up/Down browse the history.";
 
 const COMMANDS: &[&str] = &[
-    "help", "summary", "validate", "get", "set", "del", "fmt", "context", "render", "note", "catalog", "presets", "schema", "ls", "cat", "rm", "projects", "open", "clear", "exit",
+    "help", "summary", "validate", "get", "set", "del", "fmt", "context", "render", "note",
+    "catalog", "presets", "schema", "ls", "cat", "rm", "projects", "open", "clear", "exit",
 ];
 
 /// Line editing state of one terminal.
@@ -129,7 +130,12 @@ impl Args {
             if let Some(name) = w.strip_prefix("--") {
                 let (k, v) = match name.split_once('=') {
                     Some((k, v)) => (k.to_string(), v.to_string()),
-                    None => (name.to_string(), it.next().cloned().ok_or_else(|| anyhow!("--{name} needs a value"))?),
+                    None => (
+                        name.to_string(),
+                        it.next()
+                            .cloned()
+                            .ok_or_else(|| anyhow!("--{name} needs a value"))?,
+                    ),
                 };
                 opts.push((k.replace('_', "-"), v));
             } else {
@@ -140,7 +146,11 @@ impl Args {
     }
 
     fn opt(&self, k: &str) -> Option<&str> {
-        self.opts.iter().rev().find(|(n, _)| n == k).map(|(_, v)| v.as_str())
+        self.opts
+            .iter()
+            .rev()
+            .find(|(n, _)| n == k)
+            .map(|(_, v)| v.as_str())
     }
 
     fn num<T: std::str::FromStr>(&self, k: &str, default: T) -> Result<T> {
@@ -157,7 +167,10 @@ fn split_pointer(p: &str) -> Result<(String, String)> {
         bail!("a JSON pointer starts with / (e.g. /transport/bpm)");
     }
     let i = p.rfind('/').unwrap_or(0);
-    Ok((p[..i].to_string(), p[i + 1..].replace("~1", "/").replace("~0", "~")))
+    Ok((
+        p[..i].to_string(),
+        p[i + 1..].replace("~1", "/").replace("~0", "~"),
+    ))
 }
 
 /// A command-line value: JSON when it parses, else a string.
@@ -167,7 +180,10 @@ fn value_of(s: &str) -> Value {
 
 impl Host {
     fn prompt(&self) -> String {
-        format!("{GOLD}rosaclef{RESET} {DIM}{}{RESET} ❯ ", self.folder.name())
+        format!(
+            "{GOLD}rosaclef{RESET} {DIM}{}{RESET} ❯ ",
+            self.folder.name()
+        )
     }
 
     fn status(&mut self, client: u64, running: bool, exit: Option<i32>) {
@@ -181,7 +197,9 @@ impl Host {
 
     /// A message from the agent panel (`start`, `input`, `resize`, `stop`).
     pub fn term_message(&mut self, client: u64, text: &str) {
-        let Ok(v) = serde_json::from_str::<Value>(text) else { return };
+        let Ok(v) = serde_json::from_str::<Value>(text) else {
+            return;
+        };
         match v.get("t").and_then(|t| t.as_str()).unwrap_or("") {
             "start" => {
                 if v.get("agent").and_then(|a| a.as_str()) != Some("shell") {
@@ -199,7 +217,11 @@ impl Host {
                 self.term_out(client, crlf(&banner) + &p);
             }
             "input" => {
-                let data = v.get("data").and_then(|d| d.as_str()).unwrap_or("").to_string();
+                let data = v
+                    .get("data")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 self.term_input(client, &data);
             }
             "stop" => {
@@ -213,9 +235,14 @@ impl Host {
     }
 
     fn term_input(&mut self, client: u64, data: &str) {
-        let Some(mut sh) = self.shells.remove(&client) else { return };
+        let Some(mut sh) = self.shells.remove(&client) else {
+            return;
+        };
         let mut echo = String::new();
-        let mut input: Vec<char> = std::mem::take(&mut sh.esc).chars().chain(data.chars()).collect();
+        let mut input: Vec<char> = std::mem::take(&mut sh.esc)
+            .chars()
+            .chain(data.chars())
+            .collect();
         let mut i = 0;
         while i < input.len() {
             let c = input[i];
@@ -233,7 +260,9 @@ impl Host {
                     }
                     let Some(k) = rest[1..].iter().position(|c| ('@'..='~').contains(c)) else {
                         // Incomplete: wait for the rest.
-                        sh.esc = std::iter::once('\x1b').chain(rest.iter().copied()).collect();
+                        sh.esc = std::iter::once('\x1b')
+                            .chain(rest.iter().copied())
+                            .collect();
                         i = input.len();
                         continue;
                     };
@@ -330,14 +359,22 @@ impl Host {
                 '\t' => {
                     let typed: String = sh.line.iter().collect();
                     if !typed.contains(' ') {
-                        let matches: Vec<&str> = COMMANDS.iter().copied().filter(|c| c.starts_with(typed.as_str())).collect();
+                        let matches: Vec<&str> = COMMANDS
+                            .iter()
+                            .copied()
+                            .filter(|c| c.starts_with(typed.as_str()))
+                            .collect();
                         if matches.len() == 1 {
                             let add: String = matches[0][typed.len()..].to_string() + " ";
                             sh.line.extend(add.chars());
                             sh.cursor = sh.line.len();
                             echo.push_str(&add);
                         } else if matches.len() > 1 {
-                            echo.push_str(&format!("\r\n{}\r\n{}{typed}", matches.join("  "), self.prompt()));
+                            echo.push_str(&format!(
+                                "\r\n{}\r\n{}{typed}",
+                                matches.join("  "),
+                                self.prompt()
+                            ));
                         }
                     }
                 }
@@ -367,7 +404,9 @@ impl Host {
         if w.first().map(|s| s == "rosaclef").unwrap_or(false) {
             w = &w[1..];
         }
-        let Some(cmd) = w.first() else { return (String::new(), false) };
+        let Some(cmd) = w.first() else {
+            return (String::new(), false);
+        };
         if cmd == "exit" || cmd == "quit" {
             return ("bye".into(), true);
         }
@@ -406,7 +445,11 @@ impl Host {
             "get" => {
                 let v = serde_json::to_value(self.project())?;
                 let p = arg(0);
-                let at = if p.is_empty() || p == "/" { Some(&v) } else { v.pointer(&p) };
+                let at = if p.is_empty() || p == "/" {
+                    Some(&v)
+                } else {
+                    v.pointer(&p)
+                };
                 let at = at.ok_or_else(|| anyhow!("nothing at {p}"))?;
                 serde_json::to_string_pretty(at)?
             }
@@ -414,7 +457,11 @@ impl Host {
                 let p = arg(0);
                 let mut v = serde_json::to_value(self.project())?;
                 let (parent, last) = split_pointer(&p)?;
-                let target = if parent.is_empty() { Some(&mut v) } else { v.pointer_mut(&parent) };
+                let target = if parent.is_empty() {
+                    Some(&mut v)
+                } else {
+                    v.pointer_mut(&parent)
+                };
                 let target = target.ok_or_else(|| anyhow!("nothing at {parent}"))?;
                 if cmd == "set" {
                     if a.pos.len() < 2 {
@@ -427,8 +474,12 @@ impl Host {
                         }
                         Value::Array(items) if last == "-" => items.push(value),
                         Value::Array(items) => {
-                            let i: usize = last.parse().map_err(|_| anyhow!("{last}: not an array index"))?;
-                            *items.get_mut(i).ok_or_else(|| anyhow!("{p}: index out of range"))? = value;
+                            let i: usize = last
+                                .parse()
+                                .map_err(|_| anyhow!("{last}: not an array index"))?;
+                            *items
+                                .get_mut(i)
+                                .ok_or_else(|| anyhow!("{p}: index out of range"))? = value;
                         }
                         _ => bail!("{parent} is not an object or an array"),
                     }
@@ -438,7 +489,9 @@ impl Host {
                             m.remove(&last).ok_or_else(|| anyhow!("nothing at {p}"))?;
                         }
                         Value::Array(items) => {
-                            let i: usize = last.parse().map_err(|_| anyhow!("{last}: not an array index"))?;
+                            let i: usize = last
+                                .parse()
+                                .map_err(|_| anyhow!("{last}: not an array index"))?;
                             if i >= items.len() {
                                 bail!("{p}: index out of range");
                             }
@@ -449,7 +502,12 @@ impl Host {
                 }
                 let checked = validate::value_and_validate(v);
                 if !checked.is_ok() {
-                    let msgs: Vec<String> = checked.issues.iter().take(5).map(|i| i.to_string()).collect();
+                    let msgs: Vec<String> = checked
+                        .issues
+                        .iter()
+                        .take(5)
+                        .map(|i| i.to_string())
+                        .collect();
                     bail!("the change was not applied:\n{}", msgs.join("\n"));
                 }
                 let rev = self.apply(checked.project.unwrap(), checked.issues, "disk", 0)?;
@@ -469,7 +527,13 @@ impl Host {
             }
             "render" => {
                 let out = a.opt("out").map(|s| s.to_string());
-                let r = self.render(a.opt("pattern").unwrap_or(""), a.num("loops", 1)?, a.num("bits", 24)?, a.num("sample-rate", 48000)?, out.as_deref())?;
+                let r = self.render(
+                    a.opt("pattern").unwrap_or(""),
+                    a.num("loops", 1)?,
+                    a.num("bits", 24)?,
+                    a.num("sample-rate", 48000)?,
+                    out.as_deref(),
+                )?;
                 let mut s = format!(
                     "rendered {} ({:.1}s, peak {:.1} dBFS, rms {:.1} dBFS)",
                     r["path"].as_str().unwrap_or(""),
@@ -478,19 +542,38 @@ impl Host {
                     r["rmsDb"].as_f64().unwrap_or(0.0)
                 );
                 for w in r["warnings"].as_array().into_iter().flatten() {
-                    s.push_str(&format!("\n{RED}warning{RESET}: {}", w.as_str().unwrap_or("")));
+                    s.push_str(&format!(
+                        "\n{RED}warning{RESET}: {}",
+                        w.as_str().unwrap_or("")
+                    ));
                 }
                 s
             }
             "note" => {
                 let device: Device = match (a.opt("channel"), a.opt("instrument")) {
-                    (Some(id), None) => self.project().channel(id).ok_or_else(|| anyhow!("no channel with id {id:?}"))?.instrument.clone(),
-                    (None, Some(j)) => serde_json::from_str(j).map_err(|e| anyhow!("--instrument: {e}"))?,
+                    (Some(id), None) => self
+                        .project()
+                        .channel(id)
+                        .ok_or_else(|| anyhow!("no channel with id {id:?}"))?
+                        .instrument
+                        .clone(),
+                    (None, Some(j)) => {
+                        serde_json::from_str(j).map_err(|e| anyhow!("--instrument: {e}"))?
+                    }
                     _ => bail!("pass exactly one of --channel or --instrument"),
                 };
-                let out = a.opt("out").ok_or_else(|| anyhow!("--out samples/NAME.wav is required"))?.to_string();
+                let out = a
+                    .opt("out")
+                    .ok_or_else(|| anyhow!("--out samples/NAME.wav is required"))?
+                    .to_string();
                 let seconds: f32 = a.num("seconds", 2.0)?;
-                let audio = render_note(&device, a.num::<u8>("pitch", 60)?.min(127), a.num("velocity", 0.9)?, seconds.clamp(0.05, 60.0), a.num::<u32>("sample-rate", 48000)? as f32);
+                let audio = render_note(
+                    &device,
+                    a.num::<u8>("pitch", 60)?.min(127),
+                    a.num("velocity", 0.9)?,
+                    seconds.clamp(0.05, 60.0),
+                    a.num::<u32>("sample-rate", 48000)? as f32,
+                );
                 self.folder.write(&out, &encode_wav(&audio, 24))?;
                 let (peak, _) = levels_db(&audio);
                 format!("wrote {out} ({seconds}s, peak {peak:.1} dBFS)")
@@ -505,18 +588,30 @@ impl Host {
                 let mut out = vec![];
                 for p in rosaclef_core::presets::all() {
                     if filter.as_deref().map(|f| f == p.kind).unwrap_or(true) {
-                        out.push(format!("{:<10} {:<26} {:<24} {}", p.kind, p.name, p.tags, p.doc));
+                        out.push(format!(
+                            "{:<10} {:<26} {:<24} {}",
+                            p.kind, p.name, p.tags, p.doc
+                        ));
                     }
                 }
                 out.join("\n")
             }
             "ls" => {
                 let dir = arg(0);
-                let root = if dir.is_empty() || dir == "." { self.folder.dir.clone() } else { self.folder.resolve(dir.trim_end_matches('/')).ok_or_else(|| anyhow!("invalid path {dir:?}"))? };
+                let root = if dir.is_empty() || dir == "." {
+                    self.folder.dir.clone()
+                } else {
+                    self.folder
+                        .resolve(dir.trim_end_matches('/'))
+                        .ok_or_else(|| anyhow!("invalid path {dir:?}"))?
+                };
                 let fs = self.folder.fs.clone();
                 let mut out = vec![];
                 for p in fs.read_dir(&root)? {
-                    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    let name = p
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
                     let m = fs.metadata(&p)?;
                     if m.is_dir {
                         out.push(format!("{GOLD}{name}/{RESET}"));
@@ -527,7 +622,10 @@ impl Host {
                 out.join("\n")
             }
             "cat" => {
-                let p = self.folder.resolve(&arg(0)).ok_or_else(|| anyhow!("usage: cat FILE"))?;
+                let p = self
+                    .folder
+                    .resolve(&arg(0))
+                    .ok_or_else(|| anyhow!("usage: cat FILE"))?;
                 if rosaclef_studio::decode::is_audio_file(&p) {
                     bail!("{} is audio — listen to it in Projects → Files", arg(0));
                 }
@@ -537,7 +635,16 @@ impl Host {
             "projects" => {
                 let list = self.library.list(&self.folder.dir);
                 list.iter()
-                    .map(|p| format!("{} {:<28} {DIM}{} · {} BPM{}{RESET}", if p.current { "▶" } else { " " }, p.name, p.title, p.bpm, if p.invalid { " · needs repair" } else { "" }))
+                    .map(|p| {
+                        format!(
+                            "{} {:<28} {DIM}{} · {} BPM{}{RESET}",
+                            if p.current { "▶" } else { " " },
+                            p.name,
+                            p.title,
+                            p.bpm,
+                            if p.invalid { " · needs repair" } else { "" }
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join("\n")
             }
@@ -601,11 +708,20 @@ mod tests {
 
     #[test]
     fn splitting() {
-        assert_eq!(words("set /meta/title 'My song'").unwrap(), vec!["set", "/meta/title", "My song"]);
-        assert_eq!(words(r#"note --instrument "{\"type\":\"drum\"}" x\ y"#).unwrap(), vec!["note", "--instrument", r#"{"type":"drum"}"#, "x y"]);
+        assert_eq!(
+            words("set /meta/title 'My song'").unwrap(),
+            vec!["set", "/meta/title", "My song"]
+        );
+        assert_eq!(
+            words(r#"note --instrument "{\"type\":\"drum\"}" x\ y"#).unwrap(),
+            vec!["note", "--instrument", r#"{"type":"drum"}"#, "x y"]
+        );
         assert_eq!(words("a ''").unwrap(), vec!["a", ""]);
         assert!(words("a 'b").is_err());
-        assert_eq!(split_pointer("/a/b~1c").unwrap(), ("/a".to_string(), "b/c".to_string()));
+        assert_eq!(
+            split_pointer("/a/b~1c").unwrap(),
+            ("/a".to_string(), "b/c".to_string())
+        );
         assert_eq!(value_of("128"), json!(128));
         assert_eq!(value_of("hello"), json!("hello"));
     }

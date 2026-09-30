@@ -11,15 +11,19 @@ mod device;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use folder::Folder;
+use rosaclef_core::{format, validate, Device, PROJECT_FILE};
+use rosaclef_engine::render::{self, RenderScope};
 use rosaclef_studio::library::Library;
 use rosaclef_studio::render::render_project;
 use rosaclef_studio::{decode, guide, slug};
-use rosaclef_core::{format, validate, Device, PROJECT_FILE};
-use rosaclef_engine::render::{self, RenderScope};
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(name = "rosaclef", version, about = "Rosaclef — an opulent music studio for the AI era")]
+#[command(
+    name = "rosaclef",
+    version,
+    about = "Rosaclef — an opulent music studio for the AI era"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -151,7 +155,8 @@ fn main() -> Result<()> {
         }
         Command::Validate { path } => {
             let file = project_file(path)?;
-            let text = std::fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
+            let text = std::fs::read_to_string(&file)
+                .with_context(|| format!("reading {}", file.display()))?;
             let checked = validate::parse_and_validate(&text);
             for i in &checked.issues {
                 println!("{i}");
@@ -184,7 +189,14 @@ fn main() -> Result<()> {
             print!("{}", rosaclef_core::summary(&p));
             Ok(())
         }
-        Command::Render { path, out, pattern, loops, bits, sample_rate } => {
+        Command::Render {
+            path,
+            out,
+            pattern,
+            loops,
+            bits,
+            sample_rate,
+        } => {
             let file = project_file(path)?;
             let dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
             let folder = Folder::on_disk(&dir);
@@ -197,7 +209,10 @@ fn main() -> Result<()> {
                     if project.pattern(id).is_none() {
                         bail!("no pattern with id {id:?}");
                     }
-                    RenderScope::Pattern { id: id.clone(), loops }
+                    RenderScope::Pattern {
+                        id: id.clone(),
+                        loops,
+                    }
                 }
                 None => RenderScope::Song,
             };
@@ -206,7 +221,13 @@ fn main() -> Result<()> {
                 dir.join(folder::RENDERS_DIR).join(format!("{name}.wav"))
             });
             let t0 = std::time::Instant::now();
-            let (audio, warnings) = render_project(&folder, project, &scope, sample_rate as f32, server::install_plugin_host);
+            let (audio, warnings) = render_project(
+                &folder,
+                project,
+                &scope,
+                sample_rate as f32,
+                server::install_plugin_host,
+            );
             for w in &warnings {
                 eprintln!("warning: {w}");
             }
@@ -224,13 +245,27 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
-        Command::Note { project, channel, instrument, pitch, velocity, seconds, out, sample_rate } => {
+        Command::Note {
+            project,
+            channel,
+            instrument,
+            pitch,
+            velocity,
+            seconds,
+            out,
+            sample_rate,
+        } => {
             let device: Device = match (channel, instrument) {
                 (Some(id), None) => {
                     let p = load_project(&project_file(project)?)?;
-                    p.channel(&id).ok_or_else(|| anyhow!("no channel with id {id:?}"))?.instrument.clone()
+                    p.channel(&id)
+                        .ok_or_else(|| anyhow!("no channel with id {id:?}"))?
+                        .instrument
+                        .clone()
                 }
-                (None, Some(json)) => serde_json::from_str(&json).context("parsing --instrument")?,
+                (None, Some(json)) => {
+                    serde_json::from_str(&json).context("parsing --instrument")?
+                }
                 _ => bail!("pass exactly one of --channel or --instrument"),
             };
             let audio = render::render_note(&device, pitch, velocity, seconds, sample_rate as f32);
@@ -272,19 +307,29 @@ fn main() -> Result<()> {
             opts.source_dir = file.parent().map(|p| p.to_path_buf());
             rosaclef_import::lmms::import(bytes, &opts)
         }),
-        Command::ImportMidi(a) => import_cli(a, |bytes, name, _| rosaclef_import::midi::import(bytes, &rosaclef_import::midi::Options::new(name))),
+        Command::ImportMidi(a) => import_cli(a, |bytes, name, _| {
+            rosaclef_import::midi::import(bytes, &rosaclef_import::midi::Options::new(name))
+        }),
     }
 }
 
 /// Shared driver of `import-lmms` / `import-midi`.
-fn import_cli(a: ImportArgs, run: impl FnOnce(&[u8], &str, &Path) -> Result<rosaclef_import::Imported>) -> Result<()> {
+fn import_cli(
+    a: ImportArgs,
+    run: impl FnOnce(&[u8], &str, &Path) -> Result<rosaclef_import::Imported>,
+) -> Result<()> {
     let bytes = std::fs::read(&a.file).with_context(|| format!("reading {}", a.file.display()))?;
-    let stem = a.file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Imported".into());
+    let stem = a
+        .file
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Imported".into());
     let name = rosaclef_studio::library::sanitize_name(a.name.as_deref().unwrap_or(&stem));
     let file = a.file.canonicalize().unwrap_or(a.file.clone());
     let imported = run(&bytes, &name, &file)?;
     let library = a.library.unwrap_or_else(|| PathBuf::from("."));
-    let (name, warnings) = Library::new(rosaclef_fs::disk(), &library, &exe()).save_imported(&name, &imported)?;
+    let (name, warnings) =
+        Library::new(rosaclef_fs::disk(), &library, &exe()).save_imported(&name, &imported)?;
     for w in &warnings {
         eprintln!("warning: {w}");
     }
@@ -308,20 +353,27 @@ fn import_cli(a: ImportArgs, run: impl FnOnce(&[u8], &str, &Path) -> Result<rosa
 
 /// How agents reach this executable (written into the agent guides).
 pub fn exe() -> String {
-    std::env::current_exe().ok().map(|p| p.display().to_string()).unwrap_or_else(|| "rosaclef".into())
+    std::env::current_exe()
+        .ok()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "rosaclef".into())
 }
 
 fn project_file(path: Option<PathBuf>) -> Result<PathBuf> {
     let p = path.unwrap_or_else(|| PathBuf::from("."));
     let file = if p.is_dir() { p.join(PROJECT_FILE) } else { p };
     if !file.exists() {
-        bail!("{} not found (pass a project folder or project.json)", file.display());
+        bail!(
+            "{} not found (pass a project folder or project.json)",
+            file.display()
+        );
     }
     Ok(file)
 }
 
 fn load_project(file: &Path) -> Result<rosaclef_core::Project> {
-    let text = std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
+    let text =
+        std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
     let checked = validate::parse_and_validate(&text);
     if !checked.is_ok() {
         let msgs: Vec<String> = checked.issues.iter().map(|i| i.to_string()).collect();
@@ -340,22 +392,36 @@ fn serve(a: ServeArgs) -> Result<()> {
     let web = a.web.unwrap_or_else(default_web_dir);
     let library = match a.library {
         Some(l) => {
-            std::fs::create_dir_all(&l).with_context(|| format!("creating the library {}", l.display()))?;
+            std::fs::create_dir_all(&l)
+                .with_context(|| format!("creating the library {}", l.display()))?;
             l.canonicalize()?
         }
-        None => folder.dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| folder.dir.clone()),
+        None => folder
+            .dir
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| folder.dir.clone()),
     };
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(server::run(server::Config { folder, library, host: a.host, port: a.port, web }))
+    rt.block_on(server::run(server::Config {
+        folder,
+        library,
+        host: a.host,
+        port: a.port,
+        web,
+    }))
 }
 
 fn is_empty_dir(dir: &Path) -> bool {
     std::fs::read_dir(dir)
-        .map(|rd| rd.flatten().all(|e| {
-            let n = e.file_name();
-            let n = n.to_string_lossy();
-            n.starts_with('.') || [folder::SAMPLES_DIR, folder::RENDERS_DIR].contains(&n.as_ref())
-        }))
+        .map(|rd| {
+            rd.flatten().all(|e| {
+                let n = e.file_name();
+                let n = n.to_string_lossy();
+                n.starts_with('.')
+                    || [folder::SAMPLES_DIR, folder::RENDERS_DIR].contains(&n.as_ref())
+            })
+        })
         .unwrap_or(true)
 }
 

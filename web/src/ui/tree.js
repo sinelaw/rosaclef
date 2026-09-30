@@ -108,7 +108,20 @@ export function mount(backend, view) {
   let queued = false;
   const rootPath = "";
   /** const rootElem: Elem */
-  const rootElem = { path: rootPath, handle: backend.root(), type: "root", cls: "", text: "", attrs: [], styles: [], props: [], on: [], bound: [], order: [], seen: 0 };
+  const rootElem = {
+    path: rootPath,
+    handle: backend.root(),
+    type: "root",
+    cls: "",
+    text: "",
+    attrs: [],
+    styles: [],
+    props: [],
+    on: [],
+    bound: [],
+    order: [],
+    seen: 0,
+  };
 
   /** function update(el: Elem, d: Desc) => Undefined */
   function update(el, d) {

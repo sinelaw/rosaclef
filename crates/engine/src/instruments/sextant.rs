@@ -48,12 +48,48 @@ const DETUNE_SPREAD: [f32; OPS] = [0.0, 0.55, -0.8, 1.0, -0.45, 0.7];
 /// Parameter keys per operator (no formatting when settings change, which
 /// automation does on the audio thread).
 const OP_KEYS: [[&str; 5]; OPS] = [
-    ["op1Ratio", "op1Level", "op1Attack", "op1Decay", "op1Sustain"],
-    ["op2Ratio", "op2Level", "op2Attack", "op2Decay", "op2Sustain"],
-    ["op3Ratio", "op3Level", "op3Attack", "op3Decay", "op3Sustain"],
-    ["op4Ratio", "op4Level", "op4Attack", "op4Decay", "op4Sustain"],
-    ["op5Ratio", "op5Level", "op5Attack", "op5Decay", "op5Sustain"],
-    ["op6Ratio", "op6Level", "op6Attack", "op6Decay", "op6Sustain"],
+    [
+        "op1Ratio",
+        "op1Level",
+        "op1Attack",
+        "op1Decay",
+        "op1Sustain",
+    ],
+    [
+        "op2Ratio",
+        "op2Level",
+        "op2Attack",
+        "op2Decay",
+        "op2Sustain",
+    ],
+    [
+        "op3Ratio",
+        "op3Level",
+        "op3Attack",
+        "op3Decay",
+        "op3Sustain",
+    ],
+    [
+        "op4Ratio",
+        "op4Level",
+        "op4Attack",
+        "op4Decay",
+        "op4Sustain",
+    ],
+    [
+        "op5Ratio",
+        "op5Level",
+        "op5Attack",
+        "op5Decay",
+        "op5Sustain",
+    ],
+    [
+        "op6Ratio",
+        "op6Level",
+        "op6Attack",
+        "op6Decay",
+        "op6Sustain",
+    ],
 ];
 
 struct Algorithm {
@@ -70,14 +106,54 @@ const fn b(i: usize) -> u8 {
 
 // Operators are 0-based here (op 1 = index 0).
 const ALGORITHMS: [Algorithm; 8] = [
-    Algorithm { name: "stack", mods: [b(1), b(2), b(3), b(4), b(5), 0], carriers: b(0), depth: 1.0 },
-    Algorithm { name: "twin", mods: [b(1), b(2), 0, b(4), b(5), 0], carriers: b(0) | b(3), depth: 1.0 },
-    Algorithm { name: "triad", mods: [b(1), 0, b(3), 0, b(5), 0], carriers: b(0) | b(2) | b(4), depth: 1.0 },
-    Algorithm { name: "ep", mods: [b(1), 0, b(3) | b(4), 0, b(5), 0], carriers: b(0) | b(2), depth: 1.0 },
-    Algorithm { name: "bell", mods: [b(1), b(2), 0, b(4) | b(5), 0, 0], carriers: b(0) | b(3), depth: 1.0 },
-    Algorithm { name: "organ", mods: [0; OPS], carriers: 0b11_1111, depth: 1.0 },
-    Algorithm { name: "pad", mods: [b(3), b(4), b(5), 0, 0, 0], carriers: b(0) | b(1) | b(2), depth: 0.5 },
-    Algorithm { name: "brass", mods: [b(2) | b(3), 0, 0, b(4), b(5), 0], carriers: b(0) | b(1), depth: 1.0 },
+    Algorithm {
+        name: "stack",
+        mods: [b(1), b(2), b(3), b(4), b(5), 0],
+        carriers: b(0),
+        depth: 1.0,
+    },
+    Algorithm {
+        name: "twin",
+        mods: [b(1), b(2), 0, b(4), b(5), 0],
+        carriers: b(0) | b(3),
+        depth: 1.0,
+    },
+    Algorithm {
+        name: "triad",
+        mods: [b(1), 0, b(3), 0, b(5), 0],
+        carriers: b(0) | b(2) | b(4),
+        depth: 1.0,
+    },
+    Algorithm {
+        name: "ep",
+        mods: [b(1), 0, b(3) | b(4), 0, b(5), 0],
+        carriers: b(0) | b(2),
+        depth: 1.0,
+    },
+    Algorithm {
+        name: "bell",
+        mods: [b(1), b(2), 0, b(4) | b(5), 0, 0],
+        carriers: b(0) | b(3),
+        depth: 1.0,
+    },
+    Algorithm {
+        name: "organ",
+        mods: [0; OPS],
+        carriers: 0b11_1111,
+        depth: 1.0,
+    },
+    Algorithm {
+        name: "pad",
+        mods: [b(3), b(4), b(5), 0, 0, 0],
+        carriers: b(0) | b(1) | b(2),
+        depth: 0.5,
+    },
+    Algorithm {
+        name: "brass",
+        mods: [b(2) | b(3), 0, 0, b(4), b(5), 0],
+        carriers: b(0) | b(1),
+        depth: 1.0,
+    },
 ];
 
 #[derive(Clone)]
@@ -98,7 +174,13 @@ struct Params {
 impl Params {
     fn set_envs(&self, env: &mut [Adsr; OPS], sr: f32) {
         for (i, e) in env.iter_mut().enumerate() {
-            e.set(self.attack[i], self.decay[i], self.sustain[i], self.release, sr);
+            e.set(
+                self.attack[i],
+                self.decay[i],
+                self.sustain[i],
+                self.release,
+                sr,
+            );
         }
     }
 }
@@ -170,7 +252,13 @@ fn derive(v: &Voice, p: &Params, sr: f32) -> Derived {
     let n_car = algo.carriers.count_ones().max(1) as f32;
     let amp = p.gain * (0.55 + 0.45 * v.velocity) / n_car;
     let width = (p.detune / 12.0).min(1.0) * 0.45;
-    let mut d = Derived { dt: [0.0; OPS], m: [[0.0; OPS]; OPS], fb: 0.0, cl: [0.0; OPS], cr: [0.0; OPS] };
+    let mut d = Derived {
+        dt: [0.0; OPS],
+        m: [[0.0; OPS]; OPS],
+        fb: 0.0,
+        cl: [0.0; OPS],
+        cr: [0.0; OPS],
+    };
     let mut scale = [0f32; OPS];
     let mut car_ix = 0;
     for i in 0..OPS {
@@ -181,7 +269,11 @@ fn derive(v: &Voice, p: &Params, sr: f32) -> Derived {
         let lvl = p.level[i];
         scale[i] = MOD_DEPTH * lvl * lvl * algo.depth * vel * key_scale * guard;
         if algo.carriers & b(i) != 0 {
-            let pos = if n_car > 1.0 { car_ix as f32 / (n_car - 1.0) * 2.0 - 1.0 } else { 0.0 };
+            let pos = if n_car > 1.0 {
+                car_ix as f32 / (n_car - 1.0) * 2.0 - 1.0
+            } else {
+                0.0
+            };
             // Alternate sides so neighbouring carriers do not bunch up.
             let pan = if car_ix % 2 == 0 { pos } else { -pos } * width;
             let (l, r) = pan_gains(pan);
@@ -226,7 +318,9 @@ pub struct Sextant {
 
 impl Sextant {
     pub fn new(sr: f32) -> Sextant {
-        let sine = (0..=SINE_LEN).map(|i| (i as f32 / SINE_LEN as f32 * TAU).sin()).collect();
+        let sine = (0..=SINE_LEN)
+            .map(|i| (i as f32 / SINE_LEN as f32 * TAU).sin())
+            .collect();
         Sextant {
             sr,
             p: Params {
@@ -283,7 +377,11 @@ impl Sextant {
                         l += x * d.cl[k];
                         r += x * d.cr[k];
                         let ph = v.phase[k] + d.dt[k];
-                        v.phase[k] = if ph >= 1.0 { ph - (ph as i32) as f32 } else { ph };
+                        v.phase[k] = if ph >= 1.0 {
+                            ph - (ph as i32) as f32
+                        } else {
+                            ph
+                        };
                     }
                     bl[i] += l * v.fade;
                     br[i] += r * v.fade;
@@ -308,7 +406,12 @@ impl Sextant {
                     }
                 }
             }
-            if v.active && !v.stealing && (0..OPS).filter(|k| carriers & b(*k) != 0).all(|k| v.env[k].is_idle()) {
+            if v.active
+                && !v.stealing
+                && (0..OPS)
+                    .filter(|k| carriers & b(*k) != 0)
+                    .all(|k| v.env[k].is_idle())
+            {
                 v.active = false;
             }
         }

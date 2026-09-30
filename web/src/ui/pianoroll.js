@@ -35,7 +35,7 @@ const view = {
 
 /** function geometry(pat: Pattern) => Geo */
 function geometry(pat) {
-  const beats = Math.max(pat.length, Math.ceil((view.width / view.zoom) / 4) * 4);
+  const beats = Math.max(pat.length, Math.ceil(view.width / view.zoom / 4) * 4);
   return { zoom: view.zoom, rowH: view.rowH, width: beats * view.zoom, height: 128 * view.rowH, beats: beats };
 }
 
@@ -193,29 +193,33 @@ function onGridDown(e, pat, ch, g) {
     const y0 = e.clientY;
     begin();
     let lastPitch = n0.pitch;
-    drag(e, (m) => {
-      const db = (m.clientX - x0) / g.zoom;
-      if (resizing) {
-        for (const o of orig) {
-          const len = snap > 0 ? Math.max(snap, snapTo(o.length + db, snap)) : Math.max(0.03, o.length + db);
-          pat.notes[o.i].length = len;
-          view.lastLength = len;
+    drag(
+      e,
+      (m) => {
+        const db = (m.clientX - x0) / g.zoom;
+        if (resizing) {
+          for (const o of orig) {
+            const len = snap > 0 ? Math.max(snap, snapTo(o.length + db, snap)) : Math.max(0.03, o.length + db);
+            pat.notes[o.i].length = len;
+            view.lastLength = len;
+          }
+        } else {
+          const dp = Math.round((y0 - m.clientY) / g.rowH);
+          for (const o of orig) {
+            const start = snap > 0 ? snapTo(o.start + db, snap) : o.start + db;
+            pat.notes[o.i].start = Math.max(0, start);
+            pat.notes[o.i].pitch = Math.max(0, Math.min(127, o.pitch + dp));
+          }
+          const p = pat.notes[idx].pitch;
+          if (p !== lastPitch) {
+            lastPitch = p;
+            preview(ch.id, p, n0.velocity);
+          }
         }
-      } else {
-        const dp = Math.round((y0 - m.clientY) / g.rowH);
-        for (const o of orig) {
-          const start = snap > 0 ? snapTo(o.start + db, snap) : o.start + db;
-          pat.notes[o.i].start = Math.max(0, start);
-          pat.notes[o.i].pitch = Math.max(0, Math.min(127, o.pitch + dp));
-        }
-        const p = pat.notes[idx].pitch;
-        if (p !== lastPitch) {
-          lastPitch = p;
-          preview(ch.id, p, n0.velocity);
-        }
-      }
-      changed(true);
-    }, (u) => undefined);
+        changed(true);
+      },
+      (u) => undefined,
+    );
     return undefined;
   }
 
@@ -225,20 +229,26 @@ function onGridDown(e, pat, ch, g) {
     view.marquee = { x0: x, y0: y, x1: x, y1: y };
     const sx = e.clientX - x;
     const sy = e.clientY - y;
-    drag(e, (m) => {
-      view.marquee = { x0: view.marquee.x0, y0: view.marquee.y0, x1: m.clientX - sx, y1: m.clientY - sy };
-      invalidate();
-    }, (u) => {
-      const mq = view.marquee;
-      const lx = Math.min(mq.x0, mq.x1);
-      const hx = Math.max(mq.x0, mq.x1);
-      const ly = Math.min(mq.y0, mq.y1);
-      const hy = Math.max(mq.y0, mq.y1);
-      const inside = layout(g, pat, ch.id).filter((r) => r.x < hx && r.x + r.w > lx && r.y < hy && r.y + r.h > ly).map((r) => r.i);
-      setSelection(inside);
-      view.marqueeOn = false;
-      invalidate();
-    });
+    drag(
+      e,
+      (m) => {
+        view.marquee = { x0: view.marquee.x0, y0: view.marquee.y0, x1: m.clientX - sx, y1: m.clientY - sy };
+        invalidate();
+      },
+      (u) => {
+        const mq = view.marquee;
+        const lx = Math.min(mq.x0, mq.x1);
+        const hx = Math.max(mq.x0, mq.x1);
+        const ly = Math.min(mq.y0, mq.y1);
+        const hy = Math.max(mq.y0, mq.y1);
+        const inside = layout(g, pat, ch.id)
+          .filter((r) => r.x < hx && r.x + r.w > lx && r.y < hy && r.y + r.h > ly)
+          .map((r) => r.i);
+        setSelection(inside);
+        view.marqueeOn = false;
+        invalidate();
+      },
+    );
     return undefined;
   }
 
@@ -253,13 +263,17 @@ function onGridDown(e, pat, ch, g) {
   preview(ch.id, pitch, 0.8);
   changed(true);
   const x0 = e.clientX;
-  drag(e, (m) => {
-    const db = (m.clientX - x0) / g.zoom;
-    const l = snap > 0 ? Math.max(snap, snapTo(len + db, snap)) : Math.max(0.03, len + db);
-    pat.notes[idx].length = l;
-    view.lastLength = l;
-    changed(true);
-  }, (u) => undefined);
+  drag(
+    e,
+    (m) => {
+      const db = (m.clientX - x0) / g.zoom;
+      const l = snap > 0 ? Math.max(snap, snapTo(len + db, snap)) : Math.max(0.03, len + db);
+      pat.notes[idx].length = l;
+      view.lastLength = l;
+      changed(true);
+    },
+    (u) => undefined,
+  );
 }
 
 // ------------------------------------------------------------------ render
@@ -316,11 +330,15 @@ function keysView(b, g, ch) {
       view.keyDown = p;
       noteOn(ch.id, p, 0.85);
       invalidate();
-      drag(e, (m) => undefined, (u) => {
-        noteOff(ch.id, p);
-        view.keyDown = -1;
-        invalidate();
-      });
+      drag(
+        e,
+        (m) => undefined,
+        (u) => {
+          noteOff(ch.id, p);
+          view.keyDown = -1;
+          invalidate();
+        },
+      );
     });
     if (p % 12 === 0) b.leaf("span", "l", "", noteName(p));
     b.close();

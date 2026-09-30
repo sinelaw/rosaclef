@@ -9,7 +9,20 @@
 // browser-only studio the "server" is the back end in a worker, and the
 // library lives in the browser's storage: projects download as .zip files.
 
-import { getJson, sendJson, uploadFile, pickFiles, download, previewAudio, stopPreview, fmtDate, fmt, confirmBox, listenWindow, storageEstimate } from "#platform";
+import {
+  getJson,
+  sendJson,
+  uploadFile,
+  pickFiles,
+  download,
+  previewAudio,
+  stopPreview,
+  fmtDate,
+  fmt,
+  confirmBox,
+  listenWindow,
+  storageEstimate,
+} from "#platform";
 import { state, invalidate, hint } from "../store.js";
 import { PALETTE } from "../model.js";
 import { glyph, iconButton, button } from "./widgets.js";
@@ -560,9 +573,13 @@ function card(b, p) {
     });
   }
   iconButton(b, "zip", "small ghost", "export", `Download “${p.name}” as a .zip — a backup, or to open it in another studio`, () => exportProject(p));
-  iconButton(b, "dup", "small ghost", "copy", `Duplicate “${p.name}”`, () => compose("duplicate", p.name, uniqueName(`${nameFrom(p.title)} copy`, pm.projects)));
+  iconButton(b, "dup", "small ghost", "copy", `Duplicate “${p.name}”`, () =>
+    compose("duplicate", p.name, uniqueName(`${nameFrom(p.title)} copy`, pm.projects)),
+  );
   iconButton(b, "ren", "small ghost", "draw", `Rename “${p.name}”`, () => compose("rename", p.name, p.name));
-  iconButton(b, "del", "small ghost danger", "trash", p.current ? "The open project cannot be deleted" : `Move “${p.name}” to the trash`, () => deleteProject(p));
+  iconButton(b, "del", "small ghost danger", "trash", p.current ? "The open project cannot be deleted" : `Move “${p.name}” to the trash`, () =>
+    deleteProject(p),
+  );
   if (p.current) b.attr("disabled", "true");
   b.close();
   b.close();
@@ -615,7 +632,12 @@ function projectsView(b) {
   if (pm.loaded && shown === 0) {
     b.open("div", "empty", "pm-empty");
     b.leaf("h3", "h", "", q !== "" ? "No project matches" : "The library is empty");
-    b.leaf("p", "p", "", q !== "" ? `Nothing is called “${pm.filter}”.` : "Create a project, start from the demo, or import an LMMS or MIDI file or a project .zip.");
+    b.leaf(
+      "p",
+      "p",
+      "",
+      q !== "" ? `Nothing is called “${pm.filter}”.` : "Create a project, start from the demo, or import an LMMS or MIDI file or a project .zip.",
+    );
     b.close();
   }
 }
@@ -626,7 +648,9 @@ function fileRow(b, f) {
   const url = `/files/${encodePath(f.path)}`;
   b.open("div", `f-${f.path}`, playing ? "pm-file playing" : "pm-file");
   if (f.kind === "audio") {
-    iconButton(b, "play", playing ? "small on" : "small", playing ? "stop" : "play", playing ? "Stop the preview" : `Listen to ${f.name}`, () => togglePreview(f));
+    iconButton(b, "play", playing ? "small on" : "small", playing ? "stop" : "play", playing ? "Stop the preview" : `Listen to ${f.name}`, () =>
+      togglePreview(f),
+    );
   } else {
     b.open("span", "doc", "pm-doc");
     icon(b, ICON_DOC);
@@ -776,8 +800,22 @@ export function projectsOverlay(b) {
   b.close();
 
   b.open("footer", "foot", "pm-foot");
-  b.leaf("span", "l", "", pm.tab === "files" ? "Deleted files go to .trash/ in the project · renaming a sample updates the song" : "Double-click a card to open it · deleted projects go to the library's .trash/");
-  button(b, "trash", "small ghost", "Empty trash", pm.tab === "files" ? "Delete this project's deleted files for good" : "Delete the projects in the library's trash for good", () => emptyTrash(pm.tab === "files" ? "project" : "library"));
+  b.leaf(
+    "span",
+    "l",
+    "",
+    pm.tab === "files"
+      ? "Deleted files go to .trash/ in the project · renaming a sample updates the song"
+      : "Double-click a card to open it · deleted projects go to the library's .trash/",
+  );
+  button(
+    b,
+    "trash",
+    "small ghost",
+    "Empty trash",
+    pm.tab === "files" ? "Delete this project's deleted files for good" : "Delete the projects in the library's trash for good",
+    () => emptyTrash(pm.tab === "files" ? "project" : "library"),
+  );
   if (state.backend === "local" && pm.storage.quota > 0) {
     b.leaf("span", "store", "pm-store", `Browser storage · ${bytes(pm.storage.usage)} of ${bytes(pm.storage.quota)}`);
     b.attr("title", "Projects are saved in this browser. Download them as .zip files to back them up.");

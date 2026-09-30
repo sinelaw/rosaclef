@@ -190,7 +190,10 @@ struct Delay {
 
 impl Delay {
     fn new(len: usize) -> Delay {
-        Delay { buf: vec![0.0; len.max(1)], pos: 0 }
+        Delay {
+            buf: vec![0.0; len.max(1)],
+            pos: 0,
+        }
     }
     #[inline]
     fn read(&self) -> f32 {
@@ -229,8 +232,18 @@ impl Space {
     fn new(sr: f32) -> Space {
         let ms = |m: f32| ((m * 0.001 * sr) as usize).max(1);
         Space {
-            ap: [Delay::new(ms(2.96)), Delay::new(ms(2.23)), Delay::new(ms(3.19)), Delay::new(ms(2.35))],
-            lines: [Delay::new(ms(41.3)), Delay::new(ms(47.9)), Delay::new(ms(55.1)), Delay::new(ms(63.7))],
+            ap: [
+                Delay::new(ms(2.96)),
+                Delay::new(ms(2.23)),
+                Delay::new(ms(3.19)),
+                Delay::new(ms(2.35)),
+            ],
+            lines: [
+                Delay::new(ms(41.3)),
+                Delay::new(ms(47.9)),
+                Delay::new(ms(55.1)),
+                Delay::new(ms(63.7)),
+            ],
             damp: Default::default(),
             gains: [0.0; 4],
             quiet: usize::MAX / 2,
@@ -251,7 +264,12 @@ impl Space {
         let dl = self.ap[1].allpass(dl, 0.6);
         let dr = self.ap[2].allpass(r, 0.65);
         let dr = self.ap[3].allpass(dr, 0.6);
-        let o = [self.lines[0].read(), self.lines[1].read(), self.lines[2].read(), self.lines[3].read()];
+        let o = [
+            self.lines[0].read(),
+            self.lines[1].read(),
+            self.lines[2].read(),
+            self.lines[3].read(),
+        ];
         let half = 0.5 * (o[0] + o[1] + o[2] + o[3]);
         let inp = [dl, dr, -dl, dr];
         for i in 0..4 {
@@ -289,8 +307,20 @@ impl Comete {
         let mut c = Comete {
             sr,
             bpm: 120.0,
-            p: Params { beats: 8.0, intensity: 0.6, pitch: 24.0, noise: 0.6, tone: 0.5, space: 0.5, drive: 0.2, gain: 0.7, kind: Kind::Riser },
-            shots: (0..SHOTS).map(|i| Shot::new(0xC0E7E + i as u32 * 7919)).collect(),
+            p: Params {
+                beats: 8.0,
+                intensity: 0.6,
+                pitch: 24.0,
+                noise: 0.6,
+                tone: 0.5,
+                space: 0.5,
+                drive: 0.2,
+                gain: 0.7,
+                kind: Kind::Riser,
+            },
+            shots: (0..SHOTS)
+                .map(|i| Shot::new(0xC0E7E + i as u32 * 7919))
+                .collect(),
             space: Space::new(sr),
             buf_l: vec![0.0; CHUNK],
             buf_r: vec![0.0; CHUNK],
@@ -305,7 +335,13 @@ impl Comete {
         let secs = self.p.beats as f64 * 60.0 / self.bpm.max(1.0) as f64;
         self.inc = 1.0 / (secs * self.sr as f64).max(1.0);
         let se = self.p.space_eff();
-        let rt = 0.4 + 5.0 * se + if self.p.kind == Kind::Impact { 1.5 * se } else { 0.0 };
+        let rt = 0.4
+            + 5.0 * se
+            + if self.p.kind == Kind::Impact {
+                1.5 * se
+            } else {
+                0.0
+            };
         self.space.set(rt, 2500.0 + 6000.0 * self.p.tone, self.sr);
     }
 
@@ -340,7 +376,8 @@ impl Comete {
                 let res = 0.2 + 0.35 * p.intensity;
                 s.nf_l.set(nf, res, sr);
                 s.nf_r.set(nf * 1.03, res, sr);
-                let tf = (f * 2.0 + 300.0 * 2f32.powf(sweep * 0.8 * open) * bright).clamp(40.0, nyq);
+                let tf =
+                    (f * 2.0 + 300.0 * 2f32.powf(sweep * 0.8 * open) * bright).clamp(40.0, nyq);
                 s.tf_l.set(tf, 0.15, sr);
                 s.tf_r.set(tf, 0.15, sr);
                 amp = level;
@@ -379,7 +416,11 @@ impl Comete {
                 for (j, r) in [1.0f32, 1.593, 2.135, 2.83, 3.61].iter().enumerate() {
                     s.dt[1 + j] = (fm * r / sr).min(0.45);
                 }
-                let nf = (200.0 + (1500.0 + 9000.0 * p.tone) * (-secs / 0.35).exp() * (0.5 + 0.5 * p.intensity)).clamp(40.0, nyq);
+                let nf = (200.0
+                    + (1500.0 + 9000.0 * p.tone)
+                        * (-secs / 0.35).exp()
+                        * (0.5 + 0.5 * p.intensity))
+                    .clamp(40.0, nyq);
                 s.nf_l.set(nf, 0.1, sr);
                 s.nf_r.set(nf * 1.07, 0.1, sr);
                 let boom = (0.3 + 0.15 * dur.min(16.0)).min(3.0);
@@ -427,15 +468,19 @@ impl Instrument for Comete {
         match ev {
             NoteKind::On { key, velocity } => {
                 self.clock += 1;
-                let i = self.shots.iter().position(|s| !s.active).unwrap_or_else(|| {
-                    let mut best = 0;
-                    for (j, s) in self.shots.iter().enumerate() {
-                        if s.age < self.shots[best].age {
-                            best = j;
+                let i = self
+                    .shots
+                    .iter()
+                    .position(|s| !s.active)
+                    .unwrap_or_else(|| {
+                        let mut best = 0;
+                        for (j, s) in self.shots.iter().enumerate() {
+                            if s.age < self.shots[best].age {
+                                best = j;
+                            }
                         }
-                    }
-                    best
-                });
+                        best
+                    });
                 if self.space.quiet > self.sr as usize && self.shots.iter().all(|s| !s.active) {
                     // The tail has been skipped while idle: start from silence.
                     self.space.clear();
@@ -521,7 +566,10 @@ impl Comete {
                         let tr = s.tf_r.process(c + 0.7 * b, FilterMode::Lowpass) * 0.5 + sub;
                         let zl = s.nf_l.process(nl, FilterMode::Lowpass);
                         let zr = s.nf_r.process(nr, FilterMode::Lowpass);
-                        ((tl * tone_mix + zl * noise_mix) * s.amp, (tr * tone_mix + zr * noise_mix) * s.amp)
+                        (
+                            (tl * tone_mix + zl * noise_mix) * s.amp,
+                            (tr * tone_mix + zr * noise_mix) * s.amp,
+                        )
                     }
                     Kind::Sweep => {
                         let a = saw(&mut s.ph[0], s.dt[0]);
@@ -532,7 +580,10 @@ impl Comete {
                         let zl = s.nf_l.process(nl, FilterMode::Lowpass) * 1.2;
                         let zr = s.nf_r.process(nr, FilterMode::Lowpass) * 1.2;
                         let (pl, pr) = s.pan;
-                        ((tl * tone_mix + zl * noise_mix) * s.amp * pl, (tr * tone_mix + zr * noise_mix) * s.amp * pr)
+                        (
+                            (tl * tone_mix + zl * noise_mix) * s.amp * pl,
+                            (tr * tone_mix + zr * noise_mix) * s.amp * pr,
+                        )
                     }
                     Kind::Subdrop => {
                         let x = fsin(s.ph[0]);
@@ -542,7 +593,10 @@ impl Comete {
                         let nmx = p.noise * 0.35;
                         let zl = s.nf_l.process(nl, FilterMode::Lowpass) * 2.0;
                         let zr = s.nf_r.process(nr, FilterMode::Lowpass) * 2.0;
-                        (((1.0 - nmx) * body + nmx * zl) * s.amp, ((1.0 - nmx) * body + nmx * zr) * s.amp)
+                        (
+                            ((1.0 - nmx) * body + nmx * zl) * s.amp,
+                            ((1.0 - nmx) * body + nmx * zr) * s.amp,
+                        )
                     }
                     Kind::Impact => {
                         let sub = fsin(s.ph[0]) * s.layers[2];
@@ -558,7 +612,10 @@ impl Comete {
                         let tone = sub * 1.1 + metal;
                         let tm = 0.4 + 0.6 * tone_mix;
                         let zm = 0.3 + 0.7 * noise_mix;
-                        ((tone * tm + zl * zm) * s.amp, (tone * tm - metal * 0.3 * tm + zr * zm) * s.amp)
+                        (
+                            (tone * tm + zl * zm) * s.amp,
+                            (tone * tm - metal * 0.3 * tm + zr * zm) * s.amp,
+                        )
                     }
                 };
                 // End-of-effect fade and AllOff fade.

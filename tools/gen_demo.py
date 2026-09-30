@@ -29,6 +29,7 @@ Usage:
 Instrument settings come from the factory presets (`rosaclef presets NAME`),
 so the demo always matches the real preset definitions.
 """
+
 import json
 import os
 import random
@@ -116,7 +117,8 @@ def note(pid, ch, pitch, start, length, vel, human=0.006):
     t = max(0.0, start + (rng.uniform(-human, human) if human else 0.0))
     v = min(1.0, max(0.05, vel + (rng.uniform(-0.035, 0.035) if human else 0.0)))
     patterns[pid]["notes"].append(
-        {"channel": ch, "pitch": pitch, "start": round(t, 4), "length": round(length, 4), "velocity": round(v, 3)})
+        {"channel": ch, "pitch": pitch, "start": round(t, 4), "length": round(length, 4), "velocity": round(v, 3)}
+    )
 
 
 SWING = 0.035  # beats: late 16th off-beats, a drummer's lazy feel
@@ -147,12 +149,33 @@ CHORDS = {
 
 PROLOGUE = [("Fm9", 8), ("Dbmaj9", 8), ("Abmaj9", 8), ("Eb9sus", 4), ("Eb13", 4)]
 QUESTION = [("Fm9", 4), ("Dbmaj9", 4), ("Abmaj9", 4), ("Eb9sus", 2), ("Eb13", 2)]
-JOURNEY = QUESTION + QUESTION + [("Dbmaj9", 4), ("Eb13", 4), ("Cm9", 4), ("Fm9", 4)] \
+JOURNEY = (
+    QUESTION
+    + QUESTION
+    + [("Dbmaj9", 4), ("Eb13", 4), ("Cm9", 4), ("Fm9", 4)]
     + [("Bbm9", 4), ("Cm9", 4), ("Dbmaj9", 4), ("Eb9sus", 2), ("Eb13", 2)]
-RISE = [("Bbm9", 4), ("Cm9", 4), ("Dbmaj9", 4), ("Eb9sus", 4),
-        ("Bbm9", 4), ("Cm9", 4), ("Dbmaj9", 2), ("Eb13", 2), ("Eb13", 4)]
-SUMMIT_CYCLE = [("Dbmaj9", 4), ("Eb9sus", 4), ("Cm9", 4), ("Fm9", 4),
-                ("Dbmaj9", 4), ("Eb13", 4), ("Abmaj9", 4), ("C7b9", 4)]
+)
+RISE = [
+    ("Bbm9", 4),
+    ("Cm9", 4),
+    ("Dbmaj9", 4),
+    ("Eb9sus", 4),
+    ("Bbm9", 4),
+    ("Cm9", 4),
+    ("Dbmaj9", 2),
+    ("Eb13", 2),
+    ("Eb13", 4),
+]
+SUMMIT_CYCLE = [
+    ("Dbmaj9", 4),
+    ("Eb9sus", 4),
+    ("Cm9", 4),
+    ("Fm9", 4),
+    ("Dbmaj9", 4),
+    ("Eb13", 4),
+    ("Abmaj9", 4),
+    ("C7b9", 4),
+]
 SUMMIT = SUMMIT_CYCLE + SUMMIT_CYCLE
 FALL = [("Fm9", 8), ("Gbmaj7/F", 8), ("Fm9", 8), ("Gbmaj7/F", 4), ("C7b9", 4)]
 GRIND = [("Fm9", 4), ("Dbmaj9", 4), ("Bbm9", 4), ("C7b9", 4)]
@@ -160,17 +183,24 @@ CLIMB = [("Dbmaj9", 4), ("Bbm9", 4), ("C9sus", 4), ("C9", 4)]
 STRUGGLE = GRIND + GRIND + CLIMB
 # The question again, but now answered by the dominant: Bbm9 C7b9 -> Fm9.
 ANSWER = [("Fm9", 4), ("Dbmaj9", 4), ("Abmaj9", 4), ("Bbm9", 2), ("C7b9", 2)]
-REDEMPTION = ANSWER + ANSWER + [("Dbmaj9", 4), ("Eb13", 4), ("Cm9", 4), ("Fm9", 4)] \
-    + [("Bbm9", 4), ("C7b9", 4), ("Fm9", 8)]
+REDEMPTION = (
+    ANSWER + ANSWER + [("Dbmaj9", 4), ("Eb13", 4), ("Cm9", 4), ("Fm9", 4)] + [("Bbm9", 4), ("C7b9", 4), ("Fm9", 8)]
+)
 EPILOGUE = [("Dbmaj9", 8), ("Fm9", 8), ("Dbmaj9", 4), ("E", 4), ("Fm9", 8)]
 
 # Sections: (id, title, start beat, beats, progression)
 SECTIONS = []
 _bar = 0
-for sid, title, prog in [("prologue", "Prologue", PROLOGUE), ("journey", "Journey", JOURNEY),
-                         ("rise", "Rise", RISE), ("summit", "Summit", SUMMIT), ("fall", "Fall", FALL),
-                         ("struggle", "Struggle", STRUGGLE), ("redemption", "Redemption", REDEMPTION),
-                         ("epilogue", "Epilogue", EPILOGUE)]:
+for sid, title, prog in [
+    ("prologue", "Prologue", PROLOGUE),
+    ("journey", "Journey", JOURNEY),
+    ("rise", "Rise", RISE),
+    ("summit", "Summit", SUMMIT),
+    ("fall", "Fall", FALL),
+    ("struggle", "Struggle", STRUGGLE),
+    ("redemption", "Redemption", REDEMPTION),
+    ("epilogue", "Epilogue", EPILOGUE),
+]:
     beats = sum(d for _, d in prog)
     SECTIONS.append((sid, title, _bar * 4, beats, prog))
     _bar += beats // 4
@@ -192,11 +222,11 @@ def section_pattern(kind, sid, color, track):
 # ------------------------------------------------------------------ parts: keys, bass, held chords
 
 COMP = [  # (start, length, velocity) rhythms for one bar of a chord
-    [(0, 1.4, .6), (1.75, .6, .46), (2.5, 1.2, .56)],
-    [(0, 2.6, .58), (3.0, .7, .42)],
-    [(0.5, 1.0, .53), (2.0, .5, .48), (2.75, 1.0, .54)],
-    [(0, 1.0, .58), (1.5, .45, .44), (3.25, .7, .5)],
-    [(0, 1.6, .56), (2.5, .5, .46), (3.0, .9, .5)],
+    [(0, 1.4, 0.6), (1.75, 0.6, 0.46), (2.5, 1.2, 0.56)],
+    [(0, 2.6, 0.58), (3.0, 0.7, 0.42)],
+    [(0.5, 1.0, 0.53), (2.0, 0.5, 0.48), (2.75, 1.0, 0.54)],
+    [(0, 1.0, 0.58), (1.5, 0.45, 0.44), (3.25, 0.7, 0.5)],
+    [(0, 1.6, 0.56), (2.5, 0.5, 0.46), (3.0, 0.9, 0.5)],
 ]
 
 
@@ -223,15 +253,36 @@ def keys(pid, prog, style, vel=1.0, t0=0.0):
                     for start, length, v in rng.choice(COMP):
                         strum(pid, voicing, sw(t + bar * 4 + start), length, v * vel)
             else:
-                for start, length, v in ((0, 1.2, .56), (1.25, .6, .44)):
+                for start, length, v in ((0, 1.2, 0.56), (1.25, 0.6, 0.44)):
                     strum(pid, voicing, sw(t + start), length, v * vel)
         t += dur
 
 
 BASS_FIGURES = [  # (start, length, role, velocity); roles: R root, O octave, F fifth, A approach
-    [(0, .7, "R", .9), (0.75, .2, "O", .42), (1.5, .45, "R", .72), (2.5, .45, "F", .74), (3.25, .2, "O", .46), (3.75, .25, "A", .62)],
-    [(0, 1.4, "R", .9), (1.5, .4, "F", .64), (2, .4, "O", .5), (2.5, .9, "R", .78), (3.5, .25, "F", .55), (3.75, .25, "A", .6)],
-    [(0, .45, "R", .9), (0.5, .2, "R", .38), (1, .9, "F", .7), (2.25, .5, "R", .76), (3, .45, "O", .55), (3.5, .4, "A", .6)],
+    [
+        (0, 0.7, "R", 0.9),
+        (0.75, 0.2, "O", 0.42),
+        (1.5, 0.45, "R", 0.72),
+        (2.5, 0.45, "F", 0.74),
+        (3.25, 0.2, "O", 0.46),
+        (3.75, 0.25, "A", 0.62),
+    ],
+    [
+        (0, 1.4, "R", 0.9),
+        (1.5, 0.4, "F", 0.64),
+        (2, 0.4, "O", 0.5),
+        (2.5, 0.9, "R", 0.78),
+        (3.5, 0.25, "F", 0.55),
+        (3.75, 0.25, "A", 0.6),
+    ],
+    [
+        (0, 0.45, "R", 0.9),
+        (0.5, 0.2, "R", 0.38),
+        (1, 0.9, "F", 0.7),
+        (2.25, 0.5, "R", 0.76),
+        (3, 0.45, "O", 0.55),
+        (3.5, 0.4, "A", 0.6),
+    ],
 ]
 
 
@@ -247,7 +298,14 @@ def bass(pid, prog, style, vel=1.0, t0=0.0):
         elif style == "pulse":  # half-time grind: 3-3-2 eighths
             for s in range(int(dur * 2)):
                 accent = s % 8 in (0, 3, 6)
-                note(pid, "bass", root + (12 if s % 8 == 7 else 0), sw(t + s * 0.5), 0.35, (0.84 if accent else 0.5) * vel)
+                note(
+                    pid,
+                    "bass",
+                    root + (12 if s % 8 == 7 else 0),
+                    sw(t + s * 0.5),
+                    0.35,
+                    (0.84 if accent else 0.5) * vel,
+                )
         elif style == "climb":  # quarter notes that grow toward the next chord
             for s in range(int(dur)):
                 note(pid, "bass", [root, root + 7, root + 12, root + 7][s % 4], t + s, 0.8, (0.72 + 0.04 * s) * vel)
@@ -262,7 +320,7 @@ def bass(pid, prog, style, vel=1.0, t0=0.0):
                         pitch = roles[role] if (role != "A" or bar == bars - 1) else root + 7
                         note(pid, "bass", pitch, sw(t + bar * 4 + start), length, v * vel)
             else:
-                for start, length, role, v in ((0, .6, "R", .88), (1.0, .4, "F", .66), (1.75, .25, "A", .6)):
+                for start, length, role, v in ((0, 0.6, "R", 0.88), (1.0, 0.4, "F", 0.66), (1.75, 0.25, "A", 0.6)):
                     note(pid, "bass", roles[role], sw(t + start), length, v * vel)
         t += dur
 
@@ -272,7 +330,7 @@ def hold(pid, prog, ch, octave=12, vel=0.55, top=True, t0=0.0):
     t = t0
     for name, dur in prog:
         voicing = CHORDS[name][0]
-        for pitch in (voicing[1:] if top else voicing):
+        for pitch in voicing[1:] if top else voicing:
             note(pid, ch, pitch + octave, t, dur, vel, human=0)
         t += dur
 
@@ -286,81 +344,212 @@ def line(pid, ch, notes, t0=0.0, stretch=1.0, transpose=0, vel=1.0):
 
 # ------------------------------------------------------------------ the theme
 # The question, over Fm9 | Dbmaj9 | Abmaj9 | Eb9sus-Eb13: it ends open, on the 5th of Eb.
-THEME = [(0, 72, 1, .62), (1, 75, .5, .55), (1.5, 77, 1.5, .68), (3.5, 75, .5, .5),
-         (4, 72, 1.5, .6), (5.5, 68, .5, .5), (6, 70, 2, .55),
-         (8, 72, .5, .58), (8.5, 75, .5, .58), (9, 79, 1.5, .7), (10.5, 77, .5, .55), (11, 75, 1, .58),
-         (12, 77, 1.5, .62), (13.5, 73, .5, .5), (14, 70, 2, .55)]
+THEME = [
+    (0, 72, 1, 0.62),
+    (1, 75, 0.5, 0.55),
+    (1.5, 77, 1.5, 0.68),
+    (3.5, 75, 0.5, 0.5),
+    (4, 72, 1.5, 0.6),
+    (5.5, 68, 0.5, 0.5),
+    (6, 70, 2, 0.55),
+    (8, 72, 0.5, 0.58),
+    (8.5, 75, 0.5, 0.58),
+    (9, 79, 1.5, 0.7),
+    (10.5, 77, 0.5, 0.55),
+    (11, 75, 1, 0.58),
+    (12, 77, 1.5, 0.62),
+    (13.5, 73, 0.5, 0.5),
+    (14, 70, 2, 0.55),
+]
 # The same question, reaching upward (hope).
-THEME_HOPE = THEME[:-3] + [(12, 77, 1, .62), (13, 80, 1, .64), (14, 79, 2, .66)]
+THEME_HOPE = THEME[:-3] + [(12, 77, 1, 0.62), (13, 80, 1, 0.64), (14, 79, 2, 0.66)]
 # The theme answered, over ... Bbm9 C7b9: the leading tone E pulls home to the next F minor.
-THEME_ANSWER = THEME[:-3] + [(12, 77, 1.5, .68), (13.5, 73, .5, .56), (14, 76, 1, .66), (15, 79, 1, .62)]
+THEME_ANSWER = THEME[:-3] + [(12, 77, 1.5, 0.68), (13.5, 73, 0.5, 0.56), (14, 76, 1, 0.66), (15, 79, 1, 0.62)]
 # A new phrase over Dbmaj9 | Eb13 | Cm9 | Fm9: the summit, foreshadowed.
-JOURNEY_C3 = [(0, 77, 1.5, .64), (1.5, 75, .5, .5), (2, 72, 2, .58),
-              (4, 79, 1, .64), (5, 77, 1, .56), (6, 75, 2, .58),
-              (8, 74, 1, .56), (9, 75, 1, .58), (10, 79, 2, .64),
-              (12, 77, 1, .6), (13, 75, 1, .54), (14, 72, 2, .56)]
+JOURNEY_C3 = [
+    (0, 77, 1.5, 0.64),
+    (1.5, 75, 0.5, 0.5),
+    (2, 72, 2, 0.58),
+    (4, 79, 1, 0.64),
+    (5, 77, 1, 0.56),
+    (6, 75, 2, 0.58),
+    (8, 74, 1, 0.56),
+    (9, 75, 1, 0.58),
+    (10, 79, 2, 0.64),
+    (12, 77, 1, 0.6),
+    (13, 75, 1, 0.54),
+    (14, 72, 2, 0.56),
+]
 # The motif in rising sequence over the climbing bass Bb C Db Eb.
-JOURNEY_C4 = [(0, 72, .5, .58), (0.5, 73, .5, .58), (1, 77, 2, .66),
-              (4, 74, .5, .6), (4.5, 75, .5, .6), (5, 79, 2, .68),
-              (8, 75, .5, .62), (8.5, 77, .5, .62), (9, 80, 2, .72),
-              (12, 80, 1, .7), (13, 82, 1, .72), (14, 79, 2, .7)]
-SUMMIT_A = [(0, 77, 1.5, .7), (1.5, 75, .5, .56), (2, 77, .5, .6), (2.5, 80, 1.5, .74),
-            (4, 82, 2, .76), (6, 80, .5, .6), (6.5, 77, 1.5, .66),
-            (8, 75, 1, .64), (9, 79, 1, .7), (10, 75, .5, .56), (10.5, 74, 1.5, .62),
-            (12, 72, 2.5, .64), (14.5, 68, .5, .5), (15, 72, 1, .58),
-            (16, 77, .5, .68), (16.5, 80, .5, .7), (17, 84, 2, .8), (19, 82, .5, .62), (19.5, 80, .5, .6),
-            (20, 79, 1.5, .7), (21.5, 77, .5, .58), (22, 75, 1, .62), (23, 72, 1, .58),
-            (24, 75, 1, .64), (25, 79, .5, .66), (25.5, 80, 2.5, .72),
-            (28, 79, 1, .66), (29, 76, 1, .62), (30, 73, 1, .6), (31, 70, 1, .58)]
+JOURNEY_C4 = [
+    (0, 72, 0.5, 0.58),
+    (0.5, 73, 0.5, 0.58),
+    (1, 77, 2, 0.66),
+    (4, 74, 0.5, 0.6),
+    (4.5, 75, 0.5, 0.6),
+    (5, 79, 2, 0.68),
+    (8, 75, 0.5, 0.62),
+    (8.5, 77, 0.5, 0.62),
+    (9, 80, 2, 0.72),
+    (12, 80, 1, 0.7),
+    (13, 82, 1, 0.72),
+    (14, 79, 2, 0.7),
+]
+SUMMIT_A = [
+    (0, 77, 1.5, 0.7),
+    (1.5, 75, 0.5, 0.56),
+    (2, 77, 0.5, 0.6),
+    (2.5, 80, 1.5, 0.74),
+    (4, 82, 2, 0.76),
+    (6, 80, 0.5, 0.6),
+    (6.5, 77, 1.5, 0.66),
+    (8, 75, 1, 0.64),
+    (9, 79, 1, 0.7),
+    (10, 75, 0.5, 0.56),
+    (10.5, 74, 1.5, 0.62),
+    (12, 72, 2.5, 0.64),
+    (14.5, 68, 0.5, 0.5),
+    (15, 72, 1, 0.58),
+    (16, 77, 0.5, 0.68),
+    (16.5, 80, 0.5, 0.7),
+    (17, 84, 2, 0.8),
+    (19, 82, 0.5, 0.62),
+    (19.5, 80, 0.5, 0.6),
+    (20, 79, 1.5, 0.7),
+    (21.5, 77, 0.5, 0.58),
+    (22, 75, 1, 0.62),
+    (23, 72, 1, 0.58),
+    (24, 75, 1, 0.64),
+    (25, 79, 0.5, 0.66),
+    (25.5, 80, 2.5, 0.72),
+    (28, 79, 1, 0.66),
+    (29, 76, 1, 0.62),
+    (30, 73, 1, 0.6),
+    (31, 70, 1, 0.58),
+]
 # Second pass: the same climb, then higher, then a fall from the peak.
 SUMMIT_B = SUMMIT_A[:14] + [
-    (16, 80, .5, .72), (16.5, 84, .5, .76), (17, 87, 2, .86), (19, 84, 1, .7),
-    (20, 85, 1.5, .8), (21.5, 84, .5, .66), (22, 82, 2, .72),
-    (24, 84, 1, .74), (25, 82, .5, .64), (25.5, 79, 2.5, .7),
-    (28, 76, 1, .62), (29, 73, 1, .56), (30, 70, 1, .5), (31, 67, 1, .44)]
+    (16, 80, 0.5, 0.72),
+    (16.5, 84, 0.5, 0.76),
+    (17, 87, 2, 0.86),
+    (19, 84, 1, 0.7),
+    (20, 85, 1.5, 0.8),
+    (21.5, 84, 0.5, 0.66),
+    (22, 82, 2, 0.72),
+    (24, 84, 1, 0.74),
+    (25, 82, 0.5, 0.64),
+    (25.5, 79, 2.5, 0.7),
+    (28, 76, 1, 0.62),
+    (29, 73, 1, 0.56),
+    (30, 70, 1, 0.5),
+    (31, 67, 1, 0.44),
+]
 # The fall: the theme broken into sighs.
-FALL_LINE = [(4, 72, 3, .46), (8, 73, 3, .42), (12, 72, 3, .38),
-             (18, 68, 2, .4), (20, 65, 4, .36), (25, 70, 2, .34), (28, 67, 2, .34), (30, 64, 2, .32)]
+FALL_LINE = [
+    (4, 72, 3, 0.46),
+    (8, 73, 3, 0.42),
+    (12, 72, 3, 0.38),
+    (18, 68, 2, 0.4),
+    (20, 65, 4, 0.36),
+    (25, 70, 2, 0.34),
+    (28, 67, 2, 0.34),
+    (30, 64, 2, 0.32),
+]
 # The struggle: the theme tries to rise and falls back; tries higher; then breaks through.
-STRUGGLE_LINE = [(0, 60, 1, .5), (1, 63, .5, .46), (1.5, 65, 2.5, .52),
-                 (4, 63, 1, .46), (5, 60, 3, .44),
-                 (8, 61, 1, .48), (9, 65, 1, .5), (10, 68, 2, .54),
-                 (12, 67, 1, .5), (13, 64, 1, .46), (14, 61, 2, .44),
-                 (16, 72, 1, .58), (17, 75, .5, .56), (17.5, 77, 1.5, .62), (19, 79, 1, .64),
-                 (20, 80, 2, .68), (22, 77, 2, .58),
-                 (24, 73, 1, .6), (25, 77, 1, .64), (26, 80, 1, .68), (27, 84, 1, .72),
-                 (28, 82, 2, .7), (30, 79, 1, .62), (31, 76, 1, .6),
-                 (32, 77, 1, .64), (33, 80, 1, .68), (34, 84, 2, .74),
-                 (36, 85, 2, .76), (38, 84, 2, .72),
-                 (40, 82, 1, .74), (41, 84, 1, .78), (42, 86, 2, .82),
-                 (44, 88, 4, .86)]
+STRUGGLE_LINE = [
+    (0, 60, 1, 0.5),
+    (1, 63, 0.5, 0.46),
+    (1.5, 65, 2.5, 0.52),
+    (4, 63, 1, 0.46),
+    (5, 60, 3, 0.44),
+    (8, 61, 1, 0.48),
+    (9, 65, 1, 0.5),
+    (10, 68, 2, 0.54),
+    (12, 67, 1, 0.5),
+    (13, 64, 1, 0.46),
+    (14, 61, 2, 0.44),
+    (16, 72, 1, 0.58),
+    (17, 75, 0.5, 0.56),
+    (17.5, 77, 1.5, 0.62),
+    (19, 79, 1, 0.64),
+    (20, 80, 2, 0.68),
+    (22, 77, 2, 0.58),
+    (24, 73, 1, 0.6),
+    (25, 77, 1, 0.64),
+    (26, 80, 1, 0.68),
+    (27, 84, 1, 0.72),
+    (28, 82, 2, 0.7),
+    (30, 79, 1, 0.62),
+    (31, 76, 1, 0.6),
+    (32, 77, 1, 0.64),
+    (33, 80, 1, 0.68),
+    (34, 84, 2, 0.74),
+    (36, 85, 2, 0.76),
+    (38, 84, 2, 0.72),
+    (40, 82, 1, 0.74),
+    (41, 84, 1, 0.78),
+    (42, 86, 2, 0.82),
+    (44, 88, 4, 0.86),
+]
 # Redemption, over Dbmaj9 | Eb13 | Cm9 | Fm9: the summit's height, without the fall.
-REDEMPTION_C3 = [(0, 80, 1, .72), (1, 84, 1, .76), (2, 87, 2, .82),
-                 (4, 85, 1.5, .76), (5.5, 84, .5, .64), (6, 82, 2, .72),
-                 (8, 79, 1, .68), (9, 82, 1, .72), (10, 86, 2, .8),
-                 (12, 84, 1.5, .76), (13.5, 80, .5, .62), (14, 79, 1, .68), (15, 77, 1, .66)]
+REDEMPTION_C3 = [
+    (0, 80, 1, 0.72),
+    (1, 84, 1, 0.76),
+    (2, 87, 2, 0.82),
+    (4, 85, 1.5, 0.76),
+    (5.5, 84, 0.5, 0.64),
+    (6, 82, 2, 0.72),
+    (8, 79, 1, 0.68),
+    (9, 82, 1, 0.72),
+    (10, 86, 2, 0.8),
+    (12, 84, 1.5, 0.76),
+    (13.5, 80, 0.5, 0.62),
+    (14, 79, 1, 0.68),
+    (15, 77, 1, 0.66),
+]
 # Over Bbm9 | C7b9 | Fm9: the cadence the whole song has been waiting for.
-REDEMPTION_C4 = [(0, 77, 1, .7), (1, 80, 1, .72), (2, 85, 1.5, .78), (3.5, 84, .5, .62),
-                 (4, 82, 1.5, .74), (5.5, 79, .5, .62), (6, 76, 2, .7),
-                 (8, 77, 4, .76),
-                 (12, 72, 1, .56), (13, 75, 1, .56), (14, 79, 2, .58)]
+REDEMPTION_C4 = [
+    (0, 77, 1, 0.7),
+    (1, 80, 1, 0.72),
+    (2, 85, 1.5, 0.78),
+    (3.5, 84, 0.5, 0.62),
+    (4, 82, 1.5, 0.74),
+    (5.5, 79, 0.5, 0.62),
+    (6, 76, 2, 0.7),
+    (8, 77, 4, 0.76),
+    (12, 72, 1, 0.56),
+    (13, 75, 1, 0.56),
+    (14, 79, 2, 0.58),
+]
 # Epilogue: Dbmaj9 | Fm9 | Dbmaj9 | E (!) | Fm9.
-EPILOGUE_LINE = [(0, 72, 2, .5), (2, 75, 1, .44), (3, 77, 5, .5),
-                 (8, 75, 2, .46), (10, 72, 2, .42), (12, 68, 4, .44),
-                 (16, 73, 2, .42), (18, 72, 2, .4),
-                 # One bar, deadpan, in the wrong key: the theme's opening in E major.
-                 (20, 71, .5, .62), (20.5, 76, .5, .6), (21, 80, .5, .64), (21.5, 76, .5, .56), (22, 71, .75, .58),
-                 # ...and back, as if nothing happened.
-                 (24, 79, 2, .4), (26, 77, 6, .42)]
+EPILOGUE_LINE = [
+    (0, 72, 2, 0.5),
+    (2, 75, 1, 0.44),
+    (3, 77, 5, 0.5),
+    (8, 75, 2, 0.46),
+    (10, 72, 2, 0.42),
+    (12, 68, 4, 0.44),
+    (16, 73, 2, 0.42),
+    (18, 72, 2, 0.4),
+    # One bar, deadpan, in the wrong key: the theme's opening in E major.
+    (20, 71, 0.5, 0.62),
+    (20.5, 76, 0.5, 0.6),
+    (21, 80, 0.5, 0.64),
+    (21.5, 76, 0.5, 0.56),
+    (22, 71, 0.75, 0.58),
+    # ...and back, as if nothing happened.
+    (24, 79, 2, 0.4),
+    (26, 77, 6, 0.42),
+]
 
 # ------------------------------------------------------------------ drums
 
 KICKS = [
-    [(0, .92), (1.75, .55), (2.5, .84)],
-    [(0, .9), (0.75, .48), (2.5, .8), (3.25, .58)],
-    [(0, .92), (2.25, .6), (2.5, .8)],
-    [(0, .94), (1.5, .6), (2.5, .86), (2.75, .5)],
-    [(0, .92), (1.75, .55), (2.5, .84), (3.5, .55)],
+    [(0, 0.92), (1.75, 0.55), (2.5, 0.84)],
+    [(0, 0.9), (0.75, 0.48), (2.5, 0.8), (3.25, 0.58)],
+    [(0, 0.92), (2.25, 0.6), (2.5, 0.8)],
+    [(0, 0.94), (1.5, 0.6), (2.5, 0.86), (2.75, 0.5)],
+    [(0, 0.92), (1.75, 0.55), (2.5, 0.84), (3.5, 0.55)],
 ]
 GHOST_SPOTS = [0.75, 1.75, 2.25, 2.75, 3.25, 3.5, 3.75]
 
@@ -413,7 +602,7 @@ def drum_bar(pid, t, style, e, fill=None):
             hats(busy=0.3 + 0.5 * e, open_on=(3.5,) if rng.random() < 0.4 else ())
     elif style == "halftime":
         ev.append((0, "kick", 60, 0.25, 0.95))
-        for pos, v in rng.sample([(1.5, .55), (2.75, .5), (3.5, .6), (0.75, .45)], 2 if e > 0.6 else 1):
+        for pos, v in rng.sample([(1.5, 0.55), (2.75, 0.5), (3.5, 0.6), (0.75, 0.45)], 2 if e > 0.6 else 1):
             ev.append((pos, "kick", 60, 0.25, v))
         ev.append((2, "snare", 60, 0.3, 0.95))
         if e > 0.6:
@@ -441,8 +630,16 @@ def drum_bar(pid, t, style, e, fill=None):
         ev.append((3.0, "kick", 60, 0.25, 0.6))
     elif fill == "tom":
         ev.append((2.0, "kick", 60, 0.25, 0.86))
-        for pos, pitch, v in [(2.0, 67, .7), (2.25, 67, .5), (2.5, 64, .72), (2.75, 64, .5),
-                              (3.0, 60, .75), (3.25, 60, .55), (3.5, 55, .8), (3.75, 55, .62)]:
+        for pos, pitch, v in [
+            (2.0, 67, 0.7),
+            (2.25, 67, 0.5),
+            (2.5, 64, 0.72),
+            (2.75, 64, 0.5),
+            (3.0, 60, 0.75),
+            (3.25, 60, 0.55),
+            (3.5, 55, 0.8),
+            (3.75, 55, 0.62),
+        ]:
             ev.append((pos, "tom", pitch, 0.25, v))
         ev.append((3.5, "openhat", 60, 0.5, 0.34))
     elif fill == "roll":
@@ -474,9 +671,13 @@ def ramp(style, bars, e0, e1, fills=None):
 # ------------------------------------------------------------------ one-shot FX (reused clips)
 
 ONE_SHOTS = {"impact", "subdrop", "fall", "riser", "ascent"}
-for pid, name, ch, length in [("impact", "Impact", "impact", 8), ("subdrop", "Sub Drop", "subdrop", 4),
-                              ("fall", "Downlifter", "fall", 4), ("riser", "Riser", "riser", 8),
-                              ("ascent", "Long Ascent", "ascent", 16)]:
+for pid, name, ch, length in [
+    ("impact", "Impact", "impact", 8),
+    ("subdrop", "Sub Drop", "subdrop", 4),
+    ("fall", "Downlifter", "fall", 4),
+    ("riser", "Riser", "riser", 8),
+    ("ascent", "Long Ascent", "ascent", 16),
+]:
     pattern(pid, name, ONYX if ch == "subdrop" else CHAMPAGNE, length)
     note(pid, ch, 60, 0, 0.5, 0.85, human=0)
 
@@ -499,8 +700,13 @@ hold(p, PROLOGUE, "pad", vel=0.38)
 texture("air", "Breath", EMERALD, "air", 60, 32, T_TEX, at("prologue"))
 
 # Journey: the band gathers around the theme.
-drums("journey", ramp("brush", 4, 0.2, 0.3) + ramp("brush", 4, 0.4, 0.5, {4: "small"})
-      + ramp("groove", 4, 0.35, 0.45, {4: "small"}) + ramp("groove", 4, 0.45, 0.55, {4: "tom"}))
+drums(
+    "journey",
+    ramp("brush", 4, 0.2, 0.3)
+    + ramp("brush", 4, 0.4, 0.5, {4: "small"})
+    + ramp("groove", 4, 0.35, 0.45, {4: "small"})
+    + ramp("groove", 4, 0.45, 0.55, {4: "tom"}),
+)
 p = section_pattern("Bass", "journey", BURGUNDY, T_BASS)
 bass(p, JOURNEY[5:], "walk", vel=0.85, t0=16)  # enters with the second statement of the theme
 p = section_pattern("Keys", "journey", ROSE, T_KEYS)
@@ -521,16 +727,29 @@ bass(p, RISE[6:], "eighths", t0=24)
 p = section_pattern("Keys", "rise", ROSE, T_KEYS)
 keys(p, RISE, "pulse", vel=0.72)
 p = section_pattern("Strings", "rise", ROSE, T_STRINGS)
-line(p, "strings", [(0, 65, 4, .5), (4, 67, 4, .54), (8, 68, 4, .58), (12, 70, 4, .62),
-                    (16, 73, 4, .66), (20, 75, 4, .7), (24, 77, 2, .74), (26, 79, 6, .8)])
+line(
+    p,
+    "strings",
+    [
+        (0, 65, 4, 0.5),
+        (4, 67, 4, 0.54),
+        (8, 68, 4, 0.58),
+        (12, 70, 4, 0.62),
+        (16, 73, 4, 0.66),
+        (20, 75, 4, 0.7),
+        (24, 77, 2, 0.74),
+        (26, 79, 6, 0.8),
+    ],
+)
 hold(p, RISE, "strings", octave=0, vel=0.4)
 p = section_pattern("Pad", "rise", AMETHYST, T_PADS)
 hold(p, RISE, "pad", vel=0.42)
 clip("riser", T_FX, at("rise", 6))
 
 # Summit: everything; the theme at its height, then a fall from the peak.
-drums("summit", ramp("big", 8, 0.75, 0.85, {4: "small", 8: "tom"})
-      + ramp("big", 8, 0.85, 0.95, {4: "small", 8: "stop"}))
+drums(
+    "summit", ramp("big", 8, 0.75, 0.85, {4: "small", 8: "tom"}) + ramp("big", 8, 0.85, 0.95, {4: "small", 8: "stop"})
+)
 p = section_pattern("Bass", "summit", BURGUNDY, T_BASS)
 bass(p, SUMMIT, "walk", vel=1.02)
 p = section_pattern("Keys", "summit", ROSE, T_KEYS)
@@ -563,8 +782,12 @@ hold(p, FALL, "bowls", octave=0, vel=0.5)
 texture("embers", "Embers", EMBER, "embers", 53, 48, T_TEX, at("fall"), vel=0.55)
 
 # Struggle: half-time grind, a dark sequence, the theme trying to climb.
-drums("struggle", ramp("halftime", 4, 0.45, 0.55) + ramp("halftime", 4, 0.65, 0.75, {4: "small"})
-      + [("build", 0.5, None), ("build", 0.7, None), ("build", 0.9, None), ("build", 1.0, "roll")])
+drums(
+    "struggle",
+    ramp("halftime", 4, 0.45, 0.55)
+    + ramp("halftime", 4, 0.65, 0.75, {4: "small"})
+    + [("build", 0.5, None), ("build", 0.7, None), ("build", 0.9, None), ("build", 1.0, "roll")],
+)
 p = section_pattern("Bass", "struggle", BURGUNDY, T_BASS)
 bass(p, GRIND + GRIND, "pulse", vel=0.82)
 bass(p, CLIMB, "climb", t0=32)
@@ -580,8 +803,9 @@ clip("riser", T_FX, at("struggle", 10))
 
 # Redemption: still F minor, but whole. The question is finally answered.
 clip("impact", T_FX, at("redemption"))
-drums("redemption", ramp("big", 8, 0.8, 0.88, {4: "small", 8: "tom"})
-      + ramp("big", 8, 0.88, 0.95, {4: "small", 8: "tom"}))
+drums(
+    "redemption", ramp("big", 8, 0.8, 0.88, {4: "small", 8: "tom"}) + ramp("big", 8, 0.88, 0.95, {4: "small", 8: "tom"})
+)
 p = section_pattern("Bass", "redemption", BURGUNDY, T_BASS)
 bass(p, REDEMPTION, "walk", vel=1.02)
 p = section_pattern("Keys", "redemption", ROSE, T_KEYS)
@@ -590,7 +814,7 @@ p = section_pattern("Dawn", "redemption", AMETHYST, T_PADS)
 hold(p, REDEMPTION, "dawn", vel=0.5)
 p = section_pattern("Choir", "redemption", AMETHYST, T_STRINGS)
 hold(p, REDEMPTION, "choir", octave=0, vel=0.5)
-line(p, "strings", [(0, 77, 3, .8)])  # the arrival, on F
+line(p, "strings", [(0, 77, 3, 0.8)])  # the arrival, on F
 line(p, "strings", THEME_ANSWER, t0=16, vel=0.75)
 line(p, "strings", REDEMPTION_C3, t0=32, transpose=-12, vel=0.75)
 line(p, "strings", REDEMPTION_C4, t0=48, transpose=-12, vel=0.75)
@@ -613,7 +837,7 @@ hold(p, EPILOGUE[:3], "pad", vel=0.4)
 hold(p, EPILOGUE[4:], "pad", vel=0.4, t0=24)
 p = section_pattern("Keys", "epilogue", ROSE, T_KEYS)
 keys(p, EPILOGUE[:3], "sparse", vel=0.9)
-for s, v in ((0, .5), (1.5, .42), (2.5, .46)):  # the joke, played straight and staccato
+for s, v in ((0, 0.5), (1.5, 0.42), (2.5, 0.46)):  # the joke, played straight and staccato
     strum(p, CHORDS["E"][0], 20 + s, 0.22, v, spread=0.004)
 keys(p, EPILOGUE[4:], "sparse", vel=0.9, t0=24)
 p = section_pattern("Bass", "epilogue", BURGUNDY, T_BASS)
@@ -634,51 +858,91 @@ def ins(name, volume=1.0, effects=None):
 
 
 MIXER = [
-    ins("Master", 0.92, [
-        fx("eq", {"low": 0.5, "lowFreq": 70, "high": -1.5, "highFreq": 9000}),
-        fx("compressor", {"threshold": -12, "ratio": 1.6, "attack": 30, "release": 300, "makeup": 1}),
-        fx("limiter", {"gain": 1, "ceiling": -0.8}),
-    ]),
-    ins("Drums", 0.9, [
-        fx("compressor", {"threshold": -18, "ratio": 3, "attack": 12, "release": 120, "makeup": 2.5}),
-        fx("eq", {"high": -2.5, "highFreq": 7000, "mid": 1, "midFreq": 180}),
-        fx("reverb", {"size": 0.35, "damping": 0.6, "mix": 0.08}),
-    ]),
-    ins("Hats", 0.62, [
-        fx("eq", {"low": -12, "lowFreq": 500, "high": -4, "highFreq": 8000}),
-        fx("reverb", {"size": 0.4, "damping": 0.6, "mix": 0.1}),
-    ]),
-    ins("Bass", 0.85, [
-        fx("eq", {"low": 1.5, "lowFreq": 80, "mid": -2.5, "midFreq": 300, "midQ": 1.2}),
-        fx("drive", {"amount": 0.12, "tone": 2500, "mix": 0.4, "output": 0.95}),
-    ]),
-    ins("Keys", 0.8, [
-        fx("chorus", {"rate": 0.35, "depth": 0.45, "mix": 0.35}),
-        fx("delay", {"time": 0.75, "feedback": 0.25, "tone": 3000, "mix": 0.12}, {"mode": "pingpong"}),
-        fx("reverb", {"size": 0.7, "damping": 0.5, "mix": 0.22}),
-    ]),
-    ins("Pads", 0.75, [
-        fx("eq", {"low": -8, "lowFreq": 250}),
-        fx("reverb", {"size": 0.9, "damping": 0.45, "mix": 0.35}),
-    ]),
-    ins("Harp", 0.8, [
-        fx("delay", {"time": 0.5, "feedback": 0.3, "tone": 3500, "mix": 0.2}, {"mode": "pingpong"}),
-        fx("reverb", {"size": 0.8, "damping": 0.45, "mix": 0.3}),
-    ]),
-    ins("Textures", 0.7, [
-        fx("filter", {"cutoff": 7000, "resonance": 0.1}, {"mode": "lowpass"}),
-        fx("reverb", {"size": 0.9, "damping": 0.4, "mix": 0.4}),
-    ]),
+    ins(
+        "Master",
+        0.92,
+        [
+            fx("eq", {"low": 0.5, "lowFreq": 70, "high": -1.5, "highFreq": 9000}),
+            fx("compressor", {"threshold": -12, "ratio": 1.6, "attack": 30, "release": 300, "makeup": 1}),
+            fx("limiter", {"gain": 1, "ceiling": -0.8}),
+        ],
+    ),
+    ins(
+        "Drums",
+        0.9,
+        [
+            fx("compressor", {"threshold": -18, "ratio": 3, "attack": 12, "release": 120, "makeup": 2.5}),
+            fx("eq", {"high": -2.5, "highFreq": 7000, "mid": 1, "midFreq": 180}),
+            fx("reverb", {"size": 0.35, "damping": 0.6, "mix": 0.08}),
+        ],
+    ),
+    ins(
+        "Hats",
+        0.62,
+        [
+            fx("eq", {"low": -12, "lowFreq": 500, "high": -4, "highFreq": 8000}),
+            fx("reverb", {"size": 0.4, "damping": 0.6, "mix": 0.1}),
+        ],
+    ),
+    ins(
+        "Bass",
+        0.85,
+        [
+            fx("eq", {"low": 1.5, "lowFreq": 80, "mid": -2.5, "midFreq": 300, "midQ": 1.2}),
+            fx("drive", {"amount": 0.12, "tone": 2500, "mix": 0.4, "output": 0.95}),
+        ],
+    ),
+    ins(
+        "Keys",
+        0.8,
+        [
+            fx("chorus", {"rate": 0.35, "depth": 0.45, "mix": 0.35}),
+            fx("delay", {"time": 0.75, "feedback": 0.25, "tone": 3000, "mix": 0.12}, {"mode": "pingpong"}),
+            fx("reverb", {"size": 0.7, "damping": 0.5, "mix": 0.22}),
+        ],
+    ),
+    ins(
+        "Pads",
+        0.75,
+        [
+            fx("eq", {"low": -8, "lowFreq": 250}),
+            fx("reverb", {"size": 0.9, "damping": 0.45, "mix": 0.35}),
+        ],
+    ),
+    ins(
+        "Harp",
+        0.8,
+        [
+            fx("delay", {"time": 0.5, "feedback": 0.3, "tone": 3500, "mix": 0.2}, {"mode": "pingpong"}),
+            fx("reverb", {"size": 0.8, "damping": 0.45, "mix": 0.3}),
+        ],
+    ),
+    ins(
+        "Textures",
+        0.7,
+        [
+            fx("filter", {"cutoff": 7000, "resonance": 0.1}, {"mode": "lowpass"}),
+            fx("reverb", {"size": 0.9, "damping": 0.4, "mix": 0.4}),
+        ],
+    ),
     ins("FX", 0.7, [fx("reverb", {"size": 0.8, "damping": 0.5, "mix": 0.25})]),
-    ins("Strings", 0.75, [
-        fx("eq", {"low": -6, "lowFreq": 200, "high": -2, "highFreq": 8000}),
-        fx("reverb", {"size": 0.85, "damping": 0.5, "mix": 0.3}),
-    ]),
-    ins("Bells & Sequences", 0.7, [
-        fx("eq", {"low": -6, "lowFreq": 300, "high": -3, "highFreq": 9000}),
-        fx("delay", {"time": 0.75, "feedback": 0.3, "tone": 4000, "mix": 0.15}, {"mode": "pingpong"}),
-        fx("reverb", {"size": 0.9, "damping": 0.45, "mix": 0.35}),
-    ]),
+    ins(
+        "Strings",
+        0.75,
+        [
+            fx("eq", {"low": -6, "lowFreq": 200, "high": -2, "highFreq": 8000}),
+            fx("reverb", {"size": 0.85, "damping": 0.5, "mix": 0.3}),
+        ],
+    ),
+    ins(
+        "Bells & Sequences",
+        0.7,
+        [
+            fx("eq", {"low": -6, "lowFreq": 300, "high": -3, "highFreq": 9000}),
+            fx("delay", {"time": 0.75, "feedback": 0.3, "tone": 4000, "mix": 0.15}, {"mode": "pingpong"}),
+            fx("reverb", {"size": 0.9, "damping": 0.45, "mix": 0.35}),
+        ],
+    ),
 ]
 
 # ------------------------------------------------------------------ automation
@@ -702,36 +966,63 @@ assert MIXER[7]["name"] == "Textures" and MIXER[7]["effects"][0]["type"] == "fil
 AUTOMATION = [
     # A slight sag after the impact of the Fall (recovering for the Struggle),
     # and a ritardando over the last four bars: 92 -> 84 BPM, slowing most at the end.
-    lane("tempo", "Tempo", "tempo", GOLD,
-         (0, BPM), (at("fall"), BPM), (at("fall", 4), BPM - 3, -0.4), (at("struggle"), BPM, 0.3),
-         (SONG_END - 16, BPM), (SONG_END, 84, 0.3)),
+    lane(
+        "tempo",
+        "Tempo",
+        "tempo",
+        GOLD,
+        (0, BPM),
+        (at("fall"), BPM),
+        (at("fall", 4), BPM - 3, -0.4),
+        (at("struggle"), BPM, 0.3),
+        (SONG_END - 16, BPM),
+        (SONG_END, 84, 0.3),
+    ),
     # The Prologue's breath opens up; the Fall's embers start dark and slowly
     # let the light back in. (Nothing else plays on the Textures bus meanwhile.)
-    lane("textures-filter", "Textures · Low-pass", TEXTURES_FILTER, EMBER,
-         (0, 2000), (at("prologue", 7), 7000, 0.4), (at("fall") - 4, 7000), (at("fall"), 1500),
-         (at("fall", 12), 7000, 0.45)),
+    lane(
+        "textures-filter",
+        "Textures · Low-pass",
+        TEXTURES_FILTER,
+        EMBER,
+        (0, 2000),
+        (at("prologue", 7), 7000, 0.4),
+        (at("fall") - 4, 7000),
+        (at("fall"), 1500),
+        (at("fall", 12), 7000, 0.45),
+    ),
 ]
 
 project = {
     "$schema": "./project.schema.json",
     "format": "rosaclef/1",
-    "meta": {"title": "Velvet Hour", "author": "Rosaclef",
-             "description": "A four-minute journey in F minor: a harp theme sets out, climbs, falls, struggles "
-                            "and returns whole. A demo of the Rosaclef studio and its factory presets."},
+    "meta": {
+        "title": "Velvet Hour",
+        "author": "Rosaclef",
+        "description": "A four-minute journey in F minor: a harp theme sets out, climbs, falls, struggles "
+        "and returns whole. A demo of the Rosaclef studio and its factory presets.",
+    },
     "transport": {"bpm": BPM, "beatsPerBar": 4, "swing": 0},
     "channels": [
         {"id": i, "name": n, "color": c, "instrument": dev, "volume": vol, "pan": pan, "mute": False, "mixer": m}
         for (i, n, c, dev, m, vol, pan) in CHANNELS
     ],
     "patterns": [
-        {"id": pid, "name": patterns[pid]["name"], "color": patterns[pid]["color"], "length": patterns[pid]["length"],
-         "notes": sorted(patterns[pid]["notes"], key=lambda n: (n["start"], n["channel"], n["pitch"]))}
+        {
+            "id": pid,
+            "name": patterns[pid]["name"],
+            "color": patterns[pid]["color"],
+            "length": patterns[pid]["length"],
+            "notes": sorted(patterns[pid]["notes"], key=lambda n: (n["start"], n["channel"], n["pitch"])),
+        }
         for pid in sorted(order, key=lambda i: i in ONE_SHOTS)  # one-shot FX last
     ],
     "playlist": {
         "tracks": [{"name": t, "mute": False} for t in TRACKS],
-        "clips": [{"pattern": p, "track": tr, "start": s, "length": l}
-                  for (p, tr, s, l) in sorted(clips, key=lambda c: (c[2], c[1]))],
+        "clips": [
+            {"pattern": p, "track": tr, "start": s, "length": ln}
+            for (p, tr, s, ln) in sorted(clips, key=lambda c: (c[2], c[1]))
+        ],
     },
     "mixer": {"inserts": MIXER},
     "automation": AUTOMATION,

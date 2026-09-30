@@ -57,7 +57,13 @@ pub trait ExternalProcessor: Send {
 
 /// Something that can instantiate external plugins (implemented natively).
 pub trait PluginHost: Send + Sync {
-    fn load(&self, dev: &Device, instrument: bool, sample_rate: f32, max_block: usize) -> Result<Box<dyn ExternalProcessor>, String>;
+    fn load(
+        &self,
+        dev: &Device,
+        instrument: bool,
+        sample_rate: f32,
+        max_block: usize,
+    ) -> Result<Box<dyn ExternalProcessor>, String>;
 }
 
 struct PluginInstrument {
@@ -78,7 +84,8 @@ impl Instrument for PluginInstrument {
         let n = left.len();
         self.tmp_l[..n].fill(0.0);
         self.tmp_r[..n].fill(0.0);
-        self.proc_.process(events, &mut self.tmp_l[..n], &mut self.tmp_r[..n]);
+        self.proc_
+            .process(events, &mut self.tmp_l[..n], &mut self.tmp_r[..n]);
         for i in 0..n {
             left[i] += self.tmp_l[i];
             right[i] += self.tmp_r[i];
@@ -115,7 +122,12 @@ pub enum PlayMode {
 /// when they change.
 fn signature(dev: &Device) -> String {
     match dev.kind.as_str() {
-        "plugin" => format!("plugin|{}|{}|{}", dev.option("format"), dev.option("path"), dev.option("id")),
+        "plugin" => format!(
+            "plugin|{}|{}|{}",
+            dev.option("format"),
+            dev.option("path"),
+            dev.option("id")
+        ),
         k => k.to_string(),
     }
 }
@@ -293,7 +305,10 @@ impl Engine {
     pub fn new(sample_rate: f32) -> Engine {
         let project = Project::empty("Untitled");
         let mut e = Engine {
-            ctx: Ctx { sr: sample_rate, bpm: 120.0 },
+            ctx: Ctx {
+                sr: sample_rate,
+                bpm: 120.0,
+            },
             project: project.clone(),
             channels: vec![],
             inserts: vec![],
@@ -394,17 +409,43 @@ impl Engine {
 
         // Inserts and their effect chains.
         let any_solo = project.mixer.inserts.iter().skip(1).any(|i| i.solo);
-        self.inserts.resize_with(project.mixer.inserts.len(), InsertRt::new);
-        for (idx, (ins, rt)) in project.mixer.inserts.iter().zip(self.inserts.iter_mut()).enumerate() {
-            let mut old_fx: Vec<Option<FxRt>> = std::mem::take(&mut rt.fx).into_iter().map(Some).collect();
+        self.inserts
+            .resize_with(project.mixer.inserts.len(), InsertRt::new);
+        for (idx, (ins, rt)) in project
+            .mixer
+            .inserts
+            .iter()
+            .zip(self.inserts.iter_mut())
+            .enumerate()
+        {
+            let mut old_fx: Vec<Option<FxRt>> =
+                std::mem::take(&mut rt.fx).into_iter().map(Some).collect();
             for (j, dev) in ins.effects.iter().enumerate() {
                 let sig = signature(dev);
-                let reused = old_fx.get_mut(j).and_then(|slot| if slot.as_ref().map(|f| f.sig == sig).unwrap_or(false) { slot.take() } else { None });
+                let reused = old_fx.get_mut(j).and_then(|slot| {
+                    if slot.as_ref().map(|f| f.sig == sig).unwrap_or(false) {
+                        slot.take()
+                    } else {
+                        None
+                    }
+                });
                 let mut f = match reused {
                     Some(f) => f,
                     None => {
-                        let fx = make_effect(dev, &ctx, self.plugins.as_deref(), &mut self.device_errors, &format!("mixer.inserts[{idx}].effects[{j}]"));
-                        FxRt { sig, enabled: true, fx, dev: Device::default(), tempo_synced: false }
+                        let fx = make_effect(
+                            dev,
+                            &ctx,
+                            self.plugins.as_deref(),
+                            &mut self.device_errors,
+                            &format!("mixer.inserts[{idx}].effects[{j}]"),
+                        );
+                        FxRt {
+                            sig,
+                            enabled: true,
+                            fx,
+                            dev: Device::default(),
+                            tempo_synced: false,
+                        }
                     }
                 };
                 f.fx.set_device(dev, &ctx);
@@ -433,11 +474,22 @@ impl Engine {
                         let sixteenth = n.start * 4.0;
                         let on_grid = (sixteenth - sixteenth.round()).abs() < 1e-6;
                         let swung = on_grid && (sixteenth.round() as i64) % 2 == 1;
-                        Some(CNote { channel, key: n.pitch.clamp(0, 127) as u8, start: n.start, swung, length: n.length.max(1e-4), velocity: n.velocity as f32 })
+                        Some(CNote {
+                            channel,
+                            key: n.pitch.clamp(0, 127) as u8,
+                            start: n.start,
+                            swung,
+                            length: n.length.max(1e-4),
+                            velocity: n.velocity as f32,
+                        })
                     })
                     .collect();
                 notes.sort_by(|a, b| a.start.total_cmp(&b.start));
-                CPattern { id: p.id.clone(), length: p.length.max(1e-3), notes }
+                CPattern {
+                    id: p.id.clone(),
+                    length: p.length.max(1e-3),
+                    notes,
+                }
             })
             .collect();
 
@@ -449,9 +501,17 @@ impl Engine {
             .iter()
             .filter(|c| !muted_tracks.get(c.track.index()).copied().unwrap_or(false))
             .map(|c| CClip {
-                pattern: if c.pattern.is_empty() { None } else { self.patterns.iter().position(|p| p.id == c.pattern) },
+                pattern: if c.pattern.is_empty() {
+                    None
+                } else {
+                    self.patterns.iter().position(|p| p.id == c.pattern)
+                },
                 sample_path: c.sample.clone(),
-                sample: if c.sample.is_empty() { None } else { self.samples.get(&c.sample) },
+                sample: if c.sample.is_empty() {
+                    None
+                } else {
+                    self.samples.get(&c.sample)
+                },
                 start: c.start,
                 end: c.start + c.length,
                 offset: c.offset,
@@ -487,12 +547,18 @@ impl Engine {
     fn make_instrument(&mut self, dev: &Device, channel: &str) -> Box<dyn Instrument> {
         if dev.kind == "plugin" {
             let Some(host) = &self.plugins else {
-                self.device_errors.push(format!("channel {channel}: plugins are not available in this engine"));
+                self.device_errors.push(format!(
+                    "channel {channel}: plugins are not available in this engine"
+                ));
                 return Box::new(instruments::Silent);
             };
             return match host.load(dev, true, self.ctx.sr, MAX_BLOCK) {
                 Ok(p) => {
-                    let mut inst = PluginInstrument { proc_: p, tmp_l: vec![0.0; MAX_BLOCK], tmp_r: vec![0.0; MAX_BLOCK] };
+                    let mut inst = PluginInstrument {
+                        proc_: p,
+                        tmp_l: vec![0.0; MAX_BLOCK],
+                        tmp_r: vec![0.0; MAX_BLOCK],
+                    };
                     inst.set_device(dev, &self.ctx);
                     Box::new(inst)
                 }
@@ -518,7 +584,9 @@ impl Engine {
         for ch in &self.project.channels {
             match ch.instrument.kind.as_str() {
                 "sampler" => add(ch.instrument.option("sample")),
-                "nebula" if ch.instrument.option("source") == "sample" => add(ch.instrument.option("sample")),
+                "nebula" if ch.instrument.option("source") == "sample" => {
+                    add(ch.instrument.option("sample"))
+                }
                 _ => {}
             }
         }
@@ -629,27 +697,41 @@ impl Engine {
     fn release_all(&mut self) {
         self.pending.clear();
         for ch in &mut self.channels {
-            ch.events.push(NoteEvent { offset: 0, kind: NoteKind::AllOff });
+            ch.events.push(NoteEvent {
+                offset: 0,
+                kind: NoteKind::AllOff,
+            });
         }
     }
 
     /// Live note input (UI keyboard, piano roll preview, MIDI).
     pub fn note_on(&mut self, channel: &str, key: u8, velocity: f32) {
         if let Some(ch) = self.channels.iter_mut().find(|c| c.id == channel) {
-            ch.events.push(NoteEvent { offset: 0, kind: NoteKind::On { key, velocity } });
+            ch.events.push(NoteEvent {
+                offset: 0,
+                kind: NoteKind::On { key, velocity },
+            });
         }
     }
 
     pub fn note_off(&mut self, channel: &str, key: u8) {
         if let Some(ch) = self.channels.iter_mut().find(|c| c.id == channel) {
-            ch.events.push(NoteEvent { offset: 0, kind: NoteKind::Off { key } });
+            ch.events.push(NoteEvent {
+                offset: 0,
+                kind: NoteKind::Off { key },
+            });
         }
     }
 
     /// Current loop length in beats (0 when there is nothing to play).
     pub fn loop_length(&self) -> f64 {
         match &self.mode {
-            PlayMode::Pattern(id) => self.patterns.iter().find(|p| &p.id == id).map(|p| p.length).unwrap_or(0.0),
+            PlayMode::Pattern(id) => self
+                .patterns
+                .iter()
+                .find(|p| &p.id == id)
+                .map(|p| p.length)
+                .unwrap_or(0.0),
             PlayMode::Song => self.song_length,
         }
     }
@@ -674,7 +756,11 @@ impl Engine {
     /// Render audio of any length into the two output buffers (overwriting).
     pub fn process(&mut self, out_l: &mut [f32], out_r: &mut [f32]) {
         let n = out_l.len().min(out_r.len());
-        let step = if self.lanes.is_empty() { MAX_BLOCK } else { AUTOMATION_BLOCK };
+        let step = if self.lanes.is_empty() {
+            MAX_BLOCK
+        } else {
+            AUTOMATION_BLOCK
+        };
         let mut done = 0;
         while done < n {
             let len = (n - done).min(step);
@@ -774,7 +860,10 @@ impl Engine {
                 if p.end < c1 {
                     let off = frame + (((p.end - c0).max(0.0) / bpf) as usize).min(seg - 1);
                     if let Some(ch) = channels.iter_mut().find(|c| c.handle == p.handle) {
-                        ch.events.push(NoteEvent { offset: off, kind: NoteKind::Off { key: p.key } });
+                        ch.events.push(NoteEvent {
+                            offset: off,
+                            kind: NoteKind::Off { key: p.key },
+                        });
                     }
                     false
                 } else {
@@ -782,11 +871,25 @@ impl Engine {
                 }
             });
 
-            let emit = |note: &CNote, t: f64, max_len: f64, channels: &mut Vec<ChannelRt>, pending: &mut Vec<Pending>| {
+            let emit = |note: &CNote,
+                        t: f64,
+                        max_len: f64,
+                        channels: &mut Vec<ChannelRt>,
+                        pending: &mut Vec<Pending>| {
                 let off = frame + (((t - b0) / bpf) as usize).min(seg - 1);
                 let ch = &mut channels[note.channel];
-                ch.events.push(NoteEvent { offset: off, kind: NoteKind::On { key: note.key, velocity: note.velocity } });
-                pending.push(Pending { handle: ch.handle, key: note.key, end: c0 + (t - b0) + note.length.min(max_len) });
+                ch.events.push(NoteEvent {
+                    offset: off,
+                    kind: NoteKind::On {
+                        key: note.key,
+                        velocity: note.velocity,
+                    },
+                });
+                pending.push(Pending {
+                    handle: ch.handle,
+                    key: note.key,
+                    end: c0 + (t - b0) + note.length.min(max_len),
+                });
             };
 
             let shift = self.swing * (1.0 / 12.0);
@@ -819,14 +922,33 @@ impl Engine {
                                     let start = note.start_at(shift);
                                     let t = origin + start;
                                     if t >= lo && t < hi && start < p.length {
-                                        emit(note, t, clip.end - t, &mut self.channels, &mut self.pending);
+                                        emit(
+                                            note,
+                                            t,
+                                            clip.end - t,
+                                            &mut self.channels,
+                                            &mut self.pending,
+                                        );
                                     }
                                 }
                             }
                         } else if let Some(sample) = &clip.sample {
                             let base_spb = 60.0 / self.project.transport.bpm.max(1.0);
-                            let timing = ClipTiming { frame, seg, b0, bpf, spb: 60.0 / self.ctx.bpm as f64, base_spb };
-                            mix_audio_clip(clip, sample, &mut self.inserts[clip.mixer.index()], &timing, &self.tempo_map);
+                            let timing = ClipTiming {
+                                frame,
+                                seg,
+                                b0,
+                                bpf,
+                                spb: 60.0 / self.ctx.bpm as f64,
+                                base_spb,
+                            };
+                            mix_audio_clip(
+                                clip,
+                                sample,
+                                &mut self.inserts[clip.mixer.index()],
+                                &timing,
+                                &self.tempo_map,
+                            );
                         }
                     }
                 }
@@ -854,7 +976,13 @@ struct ClipTiming {
 /// Mix an audio clip. Audio plays at its natural speed: the source position
 /// is the time elapsed since the clip start (following tempo automation) plus
 /// the clip offset (beats at the project tempo).
-fn mix_audio_clip(clip: &CClip, sample: &SampleData, ins: &mut InsertRt, t: &ClipTiming, tempo: &TempoMap) {
+fn mix_audio_clip(
+    clip: &CClip,
+    sample: &SampleData,
+    ins: &mut InsertRt,
+    t: &ClipTiming,
+    tempo: &TempoMap,
+) {
     let fade = 0.004 / t.spb;
     let sr = sample.sample_rate as f64;
     let offset_s = clip.offset * t.base_spb;
@@ -866,12 +994,18 @@ fn mix_audio_clip(clip: &CClip, sample: &SampleData, ins: &mut InsertRt, t: &Cli
         if beat < clip.start || beat >= clip.end {
             continue;
         }
-        let secs = if tempo.is_automated() { tempo.seconds_at(beat) - start_s } else { (beat - clip.start) * t.base_spb };
+        let secs = if tempo.is_automated() {
+            tempo.seconds_at(beat) - start_s
+        } else {
+            (beat - clip.start) * t.base_spb
+        };
         let pos = (secs + offset_s) * sr;
         if pos >= ch_l.len() as f64 {
             continue;
         }
-        let edge = ((beat - clip.start) / fade).min((clip.end - beat) / fade).min(1.0) as f32;
+        let edge = ((beat - clip.start) / fade)
+            .min((clip.end - beat) / fade)
+            .min(1.0) as f32;
         let g = clip.gain * edge;
         ins.buf_l[t.frame + i] += hermite(ch_l, pos) * g;
         ins.buf_r[t.frame + i] += hermite(ch_r, pos) * g;
@@ -902,7 +1036,13 @@ fn run_insert(ins: &mut InsertRt, n: usize) {
     }
 }
 
-fn make_effect(dev: &Device, ctx: &Ctx, host: Option<&dyn PluginHost>, errors: &mut Vec<String>, path: &str) -> Box<dyn Effect> {
+fn make_effect(
+    dev: &Device,
+    ctx: &Ctx,
+    host: Option<&dyn PluginHost>,
+    errors: &mut Vec<String>,
+    path: &str,
+) -> Box<dyn Effect> {
     if dev.kind == "plugin" {
         return match host.map(|h| h.load(dev, false, ctx.sr, MAX_BLOCK)) {
             Some(Ok(p)) => Box::new(PluginEffect(p)),

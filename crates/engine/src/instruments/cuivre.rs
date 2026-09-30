@@ -154,7 +154,13 @@ struct Voice {
 impl Voice {
     fn new(slot: usize) -> Voice {
         let mut rng = Rng::new(0xC0FFEE ^ (slot as u32 + 1).wrapping_mul(0x9E37_79B9));
-        let tol = [rng.bipolar(), rng.bipolar(), rng.bipolar(), rng.bipolar(), rng.bipolar()];
+        let tol = [
+            rng.bipolar(),
+            rng.bipolar(),
+            rng.bipolar(),
+            rng.bipolar(),
+            rng.bipolar(),
+        ];
         Voice {
             active: false,
             key: 0,
@@ -232,7 +238,15 @@ impl LadderCoefs {
         let gg = g / (1.0 + g);
         let g2 = gg * gg;
         let g4 = g2 * g2;
-        LadderCoefs { gg, g2, g3: g2 * gg, g4, b: 1.0 - gg, k, inv: 1.0 / (1.0 + k * g4) }
+        LadderCoefs {
+            gg,
+            g2,
+            g3: g2 * gg,
+            g4,
+            b: 1.0 - gg,
+            k,
+            inv: 1.0 / (1.0 + k * g4),
+        }
     }
 }
 
@@ -341,7 +355,12 @@ impl Cuivre {
     }
 
     fn poly_on(&mut self, key: u8, vel: f32) {
-        let i = pick_voice(&self.voices, |v| v.active, |v| v.env.is_released(), |v| v.age);
+        let i = pick_voice(
+            &self.voices,
+            |v| v.active,
+            |v| v.env.is_released(),
+            |v| v.age,
+        );
         let glide = self.p.glide > MIN_GLIDE;
         let from = if glide { self.last_note } else { None };
         let v = &mut self.voices[i];
@@ -400,7 +419,11 @@ impl Cuivre {
         self.stack_remove(key);
         let glide = self.p.glide > MIN_GLIDE;
         let voicing = self.p.voicing;
-        let top = if self.held > 0 { Some(self.stack[self.held - 1]) } else { None };
+        let top = if self.held > 0 {
+            Some(self.stack[self.held - 1])
+        } else {
+            None
+        };
         let v = &mut self.voices[0];
         if !v.active || v.key != key || v.env.is_released() {
             return;
@@ -445,7 +468,11 @@ impl Instrument for Cuivre {
         self.p = Params {
             wave1: VaWave::parse(d.option("wave1")),
             wave2: VaWave::parse(d.option("wave2")),
-            model: if d.option("filter") == "screamer" { Model::Screamer } else { Model::Ladder },
+            model: if d.option("filter") == "screamer" {
+                Model::Screamer
+            } else {
+                Model::Ladder
+            },
             voicing,
             osc2_ratio: 2f32.powf(f("osc2Semi").round() / 12.0) * cents(f("osc2Detune")),
             mix2: f("mix2").clamp(0.0, 1.0),
@@ -485,7 +512,11 @@ impl Instrument for Cuivre {
             }
             NoteKind::Off { key } => {
                 if self.p.voicing == Voicing::Poly {
-                    for v in self.voices.iter_mut().filter(|v| v.active && v.key == key && !v.env.is_released()) {
+                    for v in self
+                        .voices
+                        .iter_mut()
+                        .filter(|v| v.active && v.key == key && !v.env.is_released())
+                    {
                         v.env.release();
                         v.fenv.release();
                     }
@@ -512,7 +543,11 @@ impl Instrument for Cuivre {
             sr,
             ctrl_sr,
             osr: 2.0 * sr,
-            glide_coef: if p.glide > MIN_GLIDE { settle_coef(p.glide, ctrl_sr) } else { 0.0 },
+            glide_coef: if p.glide > MIN_GLIDE {
+                settle_coef(p.glide, ctrl_sr)
+            } else {
+                0.0
+            },
             drift_k: 1.0 - settle_coef(0.8, ctrl_sr),
             fc_max: (0.45 * sr).min(20000.0),
             os_on: 0.14 * sr,
@@ -531,7 +566,11 @@ impl Instrument for Cuivre {
                 v.vgain = target;
             }
             let amp = p.gain * OUT_SCALE;
-            let (pl, pr) = if mono { (1.0, 1.0) } else { pan_gains(v.tol[3] * 0.3) };
+            let (pl, pr) = if mono {
+                (1.0, 1.0)
+            } else {
+                pan_gains(v.tol[3] * 0.3)
+            };
             (target, amp * pl, amp * pr)
         };
         // Voices are rendered in pairs: their filters are independent serial
@@ -597,7 +636,11 @@ struct Consts {
 /// Control-rate update of a voice: glide, drift, cutoff and resonance.
 fn control(v: &mut Voice, p: &Params, k: &Consts) {
     let d = p.drift;
-    v.note = if k.glide_coef > 0.0 { v.target + (v.note - v.target) * k.glide_coef } else { v.target };
+    v.note = if k.glide_coef > 0.0 {
+        v.target + (v.note - v.target) * k.glide_coef
+    } else {
+        v.target
+    };
     v.drift_timer -= 1;
     if v.drift_timer <= 0 {
         for j in 0..3 {
@@ -616,7 +659,9 @@ fn control(v: &mut Voice, p: &Params, k: &Consts) {
     v.dt2 = (f1 * p.osc2_ratio * cents(c2 - c1) / k.sr).min(0.45);
     // Cutoff.
     let fe = v.fenv.next();
-    let oct = p.filter_env * 6.0 * fe * (0.6 + 0.4 * v.vel) + p.key_track * (v.note - 60.0) / 12.0 + d * (v.tol[2] * 0.15 + v.drift[2] * 0.12);
+    let oct = p.filter_env * 6.0 * fe * (0.6 + 0.4 * v.vel)
+        + p.key_track * (v.note - 60.0) / 12.0
+        + d * (v.tol[2] * 0.15 + v.drift[2] * 0.12);
     let fc = (p.cutoff * 2f32.powf(oct)).clamp(16.0, k.fc_max);
     // Oversample only when the cutoff is high enough to need it (with
     // hysteresis); the TPT integrator states carry over between rates.

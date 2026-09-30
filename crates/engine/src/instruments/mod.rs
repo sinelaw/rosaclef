@@ -30,8 +30,13 @@ use rosaclef_core::Device;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum NoteKind {
-    On { key: u8, velocity: f32 },
-    Off { key: u8 },
+    On {
+        key: u8,
+        velocity: f32,
+    },
+    Off {
+        key: u8,
+    },
     /// Release every sounding note.
     AllOff,
 }
@@ -75,7 +80,12 @@ pub const MAX_VOICES: usize = 24;
 
 /// Pick a voice slot: a free one, otherwise the oldest released one,
 /// otherwise the oldest.
-pub(crate) fn pick_voice<V>(voices: &[V], active: impl Fn(&V) -> bool, released: impl Fn(&V) -> bool, age: impl Fn(&V) -> u64) -> usize {
+pub(crate) fn pick_voice<V>(
+    voices: &[V],
+    active: impl Fn(&V) -> bool,
+    released: impl Fn(&V) -> bool,
+    age: impl Fn(&V) -> u64,
+) -> usize {
     if let Some(i) = voices.iter().position(|v| !active(v)) {
         return i;
     }

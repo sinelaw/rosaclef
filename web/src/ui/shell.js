@@ -14,7 +14,22 @@ import { automationMenu } from "./lanes.js";
 import { projectsOverlay } from "./projects.js";
 import { glyph } from "./widgets.js";
 import { keyboard, keyboardStrip } from "./keyboard.js";
-import { layoutState, sideMode, workMode, sideSizes, dockBasis, paneControls, paneHeader, paneRail, openDock, setWork, toggleWorkMax, saveLayout, isCompact, setView } from "./panes.js";
+import {
+  layoutState,
+  sideMode,
+  workMode,
+  sideSizes,
+  dockBasis,
+  paneControls,
+  paneHeader,
+  paneRail,
+  openDock,
+  setWork,
+  toggleWorkMax,
+  saveLayout,
+  isCompact,
+  setView,
+} from "./panes.js";
 
 /** function px(v: Number) => String */
 function px(v) {
@@ -130,14 +145,18 @@ export function studio(b) {
     const h0 = layoutState.dockH;
     const total = Math.max(200, window.innerHeight - 86);
     layoutState.dragging = true;
-    drag(e, (m) => {
-      layoutState.dockH = Math.max(18, Math.min(82, h0 + ((y0 - m.clientY) / total) * 100));
-      invalidate();
-    }, (u) => {
-      layoutState.dragging = false;
-      saveLayout();
-      invalidate();
-    });
+    drag(
+      e,
+      (m) => {
+        layoutState.dockH = Math.max(18, Math.min(82, h0 + ((y0 - m.clientY) / total) * 100));
+        invalidate();
+      },
+      (u) => {
+        layoutState.dragging = false;
+        saveLayout();
+        invalidate();
+      },
+    );
   });
 
   b.open("section", "dock", `pane pane-dock ${compact ? "open" : workMode("dock")}`);
@@ -176,15 +195,19 @@ export function studio(b) {
     if (layoutState.agent === "max") layoutState.agent = "open";
     layoutState.agentW = w0;
     layoutState.dragging = true;
-    drag(e, (m) => {
-      layoutState.agentW = Math.max(300, Math.min(1600, w0 + (x0 - m.clientX)));
-      invalidate();
-    }, (u) => {
-      layoutState.dragging = false;
-      layoutState.agentW = sideSizes(window.innerWidth).agentW;
-      saveLayout();
-      invalidate();
-    });
+    drag(
+      e,
+      (m) => {
+        layoutState.agentW = Math.max(300, Math.min(1600, w0 + (x0 - m.clientX)));
+        invalidate();
+      },
+      (u) => {
+        layoutState.dragging = false;
+        layoutState.agentW = sideSizes(window.innerWidth).agentW;
+        saveLayout();
+        invalidate();
+      },
+    );
   });
   b.close();
 
@@ -202,12 +225,26 @@ export function studio(b) {
 /** function hintBar(b: Builder) => Undefined */
 function hintBar(b) {
   b.open("footer", "hint", "hintbar");
-  b.leaf("span", "h", "hint", state.hint !== "" ? state.hint : "Space plays · F6 rack · F7 piano roll · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels");
+  b.leaf(
+    "span",
+    "h",
+    "hint",
+    state.hint !== "" ? state.hint : "Space plays · F6 rack · F7 piano roll · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels",
+  );
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");
   b.leaf("span", "t", "", !state.connected ? "Offline" : state.backend === "local" ? "Saved in this browser" : "Synced");
   b.close();
-  b.leaf("span", "m2", "meta", state.output === "native" ? `Studio engine${state.nativeDevice !== "" ? " · " + state.nativeDevice : ""}` : state.audioReady ? "Browser engine · WebAssembly" : "Click anywhere to start audio");
+  b.leaf(
+    "span",
+    "m2",
+    "meta",
+    state.output === "native"
+      ? `Studio engine${state.nativeDevice !== "" ? " · " + state.nativeDevice : ""}`
+      : state.audioReady
+        ? "Browser engine · WebAssembly"
+        : "Click anywhere to start audio",
+  );
   b.leaf("span", "m3", "meta", `rev ${state.rev}`);
   b.close();
 }

@@ -48,7 +48,10 @@ impl Folder {
 
     /// The folder's name (the project's name in the library).
     pub fn name(&self) -> String {
-        self.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+        self.dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
     }
 
     pub fn project_path(&self) -> PathBuf {
@@ -70,7 +73,8 @@ impl Folder {
     /// Create the folder layout; seed `project.json` if missing.
     pub fn init(&self, demo: bool) -> Result<()> {
         let fs = &self.fs;
-        fs.create_dir_all(&self.dir).with_context(|| format!("creating {}", self.dir.display()))?;
+        fs.create_dir_all(&self.dir)
+            .with_context(|| format!("creating {}", self.dir.display()))?;
         for d in [SAMPLES_DIR, RENDERS_DIR, STATE_DIR] {
             fs.create_dir_all(&self.dir.join(d))?;
         }
@@ -78,7 +82,12 @@ impl Folder {
             let project: Project = if demo {
                 serde_json::from_str(DEMO_PROJECT).expect("bundled demo is valid")
             } else {
-                let title = self.dir.file_name().and_then(|n| n.to_str()).unwrap_or("Untitled").to_string();
+                let title = self
+                    .dir
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Untitled")
+                    .to_string();
                 let mut p = Project::empty(&title);
                 p.schema = format!("./{SCHEMA_FILE}");
                 p
@@ -86,7 +95,10 @@ impl Folder {
             self.write_project(&project)?;
         }
         fs.write_if_changed(&self.dir.join(SCHEMA_FILE), &schema::schema_text())?;
-        fs.write_if_changed(&self.state_path("context.schema.json"), &rosaclef_core::context::schema_text())?;
+        fs.write_if_changed(
+            &self.state_path("context.schema.json"),
+            &rosaclef_core::context::schema_text(),
+        )?;
         let gitignore = self.dir.join(STATE_DIR).join(".gitignore");
         if !fs.exists(&gitignore) {
             fs.write(&gitignore, b"*\n!context.schema.json\n")?;
@@ -95,7 +107,9 @@ impl Folder {
     }
 
     pub fn read_text(&self) -> Result<String> {
-        self.fs.read_to_string(&self.project_path()).with_context(|| format!("reading {}", self.project_path().display()))
+        self.fs
+            .read_to_string(&self.project_path())
+            .with_context(|| format!("reading {}", self.project_path().display()))
     }
 
     /// Serialize and atomically write the project. Returns the written text.
@@ -111,7 +125,9 @@ impl Folder {
 
     /// Write a file of the folder (project-relative path).
     pub fn write(&self, rel: &str, bytes: &[u8]) -> Result<()> {
-        let path = self.resolve(rel).with_context(|| format!("invalid path {rel:?}"))?;
+        let path = self
+            .resolve(rel)
+            .with_context(|| format!("invalid path {rel:?}"))?;
         Ok(self.fs.write(&path, bytes)?)
     }
 
@@ -132,7 +148,9 @@ impl Folder {
 }
 
 fn walk(f: &Folder, dir: &Path, visit: &mut dyn FnMut(&Path)) {
-    let Ok(entries) = f.fs.read_dir(dir) else { return };
+    let Ok(entries) = f.fs.read_dir(dir) else {
+        return;
+    };
     for p in entries {
         if f.fs.is_dir(&p) {
             walk(f, &p, visit);

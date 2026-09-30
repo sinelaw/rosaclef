@@ -108,7 +108,12 @@ pub fn default_search_paths() -> Vec<PathBuf> {
             out.push(PathBuf::from(c).join("CLAP"));
         }
         if let Some(l) = std::env::var_os("LOCALAPPDATA") {
-            out.push(PathBuf::from(l).join("Programs").join("Common").join("CLAP"));
+            out.push(
+                PathBuf::from(l)
+                    .join("Programs")
+                    .join("Common")
+                    .join("CLAP"),
+            );
         }
     } else {
         if let Some(h) = &home {
@@ -131,7 +136,8 @@ pub fn scan(paths: &[PathBuf]) -> Vec<PluginDescriptor> {
     }
     let mut out = vec![];
     for f in files {
-        let result = std::panic::catch_unwind(|| ClapLibrary::open(&f).map(|lib| lib.descriptors()));
+        let result =
+            std::panic::catch_unwind(|| ClapLibrary::open(&f).map(|lib| lib.descriptors()));
         match result {
             Ok(Ok(descs)) => out.extend(descs),
             Ok(Err(e)) => log(&format!("skipping {}: {e}", f.display())),
@@ -157,7 +163,9 @@ pub struct ClapHost {
 
 impl ClapHost {
     pub fn new() -> ClapHost {
-        ClapHost { libs: Mutex::new(HashMap::new()) }
+        ClapHost {
+            libs: Mutex::new(HashMap::new()),
+        }
     }
 
     fn library(&self, path: &Path) -> Result<Arc<ClapLibrary>, String> {
@@ -178,7 +186,13 @@ impl Default for ClapHost {
 }
 
 impl PluginHost for ClapHost {
-    fn load(&self, dev: &Device, instrument: bool, sample_rate: f32, max_block: usize) -> Result<Box<dyn ExternalProcessor>, String> {
+    fn load(
+        &self,
+        dev: &Device,
+        instrument: bool,
+        sample_rate: f32,
+        max_block: usize,
+    ) -> Result<Box<dyn ExternalProcessor>, String> {
         let format = dev.option("format");
         if !format.is_empty() && format != "clap" {
             return Err(format!("unsupported plugin format \"{format}\""));
@@ -222,19 +236,26 @@ unsafe fn cstr_lossy(p: *const c_char) -> String {
 
 /// Read a fixed-size C string buffer, stopping at the first NUL (or the end).
 fn cbuf_lossy(buf: &[c_char]) -> String {
-    let bytes: Vec<u8> = buf.iter().take_while(|c| **c != 0).map(|c| *c as u8).collect();
+    let bytes: Vec<u8> = buf
+        .iter()
+        .take_while(|c| **c != 0)
+        .map(|c| *c as u8)
+        .collect();
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn is_clap(p: &Path) -> bool {
-    p.extension().is_some_and(|e| e.eq_ignore_ascii_case("clap"))
+    p.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("clap"))
 }
 
 fn find_clap_files(p: &Path, depth: usize, seen: &mut HashSet<PathBuf>, out: &mut Vec<PathBuf>) {
     if depth > 16 {
         return;
     }
-    let Ok(meta) = std::fs::metadata(p) else { return };
+    let Ok(meta) = std::fs::metadata(p) else {
+        return;
+    };
     let canon = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     if !seen.insert(canon) {
         return;
@@ -268,7 +289,10 @@ fn binary_path(bundle: &Path) -> PathBuf {
     }
     std::fs::read_dir(&macos)
         .ok()
-        .and_then(|rd| rd.filter_map(|e| e.ok().map(|e| e.path())).find(|p| p.is_file()))
+        .and_then(|rd| {
+            rd.filter_map(|e| e.ok().map(|e| e.path()))
+                .find(|p| p.is_file())
+        })
         .unwrap_or(macos)
 }
 
@@ -297,7 +321,8 @@ fn registry() -> &'static Mutex<HashMap<PathBuf, Weak<ClapLibrary>>> {
 impl ClapLibrary {
     /// Load (or reuse) the library at `path` and initialise its entry.
     fn open(path: &Path) -> Result<Arc<ClapLibrary>, String> {
-        let key = std::fs::canonicalize(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+        let key = std::fs::canonicalize(path)
+            .map_err(|e| format!("cannot open {}: {e}", path.display()))?;
         let mut reg = lock(registry());
         if let Some(lib) = reg.get(&key).and_then(Weak::upgrade) {
             return Ok(lib);
@@ -305,11 +330,14 @@ impl ClapLibrary {
         let bin = binary_path(&key);
         // SAFETY: loading a plugin runs its initialisers; that is inherent to
         // hosting native plugins.
-        let lib = unsafe { Library::new(&bin) }.map_err(|e| format!("cannot load {}: {e}", bin.display()))?;
+        let lib = unsafe { Library::new(&bin) }
+            .map_err(|e| format!("cannot load {}: {e}", bin.display()))?;
         // SAFETY: `clap_entry` is a data symbol of type `clap_plugin_entry`;
         // the symbol value is its address.
         let entry: *const clap_plugin_entry = unsafe {
-            let sym = lib.get::<*const clap_plugin_entry>(b"clap_entry\0").map_err(|_| format!("{} has no clap_entry symbol", bin.display()))?;
+            let sym = lib
+                .get::<*const clap_plugin_entry>(b"clap_entry\0")
+                .map_err(|_| format!("{} has no clap_entry symbol", bin.display()))?;
             *sym
         };
         if entry.is_null() {
@@ -318,19 +346,31 @@ impl ClapLibrary {
         // SAFETY: `entry` points to a static struct inside the loaded library.
         let e = unsafe { *entry };
         if !clap_version_is_compatible(e.clap_version) {
-            return Err(format!("{}: incompatible CLAP version {}.{}", bin.display(), e.clap_version.major, e.clap_version.minor));
+            return Err(format!(
+                "{}: incompatible CLAP version {}.{}",
+                bin.display(),
+                e.clap_version.major,
+                e.clap_version.minor
+            ));
         }
         let (Some(init), Some(get_factory)) = (e.init, e.get_factory) else {
             return Err(format!("{}: incomplete clap_entry", bin.display()));
         };
-        let cpath = CString::new(key.to_string_lossy().as_bytes()).map_err(|_| "path contains NUL".to_string())?;
+        let cpath = CString::new(key.to_string_lossy().as_bytes())
+            .map_err(|_| "path contains NUL".to_string())?;
         // SAFETY: per the CLAP spec; `cpath` outlives the call.
         if !unsafe { init(cpath.as_ptr()) } {
             return Err(format!("{}: clap_entry.init failed", bin.display()));
         }
         // SAFETY: the factory id is a valid C string.
-        let factory = unsafe { get_factory(CLAP_PLUGIN_FACTORY_ID.as_ptr()) } as *const clap_plugin_factory;
-        let lib = Arc::new(ClapLibrary { path: path.to_path_buf(), entry, factory, lib: ManuallyDrop::new(lib) });
+        let factory =
+            unsafe { get_factory(CLAP_PLUGIN_FACTORY_ID.as_ptr()) } as *const clap_plugin_factory;
+        let lib = Arc::new(ClapLibrary {
+            path: path.to_path_buf(),
+            entry,
+            factory,
+            lib: ManuallyDrop::new(lib),
+        });
         if factory.is_null() {
             // Dropping `lib` calls deinit; the registry lock is released first.
             drop(reg);
@@ -348,9 +388,16 @@ impl ClapLibrary {
     /// Every plugin descriptor in the factory.
     fn raw_descriptors(&self) -> Vec<*const clap_plugin_descriptor> {
         let f = self.factory();
-        let (Some(count), Some(get)) = (f.get_plugin_count, f.get_plugin_descriptor) else { return vec![] };
+        let (Some(count), Some(get)) = (f.get_plugin_count, f.get_plugin_descriptor) else {
+            return vec![];
+        };
         // SAFETY: factory functions called per the CLAP spec.
-        unsafe { (0..count(f)).map(|i| get(f, i)).filter(|d| !d.is_null()).collect() }
+        unsafe {
+            (0..count(f))
+                .map(|i| get(f, i))
+                .filter(|d| !d.is_null())
+                .collect()
+        }
     }
 
     fn descriptors(&self) -> Vec<PluginDescriptor> {
@@ -487,10 +534,19 @@ unsafe fn host_data<'a>(host: *const clap_host) -> Option<&'a HostData> {
     ((*host).host_data as *const HostData).as_ref()
 }
 
-static HOST_LOG: clap_host_log = clap_host_log { log: Some(host_log) };
-static HOST_PARAMS: clap_host_params = clap_host_params { rescan: Some(host_params_rescan), clear: Some(host_params_clear), request_flush: Some(host_params_request_flush) };
+static HOST_LOG: clap_host_log = clap_host_log {
+    log: Some(host_log),
+};
+static HOST_PARAMS: clap_host_params = clap_host_params {
+    rescan: Some(host_params_rescan),
+    clear: Some(host_params_clear),
+    request_flush: Some(host_params_request_flush),
+};
 
-unsafe extern "C" fn host_get_extension(_host: *const clap_host, id: *const c_char) -> *const c_void {
+unsafe extern "C" fn host_get_extension(
+    _host: *const clap_host,
+    id: *const c_char,
+) -> *const c_void {
     if id.is_null() {
         return null();
     }
@@ -519,7 +575,11 @@ unsafe extern "C" fn host_request_callback(host: *const clap_host) {
     }
 }
 
-unsafe extern "C" fn host_log(_host: *const clap_host, severity: clap_log_severity, msg: *const c_char) {
+unsafe extern "C" fn host_log(
+    _host: *const clap_host,
+    severity: clap_log_severity,
+    msg: *const c_char,
+) {
     let level = match severity {
         CLAP_LOG_DEBUG => "debug",
         CLAP_LOG_INFO => "info",
@@ -534,7 +594,12 @@ unsafe extern "C" fn host_log(_host: *const clap_host, severity: clap_log_severi
 }
 
 unsafe extern "C" fn host_params_rescan(_host: *const clap_host, _flags: clap_param_rescan_flags) {}
-unsafe extern "C" fn host_params_clear(_host: *const clap_host, _id: clap_id, _flags: clap_param_clear_flags) {}
+unsafe extern "C" fn host_params_clear(
+    _host: *const clap_host,
+    _id: clap_id,
+    _flags: clap_param_clear_flags,
+) {
+}
 /// Parameter changes are flushed with the next `process` call.
 unsafe extern "C" fn host_params_request_flush(_host: *const clap_host) {}
 
@@ -556,18 +621,31 @@ impl Instance {
         let cid = lib.resolve(id)?;
         let host = HostBox::new();
         let f = lib.factory();
-        let Some(create) = f.create_plugin else { return Err("factory cannot create plugins".into()) };
+        let Some(create) = f.create_plugin else {
+            return Err("factory cannot create plugins".into());
+        };
         // SAFETY: factory, host and id are valid for the call.
         let plugin = unsafe { create(f, host.raw(), cid.as_ptr()) };
         if plugin.is_null() {
-            return Err(format!("could not create plugin \"{}\"", cid.to_string_lossy()));
+            return Err(format!(
+                "could not create plugin \"{}\"",
+                cid.to_string_lossy()
+            ));
         }
-        let inst = Instance { plugin, activated: false, host, _lib: lib };
+        let inst = Instance {
+            plugin,
+            activated: false,
+            host,
+            _lib: lib,
+        };
         // SAFETY: freshly created plugin; `init` is the first call.
         let ok = unsafe { inst.raw().init.is_some_and(|init| init(plugin)) };
         if !ok {
             // Dropping `inst` destroys the plugin, as the spec requires.
-            return Err(format!("plugin \"{}\" failed to initialise", cid.to_string_lossy()));
+            return Err(format!(
+                "plugin \"{}\" failed to initialise",
+                cid.to_string_lossy()
+            ));
         }
         inst.service_callback();
         Ok(inst)
@@ -580,7 +658,12 @@ impl Instance {
 
     /// Main thread: honour a pending `request_callback`.
     fn service_callback(&self) {
-        if self.host.data().callback_requested.swap(false, Ordering::Relaxed) {
+        if self
+            .host
+            .data()
+            .callback_requested
+            .swap(false, Ordering::Relaxed)
+        {
             if let Some(f) = self.raw().on_main_thread {
                 // SAFETY: called on the (logical) main thread.
                 unsafe { f(self.plugin) };
@@ -599,8 +682,12 @@ impl Instance {
 
     fn param_infos(&self) -> Vec<PluginParam> {
         // SAFETY: CLAP_EXT_PARAMS is a `clap_plugin_params`.
-        let Some(ext) = (unsafe { self.extension::<clap_plugin_params>(CLAP_EXT_PARAMS) }) else { return vec![] };
-        let (Some(count), Some(get_info)) = (ext.count, ext.get_info) else { return vec![] };
+        let Some(ext) = (unsafe { self.extension::<clap_plugin_params>(CLAP_EXT_PARAMS) }) else {
+            return vec![];
+        };
+        let (Some(count), Some(get_info)) = (ext.count, ext.get_info) else {
+            return vec![];
+        };
         let mut out = vec![];
         // SAFETY: main-thread calls per the spec; `info` is a valid out-param.
         unsafe {
@@ -628,7 +715,9 @@ impl Instance {
     fn audio_ports(&self, input: bool) -> Option<(Vec<u32>, Option<usize>)> {
         // SAFETY: CLAP_EXT_AUDIO_PORTS is a `clap_plugin_audio_ports`.
         let ext = unsafe { self.extension::<clap_plugin_audio_ports>(CLAP_EXT_AUDIO_PORTS) }?;
-        let (Some(count), Some(get)) = (ext.count, ext.get) else { return None };
+        let (Some(count), Some(get)) = (ext.count, ext.get) else {
+            return None;
+        };
         let mut chans = vec![];
         let mut main = None;
         // SAFETY: main-thread calls while deactivated; valid out-param.
@@ -654,8 +743,13 @@ impl Instance {
     /// port does not speak the CLAP note dialect but does speak MIDI).
     fn wants_midi_notes(&self) -> bool {
         // SAFETY: CLAP_EXT_NOTE_PORTS is a `clap_plugin_note_ports`.
-        let Some(ext) = (unsafe { self.extension::<clap_plugin_note_ports>(CLAP_EXT_NOTE_PORTS) }) else { return false };
-        let (Some(count), Some(get)) = (ext.count, ext.get) else { return false };
+        let Some(ext) = (unsafe { self.extension::<clap_plugin_note_ports>(CLAP_EXT_NOTE_PORTS) })
+        else {
+            return false;
+        };
+        let (Some(count), Some(get)) = (ext.count, ext.get) else {
+            return false;
+        };
         // SAFETY: main-thread calls; valid out-param.
         unsafe {
             if count(self.plugin, true) == 0 {
@@ -665,12 +759,15 @@ impl Instance {
             if !get(self.plugin, 0, true, &mut info) {
                 return false;
             }
-            info.supported_dialects & CLAP_NOTE_DIALECT_CLAP == 0 && info.supported_dialects & CLAP_NOTE_DIALECT_MIDI != 0
+            info.supported_dialects & CLAP_NOTE_DIALECT_CLAP == 0
+                && info.supported_dialects & CLAP_NOTE_DIALECT_MIDI != 0
         }
     }
 
     fn activate(&mut self, sample_rate: f64, max_block: u32) -> Result<(), String> {
-        let Some(activate) = self.raw().activate else { return Err("plugin cannot be activated".into()) };
+        let Some(activate) = self.raw().activate else {
+            return Err("plugin cannot be activated".into());
+        };
         // SAFETY: main thread, plugin initialised and not active.
         if !unsafe { activate(self.plugin, sample_rate, 1, max_block) } {
             return Err("plugin failed to activate".into());
@@ -719,13 +816,23 @@ impl Event {
     }
 
     fn header(ty: u16, size: usize, time: u32) -> clap_event_header {
-        clap_event_header { size: size as u32, time, space_id: CLAP_CORE_EVENT_SPACE_ID, type_: ty, flags: 0 }
+        clap_event_header {
+            size: size as u32,
+            time,
+            space_id: CLAP_CORE_EVENT_SPACE_ID,
+            type_: ty,
+            flags: 0,
+        }
     }
 
     fn param(id: clap_id, value: f64) -> Event {
         Event {
             param: clap_event_param_value {
-                header: Self::header(CLAP_EVENT_PARAM_VALUE, std::mem::size_of::<clap_event_param_value>(), 0),
+                header: Self::header(
+                    CLAP_EVENT_PARAM_VALUE,
+                    std::mem::size_of::<clap_event_param_value>(),
+                    0,
+                ),
                 param_id: id,
                 cookie: null_mut(),
                 note_id: -1,
@@ -743,7 +850,11 @@ impl Event {
             let status = if on { 0x90 } else { 0x80 };
             return Event {
                 midi: clap_event_midi {
-                    header: Self::header(CLAP_EVENT_MIDI, std::mem::size_of::<clap_event_midi>(), time),
+                    header: Self::header(
+                        CLAP_EVENT_MIDI,
+                        std::mem::size_of::<clap_event_midi>(),
+                        time,
+                    ),
                     port_index: 0,
                     data: [status, key.min(127), if on { vel.max(1) } else { vel }],
                 },
@@ -751,7 +862,15 @@ impl Event {
         }
         Event {
             note: clap_event_note {
-                header: Self::header(if on { CLAP_EVENT_NOTE_ON } else { CLAP_EVENT_NOTE_OFF }, std::mem::size_of::<clap_event_note>(), time),
+                header: Self::header(
+                    if on {
+                        CLAP_EVENT_NOTE_ON
+                    } else {
+                        CLAP_EVENT_NOTE_OFF
+                    },
+                    std::mem::size_of::<clap_event_note>(),
+                    time,
+                ),
                 note_id: -1,
                 port_index: 0,
                 channel: 0,
@@ -763,21 +882,35 @@ impl Event {
 }
 
 unsafe extern "C" fn in_events_size(list: *const clap_input_events) -> u32 {
-    match list.as_ref().and_then(|l| (l.ctx as *const Vec<Event>).as_ref()) {
+    match list
+        .as_ref()
+        .and_then(|l| (l.ctx as *const Vec<Event>).as_ref())
+    {
         Some(v) => v.len() as u32,
         None => 0,
     }
 }
 
-unsafe extern "C" fn in_events_get(list: *const clap_input_events, index: u32) -> *const clap_event_header {
-    match list.as_ref().and_then(|l| (l.ctx as *const Vec<Event>).as_ref()) {
-        Some(v) => v.get(index as usize).map_or(null(), |e| e as *const Event as *const clap_event_header),
+unsafe extern "C" fn in_events_get(
+    list: *const clap_input_events,
+    index: u32,
+) -> *const clap_event_header {
+    match list
+        .as_ref()
+        .and_then(|l| (l.ctx as *const Vec<Event>).as_ref())
+    {
+        Some(v) => v
+            .get(index as usize)
+            .map_or(null(), |e| e as *const Event as *const clap_event_header),
         None => null(),
     }
 }
 
 /// Output events (parameter gestures, note ends, ...) are accepted and ignored.
-unsafe extern "C" fn out_events_try_push(_list: *const clap_output_events, _ev: *const clap_event_header) -> bool {
+unsafe extern "C" fn out_events_try_push(
+    _list: *const clap_output_events,
+    _ev: *const clap_event_header,
+) -> bool {
     true
 }
 
@@ -826,15 +959,30 @@ struct ClapProcessor {
 unsafe impl Send for ClapProcessor {}
 
 impl ClapProcessor {
-    fn new(mut inst: Instance, instrument: bool, sample_rate: f32, max_block: usize) -> Result<ClapProcessor, String> {
+    fn new(
+        mut inst: Instance,
+        instrument: bool,
+        sample_rate: f32,
+        max_block: usize,
+    ) -> Result<ClapProcessor, String> {
         let max_block = max_block.max(1);
-        let (in_chans, main_in) = inst.audio_ports(true).unwrap_or(if instrument { (vec![], None) } else { (vec![2], Some(0)) });
+        let (in_chans, main_in) = inst.audio_ports(true).unwrap_or(if instrument {
+            (vec![], None)
+        } else {
+            (vec![2], Some(0))
+        });
         let (out_chans, main_out) = inst.audio_ports(false).unwrap_or((vec![2], Some(0)));
         let midi_notes = instrument && inst.wants_midi_notes();
         inst.activate(sample_rate as f64, max_block as u32)?;
         let mut inputs: Vec<Port> = in_chans.iter().map(|c| Port::new(*c, max_block)).collect();
         let mut outputs: Vec<Port> = out_chans.iter().map(|c| Port::new(*c, max_block)).collect();
-        let buf = |p: &mut Port| clap_audio_buffer { data32: p.ptrs.as_mut_ptr(), data64: null_mut(), channel_count: p.ptrs.len() as u32, latency: 0, constant_mask: 0 };
+        let buf = |p: &mut Port| clap_audio_buffer {
+            data32: p.ptrs.as_mut_ptr(),
+            data64: null_mut(),
+            channel_count: p.ptrs.len() as u32,
+            latency: 0,
+            constant_mask: 0,
+        };
         let in_bufs = inputs.iter_mut().map(buf).collect();
         let out_bufs = outputs.iter_mut().map(buf).collect();
         Ok(ClapProcessor {
@@ -859,23 +1007,29 @@ impl ClapProcessor {
 
     /// Queue note events that fall in `from..from + n` (block-relative).
     fn push_notes(&mut self, events: &[NoteEvent], from: usize, n: usize) {
-        for ev in events.iter().filter(|e| e.offset >= from && e.offset < from + n) {
+        for ev in events
+            .iter()
+            .filter(|e| e.offset >= from && e.offset < from + n)
+        {
             let t = (ev.offset - from) as u32;
             match ev.kind {
                 NoteKind::On { key, velocity } => {
                     let key = key.min(127);
                     self.held[key as usize] = true;
-                    self.events.push(Event::note(true, key, velocity as f64, t, self.midi_notes));
+                    self.events
+                        .push(Event::note(true, key, velocity as f64, t, self.midi_notes));
                 }
                 NoteKind::Off { key } => {
                     let key = key.min(127);
                     self.held[key as usize] = false;
-                    self.events.push(Event::note(false, key, 0.0, t, self.midi_notes));
+                    self.events
+                        .push(Event::note(false, key, 0.0, t, self.midi_notes));
                 }
                 NoteKind::AllOff => {
                     for key in 0..128u8 {
                         if std::mem::take(&mut self.held[key as usize]) {
-                            self.events.push(Event::note(false, key, 0.0, t, self.midi_notes));
+                            self.events
+                                .push(Event::note(false, key, 0.0, t, self.midi_notes));
                         }
                     }
                 }
@@ -885,7 +1039,13 @@ impl ClapProcessor {
 
     /// Process `left.len()` (<= max_block) frames; `events` offsets are
     /// relative to `from` within the engine's block.
-    fn process_chunk(&mut self, events: &[NoteEvent], from: usize, left: &mut [f32], right: &mut [f32]) {
+    fn process_chunk(
+        &mut self,
+        events: &[NoteEvent],
+        from: usize,
+        left: &mut [f32],
+        right: &mut [f32],
+    ) {
         let n = left.len();
         self.events.clear();
         for (id, v) in self.pending_params.drain(..) {
@@ -924,14 +1084,29 @@ impl ClapProcessor {
             b.constant_mask = 0;
         }
 
-        let in_events = clap_input_events { ctx: &self.events as *const Vec<Event> as *mut c_void, size: Some(in_events_size), get: Some(in_events_get) };
-        let out_events = clap_output_events { ctx: null_mut(), try_push: Some(out_events_try_push) };
+        let in_events = clap_input_events {
+            ctx: &self.events as *const Vec<Event> as *mut c_void,
+            size: Some(in_events_size),
+            get: Some(in_events_get),
+        };
+        let out_events = clap_output_events {
+            ctx: null_mut(),
+            try_push: Some(out_events_try_push),
+        };
         let process = clap_process {
             steady_time: self.steady_time,
             frames_count: n as u32,
             transport: null(),
-            audio_inputs: if self.in_bufs.is_empty() { null() } else { self.in_bufs.as_ptr() },
-            audio_outputs: if self.out_bufs.is_empty() { null_mut() } else { self.out_bufs.as_mut_ptr() },
+            audio_inputs: if self.in_bufs.is_empty() {
+                null()
+            } else {
+                self.in_bufs.as_ptr()
+            },
+            audio_outputs: if self.out_bufs.is_empty() {
+                null_mut()
+            } else {
+                self.out_bufs.as_mut_ptr()
+            },
             audio_inputs_count: self.in_bufs.len() as u32,
             audio_outputs_count: self.out_bufs.len() as u32,
             in_events: &in_events,
@@ -985,7 +1160,9 @@ impl ClapProcessor {
 
 impl ExternalProcessor for ClapProcessor {
     fn set_param(&mut self, id: &str, value: f64) {
-        let Ok(id) = id.trim().parse::<clap_id>() else { return };
+        let Ok(id) = id.trim().parse::<clap_id>() else {
+            return;
+        };
         if !value.is_finite() {
             return;
         }
@@ -999,7 +1176,12 @@ impl ExternalProcessor for ClapProcessor {
         let len = left.len().min(right.len());
         if !self.started && !self.failed {
             // SAFETY: first call on the audio thread, plugin is active.
-            let ok = unsafe { self.inst.raw().start_processing.is_none_or(|f| f(self.inst.plugin)) };
+            let ok = unsafe {
+                self.inst
+                    .raw()
+                    .start_processing
+                    .is_none_or(|f| f(self.inst.plugin))
+            };
             if ok {
                 self.started = true;
             } else {
@@ -1017,7 +1199,12 @@ impl ExternalProcessor for ClapProcessor {
         let mut from = 0;
         while from < len {
             let n = (len - from).min(self.max_block);
-            self.process_chunk(events, from, &mut left[from..from + n], &mut right[from..from + n]);
+            self.process_chunk(
+                events,
+                from,
+                &mut left[from..from + n],
+                &mut right[from..from + n],
+            );
             from += n;
         }
     }

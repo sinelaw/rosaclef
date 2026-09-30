@@ -60,7 +60,9 @@ impl fmt::Display for AutomationTarget {
 }
 
 fn valid_key(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
 fn index(s: &str) -> Option<usize> {
@@ -84,10 +86,18 @@ impl FromStr for AutomationTarget {
                 "pan" => AutomationTarget::ChannelPan(id.to_string()),
                 key => AutomationTarget::ChannelParam(id.to_string(), key.to_string()),
             }),
-            ["insert", n, "volume"] => index(n).map(|n| AutomationTarget::InsertVolume(InsertIx(n as u32))).ok_or_else(bad),
-            ["insert", n, "pan"] => index(n).map(|n| AutomationTarget::InsertPan(InsertIx(n as u32))).ok_or_else(bad),
+            ["insert", n, "volume"] => index(n)
+                .map(|n| AutomationTarget::InsertVolume(InsertIx(n as u32)))
+                .ok_or_else(bad),
+            ["insert", n, "pan"] => index(n)
+                .map(|n| AutomationTarget::InsertPan(InsertIx(n as u32)))
+                .ok_or_else(bad),
             ["insert", n, "effect", k, key] if valid_key(key) => match (index(n), index(k)) {
-                (Some(n), Some(k)) => Ok(AutomationTarget::EffectParam(InsertIx(n as u32), k, key.to_string())),
+                (Some(n), Some(k)) => Ok(AutomationTarget::EffectParam(
+                    InsertIx(n as u32),
+                    k,
+                    key.to_string(),
+                )),
                 _ => Err(bad()),
             },
             _ => Err(bad()),
@@ -111,7 +121,14 @@ pub struct TargetInfo {
 
 impl TargetInfo {
     fn new(min: f64, max: f64, unit: &'static str, label: String) -> TargetInfo {
-        TargetInfo { min, max, integer: false, exp: false, unit, label }
+        TargetInfo {
+            min,
+            max,
+            integer: false,
+            exp: false,
+            unit,
+            label,
+        }
     }
 }
 
@@ -119,24 +136,57 @@ impl AutomationTarget {
     /// Resolve the target against a project: check that what it names
     /// exists and return its range. Plugin parameters are unbounded.
     pub fn resolve(&self, p: &Project) -> Result<TargetInfo, String> {
-        let channel = |id: &str| p.channel(id).ok_or_else(|| format!("unknown channel {id:?}"));
+        let channel = |id: &str| {
+            p.channel(id)
+                .ok_or_else(|| format!("unknown channel {id:?}"))
+        };
         let insert = |i: InsertIx| {
-            p.mixer.inserts.get(i.index()).ok_or_else(|| format!("mixer insert {i} does not exist (there are {})", p.mixer.inserts.len()))
+            p.mixer.inserts.get(i.index()).ok_or_else(|| {
+                format!(
+                    "mixer insert {i} does not exist (there are {})",
+                    p.mixer.inserts.len()
+                )
+            })
         };
         match self {
             AutomationTarget::Tempo => Ok(TargetInfo::new(20.0, 999.0, "BPM", "Tempo".into())),
             AutomationTarget::Swing => Ok(TargetInfo::new(0.0, 1.0, "", "Swing".into())),
-            AutomationTarget::ChannelVolume(id) => Ok(TargetInfo::new(0.0, 1.5, "", format!("{} · Volume", channel(id)?.name))),
-            AutomationTarget::ChannelPan(id) => Ok(TargetInfo::new(-1.0, 1.0, "", format!("{} · Pan", channel(id)?.name))),
+            AutomationTarget::ChannelVolume(id) => Ok(TargetInfo::new(
+                0.0,
+                1.5,
+                "",
+                format!("{} · Volume", channel(id)?.name),
+            )),
+            AutomationTarget::ChannelPan(id) => Ok(TargetInfo::new(
+                -1.0,
+                1.0,
+                "",
+                format!("{} · Pan", channel(id)?.name),
+            )),
             AutomationTarget::ChannelParam(id, key) => {
                 let ch = channel(id)?;
                 param_info(&ch.instrument.kind, Category::Instrument, key, &ch.name)
             }
-            AutomationTarget::InsertVolume(i) => Ok(TargetInfo::new(0.0, 2.0, "", format!("{} · Volume", insert(*i)?.name))),
-            AutomationTarget::InsertPan(i) => Ok(TargetInfo::new(-1.0, 1.0, "", format!("{} · Pan", insert(*i)?.name))),
+            AutomationTarget::InsertVolume(i) => Ok(TargetInfo::new(
+                0.0,
+                2.0,
+                "",
+                format!("{} · Volume", insert(*i)?.name),
+            )),
+            AutomationTarget::InsertPan(i) => Ok(TargetInfo::new(
+                -1.0,
+                1.0,
+                "",
+                format!("{} · Pan", insert(*i)?.name),
+            )),
             AutomationTarget::EffectParam(i, k, key) => {
                 let ins = insert(*i)?;
-                let fx = ins.effects.get(*k).ok_or_else(|| format!("insert {i} has no effect {k} (it has {})", ins.effects.len()))?;
+                let fx = ins.effects.get(*k).ok_or_else(|| {
+                    format!(
+                        "insert {i} has no effect {k} (it has {})",
+                        ins.effects.len()
+                    )
+                })?;
                 param_info(&fx.kind, Category::Effect, key, &ins.name)
             }
         }
@@ -149,22 +199,43 @@ impl AutomationTarget {
             AutomationTarget::Swing => Some(p.transport.swing),
             AutomationTarget::ChannelVolume(id) => p.channel(id).map(|c| c.volume),
             AutomationTarget::ChannelPan(id) => p.channel(id).map(|c| c.pan),
-            AutomationTarget::ChannelParam(id, key) => p.channel(id).map(|c| c.instrument.param(key)),
+            AutomationTarget::ChannelParam(id, key) => {
+                p.channel(id).map(|c| c.instrument.param(key))
+            }
             AutomationTarget::InsertVolume(i) => p.mixer.inserts.get(i.index()).map(|x| x.volume),
             AutomationTarget::InsertPan(i) => p.mixer.inserts.get(i.index()).map(|x| x.pan),
-            AutomationTarget::EffectParam(i, k, key) => p.mixer.inserts.get(i.index()).and_then(|x| x.effects.get(*k)).map(|d| d.param(key)),
+            AutomationTarget::EffectParam(i, k, key) => p
+                .mixer
+                .inserts
+                .get(i.index())
+                .and_then(|x| x.effects.get(*k))
+                .map(|d| d.param(key)),
         }
     }
 }
 
-fn param_info(kind: &str, category: Category, key: &str, owner: &str) -> Result<TargetInfo, String> {
-    let spec = catalog::device_in(kind, category).ok_or_else(|| format!("unknown device type {kind:?}"))?;
+fn param_info(
+    kind: &str,
+    category: Category,
+    key: &str,
+    owner: &str,
+) -> Result<TargetInfo, String> {
+    let spec = catalog::device_in(kind, category)
+        .ok_or_else(|| format!("unknown device type {kind:?}"))?;
     if spec.open_params {
-        return Ok(TargetInfo::new(f64::NEG_INFINITY, f64::INFINITY, "", format!("{owner} · {key}")));
+        return Ok(TargetInfo::new(
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            "",
+            format!("{owner} · {key}"),
+        ));
     }
     let ps = spec.param(key).ok_or_else(|| {
         let keys: Vec<_> = spec.params.iter().map(|p| p.key).collect();
-        format!("{kind:?} has no parameter {key:?}; expected one of {}", keys.join(", "))
+        format!(
+            "{kind:?} has no parameter {key:?}; expected one of {}",
+            keys.join(", ")
+        )
     })?;
     Ok(TargetInfo {
         min: ps.min,
@@ -215,7 +286,14 @@ pub fn value_at(points: &[AutomationPoint], beat: f64) -> Option<f64> {
 pub fn tempo_lane(p: &Project) -> Option<&[AutomationPoint]> {
     p.automation
         .iter()
-        .find(|l| !l.mute && !l.points.is_empty() && matches!(l.target.parse::<AutomationTarget>(), Ok(AutomationTarget::Tempo)))
+        .find(|l| {
+            !l.mute
+                && !l.points.is_empty()
+                && matches!(
+                    l.target.parse::<AutomationTarget>(),
+                    Ok(AutomationTarget::Tempo)
+                )
+        })
         .map(|l| l.points.as_slice())
 }
 
@@ -237,7 +315,11 @@ impl TempoMap {
     pub fn new(p: &Project) -> TempoMap {
         let spb = 60.0 / p.transport.bpm.max(1.0);
         let Some(points) = tempo_lane(p) else {
-            return TempoMap { spb, table: vec![], end_spb: spb };
+            return TempoMap {
+                spb,
+                table: vec![],
+                end_spb: spb,
+            };
         };
         let spb_at = |b: f64| 60.0 / value_at(points, b).unwrap_or(p.transport.bpm).max(1.0);
         let last = points.last().map(|pt| pt.beat).unwrap_or(0.0).max(0.0);
@@ -248,10 +330,15 @@ impl TempoMap {
         for k in 0..n {
             // Simpson's rule over one step.
             let b0 = k as f64 * Self::STEP;
-            t += Self::STEP / 6.0 * (spb_at(b0) + 4.0 * spb_at(b0 + Self::STEP / 2.0) + spb_at(b0 + Self::STEP));
+            t += Self::STEP / 6.0
+                * (spb_at(b0) + 4.0 * spb_at(b0 + Self::STEP / 2.0) + spb_at(b0 + Self::STEP));
             table.push(t);
         }
-        TempoMap { spb, table, end_spb: spb_at(last) }
+        TempoMap {
+            spb,
+            table,
+            end_spb: spb_at(last),
+        }
     }
 
     /// Whether the tempo changes over the song.
@@ -282,19 +369,53 @@ mod tests {
 
     #[test]
     fn targets_round_trip() {
-        for s in ["tempo", "swing", "channel/pad/volume", "channel/pad/pan", "channel/pad/cutoff", "insert/3/volume", "insert/0/pan", "insert/2/effect/1/mix"] {
+        for s in [
+            "tempo",
+            "swing",
+            "channel/pad/volume",
+            "channel/pad/pan",
+            "channel/pad/cutoff",
+            "insert/3/volume",
+            "insert/0/pan",
+            "insert/2/effect/1/mix",
+        ] {
             let t: AutomationTarget = s.parse().unwrap();
             assert_eq!(t.to_string(), s);
         }
-        assert_eq!("channel/pad/cutoff".parse::<AutomationTarget>().unwrap(), AutomationTarget::ChannelParam("pad".into(), "cutoff".into()));
-        for bad in ["", "bpm", "channel/pad", "channel//cutoff", "insert/x/volume", "insert/1/effect/a/mix", "insert/1/gain", "tempo/1"] {
+        assert_eq!(
+            "channel/pad/cutoff".parse::<AutomationTarget>().unwrap(),
+            AutomationTarget::ChannelParam("pad".into(), "cutoff".into())
+        );
+        for bad in [
+            "",
+            "bpm",
+            "channel/pad",
+            "channel//cutoff",
+            "insert/x/volume",
+            "insert/1/effect/a/mix",
+            "insert/1/gain",
+            "tempo/1",
+        ] {
             assert!(bad.parse::<AutomationTarget>().is_err(), "{bad}");
         }
     }
 
     #[test]
     fn interpolation_and_curves() {
-        let pts = |c: f64| vec![AutomationPoint { beat: 0.0, value: 0.0, curve: 0.0 }, AutomationPoint { beat: 4.0, value: 8.0, curve: c }];
+        let pts = |c: f64| {
+            vec![
+                AutomationPoint {
+                    beat: 0.0,
+                    value: 0.0,
+                    curve: 0.0,
+                },
+                AutomationPoint {
+                    beat: 4.0,
+                    value: 8.0,
+                    curve: c,
+                },
+            ]
+        };
         let lin = pts(0.0);
         assert_eq!(value_at(&lin, -1.0), Some(0.0));
         assert_eq!(value_at(&lin, 2.0), Some(4.0));
@@ -305,9 +426,21 @@ mod tests {
         assert_eq!(value_at(&[], 1.0), None);
         // A vertical step: two points on the same beat.
         let step = vec![
-            AutomationPoint { beat: 0.0, value: 1.0, curve: 0.0 },
-            AutomationPoint { beat: 2.0, value: 1.0, curve: 0.0 },
-            AutomationPoint { beat: 2.0, value: 5.0, curve: 0.0 },
+            AutomationPoint {
+                beat: 0.0,
+                value: 1.0,
+                curve: 0.0,
+            },
+            AutomationPoint {
+                beat: 2.0,
+                value: 1.0,
+                curve: 0.0,
+            },
+            AutomationPoint {
+                beat: 2.0,
+                value: 5.0,
+                curve: 0.0,
+            },
         ];
         assert_eq!(value_at(&step, 1.999), Some(1.0));
         assert_eq!(value_at(&step, 2.0), Some(5.0));
@@ -323,13 +456,28 @@ mod tests {
             target: "tempo".into(),
             color: "#ffffff".into(),
             mute: false,
-            points: vec![AutomationPoint { beat: 0.0, value: 120.0, curve: 0.0 }, AutomationPoint { beat: 8.0, value: 240.0, curve: 0.0 }],
+            points: vec![
+                AutomationPoint {
+                    beat: 0.0,
+                    value: 120.0,
+                    curve: 0.0,
+                },
+                AutomationPoint {
+                    beat: 8.0,
+                    value: 240.0,
+                    curve: 0.0,
+                },
+            ],
         });
         let m = TempoMap::new(&p);
         // bpm(b) = 120 + 15 b  =>  t(b) = 4 ln(1 + b / 8)
         for b in [1.0, 3.3, 8.0] {
             let expected = 4.0 * (1.0f64 + b / 8.0).ln();
-            assert!((m.seconds_at(b) - expected).abs() < 5e-5, "{b}: {} vs {expected}", m.seconds_at(b));
+            assert!(
+                (m.seconds_at(b) - expected).abs() < 5e-5,
+                "{b}: {} vs {expected}",
+                m.seconds_at(b)
+            );
         }
         assert!((m.seconds_at(12.0) - (4.0 * 2f64.ln() + 1.0)).abs() < 1e-6);
     }
@@ -352,10 +500,30 @@ mod tests {
         assert_eq!((info.min, info.max, info.exp), (20.0, 20000.0, true));
         assert_eq!(info.label, "Pad · Cutoff");
         assert_eq!(t.base_value(&p), Some(2400.0));
-        assert!("channel/pad/nope".parse::<AutomationTarget>().unwrap().resolve(&p).is_err());
-        assert!("channel/lead/volume".parse::<AutomationTarget>().unwrap().resolve(&p).is_err());
-        assert!("insert/0/effect/0/ceiling".parse::<AutomationTarget>().unwrap().resolve(&p).is_ok());
-        assert!("insert/0/effect/1/ceiling".parse::<AutomationTarget>().unwrap().resolve(&p).is_err());
-        assert!("insert/42/volume".parse::<AutomationTarget>().unwrap().resolve(&p).is_err());
+        assert!("channel/pad/nope"
+            .parse::<AutomationTarget>()
+            .unwrap()
+            .resolve(&p)
+            .is_err());
+        assert!("channel/lead/volume"
+            .parse::<AutomationTarget>()
+            .unwrap()
+            .resolve(&p)
+            .is_err());
+        assert!("insert/0/effect/0/ceiling"
+            .parse::<AutomationTarget>()
+            .unwrap()
+            .resolve(&p)
+            .is_ok());
+        assert!("insert/0/effect/1/ceiling"
+            .parse::<AutomationTarget>()
+            .unwrap()
+            .resolve(&p)
+            .is_err());
+        assert!("insert/42/volume"
+            .parse::<AutomationTarget>()
+            .unwrap()
+            .resolve(&p)
+            .is_err());
     }
 }

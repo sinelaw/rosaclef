@@ -38,9 +38,20 @@ enum Node {
 pub enum Change {
     /// A file now holds `blob`. `data` is set when the blob is new (its
     /// content must be stored); a rename or a copy reuses a stored blob.
-    File { path: String, blob: u64, len: u64, modified: f64, data: Option<Arc<Vec<u8>>> },
-    Dir { path: String, modified: f64 },
-    Remove { path: String },
+    File {
+        path: String,
+        blob: u64,
+        len: u64,
+        modified: f64,
+        data: Option<Arc<Vec<u8>>>,
+    },
+    Dir {
+        path: String,
+        modified: f64,
+    },
+    Remove {
+        path: String,
+    },
 }
 
 #[derive(Default)]
@@ -64,7 +75,10 @@ impl Default for MemFs {
 }
 
 fn not_found(p: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::NotFound, format!("{p}: no such file or folder"))
+    io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("{p}: no such file or folder"),
+    )
 }
 
 fn err(kind: io::ErrorKind, msg: String) -> io::Error {
@@ -83,11 +97,19 @@ fn key(path: &Path) -> io::Result<String> {
                 parts.pop();
             }
             Component::Normal(s) => parts.push(s.to_string_lossy().to_string()),
-            Component::Prefix(_) => return Err(err(io::ErrorKind::InvalidInput, format!("{}: unsupported path", path.display()))),
+            Component::Prefix(_) => {
+                return Err(err(
+                    io::ErrorKind::InvalidInput,
+                    format!("{}: unsupported path", path.display()),
+                ))
+            }
         }
     }
     if !absolute {
-        return Err(err(io::ErrorKind::InvalidInput, format!("{}: paths must be absolute", path.display())));
+        return Err(err(
+            io::ErrorKind::InvalidInput,
+            format!("{}: paths must be absolute", path.display()),
+        ));
     }
     Ok(format!("/{}", parts.join("/")))
 }
@@ -97,7 +119,11 @@ fn parent_key(k: &str) -> Option<String> {
         return None;
     }
     let i = k.rfind('/').unwrap_or(0);
-    Some(if i == 0 { "/".to_string() } else { k[..i].to_string() })
+    Some(if i == 0 {
+        "/".to_string()
+    } else {
+        k[..i].to_string()
+    })
 }
 
 /// Prefix shared by everything inside folder `k`.
@@ -112,13 +138,23 @@ fn inside(k: &str) -> String {
 impl Inner {
     fn keys_under(&self, k: &str) -> Vec<String> {
         let prefix = inside(k);
-        self.nodes.range(prefix.clone()..).take_while(|(p, _)| p.starts_with(&prefix)).map(|(p, _)| p.clone()).filter(|p| p != "/").collect()
+        self.nodes
+            .range(prefix.clone()..)
+            .take_while(|(p, _)| p.starts_with(&prefix))
+            .map(|(p, _)| p.clone())
+            .filter(|p| p != "/")
+            .collect()
     }
 
     fn mkdirs(&mut self, k: &str) -> io::Result<()> {
         match self.nodes.get(k) {
             Some(Node::Dir { .. }) => return Ok(()),
-            Some(Node::File(_)) => return Err(err(io::ErrorKind::AlreadyExists, format!("{k}: a file is in the way"))),
+            Some(Node::File(_)) => {
+                return Err(err(
+                    io::ErrorKind::AlreadyExists,
+                    format!("{k}: a file is in the way"),
+                ))
+            }
             None => {}
         }
         if let Some(p) = parent_key(k) {
@@ -126,7 +162,10 @@ impl Inner {
         }
         let modified = self.now;
         self.nodes.insert(k.to_string(), Node::Dir { modified });
-        self.journal.push(Change::Dir { path: k.to_string(), modified });
+        self.journal.push(Change::Dir {
+            path: k.to_string(),
+            modified,
+        });
         Ok(())
     }
 
@@ -150,16 +189,23 @@ impl Inner {
 
     fn remove(&mut self, k: &str) {
         if self.nodes.remove(k).is_some() {
-            self.journal.push(Change::Remove { path: k.to_string() });
+            self.journal.push(Change::Remove {
+                path: k.to_string(),
+            });
         }
     }
 }
 
 impl MemFs {
     pub fn new() -> MemFs {
-        let mut inner = Inner { next_blob: 1, ..Default::default() };
+        let mut inner = Inner {
+            next_blob: 1,
+            ..Default::default()
+        };
         inner.nodes.insert("/".into(), Node::Dir { modified: 0.0 });
-        MemFs { inner: Mutex::new(inner) }
+        MemFs {
+            inner: Mutex::new(inner),
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -182,7 +228,15 @@ impl MemFs {
         let Ok(k) = key(Path::new(path)) else { return };
         let mut g = self.lock();
         g.next_blob = g.next_blob.max(blob + 1);
-        g.nodes.insert(k, Node::File(FileNode { blob, len, modified, data: None }));
+        g.nodes.insert(
+            k,
+            Node::File(FileNode {
+                blob,
+                len,
+                modified,
+                data: None,
+            }),
+        );
     }
 
     /// Load a blob's content into every file that holds it.
@@ -201,7 +255,9 @@ impl MemFs {
 
     /// Blobs that reads asked for but were not loaded (cleared).
     pub fn take_missing(&self) -> Vec<u64> {
-        std::mem::take(&mut self.lock().missing).into_iter().collect()
+        std::mem::take(&mut self.lock().missing)
+            .into_iter()
+            .collect()
     }
 
     /// Changes since the last call, in order.
@@ -268,10 +324,15 @@ impl Fs for MemFs {
                 None => {
                     let blob = f.blob;
                     g.missing.insert(blob);
-                    Err(err(io::ErrorKind::WouldBlock, format!("{k}: content not loaded yet")))
+                    Err(err(
+                        io::ErrorKind::WouldBlock,
+                        format!("{k}: content not loaded yet"),
+                    ))
                 }
             },
-            Some(Node::Dir { .. }) => Err(err(io::ErrorKind::InvalidInput, format!("{k} is a folder"))),
+            Some(Node::Dir { .. }) => {
+                Err(err(io::ErrorKind::InvalidInput, format!("{k} is a folder")))
+            }
             None => Err(not_found(&k)),
         }
     }
@@ -287,7 +348,12 @@ impl Fs for MemFs {
         }
         let blob = g.next_blob;
         g.next_blob += 1;
-        let f = FileNode { blob, len: bytes.len() as u64, modified: g.now, data: Some(Arc::new(bytes.to_vec())) };
+        let f = FileNode {
+            blob,
+            len: bytes.len() as u64,
+            modified: g.now,
+            data: Some(Arc::new(bytes.to_vec())),
+        };
         g.put_file(&k, f, true);
         Ok(())
     }
@@ -295,8 +361,16 @@ impl Fs for MemFs {
     fn metadata(&self, path: &Path) -> io::Result<Meta> {
         let k = key(path)?;
         match self.lock().nodes.get(&k) {
-            Some(Node::Dir { modified }) => Ok(Meta { is_dir: true, len: 0, modified: *modified }),
-            Some(Node::File(f)) => Ok(Meta { is_dir: false, len: f.len, modified: f.modified }),
+            Some(Node::Dir { modified }) => Ok(Meta {
+                is_dir: true,
+                len: 0,
+                modified: *modified,
+            }),
+            Some(Node::File(f)) => Ok(Meta {
+                is_dir: false,
+                len: f.len,
+                modified: f.modified,
+            }),
             None => Err(not_found(&k)),
         }
     }
@@ -306,11 +380,20 @@ impl Fs for MemFs {
         let g = self.lock();
         match g.nodes.get(&k) {
             Some(Node::Dir { .. }) => {}
-            Some(Node::File(_)) => return Err(err(io::ErrorKind::InvalidInput, format!("{k} is not a folder"))),
+            Some(Node::File(_)) => {
+                return Err(err(
+                    io::ErrorKind::InvalidInput,
+                    format!("{k} is not a folder"),
+                ))
+            }
             None => return Err(not_found(&k)),
         }
         let prefix = inside(&k);
-        Ok(g.keys_under(&k).into_iter().filter(|p| !p[prefix.len()..].contains('/')).map(PathBuf::from).collect())
+        Ok(g.keys_under(&k)
+            .into_iter()
+            .filter(|p| !p[prefix.len()..].contains('/'))
+            .map(PathBuf::from)
+            .collect())
     }
 
     fn create_dir_all(&self, path: &Path) -> io::Result<()> {
@@ -332,7 +415,12 @@ impl Fs for MemFs {
         match node {
             Node::File(f) => {
                 match g.nodes.get(&b) {
-                    Some(Node::Dir { .. }) => return Err(err(io::ErrorKind::AlreadyExists, format!("{b} is a folder"))),
+                    Some(Node::Dir { .. }) => {
+                        return Err(err(
+                            io::ErrorKind::AlreadyExists,
+                            format!("{b} is a folder"),
+                        ))
+                    }
                     Some(Node::File(_)) => g.remove(&b),
                     None => {}
                 }
@@ -341,13 +429,22 @@ impl Fs for MemFs {
             }
             Node::Dir { modified } => {
                 if b.starts_with(&inside(&a)) {
-                    return Err(err(io::ErrorKind::InvalidInput, format!("cannot move {a} into itself")));
+                    return Err(err(
+                        io::ErrorKind::InvalidInput,
+                        format!("cannot move {a} into itself"),
+                    ));
                 }
                 if g.nodes.contains_key(&b) {
-                    return Err(err(io::ErrorKind::AlreadyExists, format!("{b} already exists")));
+                    return Err(err(
+                        io::ErrorKind::AlreadyExists,
+                        format!("{b} already exists"),
+                    ));
                 }
                 let under = g.keys_under(&a);
-                let moved: Vec<(String, Node)> = under.iter().map(|p| (format!("{b}{}", &p[a.len()..]), g.nodes[p].clone())).collect();
+                let moved: Vec<(String, Node)> = under
+                    .iter()
+                    .map(|p| (format!("{b}{}", &p[a.len()..]), g.nodes[p].clone()))
+                    .collect();
                 for p in under.iter().rev() {
                     g.remove(p);
                 }
@@ -357,7 +454,10 @@ impl Fs for MemFs {
                 for (p, n) in moved {
                     match n {
                         Node::Dir { modified } => {
-                            g.journal.push(Change::Dir { path: p.clone(), modified });
+                            g.journal.push(Change::Dir {
+                                path: p.clone(),
+                                modified,
+                            });
                             g.nodes.insert(p, Node::Dir { modified });
                         }
                         Node::File(f) => g.put_file(&p, f, false),
@@ -376,7 +476,10 @@ impl Fs for MemFs {
         };
         g.require_parent(&b)?;
         if let Some(Node::Dir { .. }) = g.nodes.get(&b) {
-            return Err(err(io::ErrorKind::AlreadyExists, format!("{b} is a folder")));
+            return Err(err(
+                io::ErrorKind::AlreadyExists,
+                format!("{b} is a folder"),
+            ));
         }
         let modified = g.now;
         g.put_file(&b, FileNode { modified, ..f }, false);
@@ -391,7 +494,9 @@ impl Fs for MemFs {
                 g.remove(&k);
                 Ok(())
             }
-            Some(Node::Dir { .. }) => Err(err(io::ErrorKind::InvalidInput, format!("{k} is a folder"))),
+            Some(Node::Dir { .. }) => {
+                Err(err(io::ErrorKind::InvalidInput, format!("{k} is a folder")))
+            }
             None => Err(not_found(&k)),
         }
     }
@@ -399,12 +504,20 @@ impl Fs for MemFs {
     fn remove_dir_all(&self, path: &Path) -> io::Result<()> {
         let k = key(path)?;
         if k == "/" {
-            return Err(err(io::ErrorKind::InvalidInput, "refusing to remove /".into()));
+            return Err(err(
+                io::ErrorKind::InvalidInput,
+                "refusing to remove /".into(),
+            ));
         }
         let mut g = self.lock();
         match g.nodes.get(&k) {
             Some(Node::Dir { .. }) => {}
-            Some(Node::File(_)) => return Err(err(io::ErrorKind::InvalidInput, format!("{k} is not a folder"))),
+            Some(Node::File(_)) => {
+                return Err(err(
+                    io::ErrorKind::InvalidInput,
+                    format!("{k} is not a folder"),
+                ))
+            }
             None => return Err(not_found(&k)),
         }
         for p in g.keys_under(&k).into_iter().rev() {
@@ -415,7 +528,9 @@ impl Fs for MemFs {
     }
 
     fn canonicalize(&self, path: &Path) -> PathBuf {
-        key(path).map(PathBuf::from).unwrap_or_else(|_| path.to_path_buf())
+        key(path)
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| path.to_path_buf())
     }
 
     fn now_ms(&self) -> f64 {
@@ -437,13 +552,32 @@ mod tests {
         fs.set_now(1000.0);
         fs.write(p("/lib/song/project.json"), b"{}").unwrap();
         assert!(fs.is_dir(p("/lib/song")));
-        assert_eq!(fs.read(p("/lib/./song/../song/project.json")).unwrap(), b"{}");
-        assert_eq!(fs.metadata(p("/lib/song/project.json")).unwrap(), Meta { is_dir: false, len: 2, modified: 1000.0 });
+        assert_eq!(
+            fs.read(p("/lib/./song/../song/project.json")).unwrap(),
+            b"{}"
+        );
+        assert_eq!(
+            fs.metadata(p("/lib/song/project.json")).unwrap(),
+            Meta {
+                is_dir: false,
+                len: 2,
+                modified: 1000.0
+            }
+        );
         fs.create_dir_all(p("/lib/song/samples")).unwrap();
         fs.write(p("/lib/song/samples/a.wav"), b"RIFF").unwrap();
-        assert_eq!(fs.read_dir(p("/lib/song")).unwrap(), vec![PathBuf::from("/lib/song/project.json"), PathBuf::from("/lib/song/samples")]);
+        assert_eq!(
+            fs.read_dir(p("/lib/song")).unwrap(),
+            vec![
+                PathBuf::from("/lib/song/project.json"),
+                PathBuf::from("/lib/song/samples")
+            ]
+        );
         assert!(fs.read(p("/lib/song/nope")).is_err());
-        assert!(fs.write(p("/lib/song/samples"), b"x").is_err(), "a folder is not a file");
+        assert!(
+            fs.write(p("/lib/song/samples"), b"x").is_err(),
+            "a folder is not a file"
+        );
         assert!(fs.write(p("relative"), b"x").is_err());
 
         // Rename a folder: everything moves, blobs are reused.
@@ -453,10 +587,16 @@ mod tests {
         assert!(!fs.exists(p("/lib/song")));
         assert_eq!(fs.blob(p("/lib/tune/samples/a.wav")).unwrap().0, blob);
         let changes = fs.take_changes();
-        assert!(changes.iter().all(|c| !matches!(c, Change::File { data: Some(_), .. })), "a rename stores no new content");
+        assert!(
+            changes
+                .iter()
+                .all(|c| !matches!(c, Change::File { data: Some(_), .. })),
+            "a rename stores no new content"
+        );
         assert!(fs.rename(p("/lib/tune"), p("/lib/tune/inner")).is_err());
 
-        fs.copy(p("/lib/tune/samples/a.wav"), p("/lib/tune/b.wav")).unwrap();
+        fs.copy(p("/lib/tune/samples/a.wav"), p("/lib/tune/b.wav"))
+            .unwrap();
         assert_eq!(fs.read(p("/lib/tune/b.wav")).unwrap(), b"RIFF");
         fs.remove_file(p("/lib/tune/b.wav")).unwrap();
         fs.remove_dir_all(p("/lib/tune")).unwrap();

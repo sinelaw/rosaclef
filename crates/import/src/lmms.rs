@@ -30,9 +30,14 @@
 //! Automation, per-clip mutes, sends between FX channels and unsupported
 //! plugins are skipped with a warning.
 
-use crate::{beats, clamp, color, ensure_valid, pad_tracks, set_option, set_param, Ids, Imported, SampleCopy, Warnings, MAX_INSERTS};
+use crate::{
+    beats, clamp, color, ensure_valid, pad_tracks, set_option, set_param, Ids, Imported,
+    SampleCopy, Warnings, MAX_INSERTS,
+};
 use anyhow::{anyhow, bail, Context, Result};
-use rosaclef_core::{Channel, Clip, Device, Insert, InsertIx, Note, Pattern, Project, Track, TrackIx};
+use rosaclef_core::{
+    Channel, Clip, Device, Insert, InsertIx, Note, Pattern, Project, Track, TrackIx,
+};
 use roxmltree::{Document, Node, ParsingOptions};
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
@@ -61,13 +66,20 @@ pub struct Options {
 
 impl Options {
     pub fn new(title: &str) -> Options {
-        Options { title: title.to_string(), source_dir: None, sample_dirs: default_sample_dirs() }
+        Options {
+            title: title.to_string(),
+            source_dir: None,
+            sample_dirs: default_sample_dirs(),
+        }
     }
 }
 
 /// Where LMMS keeps its factory and user samples on common installs.
 pub fn default_sample_dirs() -> Vec<PathBuf> {
-    let mut v = vec![PathBuf::from("/usr/share/lmms/samples"), PathBuf::from("/usr/local/share/lmms/samples")];
+    let mut v = vec![
+        PathBuf::from("/usr/share/lmms/samples"),
+        PathBuf::from("/usr/local/share/lmms/samples"),
+    ];
     if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
         let home = PathBuf::from(home);
         v.push(home.join("lmms/samples"));
@@ -113,16 +125,35 @@ pub fn encode_mmpz(xml: &str) -> Vec<u8> {
 /// Import an `.mmp` / `.mmpz` project.
 pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
     let text = decode(bytes)?;
-    let doc = Document::parse_with_options(&text, ParsingOptions { allow_dtd: true, ..Default::default() }).context("parsing the LMMS project XML")?;
+    let doc = Document::parse_with_options(
+        &text,
+        ParsingOptions {
+            allow_dtd: true,
+            ..Default::default()
+        },
+    )
+    .context("parsing the LMMS project XML")?;
     let root = doc.root_element();
     if root.tag_name().name() != "lmms-project" {
-        bail!("not an LMMS project (root element <{}>)", root.tag_name().name());
+        bail!(
+            "not an LMMS project (root element <{}>)",
+            root.tag_name().name()
+        );
     }
     let mut im = Importer::new(opts);
     im.run(root)?;
-    let Importer { project, warn, samples, .. } = im;
+    let Importer {
+        project,
+        warn,
+        samples,
+        ..
+    } = im;
     ensure_valid(&project)?;
-    Ok(Imported { project, samples, warnings: warn.finish() })
+    Ok(Imported {
+        project,
+        samples,
+        warnings: warn.finish(),
+    })
 }
 
 // ---------------------------------------------------------------- XML helpers
@@ -135,7 +166,10 @@ fn child<'a, 'i>(n: Node<'a, 'i>, names: &[&str]) -> Option<Node<'a, 'i>> {
     n.children().find(|c| is(c, names))
 }
 
-fn children<'a, 'i>(n: Node<'a, 'i>, names: &'static [&'static str]) -> impl Iterator<Item = Node<'a, 'i>> {
+fn children<'a, 'i>(
+    n: Node<'a, 'i>,
+    names: &'static [&'static str],
+) -> impl Iterator<Item = Node<'a, 'i>> {
     n.children().filter(move |c| is(c, names))
 }
 
@@ -145,7 +179,10 @@ fn num(n: Node, name: &str) -> Option<f64> {
     if let Some(v) = n.attribute(name) {
         return v.trim().parse().ok();
     }
-    n.children().find(|c| c.is_element() && c.tag_name().name() == name).and_then(|c| c.attribute("value")).and_then(|v| v.trim().parse().ok())
+    n.children()
+        .find(|c| c.is_element() && c.tag_name().name() == name)
+        .and_then(|c| c.attribute("value"))
+        .and_then(|v| v.trim().parse().ok())
 }
 
 fn num_or(n: Node, name: &str, d: f64) -> f64 {
@@ -224,13 +261,19 @@ impl<'o> Importer<'o> {
 
     fn run(&mut self, root: Node) -> Result<()> {
         let version = text(root, "creatorversion");
-        self.project.meta.description = if version.is_empty() { "Imported from LMMS".into() } else { format!("Imported from LMMS {version}") };
+        self.project.meta.description = if version.is_empty() {
+            "Imported from LMMS".into()
+        } else {
+            format!("Imported from LMMS {version}")
+        };
 
         // Tempo and time signature.
         if let Some(head) = child(root, &["head"]) {
             let bpm = num_or(head, "bpm", 120.0);
             if !(20.0..=999.0).contains(&bpm) {
-                self.warn.add(format!("tempo {bpm} BPM is outside 20..999 and was clamped"));
+                self.warn.add(format!(
+                    "tempo {bpm} BPM is outside 20..999 and was clamped"
+                ));
             }
             self.project.transport.bpm = clamp(bpm, 20.0, 999.0);
             let num_ = num_or(head, "timesig_numerator", 4.0).max(1.0);
@@ -246,14 +289,21 @@ impl<'o> Importer<'o> {
             let master_vol = num_or(head, "mastervol", 100.0);
             self.project.mixer.inserts[0].volume = clamp(master_vol / 100.0, 0.0, 2.0);
         } else {
-            self.warn.add("the project has no <head>; using 120 BPM in 4/4");
+            self.warn
+                .add("the project has no <head>; using 120 BPM in 4/4");
         }
-        let song = child(root, &["song"]).ok_or_else(|| anyhow!("not an LMMS song project (no <song> element)"))?;
+        let song = child(root, &["song"])
+            .ok_or_else(|| anyhow!("not an LMMS song project (no <song> element)"))?;
         self.build_mixer(song);
 
-        let container = child(song, &["trackcontainer"]).ok_or_else(|| anyhow!("the project has no song track container"))?;
+        let container = child(song, &["trackcontainer"])
+            .ok_or_else(|| anyhow!("the project has no song track container"))?;
         let tracks: Vec<Node> = children(container, &["track"]).collect();
-        let bb_tracks: Vec<Node> = tracks.iter().copied().filter(|t| text(*t, "type") == "1").collect();
+        let bb_tracks: Vec<Node> = tracks
+            .iter()
+            .copied()
+            .filter(|t| text(*t, "type") == "1")
+            .collect();
         let mut bb_patterns: Option<Vec<Option<String>>> = None;
         for t in &tracks {
             match text(*t, "type") {
@@ -263,12 +313,18 @@ impl<'o> Importer<'o> {
                         bb_patterns = Some(self.build_bb(&bb_tracks));
                     }
                     let idx = bb_tracks.iter().position(|b| b == t).unwrap_or(0);
-                    let pat = bb_patterns.as_ref().and_then(|v| v.get(idx).cloned()).flatten();
+                    let pat = bb_patterns
+                        .as_ref()
+                        .and_then(|v| v.get(idx).cloned())
+                        .flatten();
                     self.bb_track(*t, pat);
                 }
                 "2" => self.sample_track(*t),
                 "5" | "6" => self.warn.add("automation tracks were skipped"),
-                other => self.warn.add(format!("track \"{}\" of unsupported type {other} was skipped", text(*t, "name"))),
+                other => self.warn.add(format!(
+                    "track \"{}\" of unsupported type {other} was skipped",
+                    text(*t, "name")
+                )),
             }
         }
         for t in children(song, &["track"]) {
@@ -277,11 +333,19 @@ impl<'o> Importer<'o> {
             }
         }
         if self.loud_notes > 0 {
-            self.warn.add(format!("{} note(s) louder than 100% were clamped to full velocity", self.loud_notes));
+            self.warn.add(format!(
+                "{} note(s) louder than 100% were clamped to full velocity",
+                self.loud_notes
+            ));
         }
         // Keep a limiter last on the master, as in every Rosaclef project.
         let master = &mut self.project.mixer.inserts[0];
-        if master.effects.last().map(|e| e.kind != "limiter").unwrap_or(true) {
+        if master
+            .effects
+            .last()
+            .map(|e| e.kind != "limiter")
+            .unwrap_or(true)
+        {
             master.effects.push(Device::new("limiter"));
         }
         pad_tracks(&mut self.project, 8);
@@ -291,16 +355,27 @@ impl<'o> Importer<'o> {
     // ------------------------------------------------------------ mixer
 
     fn build_mixer(&mut self, song: Node) {
-        let Some(mixer) = child(song, &["fxmixer", "mixer"]) else { return };
+        let Some(mixer) = child(song, &["fxmixer", "mixer"]) else {
+            return;
+        };
         let chans: Vec<Node> = children(mixer, &["fxchannel", "mixerchannel"]).collect();
-        let max = chans.iter().filter_map(|c| num(*c, "num")).fold(0.0, f64::max) as usize;
+        let max = chans
+            .iter()
+            .filter_map(|c| num(*c, "num"))
+            .fold(0.0, f64::max) as usize;
         if max + 1 > MAX_INSERTS {
-            self.warn.add(format!("the FX mixer has {} channels; only the first {MAX_INSERTS} were imported", max + 1));
+            self.warn.add(format!(
+                "the FX mixer has {} channels; only the first {MAX_INSERTS} were imported",
+                max + 1
+            ));
         }
         let n = (max + 1).min(MAX_INSERTS);
         while self.project.mixer.inserts.len() < n {
             let i = self.project.mixer.inserts.len();
-            self.project.mixer.inserts.push(Insert::new(&format!("FX {i}")));
+            self.project
+                .mixer
+                .inserts
+                .push(Insert::new(&format!("FX {i}")));
         }
         for c in chans {
             let i = num_or(c, "num", 0.0) as usize;
@@ -309,7 +384,9 @@ impl<'o> Importer<'o> {
             }
             let name = text(c, "name");
             let vol = num_or(c, "volume", 1.0);
-            let effects = child(c, &["fxchain"]).map(|fx| self.effects(fx, &format!("FX channel \"{name}\""))).unwrap_or_default();
+            let effects = child(c, &["fxchain"])
+                .map(|fx| self.effects(fx, &format!("FX channel \"{name}\"")))
+                .unwrap_or_default();
             for s in children(c, &["send"]) {
                 let to = num_or(s, "channel", 0.0) as usize;
                 if to != 0 {
@@ -332,7 +409,9 @@ impl<'o> Importer<'o> {
         if i < self.project.mixer.inserts.len() {
             return InsertIx(i as u32);
         }
-        self.warn.add(format!("{owner} is routed to FX {i}, which does not exist; routed to the master"));
+        self.warn.add(format!(
+            "{owner} is routed to FX {i}, which does not exist; routed to the master"
+        ));
         InsertIx::MASTER
     }
 
@@ -343,7 +422,9 @@ impl<'o> Importer<'o> {
             let name = text(e, "name");
             let wet = clamp(num_or(e, "wet", 1.0), 0.0, 1.0);
             // The plugin's own settings live in the first element that is not <key>.
-            let settings = e.children().find(|c| c.is_element() && c.tag_name().name() != "key");
+            let settings = e
+                .children()
+                .find(|c| c.is_element() && c.tag_name().name() != "key");
             let get = |k: &str, d: f64| settings.map(|s| num_or(s, k, d)).unwrap_or(d);
             let mut dev = match name {
                 "reverbsc" => {
@@ -357,7 +438,11 @@ impl<'o> Importer<'o> {
                     let mut d = Device::new("delay");
                     let secs = get("DelayTimeSamples", 0.5);
                     set_param(&mut d, "time", secs * self.project.transport.bpm / 60.0);
-                    set_param(&mut d, "feedback", get("FeebackAmount", get("FeedbackAmount", 0.5)));
+                    set_param(
+                        &mut d,
+                        "feedback",
+                        get("FeebackAmount", get("FeedbackAmount", 0.5)),
+                    );
                     set_param(&mut d, "mix", wet * 0.5);
                     d
                 }
@@ -369,7 +454,11 @@ impl<'o> Importer<'o> {
                 }
                 "bassbooster" => {
                     let mut d = Device::new("eq");
-                    set_param(&mut d, "low", 20.0 * get("gain", 1.0).max(0.01).log10() + 6.0);
+                    set_param(
+                        &mut d,
+                        "low",
+                        20.0 * get("gain", 1.0).max(0.01).log10() + 6.0,
+                    );
                     set_param(&mut d, "lowFreq", get("freq", 100.0));
                     d
                 }
@@ -396,11 +485,16 @@ impl<'o> Importer<'o> {
                 "eq" => Device::new("eq"),
                 "" => continue,
                 other => {
-                    self.warn.add(format!("effect \"{other}\" on {owner} has no Rosaclef equivalent and was skipped"));
+                    self.warn.add(format!(
+                        "effect \"{other}\" on {owner} has no Rosaclef equivalent and was skipped"
+                    ));
                     continue;
                 }
             };
-            self.warn.add(format!("LMMS effect \"{name}\" was approximated by the built-in \"{}\"", dev.kind));
+            self.warn.add(format!(
+                "LMMS effect \"{name}\" was approximated by the built-in \"{}\"",
+                dev.kind
+            ));
             dev.enabled = num_or(e, "on", 1.0) != 0.0;
             out.push(dev);
         }
@@ -418,7 +512,9 @@ impl<'o> Importer<'o> {
         let (instrument, mode, transpose) = self.instrument(name, it, has_steps);
         let vol = num_or(it, "vol", 100.0);
         if vol > 150.0 {
-            self.warn.add(format!("track \"{name}\": volume {vol}% was clamped to 150%"));
+            self.warn.add(format!(
+                "track \"{name}\": volume {vol}% was clamped to 150%"
+            ));
         }
         let fx = num(it, "fxch").or_else(|| num(it, "mixch")).unwrap_or(0.0);
         let mut mixer = self.insert(fx, &format!("track \"{name}\""));
@@ -435,19 +531,25 @@ impl<'o> Importer<'o> {
                     mixer = InsertIx(self.project.mixer.inserts.len() as u32);
                     self.project.mixer.inserts.push(ins);
                 } else {
-                    self.warn.add(format!("track \"{name}\": no free insert for its effects; they were skipped"));
+                    self.warn.add(format!(
+                        "track \"{name}\": no free insert for its effects; they were skipped"
+                    ));
                 }
             }
         }
         let id = self.channel_ids.make(name);
         let track_color = text(track, "color");
-        let color = if track_color.len() == 7 && track_color.starts_with('#') && track_color[1..].chars().all(|c| c.is_ascii_hexdigit()) {
+        let color = if track_color.len() == 7
+            && track_color.starts_with('#')
+            && track_color[1..].chars().all(|c| c.is_ascii_hexdigit())
+        {
             track_color.to_lowercase()
         } else {
             color(self.project.channels.len())
         };
         if flag(track, "solo") {
-            self.warn.add(format!("track \"{name}\" was soloed; solo is not imported"));
+            self.warn
+                .add(format!("track \"{name}\" was soloed; solo is not imported"));
         }
         self.project.channels.push(Channel {
             id: id.clone(),
@@ -459,7 +561,12 @@ impl<'o> Importer<'o> {
             mute: flag(track, "muted"),
             mixer,
         });
-        Some(ChannelInfo { id, base_note, transpose, mode })
+        Some(ChannelInfo {
+            id,
+            base_note,
+            transpose,
+            mode,
+        })
     }
 
     /// Map an LMMS instrument onto a built-in one. Returns the device, how
@@ -474,8 +581,15 @@ impl<'o> Importer<'o> {
                 let mut d = Device::new("synth");
                 let osc: Vec<(usize, f64, f64, f64, f64)> = (0..3)
                     .map(|i| {
-                        let fine = (get(&format!("finel{i}"), 0.0) + get(&format!("finer{i}"), 0.0)) / 2.0;
-                        (i, get(&format!("vol{i}"), 33.0), get(&format!("wavetype{i}"), 0.0), get(&format!("coarse{i}"), 0.0), fine)
+                        let fine =
+                            (get(&format!("finel{i}"), 0.0) + get(&format!("finer{i}"), 0.0)) / 2.0;
+                        (
+                            i,
+                            get(&format!("vol{i}"), 33.0),
+                            get(&format!("wavetype{i}"), 0.0),
+                            get(&format!("coarse{i}"), 0.0),
+                            fine,
+                        )
                     })
                     .filter(|o| o.1 > 0.0)
                     .collect();
@@ -529,14 +643,28 @@ impl<'o> Importer<'o> {
                 let mut d = Device::new("drum");
                 let noise = get("noise", 0.0);
                 set_option(&mut d, "kind", if noise > 0.5 { "snare" } else { "kick" });
-                set_param(&mut d, "tune", 12.0 * (get("endfreq", 40.0).max(5.0) / 45.0).log2());
+                set_param(
+                    &mut d,
+                    "tune",
+                    12.0 * (get("endfreq", 40.0).max(5.0) / 45.0).log2(),
+                );
                 set_param(&mut d, "decay", get("decay", 440.0) / 440.0);
                 set_param(&mut d, "snap", get("click", 0.4));
                 set_param(&mut d, "drive", get("dist", 0.8) / 10.0);
                 set_param(&mut d, "gain", 0.8 * get("gain", 1.0));
-                self.warn.add(format!("track \"{track}\": Kicker was approximated by the Atelier drum"));
+                self.warn.add(format!(
+                    "track \"{track}\": Kicker was approximated by the Atelier drum"
+                ));
                 let follows = get("startnote", 1.0) != 0.0 || get("endnote", 0.0) != 0.0;
-                (d, if follows { PitchMode::Relative } else { PitchMode::Fixed }, 0)
+                (
+                    d,
+                    if follows {
+                        PitchMode::Relative
+                    } else {
+                        PitchMode::Fixed
+                    },
+                    0,
+                )
             }
             "audiofileprocessor" => {
                 let mut d = Device::new("sampler");
@@ -554,7 +682,17 @@ impl<'o> Importer<'o> {
                 }
                 set_param(&mut d, "gain", 0.8 * get("amp", 100.0) / 100.0);
                 let looped = get("looped", 0.0) as i32 != 0;
-                set_option(&mut d, "mode", if looped { "loop" } else if has_steps { "oneshot" } else { "pitched" });
+                set_option(
+                    &mut d,
+                    "mode",
+                    if looped {
+                        "loop"
+                    } else if has_steps {
+                        "oneshot"
+                    } else {
+                        "pitched"
+                    },
+                );
                 if get("reversed", 0.0) != 0.0 {
                     self.warn.add(format!("track \"{track}\": reversed playback is not supported; the sample plays forwards"));
                 }
@@ -565,7 +703,10 @@ impl<'o> Importer<'o> {
                 // into the 4-pole ladder (24 dB, `db24`) or the 2-pole
                 // screamer (12 dB), a snappy filter envelope, monophonic, and
                 // legato glide when LB302's slide is on.
-                let mut d = rosaclef_core::presets::find("Acide Émeraude").filter(|p| p.kind == "cuivre").map(|p| p.device()).unwrap_or_else(|| Device::new("cuivre"));
+                let mut d = rosaclef_core::presets::find("Acide Émeraude")
+                    .filter(|p| p.kind == "cuivre")
+                    .map(|p| p.device())
+                    .unwrap_or_else(|| Device::new("cuivre"));
                 // LB302 shapes: 0 saw, 1 triangle, 2 square, 3 round square,
                 // 4 moog, 5 sine, 6 exponential, 7 noise, 8-11 band-limited
                 // saw / square / triangle / moog.
@@ -578,11 +719,21 @@ impl<'o> Importer<'o> {
                 set_option(&mut d, "wave1", w);
                 if shape == 7 {
                     set_param(&mut d, "noise", 1.0);
-                    self.warn.add(format!("track \"{track}\": LB302's noise shape became Cuivre's noise over a saw"));
+                    self.warn.add(format!(
+                        "track \"{track}\": LB302's noise shape became Cuivre's noise over a saw"
+                    ));
                 }
                 set_param(&mut d, "mix2", 0.0);
                 set_param(&mut d, "sub", 0.0);
-                set_option(&mut d, "filter", if get("db24", 0.0) != 0.0 { "ladder" } else { "screamer" });
+                set_option(
+                    &mut d,
+                    "filter",
+                    if get("db24", 0.0) != 0.0 {
+                        "ladder"
+                    } else {
+                        "screamer"
+                    },
+                );
                 let cutoff = 80.0 * 2f64.powf(get("vcf_cut", 0.75) * 7.0);
                 set_param(&mut d, "cutoff", cutoff);
                 set_param(&mut d, "resonance", get("vcf_res", 0.75) * 0.95);
@@ -596,21 +747,42 @@ impl<'o> Importer<'o> {
                 set_param(&mut d, "release", 0.05);
                 let slide = get("slide", 0.0) != 0.0;
                 set_option(&mut d, "mode", if slide { "legato" } else { "mono" });
-                set_param(&mut d, "glide", if slide { 0.02 + get("slide_dec", 0.6) * 0.2 } else { 0.0001 });
+                set_param(
+                    &mut d,
+                    "glide",
+                    if slide {
+                        0.02 + get("slide_dec", 0.6) * 0.2
+                    } else {
+                        0.0001
+                    },
+                );
                 set_param(&mut d, "gain", 0.6);
-                self.warn.add(format!("track \"{track}\": LB302 was approximated by Cuivre"));
+                self.warn.add(format!(
+                    "track \"{track}\": LB302 was approximated by Cuivre"
+                ));
                 (d, PitchMode::Normal, 0)
             }
             "malletsstk" => {
-                let d = rosaclef_core::presets::find("Crystal Mallet").filter(|p| p.kind == "fm").map(|p| p.device()).unwrap_or_else(|| Device::new("fm"));
-                self.warn.add(format!("track \"{track}\": Mallets was approximated by Lumière (fm)"));
+                let d = rosaclef_core::presets::find("Crystal Mallet")
+                    .filter(|p| p.kind == "fm")
+                    .map(|p| p.device())
+                    .unwrap_or_else(|| Device::new("fm"));
+                self.warn.add(format!(
+                    "track \"{track}\": Mallets was approximated by Lumière (fm)"
+                ));
                 (d, PitchMode::Normal, 0)
             }
             other => {
                 let mut d = Device::new("synth");
                 self.envelope(it, &mut d);
-                let what = if other.is_empty() { "an empty instrument".to_string() } else { format!("instrument \"{other}\"") };
-                self.warn.add(format!("track \"{track}\": {what} is not supported; replaced by Aurum (synth)"));
+                let what = if other.is_empty() {
+                    "an empty instrument".to_string()
+                } else {
+                    format!("instrument \"{other}\"")
+                };
+                self.warn.add(format!(
+                    "track \"{track}\": {what} is not supported; replaced by Aurum (synth)"
+                ));
                 (d, PitchMode::Normal, 0)
             }
         }
@@ -621,7 +793,9 @@ impl<'o> Importer<'o> {
     fn envelope(&mut self, it: Node, d: &mut Device) {
         let secs = |v: f64| 5.0 * v * v;
         let ed = child(it, &["eldata"]);
-        let vol_env = ed.and_then(|e| child(e, &["elvol"])).filter(|v| num_or(*v, "amt", 0.0) > 0.0);
+        let vol_env = ed
+            .and_then(|e| child(e, &["elvol"]))
+            .filter(|v| num_or(*v, "amt", 0.0) > 0.0);
         match vol_env {
             Some(v) => {
                 set_param(d, "attack", secs(num_or(v, "att", 0.0)).max(0.001));
@@ -646,7 +820,9 @@ impl<'o> Importer<'o> {
                     2 | 3 => "bandpass",
                     0 | 6 | 7 | 8 => "lowpass",
                     t => {
-                        self.warn.add(format!("instrument filter type {t} was approximated by a low-pass"));
+                        self.warn.add(format!(
+                            "instrument filter type {t} was approximated by a low-pass"
+                        ));
                         "lowpass"
                     }
                 };
@@ -663,7 +839,12 @@ impl<'o> Importer<'o> {
 
     fn pitch(&self, key: i32, ch: &ChannelInfo) -> i32 {
         match ch.mode {
-            PitchMode::Normal => key + KEY_TO_MIDI + (DEFAULT_BASE_NOTE - ch.base_note) + self.master_pitch + ch.transpose,
+            PitchMode::Normal => {
+                key + KEY_TO_MIDI
+                    + (DEFAULT_BASE_NOTE - ch.base_note)
+                    + self.master_pitch
+                    + ch.transpose
+            }
             PitchMode::Fixed => 60,
             PitchMode::Relative => 60 + key - ch.base_note,
         }
@@ -689,12 +870,18 @@ impl<'o> Importer<'o> {
                 channel: ch.id.clone(),
                 pitch,
                 start: beats(num_or(n, "pos", 0.0).max(0.0), TICKS_PER_BEAT),
-                length: if len > 0.0 { beats(len, TICKS_PER_BEAT) } else { STEP_BEATS },
+                length: if len > 0.0 {
+                    beats(len, TICKS_PER_BEAT)
+                } else {
+                    STEP_BEATS
+                },
                 velocity: clamp(vol / 100.0, 0.0, 1.0),
             });
         }
         if dropped > 0 {
-            self.warn.add(format!("track \"{track}\": {dropped} note(s) outside the MIDI range were dropped"));
+            self.warn.add(format!(
+                "track \"{track}\": {dropped} note(s) outside the MIDI range were dropped"
+            ));
         }
         out.sort_by(|a, b| a.start.total_cmp(&b.start).then(a.pitch.cmp(&b.pitch)));
         out
@@ -710,18 +897,30 @@ impl<'o> Importer<'o> {
         if steps > 0.0 {
             return steps * 12.0;
         }
-        let end = children(pattern, &["note"]).map(|n| num_or(n, "pos", 0.0) + num_or(n, "len", 12.0).max(12.0)).fold(0.0, f64::max);
+        let end = children(pattern, &["note"])
+            .map(|n| num_or(n, "pos", 0.0) + num_or(n, "len", 12.0).max(12.0))
+            .fold(0.0, f64::max);
         ((end / self.ticks_per_bar).ceil().max(1.0)) * self.ticks_per_bar
     }
 
     fn has_steps(track: Node) -> bool {
-        track.descendants().filter(|n| n.is_element() && n.tag_name().name() == "note").any(|n| num_or(n, "len", 48.0) <= 0.0)
+        track
+            .descendants()
+            .filter(|n| n.is_element() && n.tag_name().name() == "note")
+            .any(|n| num_or(n, "len", 48.0) <= 0.0)
     }
 
     fn add_track(&mut self, track: Node) -> TrackIx {
         let name = text(track, "name");
         let ix = TrackIx(self.project.playlist.tracks.len() as u32);
-        self.project.playlist.tracks.push(Track { name: if name.is_empty() { format!("Track {}", ix.0 + 1) } else { name.to_string() }, mute: flag(track, "muted") });
+        self.project.playlist.tracks.push(Track {
+            name: if name.is_empty() {
+                format!("Track {}", ix.0 + 1)
+            } else {
+                name.to_string()
+            },
+            mute: flag(track, "muted"),
+        });
         ix
     }
 
@@ -730,17 +929,26 @@ impl<'o> Importer<'o> {
     fn instrument_track(&mut self, track: Node) {
         let name = text(track, "name").to_string();
         let Some(ch) = self.add_channel(track, Self::has_steps(track)) else {
-            self.warn.add(format!("track \"{name}\" has no instrument settings and was skipped"));
+            self.warn.add(format!(
+                "track \"{name}\" has no instrument settings and was skipped"
+            ));
             return;
         };
         let tix = self.add_track(track);
-        let color = self.project.channels.last().map(|c| c.color.clone()).unwrap_or_else(|| color(0));
+        let color = self
+            .project
+            .channels
+            .last()
+            .map(|c| c.color.clone())
+            .unwrap_or_else(|| color(0));
         let mut count = 0;
         for pat in children(track, &["pattern", "midiclip"]) {
             let start = beats(num_or(pat, "pos", 0.0).max(0.0), TICKS_PER_BEAT);
             let length = beats(self.pattern_ticks(pat), TICKS_PER_BEAT);
             if flag(pat, "muted") {
-                self.warn.add(format!("track \"{name}\": a muted clip at beat {start} was skipped"));
+                self.warn.add(format!(
+                    "track \"{name}\": a muted clip at beat {start} was skipped"
+                ));
                 continue;
             }
             let notes = self.notes(pat, &ch, &name);
@@ -750,14 +958,35 @@ impl<'o> Importer<'o> {
                 None => {
                     count += 1;
                     let label = text(pat, "name");
-                    let pname = if !label.is_empty() { label.to_string() } else if count == 1 { name.clone() } else { format!("{name} {count}") };
+                    let pname = if !label.is_empty() {
+                        label.to_string()
+                    } else if count == 1 {
+                        name.clone()
+                    } else {
+                        format!("{name} {count}")
+                    };
                     let id = self.pattern_ids.make(&pname);
-                    self.project.patterns.push(Pattern { id: id.clone(), name: pname, color: color.clone(), length, notes });
+                    self.project.patterns.push(Pattern {
+                        id: id.clone(),
+                        name: pname,
+                        color: color.clone(),
+                        length,
+                        notes,
+                    });
                     self.dedupe.insert(key, id.clone());
                     id
                 }
             };
-            self.project.playlist.clips.push(Clip { pattern: id, sample: String::new(), track: tix, start, length, offset: 0.0, gain: 1.0, mixer: InsertIx::MASTER });
+            self.project.playlist.clips.push(Clip {
+                pattern: id,
+                sample: String::new(),
+                track: tix,
+                start,
+                length,
+                offset: 0.0,
+                gain: 1.0,
+                mixer: InsertIx::MASTER,
+            });
         }
     }
 
@@ -765,21 +994,31 @@ impl<'o> Importer<'o> {
     /// (saved inside the first B&B track). Returns the pattern id per B&B.
     fn build_bb(&mut self, bb_tracks: &[Node]) -> Vec<Option<String>> {
         let n = bb_tracks.len();
-        let container = bb_tracks.iter().find_map(|t| child(*t, &["bbtrack", "patterntrack"]).and_then(|b| child(b, &["trackcontainer"])));
+        let container = bb_tracks.iter().find_map(|t| {
+            child(*t, &["bbtrack", "patterntrack"]).and_then(|b| child(b, &["trackcontainer"]))
+        });
         let mut notes: Vec<Vec<Note>> = vec![vec![]; n];
         let mut ticks: Vec<f64> = vec![0.0; n];
         if let Some(c) = container {
             for inner in children(c, &["track"]) {
                 let name = text(inner, "name").to_string();
                 if !matches!(text(inner, "type"), "0" | "") {
-                    self.warn.add(format!("Beat+Bassline track \"{name}\" is not an instrument track and was skipped"));
+                    self.warn.add(format!(
+                        "Beat+Bassline track \"{name}\" is not an instrument track and was skipped"
+                    ));
                     continue;
                 }
-                let Some(ch) = self.add_channel(inner, Self::has_steps(inner)) else { continue };
+                let Some(ch) = self.add_channel(inner, Self::has_steps(inner)) else {
+                    continue;
+                };
                 for (ord, pat) in children(inner, &["pattern", "midiclip"]).enumerate() {
                     // B&B k's pattern sits at bar k of the container.
                     let pos = num_or(pat, "pos", -1.0);
-                    let k = if pos >= 0.0 { (pos / self.ticks_per_bar).round() as usize } else { ord };
+                    let k = if pos >= 0.0 {
+                        (pos / self.ticks_per_bar).round() as usize
+                    } else {
+                        ord
+                    };
                     if k >= n {
                         continue;
                     }
@@ -789,21 +1028,34 @@ impl<'o> Importer<'o> {
                 }
             }
         } else if n > 0 {
-            self.warn.add("the Beat+Bassline editor's tracks were not found; B&B clips are empty");
+            self.warn
+                .add("the Beat+Bassline editor's tracks were not found; B&B clips are empty");
         }
         (0..n)
             .map(|k| {
-                let used = bb_tracks[k].children().any(|c| is(&c, &["bbtco", "patternclip"]));
+                let used = bb_tracks[k]
+                    .children()
+                    .any(|c| is(&c, &["bbtco", "patternclip"]));
                 if notes[k].is_empty() && !used {
                     return None;
                 }
                 let bars = (ticks[k] / self.ticks_per_bar).ceil().max(1.0);
                 let name = text(bb_tracks[k], "name");
-                let name = if name.is_empty() { format!("Beat/Bassline {k}") } else { name.to_string() };
+                let name = if name.is_empty() {
+                    format!("Beat/Bassline {k}")
+                } else {
+                    name.to_string()
+                };
                 let id = self.pattern_ids.make(&name);
                 let mut ns = std::mem::take(&mut notes[k]);
                 ns.sort_by(|a, b| a.start.total_cmp(&b.start).then(a.pitch.cmp(&b.pitch)));
-                self.project.patterns.push(Pattern { id: id.clone(), name, color: color(self.project.patterns.len() + 3), length: bars * self.bar_beats, notes: ns });
+                self.project.patterns.push(Pattern {
+                    id: id.clone(),
+                    name,
+                    color: color(self.project.patterns.len() + 3),
+                    length: bars * self.bar_beats,
+                    notes: ns,
+                });
                 Some(id)
             })
             .collect()
@@ -816,12 +1068,23 @@ impl<'o> Importer<'o> {
             let start = beats(num_or(tco, "pos", 0.0).max(0.0), TICKS_PER_BEAT);
             let length = beats(num_or(tco, "len", self.ticks_per_bar), TICKS_PER_BEAT);
             if flag(tco, "muted") {
-                self.warn.add(format!("track \"{name}\": a muted clip at beat {start} was skipped"));
+                self.warn.add(format!(
+                    "track \"{name}\": a muted clip at beat {start} was skipped"
+                ));
                 continue;
             }
             let Some(id) = pattern.clone() else { continue };
             if length > 0.0 {
-                self.project.playlist.clips.push(Clip { pattern: id, sample: String::new(), track: tix, start, length, offset: 0.0, gain: 1.0, mixer: InsertIx::MASTER });
+                self.project.playlist.clips.push(Clip {
+                    pattern: id,
+                    sample: String::new(),
+                    track: tix,
+                    start,
+                    length,
+                    offset: 0.0,
+                    gain: 1.0,
+                    mixer: InsertIx::MASTER,
+                });
             }
         }
     }
@@ -831,10 +1094,14 @@ impl<'o> Importer<'o> {
         let tix = self.add_track(track);
         let st = child(track, &["sampletrack"]);
         let vol = st.map(|s| num_or(s, "vol", 100.0)).unwrap_or(100.0);
-        let fx = st.and_then(|s| num(s, "fxch").or_else(|| num(s, "mixch"))).unwrap_or(0.0);
+        let fx = st
+            .and_then(|s| num(s, "fxch").or_else(|| num(s, "mixch")))
+            .unwrap_or(0.0);
         let mixer = self.insert(fx, &format!("sample track \"{name}\""));
         if st.map(|s| num_or(s, "pan", 0.0) != 0.0).unwrap_or(false) {
-            self.warn.add(format!("sample track \"{name}\": panning is not imported (audio clips have no pan)"));
+            self.warn.add(format!(
+                "sample track \"{name}\": panning is not imported (audio clips have no pan)"
+            ));
         }
         if let Some(chain) = st.and_then(|s| child(s, &["fxchain"])) {
             if chain.children().any(|c| is(&c, &["effect"])) {
@@ -845,19 +1112,31 @@ impl<'o> Importer<'o> {
             let start = beats(num_or(tco, "pos", 0.0).max(0.0), TICKS_PER_BEAT);
             let length = beats(num_or(tco, "len", 0.0), TICKS_PER_BEAT);
             if flag(tco, "muted") {
-                self.warn.add(format!("sample track \"{name}\": a muted clip at beat {start} was skipped"));
+                self.warn.add(format!(
+                    "sample track \"{name}\": a muted clip at beat {start} was skipped"
+                ));
                 continue;
             }
             if length <= 0.0 {
                 continue;
             }
-            let Some(path) = self.sample(text(tco, "src"), &format!("sample track \"{name}\"")) else {
+            let Some(path) = self.sample(text(tco, "src"), &format!("sample track \"{name}\""))
+            else {
                 self.warn.add(format!("sample track \"{name}\": a clip without a sample file (embedded data) was skipped"));
                 continue;
             };
             // A negative start offset means the clip's left edge was trimmed.
             let offset = beats((-num_or(tco, "off", 0.0)).max(0.0), TICKS_PER_BEAT);
-            self.project.playlist.clips.push(Clip { pattern: String::new(), sample: path, track: tix, start, length, offset, gain: clamp(vol / 100.0, 0.0, 4.0), mixer });
+            self.project.playlist.clips.push(Clip {
+                pattern: String::new(),
+                sample: path,
+                track: tix,
+                start,
+                length,
+                offset,
+                gain: clamp(vol / 100.0, 0.0, 4.0),
+                mixer,
+            });
         }
     }
 
@@ -872,7 +1151,10 @@ impl<'o> Importer<'o> {
             return None;
         }
         let rel = Path::new(src);
-        let base = rel.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "sample.wav".into());
+        let base = rel
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "sample.wav".into());
         let mut candidates = vec![];
         if rel.is_absolute() {
             candidates.push(rel.to_path_buf());
@@ -896,20 +1178,38 @@ impl<'o> Importer<'o> {
         match found {
             Some(from) => {
                 self.sample_map.insert(from.clone(), dest.clone());
-                self.samples.push(SampleCopy { from, to: dest.clone() });
+                self.samples.push(SampleCopy {
+                    from,
+                    to: dest.clone(),
+                });
             }
             None => {
                 self.sample_map.insert(PathBuf::from(src), dest.clone());
-                self.warn.add(format!("{owner}: sample \"{src}\" was not found; copy it to {dest}"));
+                self.warn.add(format!(
+                    "{owner}: sample \"{src}\" was not found; copy it to {dest}"
+                ));
             }
         }
         Some(dest)
     }
 
     fn unique_dest(&mut self, name: &str) -> String {
-        let clean: String = name.chars().map(|c| if c.is_alphanumeric() || "._- ".contains(c) { c } else { '_' }).collect();
+        let clean: String = name
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || "._- ".contains(c) {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
         let clean = clean.trim_start_matches('.');
-        let clean = if clean.is_empty() { "sample.wav" } else { clean };
+        let clean = if clean.is_empty() {
+            "sample.wav"
+        } else {
+            clean
+        };
         let (stem, ext) = match clean.rfind('.') {
             Some(i) if i > 0 => (&clean[..i], &clean[i..]),
             _ => (clean, ""),

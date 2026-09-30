@@ -72,40 +72,150 @@ impl DeviceSpec {
     }
 }
 
-const fn p(key: &'static str, label: &'static str, min: f64, max: f64, default: f64, unit: &'static str, doc: &'static str) -> ParamSpec {
-    ParamSpec { key, label, min, max, default, unit, curve: Curve::Linear, integer: false, doc }
+const fn p(
+    key: &'static str,
+    label: &'static str,
+    min: f64,
+    max: f64,
+    default: f64,
+    unit: &'static str,
+    doc: &'static str,
+) -> ParamSpec {
+    ParamSpec {
+        key,
+        label,
+        min,
+        max,
+        default,
+        unit,
+        curve: Curve::Linear,
+        integer: false,
+        doc,
+    }
 }
-const fn pe(key: &'static str, label: &'static str, min: f64, max: f64, default: f64, unit: &'static str, doc: &'static str) -> ParamSpec {
-    ParamSpec { key, label, min, max, default, unit, curve: Curve::Exp, integer: false, doc }
+const fn pe(
+    key: &'static str,
+    label: &'static str,
+    min: f64,
+    max: f64,
+    default: f64,
+    unit: &'static str,
+    doc: &'static str,
+) -> ParamSpec {
+    ParamSpec {
+        key,
+        label,
+        min,
+        max,
+        default,
+        unit,
+        curve: Curve::Exp,
+        integer: false,
+        doc,
+    }
 }
-const fn pi(key: &'static str, label: &'static str, min: f64, max: f64, default: f64, unit: &'static str, doc: &'static str) -> ParamSpec {
-    ParamSpec { key, label, min, max, default, unit, curve: Curve::Linear, integer: true, doc }
+const fn pi(
+    key: &'static str,
+    label: &'static str,
+    min: f64,
+    max: f64,
+    default: f64,
+    unit: &'static str,
+    doc: &'static str,
+) -> ParamSpec {
+    ParamSpec {
+        key,
+        label,
+        min,
+        max,
+        default,
+        unit,
+        curve: Curve::Linear,
+        integer: true,
+        doc,
+    }
 }
-const fn o(key: &'static str, label: &'static str, choices: &'static [&'static str], default: &'static str, doc: &'static str) -> OptionSpec {
-    OptionSpec { key, label, choices, default, doc }
+const fn o(
+    key: &'static str,
+    label: &'static str,
+    choices: &'static [&'static str],
+    default: &'static str,
+    doc: &'static str,
+) -> OptionSpec {
+    OptionSpec {
+        key,
+        label,
+        choices,
+        default,
+        doc,
+    }
 }
 
 pub const WAVES: &[&str] = &["sine", "triangle", "saw", "square", "noise"];
 pub const FILTER_MODES: &[&str] = &["lowpass", "highpass", "bandpass"];
-pub const DRUM_KINDS: &[&str] = &["kick", "snare", "clap", "hat", "openhat", "tom", "rim", "cowbell", "shaker"];
+pub const DRUM_KINDS: &[&str] = &[
+    "kick", "snare", "clap", "hat", "openhat", "tom", "rim", "cowbell", "shaker",
+];
 pub const PLUGIN_FORMATS: &[&str] = &["clap", "vst3", "lv2"];
 pub const SPECTRA: &[&str] = &["saw", "square", "organ", "bell", "choir", "glass"];
-pub const FM_ALGORITHMS: &[&str] = &["stack", "twin", "triad", "ep", "bell", "organ", "pad", "brass"];
+pub const FM_ALGORITHMS: &[&str] = &[
+    "stack", "twin", "triad", "ep", "bell", "organ", "pad", "brass",
+];
 pub const WAVETABLES: &[&str] = &["analog", "digital", "vocal", "growl", "glass", "pulse"];
 pub const WARPS: &[&str] = &["none", "bend", "sync", "fold", "mirror"];
 pub const VA_WAVES: &[&str] = &["saw", "pulse", "triangle"];
 pub const VA_FILTERS: &[&str] = &["ladder", "screamer"];
 pub const VOICE_MODES: &[&str] = &["poly", "mono", "legato"];
 pub const TEXTURE_SOURCES: &[&str] = &["choir", "bowl", "ember", "strings", "air", "sample"];
-pub const SCALES: &[&str] = &["minor", "major", "dorian", "phrygian", "pentatonic", "harmonic", "whole"];
+pub const SCALES: &[&str] = &[
+    "minor",
+    "major",
+    "dorian",
+    "phrygian",
+    "pentatonic",
+    "harmonic",
+    "whole",
+];
 pub const GEN_VOICES: &[&str] = &["pluck", "bell", "bass", "perc"];
 pub const FX_KINDS: &[&str] = &["riser", "downlifter", "impact", "sweep", "subdrop"];
 
 const ENV: [ParamSpec; 4] = [
-    pe("attack", "Attack", 0.001, 8.0, 0.005, "s", "Amplitude envelope attack time."),
-    pe("decay", "Decay", 0.001, 8.0, 0.3, "s", "Amplitude envelope decay time."),
-    p("sustain", "Sustain", 0.0, 1.0, 0.7, "", "Amplitude envelope sustain level."),
-    pe("release", "Release", 0.001, 10.0, 0.25, "s", "Amplitude envelope release time."),
+    pe(
+        "attack",
+        "Attack",
+        0.001,
+        8.0,
+        0.005,
+        "s",
+        "Amplitude envelope attack time.",
+    ),
+    pe(
+        "decay",
+        "Decay",
+        0.001,
+        8.0,
+        0.3,
+        "s",
+        "Amplitude envelope decay time.",
+    ),
+    p(
+        "sustain",
+        "Sustain",
+        0.0,
+        1.0,
+        0.7,
+        "",
+        "Amplitude envelope sustain level.",
+    ),
+    pe(
+        "release",
+        "Release",
+        0.001,
+        10.0,
+        0.25,
+        "s",
+        "Amplitude envelope release time.",
+    ),
 ];
 
 pub static DEVICES: &[DeviceSpec] = &[
@@ -545,11 +655,15 @@ pub fn device(kind: &str) -> Option<&'static DeviceSpec> {
 
 /// Look up a device of a given category.
 pub fn device_in(kind: &str, category: Category) -> Option<&'static DeviceSpec> {
-    DEVICES.iter().find(|d| d.kind == kind && d.category == category)
+    DEVICES
+        .iter()
+        .find(|d| d.kind == kind && d.category == category)
 }
 
 pub fn instruments() -> impl Iterator<Item = &'static DeviceSpec> {
-    DEVICES.iter().filter(|d| d.category == Category::Instrument)
+    DEVICES
+        .iter()
+        .filter(|d| d.category == Category::Instrument)
 }
 
 pub fn effects() -> impl Iterator<Item = &'static DeviceSpec> {

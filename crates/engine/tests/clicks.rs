@@ -20,7 +20,8 @@ fn secs(t: f32) -> usize {
 
 /// Render `total` seconds of an instrument (left channel); `events` are (seconds, event).
 fn play(dev: &Device, events: &[(f32, NoteKind)], total: f32) -> Vec<f32> {
-    let mut inst: Box<dyn Instrument> = create(dev, &Ctx { sr: SR, bpm: 120.0 }).expect("known instrument");
+    let mut inst: Box<dyn Instrument> =
+        create(dev, &Ctx { sr: SR, bpm: 120.0 }).expect("known instrument");
     let mut evs: Vec<(usize, NoteKind)> = events.iter().map(|(t, e)| (secs(*t), *e)).collect();
     evs.sort_by_key(|e| e.0);
     let frames = secs(total);
@@ -30,7 +31,10 @@ fn play(dev: &Device, events: &[(f32, NoteKind)], total: f32) -> Vec<f32> {
         let n = (frames - pos).min(BLOCK);
         let mut block = Vec::new();
         while next < evs.len() && evs[next].0 < pos + n {
-            block.push(NoteEvent { offset: evs[next].0.saturating_sub(pos), kind: evs[next].1 });
+            block.push(NoteEvent {
+                offset: evs[next].0.saturating_sub(pos),
+                kind: evs[next].1,
+            });
             next += 1;
         }
         inst.process(&block, &mut l[pos..pos + n], &mut r[pos..pos + n]);
@@ -45,7 +49,9 @@ fn on(key: u8, velocity: f32) -> NoteKind {
 
 /// |second difference|: large where the waveform breaks (a step or a kink).
 fn d2(x: &[f32]) -> Vec<f32> {
-    x.windows(3).map(|w| (w[2] - 2.0 * w[1] + w[0]).abs()).collect()
+    x.windows(3)
+        .map(|w| (w[2] - 2.0 * w[1] + w[0]).abs())
+        .collect()
 }
 
 fn quantile(mut v: Vec<f32>, q: f32) -> f32 {
@@ -75,13 +81,18 @@ fn cuivre_mono_retrigger_at_a_new_velocity_is_smooth() {
         let (a, b) = (secs(t) - 24, secs(t) + 72);
         let worst = d[a..b].iter().fold(0.0f32, |m, v| m.max(*v));
         // Measured: 1.9-4.6x typical with the gain glide, 34x without it.
-        assert!(worst < 10.0 * typical, "retrigger {i} at {t}s: second difference {worst} vs typical {typical}");
+        assert!(
+            worst < 10.0 * typical,
+            "retrigger {i} at {t}s: second difference {worst} vs typical {typical}"
+        );
     }
 }
 
 #[test]
 fn drum_hits_start_and_end_without_a_step() {
-    for kind in ["kick", "snare", "clap", "rim", "tom", "hat", "openhat", "shaker", "cowbell"] {
+    for kind in [
+        "kick", "snare", "clap", "rim", "tom", "hat", "openhat", "shaker", "cowbell",
+    ] {
         let mut dev = Device::new("drum");
         dev.options.insert("kind".into(), kind.into());
         let x = play(&dev, &[(0.01, on(60, 1.0))], 3.0);
@@ -90,12 +101,23 @@ fn drum_hits_start_and_end_without_a_step() {
         assert!(peak > 0.05, "{kind}: silent ({peak})");
         // Onset: the first 0.1 ms is well below the level just after it (0.4-0.8 ms);
         // a hit that starts at full level on its first sample scores about 1.
-        let max_in = |from: usize, to: usize| x[start + from..start + to].iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        let max_in = |from: usize, to: usize| {
+            x[start + from..start + to]
+                .iter()
+                .fold(0.0f32, |m, v| m.max(v.abs()))
+        };
         let ratio = max_in(0, 5) / max_in(20, 40).max(1e-6);
         // Measured: 0.01-0.23 with the onset ramp, 0.37-0.88 without it.
-        assert!(ratio < 0.3, "{kind}: starts at {ratio} of its level 0.5 ms later");
+        assert!(
+            ratio < 0.3,
+            "{kind}: starts at {ratio} of its level 0.5 ms later"
+        );
         // End: the last sample before the voice stops is (nearly) silent.
         let last = (0..x.len()).rev().find(|&i| x[i] != 0.0).unwrap();
-        assert!(x[last].abs() < 1e-3 * peak.max(1.0), "{kind}: stops at {} (peak {peak})", x[last]);
+        assert!(
+            x[last].abs() < 1e-3 * peak.max(1.0),
+            "{kind}: stops at {} (peak {peak})",
+            x[last]
+        );
     }
 }

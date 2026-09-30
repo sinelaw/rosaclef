@@ -113,8 +113,12 @@ impl Builder {
     fn new() -> Builder {
         let mut rng = Rng::new(0x7e55e7a);
         Builder {
-            cos: (0..N0 / 2).map(|k| (TAU * k as f32 / N0 as f32).cos()).collect(),
-            sin: (0..N0 / 2).map(|k| (TAU * k as f32 / N0 as f32).sin()).collect(),
+            cos: (0..N0 / 2)
+                .map(|k| (TAU * k as f32 / N0 as f32).cos())
+                .collect(),
+            sin: (0..N0 / 2)
+                .map(|k| (TAU * k as f32 / N0 as f32).sin())
+                .collect(),
             re: vec![0.0; N0],
             im: vec![0.0; N0],
             a: vec![0.0; H0 + 1],
@@ -218,7 +222,8 @@ impl Builder {
                     let center = (u * 6.5).exp2();
                     for h in 1..=H0 {
                         let d = ((h as f32).log2() - center.log2()) / 0.5;
-                        let amp = (-d * d).exp() * (1.0 + 0.3 * u) + if h == 1 { 0.45 } else { 0.0 };
+                        let amp =
+                            (-d * d).exp() * (1.0 + 0.3 * u) + if h == 1 { 0.45 } else { 0.0 };
                         if amp > 1e-4 {
                             self.add_phased(h, amp);
                         }
@@ -229,13 +234,26 @@ impl Builder {
                     let step = 2 + (u * 6.99) as usize;
                     for h in 1..=H0 {
                         if (h - 1) % step == 0 && h <= 192 {
-                            self.add_phased(h, if h == 1 { 1.0 } else { 0.9 / (h as f32).powf(0.45) });
+                            self.add_phased(
+                                h,
+                                if h == 1 {
+                                    1.0
+                                } else {
+                                    0.9 / (h as f32).powf(0.45)
+                                },
+                            );
                         }
                     }
                 }
             }
             Table::Vocal => {
-                const VOWELS: [[f32; 3]; 5] = [[730.0, 1090.0, 2440.0], [530.0, 1840.0, 2480.0], [270.0, 2290.0, 3010.0], [570.0, 840.0, 2410.0], [300.0, 870.0, 2240.0]];
+                const VOWELS: [[f32; 3]; 5] = [
+                    [730.0, 1090.0, 2440.0],
+                    [530.0, 1840.0, 2480.0],
+                    [270.0, 2290.0, 3010.0],
+                    [570.0, 840.0, 2410.0],
+                    [300.0, 870.0, 2240.0],
+                ];
                 const GAIN: [f32; 3] = [1.0, 0.6, 0.35];
                 const BW: [f32; 3] = [110.0, 150.0, 210.0];
                 /// Reference fundamental of the table (formants move with pitch).
@@ -260,11 +278,16 @@ impl Builder {
                 }
             }
             Table::Glass => {
-                const PARTIALS: [usize; 16] = [1, 2, 5, 7, 11, 13, 17, 21, 26, 31, 37, 43, 53, 61, 71, 83];
+                const PARTIALS: [usize; 16] =
+                    [1, 2, 5, 7, 11, 13, 17, 21, 26, 31, 37, 43, 53, 61, 71, 83];
                 let center = t * 15.0;
                 for (k, &h) in PARTIALS.iter().enumerate() {
                     let d = (k as f32 - center) / 2.5;
-                    let amp = if k == 0 { 1.0 } else { 0.9 * (-d * d).exp() + 0.25 / (1.0 + k as f32) };
+                    let amp = if k == 0 {
+                        1.0
+                    } else {
+                        0.9 * (-d * d).exp() + 0.25 / (1.0 + k as f32)
+                    };
                     self.add_phased(h, amp);
                 }
             }
@@ -308,7 +331,9 @@ impl Builder {
         // Normalize each frame to the peak of its fullest level.
         for f in 0..FRAMES {
             let n = level_len(0);
-            let peak = data[0][f * (n + 1)..(f + 1) * (n + 1)].iter().fold(0f32, |m, x| m.max(x.abs()));
+            let peak = data[0][f * (n + 1)..(f + 1) * (n + 1)]
+                .iter()
+                .fold(0f32, |m, x| m.max(x.abs()));
             let g = if peak > 1e-9 { 1.0 / peak } else { 0.0 };
             for (k, level) in data.iter_mut().enumerate() {
                 let n = level_len(k);
@@ -330,7 +355,10 @@ fn shape_triangle(h: usize) -> (f32, f32) {
         return (0.0, 0.0);
     }
     let sign = if (h / 2).is_multiple_of(2) { 1.0 } else { -1.0 };
-    (0.0, sign * 8.0 / (std::f32::consts::PI * std::f32::consts::PI * (h * h) as f32))
+    (
+        0.0,
+        sign * 8.0 / (std::f32::consts::PI * std::f32::consts::PI * (h * h) as f32),
+    )
 }
 
 fn shape_saw(h: usize) -> (f32, f32) {
@@ -481,7 +509,9 @@ impl Tessera {
                 gain: 0.55,
             },
             table: None,
-            data: (0..LEVELS).map(|k| vec![0.0; FRAMES * (level_len(k) + 1)]).collect(),
+            data: (0..LEVELS)
+                .map(|k| vec![0.0; FRAMES * (level_len(k) + 1)])
+                .collect(),
             builder: Builder::new(),
             voices: vec![Voice::default(); MAX_VOICES],
             rng: Rng::new(0x7e55e7a),
@@ -502,7 +532,11 @@ impl Tessera {
         let mut pl = [1f32; MAX_UNISON];
         let mut pr = [1f32; MAX_UNISON];
         for u in 0..n_uni {
-            let x = if n_uni == 1 { 0.0 } else { u as f32 / (n_uni - 1) as f32 * 2.0 - 1.0 };
+            let x = if n_uni == 1 {
+                0.0
+            } else {
+                u as f32 / (n_uni - 1) as f32 * 2.0 - 1.0
+            };
             det[u] = cents(x * p.detune * 0.5);
             let (l, r) = pan_gains(x * p.width);
             pl[u] = l;
@@ -524,7 +558,11 @@ impl Tessera {
         let fold_mix = (amt * 4.0).min(1.0);
         let fold_gain = 1.0 + 5.0 * amt;
         let drive_g = p.drive * 8.0;
-        let drive_norm = if drive_g > 0.0 { 1.0 / fast_tanh(drive_g) } else { 1.0 };
+        let drive_norm = if drive_g > 0.0 {
+            1.0 / fast_tanh(drive_g)
+        } else {
+            1.0
+        };
         let mod_coef_c = p.mod_coef.powi(CONTROL as i32);
         let lfo_inc_c = p.lfo_rate * CONTROL as f32 / sr;
         let steal_step = 1.0 / (STEAL_TIME * sr);
@@ -551,7 +589,8 @@ impl Tessera {
                     if v.counter % CONTROL == 0 {
                         let lfo = (v.lfo_phase * TAU).sin();
                         v.lfo_phase = (v.lfo_phase + lfo_inc_c).fract();
-                        let target = (p.position + p.pos_env * v.menv + p.pos_lfo * 0.5 * lfo).clamp(0.0, 1.0);
+                        let target = (p.position + p.pos_env * v.menv + p.pos_lfo * 0.5 * lfo)
+                            .clamp(0.0, 1.0);
                         if v.fresh {
                             v.pos = target;
                             v.fresh = false;
@@ -578,7 +617,11 @@ impl Tessera {
                         let s = match warp {
                             Warp::None | Warp::Fold => read(fa_s, fb_s, len, ff, ph),
                             Warp::Bend => {
-                                let q = if ph < bend_k { 0.5 * ph / bend_k } else { 0.5 + 0.5 * (ph - bend_k) / (1.0 - bend_k) };
+                                let q = if ph < bend_k {
+                                    0.5 * ph / bend_k
+                                } else {
+                                    0.5 + 0.5 * (ph - bend_k) / (1.0 - bend_k)
+                                };
                                 read(fa_s, fb_s, len, ff, q)
                             }
                             Warp::Sync => {
@@ -690,7 +733,12 @@ impl Instrument for Tessera {
         match ev {
             NoteKind::On { key, velocity } => {
                 self.clock += 1;
-                let i = pick_voice(&self.voices, |v| v.active, |v| v.stealing || v.env.is_released(), |v| v.age);
+                let i = pick_voice(
+                    &self.voices,
+                    |v| v.active,
+                    |v| v.stealing || v.env.is_released(),
+                    |v| v.age,
+                );
                 let v = &mut self.voices[i];
                 if v.active {
                     v.stealing = true;

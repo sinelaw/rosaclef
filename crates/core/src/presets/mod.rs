@@ -85,7 +85,9 @@ pub fn all() -> Vec<&'static Preset> {
 }
 
 pub fn find(name: &str) -> Option<&'static Preset> {
-    all().into_iter().find(|p| p.name.eq_ignore_ascii_case(name))
+    all()
+        .into_iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
 }
 
 #[cfg(test)]
@@ -113,7 +115,14 @@ mod tests {
             .iter()
             .filter(|i| i.severity == validate::Severity::Error)
             .map(|i| {
-                let idx: usize = i.path.trim_start_matches("channels[").split(']').next().unwrap_or("0").parse().unwrap_or(0);
+                let idx: usize = i
+                    .path
+                    .trim_start_matches("channels[")
+                    .split(']')
+                    .next()
+                    .unwrap_or("0")
+                    .parse()
+                    .unwrap_or(0);
                 format!("{} ({}): {}", all()[idx].name, i.path, i.message)
             })
             .collect();

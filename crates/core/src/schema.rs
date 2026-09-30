@@ -15,7 +15,11 @@ fn num(min: f64, max: f64, desc: &str) -> Value {
 fn device_schema(spec: &DeviceSpec) -> Value {
     let mut params = Map::new();
     for p in spec.params {
-        let unit = if p.unit.is_empty() { String::new() } else { format!(" [{}]", p.unit) };
+        let unit = if p.unit.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", p.unit)
+        };
         let mut s = json!({
             "type": if p.integer { "integer" } else { "number" },
             "minimum": p.min,
@@ -54,7 +58,10 @@ fn device_schema(spec: &DeviceSpec) -> Value {
 }
 
 fn device_def(category: Category) -> Value {
-    let specs: Vec<&DeviceSpec> = catalog::DEVICES.iter().filter(|d| d.category == category).collect();
+    let specs: Vec<&DeviceSpec> = catalog::DEVICES
+        .iter()
+        .filter(|d| d.category == category)
+        .collect();
     let kinds: Vec<&str> = specs.iter().map(|d| d.kind).collect();
     let all_of: Vec<Value> = specs.iter().map(|d| device_schema(d)).collect();
     let mut props = json!({

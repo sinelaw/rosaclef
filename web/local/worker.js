@@ -217,9 +217,9 @@ async function onChannel(client, port, m) {
     if (bootError) throw new Error(bootError);
     if (m.t === "open") {
       await enqueue(() => run({ op: m.chan === "term" ? "term_open" : "ws_open", client }, null));
-      if (m.chan === "ws" && storageWarning) port.postMessage({ t: "msg", chan: "ws", text: JSON.stringify({ t: "notice", title: "Projects are not saved", message: storageWarning }), raw: false });
-    }
-    else if (m.t === "send") await enqueue(() => run({ op: m.chan === "term" ? "term" : "ws", client, text: m.text }, null));
+      if (m.chan === "ws" && storageWarning)
+        port.postMessage({ t: "msg", chan: "ws", text: JSON.stringify({ t: "notice", title: "Projects are not saved", message: storageWarning }), raw: false });
+    } else if (m.t === "send") await enqueue(() => run({ op: m.chan === "term" ? "term" : "ws", client, text: m.text }, null));
   } catch (e) {
     port.postMessage({ t: "fatal", message: String(e && e.message ? e.message : e) });
   }

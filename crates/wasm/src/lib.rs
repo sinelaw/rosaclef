@@ -81,7 +81,12 @@ pub unsafe extern "C" fn rc_set_project(ptr: *const u8, len: usize) -> i32 {
         }
         s.engine.set_project(checked.project.unwrap());
         // Report which samples still need to be provided.
-        let missing: Vec<String> = s.engine.required_samples().into_iter().filter(|p| !s.engine.has_sample(p)).collect();
+        let missing: Vec<String> = s
+            .engine
+            .required_samples()
+            .into_iter()
+            .filter(|p| !s.engine.has_sample(p))
+            .collect();
         s.result = serde_json::to_vec(&missing).unwrap_or_default();
         0
     })
@@ -103,11 +108,28 @@ pub extern "C" fn rc_result_len() -> usize {
 /// # Safety
 /// Pointers must describe readable memory of the given sizes.
 #[no_mangle]
-pub unsafe extern "C" fn rc_set_sample(path: *const u8, path_len: usize, sample_rate: f32, channels: usize, frames: usize, data: *const f32) {
+pub unsafe extern "C" fn rc_set_sample(
+    path: *const u8,
+    path_len: usize,
+    sample_rate: f32,
+    channels: usize,
+    frames: usize,
+    data: *const f32,
+) {
     let path = text(path, path_len).to_string();
     let all = std::slice::from_raw_parts(data, channels * frames);
-    let chans: Vec<Vec<f32>> = (0..channels.clamp(1, 2)).map(|c| all[c * frames..(c + 1) * frames].to_vec()).collect();
-    with(|s| s.engine.set_sample(&path, SampleData { sample_rate, channels: chans }));
+    let chans: Vec<Vec<f32>> = (0..channels.clamp(1, 2))
+        .map(|c| all[c * frames..(c + 1) * frames].to_vec())
+        .collect();
+    with(|s| {
+        s.engine.set_sample(
+            &path,
+            SampleData {
+                sample_rate,
+                channels: chans,
+            },
+        )
+    });
 }
 
 /// Render `frames` (<= 4096) frames; read them from `rc_left` / `rc_right`.
@@ -115,7 +137,12 @@ pub unsafe extern "C" fn rc_set_sample(path: *const u8, path_len: usize, sample_
 pub extern "C" fn rc_process(frames: usize) {
     with(|s| {
         let n = frames.min(OUT_FRAMES);
-        let State { engine, left, right, .. } = s;
+        let State {
+            engine,
+            left,
+            right,
+            ..
+        } = s;
         engine.process(&mut left[..n], &mut right[..n]);
     });
 }
@@ -157,7 +184,13 @@ pub extern "C" fn rc_is_playing() -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn rc_set_mode(ptr: *const u8, len: usize) {
     let id = text(ptr, len).to_string();
-    with(|s| s.engine.set_mode(if id.is_empty() { PlayMode::Song } else { PlayMode::Pattern(id) }));
+    with(|s| {
+        s.engine.set_mode(if id.is_empty() {
+            PlayMode::Song
+        } else {
+            PlayMode::Pattern(id)
+        })
+    });
 }
 
 #[no_mangle]

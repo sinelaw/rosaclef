@@ -70,16 +70,24 @@ impl Engine {
             if lane.mute || lane.points.is_empty() {
                 continue;
             }
-            let Ok(target) = lane.target.parse::<AutomationTarget>() else { continue };
-            let Ok(info) = target.resolve(project) else { continue };
+            let Ok(target) = lane.target.parse::<AutomationTarget>() else {
+                continue;
+            };
+            let Ok(info) = target.resolve(project) else {
+                continue;
+            };
             let mut points = lane.points.clone();
             points.sort_by(|a, b| a.beat.total_cmp(&b.beat));
             let first = points[0].value;
             let slot = match &target {
                 AutomationTarget::Tempo => Slot::Tempo,
                 AutomationTarget::Swing => Slot::Swing,
-                AutomationTarget::ChannelVolume(id) | AutomationTarget::ChannelPan(id) | AutomationTarget::ChannelParam(id, _) => {
-                    let Some(i) = project.channels.iter().position(|c| &c.id == id) else { continue };
+                AutomationTarget::ChannelVolume(id)
+                | AutomationTarget::ChannelPan(id)
+                | AutomationTarget::ChannelParam(id, _) => {
+                    let Some(i) = project.channels.iter().position(|c| &c.id == id) else {
+                        continue;
+                    };
                     match &target {
                         AutomationTarget::ChannelVolume(_) => Slot::ChannelVolume(i),
                         AutomationTarget::ChannelPan(_) => Slot::ChannelPan(i),
@@ -93,20 +101,46 @@ impl Engine {
                 AutomationTarget::InsertVolume(ix) => Slot::InsertVolume(ix.index()),
                 AutomationTarget::InsertPan(ix) => Slot::InsertPan(ix.index()),
                 AutomationTarget::EffectParam(ix, k, key) => {
-                    let Some(fx) = self.inserts.get_mut(ix.index()).and_then(|ins| ins.fx.get_mut(*k)) else { continue };
+                    let Some(fx) = self
+                        .inserts
+                        .get_mut(ix.index())
+                        .and_then(|ins| ins.fx.get_mut(*k))
+                    else {
+                        continue;
+                    };
                     ensure_key(&mut fx.dev, key, first);
                     Slot::EffectParam(ix.index(), *k, key.clone())
                 }
             };
             let (min, max) = (info.min, info.max);
-            let eps = if (max - min).is_finite() { (max - min) * 1e-4 } else { 1e-6 };
-            let eps = if matches!(slot, Slot::Tempo | Slot::Swing | Slot::ChannelVolume(_) | Slot::ChannelPan(_) | Slot::InsertVolume(_) | Slot::InsertPan(_)) {
+            let eps = if (max - min).is_finite() {
+                (max - min) * 1e-4
+            } else {
+                1e-6
+            };
+            let eps = if matches!(
+                slot,
+                Slot::Tempo
+                    | Slot::Swing
+                    | Slot::ChannelVolume(_)
+                    | Slot::ChannelPan(_)
+                    | Slot::InsertVolume(_)
+                    | Slot::InsertPan(_)
+            ) {
                 // Cheap targets follow the lane exactly.
                 0.0
             } else {
                 eps
             };
-            self.lanes.push(CLane { slot, points, integer: info.integer, min, max, eps, last: f64::NAN });
+            self.lanes.push(CLane {
+                slot,
+                points,
+                integer: info.integer,
+                min,
+                max,
+                eps,
+                last: f64::NAN,
+            });
         }
     }
 
@@ -116,10 +150,23 @@ impl Engine {
     pub(crate) fn apply_automation(&mut self, frames: usize) {
         let beat = self.position;
         let mid = beat + self.ctx.bpm as f64 / 60.0 / self.ctx.sr as f64 * frames as f64 * 0.5;
-        let Engine { lanes, channels, inserts, ctx, swing, .. } = self;
+        let Engine {
+            lanes,
+            channels,
+            inserts,
+            ctx,
+            swing,
+            ..
+        } = self;
         for lane in lanes.iter_mut() {
-            let at = if matches!(lane.slot, Slot::Tempo) { mid } else { beat };
-            let Some(v) = value_at(&lane.points, at) else { continue };
+            let at = if matches!(lane.slot, Slot::Tempo) {
+                mid
+            } else {
+                beat
+            };
+            let Some(v) = value_at(&lane.points, at) else {
+                continue;
+            };
             let mut v = v.clamp(lane.min, lane.max);
             if lane.integer {
                 v = v.round();
@@ -177,7 +224,15 @@ impl Engine {
             return;
         }
         self.auto_applied = false;
-        let Engine { lanes, channels, inserts, ctx, swing, project, .. } = self;
+        let Engine {
+            lanes,
+            channels,
+            inserts,
+            ctx,
+            swing,
+            project,
+            ..
+        } = self;
         ctx.bpm = project.transport.bpm as f32;
         *swing = project.transport.swing;
         for lane in lanes.iter_mut() {
@@ -195,7 +250,10 @@ impl Engine {
                 }
                 Slot::ChannelParam(i, key) => {
                     let ch = &mut channels[*i];
-                    if let (Some(v), Some(p)) = (base_param(&project.channels[*i].instrument, key), ch.dev.params.get_mut(key.as_str())) {
+                    if let (Some(v), Some(p)) = (
+                        base_param(&project.channels[*i].instrument, key),
+                        ch.dev.params.get_mut(key.as_str()),
+                    ) {
                         *p = v;
                     }
                     ch.inst.set_device(&ch.dev, ctx);
@@ -208,7 +266,10 @@ impl Engine {
                 }
                 Slot::EffectParam(i, k, key) => {
                     let fx = &mut inserts[*i].fx[*k];
-                    if let (Some(v), Some(p)) = (base_param(&project.mixer.inserts[*i].effects[*k], key), fx.dev.params.get_mut(key.as_str())) {
+                    if let (Some(v), Some(p)) = (
+                        base_param(&project.mixer.inserts[*i].effects[*k], key),
+                        fx.dev.params.get_mut(key.as_str()),
+                    ) {
                         *p = v;
                     }
                     fx.fx.set_device(&fx.dev, ctx);
@@ -230,7 +291,12 @@ impl Engine {
         for ch in self.channels.iter_mut().filter(|c| c.tempo_synced) {
             ch.inst.set_device(&ch.dev, &ctx);
         }
-        for f in self.inserts.iter_mut().flat_map(|i| i.fx.iter_mut()).filter(|f| f.tempo_synced) {
+        for f in self
+            .inserts
+            .iter_mut()
+            .flat_map(|i| i.fx.iter_mut())
+            .filter(|f| f.tempo_synced)
+        {
             f.fx.set_device(&f.dev, &ctx);
         }
     }

@@ -335,7 +335,11 @@ export function barBeat(beat, beatsPerBar) {
 
 /** function uniqueId(base: String, taken: String[]) => String */
 export function uniqueId(base, taken) {
-  const slug = base.toLowerCase().replaceAll(" ", "-").replace(/[^a-z0-9_.-]/g, "") || "item";
+  const slug =
+    base
+      .toLowerCase()
+      .replaceAll(" ", "-")
+      .replace(/[^a-z0-9_.-]/g, "") || "item";
   if (!taken.includes(slug)) return slug;
   let n = 2;
   while (taken.includes(`${slug}-${n}`)) n = n + 1;
@@ -456,10 +460,16 @@ export function describeChange(a, b) {
     const added = p.notes.filter((n) => !oldKeys.includes(key(n)));
     const removed = old.notes.filter((n) => !newKeys.includes(key(n)));
     if (added.length > 0 && removed.length === added.length) {
-      out.push(`pattern "${p.id}": edited ${added.length} note${added.length > 1 ? "s" : ""} (${noteText(removed[0])} → ${noteText(added[0])}${added.length > 1 ? ", …" : ""})`);
+      out.push(
+        `pattern "${p.id}": edited ${added.length} note${added.length > 1 ? "s" : ""} (${noteText(removed[0])} → ${noteText(added[0])}${added.length > 1 ? ", …" : ""})`,
+      );
     } else {
-      if (added.length > 0) out.push(`pattern "${p.id}": +${added.length} note${added.length > 1 ? "s" : ""} on "${added[0].channel}" (${noteText(added[0])}${added.length > 1 ? ", …" : ""})`);
-      if (removed.length > 0) out.push(`pattern "${p.id}": −${removed.length} note${removed.length > 1 ? "s" : ""} (${noteText(removed[0])}${removed.length > 1 ? ", …" : ""})`);
+      if (added.length > 0)
+        out.push(
+          `pattern "${p.id}": +${added.length} note${added.length > 1 ? "s" : ""} on "${added[0].channel}" (${noteText(added[0])}${added.length > 1 ? ", …" : ""})`,
+        );
+      if (removed.length > 0)
+        out.push(`pattern "${p.id}": −${removed.length} note${removed.length > 1 ? "s" : ""} (${noteText(removed[0])}${removed.length > 1 ? ", …" : ""})`);
     }
   }
   for (const p of a.patterns) if (!b.patterns.some((x) => x.id === p.id)) out.push(`removed pattern "${p.id}"`);
@@ -468,7 +478,8 @@ export function describeChange(a, b) {
   const cb = b.playlist.clips.length;
   if (cb > ca) out.push(`playlist: +${cb - ca} clip${cb - ca > 1 ? "s" : ""}`);
   else if (cb < ca) out.push(`playlist: −${ca - cb} clip${ca - cb > 1 ? "s" : ""}`);
-  else if (JSON.stringify(a.playlist.clips.map(encodeClipKey)) !== JSON.stringify(b.playlist.clips.map(encodeClipKey))) out.push("playlist: clips moved or resized");
+  else if (JSON.stringify(a.playlist.clips.map(encodeClipKey)) !== JSON.stringify(b.playlist.clips.map(encodeClipKey)))
+    out.push("playlist: clips moved or resized");
   for (let t = 0; t < b.playlist.tracks.length && t < a.playlist.tracks.length; t++) {
     const x = a.playlist.tracks[t];
     const y = b.playlist.tracks[t];
@@ -489,7 +500,8 @@ export function describeChange(a, b) {
     if (x.pan !== y.pan) out.push(`${label} pan → ${fmtNum(y.pan)}`);
     if (x.mute !== y.mute) out.push(`${label} ${y.mute ? "muted" : "unmuted"}`);
     if (x.solo !== y.solo) out.push(`${label} ${y.solo ? "soloed" : "unsoloed"}`);
-    if (x.effects.length !== y.effects.length) out.push(`${label}: effects ${x.effects.map((e) => e.type).join(", ") || "none"} → ${y.effects.map((e) => e.type).join(", ") || "none"}`);
+    if (x.effects.length !== y.effects.length)
+      out.push(`${label}: effects ${x.effects.map((e) => e.type).join(", ") || "none"} → ${y.effects.map((e) => e.type).join(", ") || "none"}`);
     else for (let k = 0; k < y.effects.length; k++) deviceDiff(`${label} effect ${k} (${y.effects[k].type})`, x.effects[k], y.effects[k], out);
   }
 

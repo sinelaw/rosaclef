@@ -61,7 +61,6 @@ export function laneValueAt(points, beat) {
 
 // ------------------------------------------------------------------ targets
 
-
 /** function makeSpec(key: String, label: String, min: Number, max: Number, dflt: Number, unit: String) => ParamSpec */
 function makeSpec(key, label, min, max, dflt, unit) {
   return { key: key, label: label, min: min, max: max, default: dflt, unit: unit, curve: "linear", integer: false, doc: "" };
@@ -104,7 +103,15 @@ export function targetInfo(target) {
   const p = state.project;
   const parts = target.split("/");
   if (target === "tempo") {
-    return { ok: true, kind: "tempo", spec: makeSpec("bpm", "Tempo", 20, 999, 120, "BPM"), base: p.transport.bpm, label: "Tempo", color: "#d4af37", open: false };
+    return {
+      ok: true,
+      kind: "tempo",
+      spec: makeSpec("bpm", "Tempo", 20, 999, 120, "BPM"),
+      base: p.transport.bpm,
+      label: "Tempo",
+      color: "#d4af37",
+      open: false,
+    };
   }
   if (target === "swing") {
     return { ok: true, kind: "swing", spec: makeSpec("swing", "Swing", 0, 1, 0, ""), base: p.transport.swing, label: "Swing", color: "#e8d5b0", open: false };
@@ -113,8 +120,18 @@ export function targetInfo(target) {
     for (const ch of p.channels) {
       if (ch.id !== parts[1]) continue;
       const what = parts[2];
-      if (what === "volume") return { ok: true, kind: "gain", spec: makeSpec("volume", "Volume", 0, 1.5, 0.8, ""), base: ch.volume, label: `${ch.name} · Volume`, color: ch.color, open: false };
-      if (what === "pan") return { ok: true, kind: "pan", spec: makeSpec("pan", "Pan", -1, 1, 0, ""), base: ch.pan, label: `${ch.name} · Pan`, color: ch.color, open: false };
+      if (what === "volume")
+        return {
+          ok: true,
+          kind: "gain",
+          spec: makeSpec("volume", "Volume", 0, 1.5, 0.8, ""),
+          base: ch.volume,
+          label: `${ch.name} · Volume`,
+          color: ch.color,
+          open: false,
+        };
+      if (what === "pan")
+        return { ok: true, kind: "pan", spec: makeSpec("pan", "Pan", -1, 1, 0, ""), base: ch.pan, label: `${ch.name} · Pan`, color: ch.color, open: false };
       return paramTarget(ch.instrument, "instrument", what, ch.name, ch.color);
     }
     return none(target);
@@ -124,8 +141,18 @@ export function targetInfo(target) {
     if (i >= p.mixer.inserts.length) return none(target);
     const ins = p.mixer.inserts[i];
     const color = i === 0 ? "#d4af37" : "#5b82c4";
-    if (parts.length === 3 && parts[2] === "volume") return { ok: true, kind: "gain", spec: makeSpec("volume", "Volume", 0, 2, 1, ""), base: ins.volume, label: `${ins.name} · Volume`, color: color, open: false };
-    if (parts.length === 3 && parts[2] === "pan") return { ok: true, kind: "pan", spec: makeSpec("pan", "Pan", -1, 1, 0, ""), base: ins.pan, label: `${ins.name} · Pan`, color: color, open: false };
+    if (parts.length === 3 && parts[2] === "volume")
+      return {
+        ok: true,
+        kind: "gain",
+        spec: makeSpec("volume", "Volume", 0, 2, 1, ""),
+        base: ins.volume,
+        label: `${ins.name} · Volume`,
+        color: color,
+        open: false,
+      };
+    if (parts.length === 3 && parts[2] === "pan")
+      return { ok: true, kind: "pan", spec: makeSpec("pan", "Pan", -1, 1, 0, ""), base: ins.pan, label: `${ins.name} · Pan`, color: color, open: false };
     if (parts.length === 5 && parts[2] === "effect" && isIndex(parts[3])) {
       const k = Math.round(Number(parts[3]));
       if (k >= ins.effects.length) return none(target);
@@ -210,10 +237,23 @@ export function createLane(target) {
   }
   const p = state.project;
   const end = Math.max(songLength(p), p.transport.beatsPerBar * 4);
-  const id = uniqueId(laneSlug(target), p.automation.map((l) => l.id));
+  const id = uniqueId(
+    laneSlug(target),
+    p.automation.map((l) => l.id),
+  );
   const v = info.base;
   commit(() => {
-    p.automation.push({ id: id, name: info.label, target: target, color: info.color, mute: false, points: [{ beat: 0, value: v, curve: 0 }, { beat: end, value: v, curve: 0 }] });
+    p.automation.push({
+      id: id,
+      name: info.label,
+      target: target,
+      color: info.color,
+      mute: false,
+      points: [
+        { beat: 0, value: v, curve: 0 },
+        { beat: end, value: v, curve: 0 },
+      ],
+    });
   });
   goToLane(id);
 }

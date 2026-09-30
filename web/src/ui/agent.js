@@ -100,7 +100,9 @@ function mountTerm() {
   });
   term.push(t);
   t.fit();
-  t.writeText("\x1b[38;2;227;196;122m  ✦ Rosaclef · Maestro\x1b[0m\r\n\x1b[38;2;163;151;128m  Your own coding agent, working on this project's files.\x1b[0m\r\n\r\n");
+  t.writeText(
+    "\x1b[38;2;227;196;122m  ✦ Rosaclef · Maestro\x1b[0m\r\n\x1b[38;2;163;151;128m  Your own coding agent, working on this project's files.\x1b[0m\r\n\r\n",
+  );
   connectTerm();
 }
 
@@ -132,7 +134,15 @@ export function loadAgents() {
 function suggestions() {
   if (state.backend === "local") {
     const pat = currentPattern();
-    return ["help", "summary", "set /transport/bpm 128", pat ? `get /patterns/${Math.max(0, state.project.patterns.indexOf(pat))}/name` : "get /meta", "presets prisme", "render", "context"];
+    return [
+      "help",
+      "summary",
+      "set /transport/bpm 128",
+      pat ? `get /patterns/${Math.max(0, state.project.patterns.indexOf(pat))}/name` : "get /meta",
+      "presets prisme",
+      "render",
+      "context",
+    ];
   }
   const pat = currentPattern();
   const ch = currentChannel();
@@ -235,7 +245,12 @@ export function agentPanel(b) {
       state.backend === "local"
         ? "In the browser studio this panel runs the Rosaclef shell — the studio's command line: inspect and edit the song, render, browse presets. To bring your own coding agent, download the project (Projects → .zip) and open it in the native studio."
         : "Bring your own coding agent. It runs in this project's folder and edits the song live — you hear every change.";
-    b.leaf("p", "p", "", agent.error !== "" ? agent.error : agent.exitCode >= 0 ? `The agent exited (code ${agent.exitCode}). Start it again or pick another.` : intro);
+    b.leaf(
+      "p",
+      "p",
+      "",
+      agent.error !== "" ? agent.error : agent.exitCode >= 0 ? `The agent exited (code ${agent.exitCode}). Start it again or pick another.` : intro,
+    );
     b.open("div", "grid", "agent-grid");
     for (const a of state.agents) {
       b.open("button", a.id, a.available ? "agent-choice" : "agent-choice na");
@@ -256,7 +271,11 @@ export function agentPanel(b) {
   for (const s of suggestions()) {
     b.leaf("span", s, "chip", s);
     b.attr("title", state.backend === "local" ? "Type this into the shell" : "Type this into the agent's prompt");
-    b.on("pointerenter", (e) => hint(state.backend === "local" ? `Type “${s}” into the shell (press Enter to run it)` : `Suggest to the agent: “${s}” (press Enter in the terminal to send)`));
+    b.on("pointerenter", (e) =>
+      hint(
+        state.backend === "local" ? `Type “${s}” into the shell (press Enter to run it)` : `Suggest to the agent: “${s}” (press Enter in the terminal to send)`,
+      ),
+    );
     b.on("click", (e) => {
       typeIntoAgent(s);
     });

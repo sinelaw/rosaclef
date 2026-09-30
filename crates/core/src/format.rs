@@ -66,7 +66,9 @@ fn write(v: &Value, indent: usize, out: &mut String) {
 /// Lists of objects (notes, clips, channels...) always get one item per line.
 fn has_nested_container_list(v: &Value) -> bool {
     match v {
-        Value::Array(items) => items.len() > 1 && items.iter().any(|i| i.is_object() || i.is_array()),
+        Value::Array(items) => {
+            items.len() > 1 && items.iter().any(|i| i.is_object() || i.is_array())
+        }
         Value::Object(map) => map.values().any(has_nested_container_list),
         _ => false,
     }
@@ -98,8 +100,10 @@ fn inline(v: &Value) -> String {
             if map.is_empty() {
                 return "{}".into();
             }
-            let parts: Vec<String> =
-                map.iter().map(|(k, v)| format!("{}: {}", serde_json::to_string(k).unwrap(), inline(v))).collect();
+            let parts: Vec<String> = map
+                .iter()
+                .map(|(k, v)| format!("{}: {}", serde_json::to_string(k).unwrap(), inline(v)))
+                .collect();
             format!("{{ {} }}", parts.join(", "))
         }
     }
@@ -132,6 +136,9 @@ mod tests {
     fn lists_of_objects_are_one_per_line() {
         let v = serde_json::json!({"notes": [{"a": 1}, {"a": 2}]});
         let s = to_string(&v);
-        assert_eq!(s, "{\n  \"notes\": [\n    { \"a\": 1 },\n    { \"a\": 2 }\n  ]\n}\n");
+        assert_eq!(
+            s,
+            "{\n  \"notes\": [\n    { \"a\": 1 },\n    { \"a\": 2 }\n  ]\n}\n"
+        );
     }
 }

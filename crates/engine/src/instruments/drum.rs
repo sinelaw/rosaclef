@@ -162,7 +162,8 @@ impl Instrument for Drum {
     fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
         let sr = self.sr;
         let dt = 1.0 / sr;
-        let (kind, decay, tone, snap, drive) = (self.kind, self.decay, self.tone, self.snap, self.drive);
+        let (kind, decay, tone, snap, drive) =
+            (self.kind, self.decay, self.tone, self.snap, self.drive);
         let drive_gain = 1.0 + drive * 8.0;
         let drive_norm = 1.0 / (1.0 + drive * 2.0);
         for v in self.voices.iter_mut().filter(|v| v.active) {
@@ -180,18 +181,27 @@ impl Instrument for Drum {
                         let body = (v.phase[0] * TAU).sin();
                         let shaped = (body * (1.0 + tone * 2.5)).tanh() / (1.0 + tone * 2.5).tanh();
                         // Punchy body with a short sub tail.
-                        let env = (0.6 * (-t / (0.07 * decay)).exp() + 0.4 * (-t / (0.16 * decay)).exp()) * (t / 0.0015).min(1.0);
-                        let click = v.f1.process(noise, FilterMode::Highpass) * (-t / 0.004).exp() * snap * 0.6;
+                        let env = (0.6 * (-t / (0.07 * decay)).exp()
+                            + 0.4 * (-t / (0.16 * decay)).exp())
+                            * (t / 0.0015).min(1.0);
+                        let click = v.f1.process(noise, FilterMode::Highpass)
+                            * (-t / 0.004).exp()
+                            * snap
+                            * 0.6;
                         shaped * env + click
                     }
                     Kind::Snare => {
                         let f = 185.0 * v.pm * (1.0 + 0.6 * (-t / 0.012).exp());
                         v.phase[0] = (v.phase[0] + f * dt).fract();
                         v.phase[1] = (v.phase[1] + f * 1.78 * dt).fract();
-                        let body = ((v.phase[0] * TAU).sin() + 0.5 * (v.phase[1] * TAU).sin()) * (-t / (0.08 * decay)).exp();
+                        let body = ((v.phase[0] * TAU).sin() + 0.5 * (v.phase[1] * TAU).sin())
+                            * (-t / (0.08 * decay)).exp();
                         // One band-limited noise source feeds both the sustained hiss and the
                         // stick crack (raw white noise here sounded fizzy and harsh).
-                        let band = v.f2.process(v.f1.process(noise, FilterMode::Highpass), FilterMode::Lowpass);
+                        let band = v.f2.process(
+                            v.f1.process(noise, FilterMode::Highpass),
+                            FilterMode::Lowpass,
+                        );
                         let hiss = band * (-t / (0.17 * decay)).exp();
                         let crack = band * (-t / 0.003).exp() * snap;
                         body * (0.9 - tone * 0.4) + hiss * (0.55 + tone * 0.6) + crack * 0.6
@@ -228,20 +238,27 @@ impl Instrument for Drum {
                         let f = 105.0 * v.pm * (1.0 + 0.55 * (-t / 0.06).exp());
                         v.phase[0] = (v.phase[0] + f * dt).fract();
                         let body = (v.phase[0] * TAU).sin() * (-t / (0.33 * decay)).exp();
-                        let stick = v.f1.process(noise, FilterMode::Lowpass) * (-t / 0.006).exp() * snap * 0.5;
+                        let stick = v.f1.process(noise, FilterMode::Lowpass)
+                            * (-t / 0.006).exp()
+                            * snap
+                            * 0.5;
                         (body * (1.0 + tone)).tanh() + stick
                     }
                     Kind::Rim => {
                         v.phase[0] = (v.phase[0] + 1720.0 * v.pm * dt).fract();
                         v.phase[1] = (v.phase[1] + 520.0 * v.pm * dt).fract();
                         let tri = 1.0 - 4.0 * (v.phase[0] - 0.5).abs();
-                        let body = (tri * 0.7 + (v.phase[1] * TAU).sin() * 0.5) * (-t / (0.022 * decay)).exp();
-                        body + v.f1.process(noise, FilterMode::Bandpass) * (-t / 0.01).exp() * (0.3 + tone * 0.5)
+                        let body = (tri * 0.7 + (v.phase[1] * TAU).sin() * 0.5)
+                            * (-t / (0.022 * decay)).exp();
+                        body + v.f1.process(noise, FilterMode::Bandpass)
+                            * (-t / 0.01).exp()
+                            * (0.3 + tone * 0.5)
                     }
                     Kind::Cowbell => {
                         v.phase[0] = (v.phase[0] + 540.0 * v.pm * dt).fract();
                         v.phase[1] = (v.phase[1] + 800.0 * v.pm * dt).fract();
-                        let sq = (if v.phase[0] < 0.5 { 1.0 } else { -1.0 }) + (if v.phase[1] < 0.5 { 1.0 } else { -1.0 });
+                        let sq = (if v.phase[0] < 0.5 { 1.0 } else { -1.0 })
+                            + (if v.phase[1] < 0.5 { 1.0 } else { -1.0 });
                         let env = 0.65 * (-t / 0.018).exp() + 0.35 * (-t / (0.3 * decay)).exp();
                         v.f1.process(sq * 0.5, FilterMode::Bandpass) * env * 1.6
                     }
@@ -252,9 +269,14 @@ impl Instrument for Drum {
                 };
                 // A 0.4 ms onset and a 5 ms fade before the voice stops: no step at
                 // either end (the first sample used to jump straight to full level).
-                let edge = (t * (1.0 / ONSET)).min(1.0) * ((v.len - t) * (1.0 / FADE)).clamp(0.0, 1.0);
+                let edge =
+                    (t * (1.0 / ONSET)).min(1.0) * ((v.len - t) * (1.0 / FADE)).clamp(0.0, 1.0);
                 let s = s * edge;
-                let out = if drive > 0.0 { (s * drive_gain).tanh() * drive_norm } else { s } * amp;
+                let out = if drive > 0.0 {
+                    (s * drive_gain).tanh() * drive_norm
+                } else {
+                    s
+                } * amp;
                 left[i] += out;
                 right[i] += out;
                 v.t += dt;

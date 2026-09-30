@@ -132,7 +132,9 @@ impl Voice {
 
     /// Start a grain `delay` samples into the current block.
     fn spawn(&mut self, p: &Params, src: &SampleData, sr: f32, delay: usize) {
-        let Some(slot) = self.grains.iter().position(|g| !g.active) else { return };
+        let Some(slot) = self.grains.iter().position(|g| !g.active) else {
+            return;
+        };
         let len = src.len() as f64;
         if len < 4.0 {
             return;
@@ -167,7 +169,16 @@ impl Voice {
 
     /// Render one block (<= BLOCK) of this voice into `out_l`/`out_r` (added).
     #[allow(clippy::too_many_arguments)]
-    fn render(&mut self, p: &Params, src: &SampleData, win: &[f32; WIN_SIZE + 1], sr: f32, norm: f32, out_l: &mut [f32], out_r: &mut [f32]) {
+    fn render(
+        &mut self,
+        p: &Params,
+        src: &SampleData,
+        win: &[f32; WIN_SIZE + 1],
+        sr: f32,
+        norm: f32,
+        out_l: &mut [f32],
+        out_r: &mut [f32],
+    ) {
         let n = out_l.len();
         self.advance_drift(n, sr);
         // Schedule the grains that start in this block.
@@ -322,20 +333,33 @@ impl Instrument for Nebula {
             self.user = None;
         }
         let sr = self.sr;
-        for v in self.voices.iter_mut().filter(|v| v.active && v.pending.is_none() && !v.env.is_released()) {
+        for v in self
+            .voices
+            .iter_mut()
+            .filter(|v| v.active && v.pending.is_none() && !v.env.is_released())
+        {
             set_env(&mut v.env, &self.p, sr);
         }
     }
 
     fn set_samples(&mut self, bank: &SampleBank) {
-        self.user = if self.sample_path.is_empty() { None } else { bank.get(&self.sample_path) };
+        self.user = if self.sample_path.is_empty() {
+            None
+        } else {
+            bank.get(&self.sample_path)
+        };
     }
 
     fn handle(&mut self, ev: NoteKind) {
         match ev {
             NoteKind::On { key, velocity } => {
                 self.clock += 1;
-                let i = pick_voice(&self.voices, |v| v.active, |v| v.env.is_released(), |v| v.age);
+                let i = pick_voice(
+                    &self.voices,
+                    |v| v.active,
+                    |v| v.env.is_released(),
+                    |v| v.age,
+                );
                 let seed = self.rng.next_u32();
                 let v = &mut self.voices[i];
                 if v.active && v.env.level > 1e-4 {
@@ -385,7 +409,15 @@ impl Instrument for Nebula {
             let mut any = false;
             for v in self.voices.iter_mut().filter(|v| v.active) {
                 any = true;
-                v.render(&self.p, &src, &self.window, sr, norm, &mut bl[..n], &mut br[..n]);
+                v.render(
+                    &self.p,
+                    &src,
+                    &self.window,
+                    sr,
+                    norm,
+                    &mut bl[..n],
+                    &mut br[..n],
+                );
                 if v.env.is_idle() {
                     match v.pending.take() {
                         Some((key, vel)) => {
@@ -402,7 +434,11 @@ impl Instrument for Nebula {
             }
             // Smooth the tone control (per block, in the log domain).
             let target = self.p.tone.min(sr * 0.45);
-            self.tone = if self.tone <= 0.0 { target } else { self.tone * (target / self.tone).powf(0.15) };
+            self.tone = if self.tone <= 0.0 {
+                target
+            } else {
+                self.tone * (target / self.tone).powf(0.15)
+            };
             self.lp_l.set(self.tone, 0.1, sr);
             self.lp_r.set(self.tone, 0.1, sr);
             if !any && bl[..n].iter().all(|x| *x == 0.0) {
@@ -438,7 +474,10 @@ fn synth_source(name: &str, sr: f32) -> SampleData {
         _ => choir(&mut l, &mut r, sr),
     }
     finish(&mut l, &mut r, sr);
-    SampleData { sample_rate: sr, channels: vec![l, r] }
+    SampleData {
+        sample_rate: sr,
+        channels: vec![l, r],
+    }
 }
 
 /// Remove DC, fade the edges and normalise the level.
@@ -481,7 +520,12 @@ struct Wander {
 
 impl Wander {
     fn new(rng: &mut Rng, hz: f32, sr: f32) -> Wander {
-        Wander { from: rng.bipolar(), to: rng.bipolar(), t: rng.unit(), rate: hz / sr }
+        Wander {
+            from: rng.bipolar(),
+            to: rng.bipolar(),
+            t: rng.unit(),
+            rate: hz / sr,
+        }
     }
     #[inline]
     fn next(&mut self, rng: &mut Rng) -> f32 {
@@ -511,16 +555,38 @@ struct SawSection {
 }
 
 impl SawSection {
-    fn new(rng: &mut Rng, notes: &[f32], detune: f32, vib: (f32, f32), vib_depth: f32, sr: f32) -> SawSection {
+    fn new(
+        rng: &mut Rng,
+        notes: &[f32],
+        detune: f32,
+        vib: (f32, f32),
+        vib_depth: f32,
+        sr: f32,
+    ) -> SawSection {
         let k = notes.len();
-        let mut s = SawSection { freq: vec![], phase: vec![], vib_rate: vec![], vib_depth: vec![], vib_phase: vec![], pan_l: vec![], pan_r: vec![], wander: vec![], dt: vec![0.0; k], count: 0 };
+        let mut s = SawSection {
+            freq: vec![],
+            phase: vec![],
+            vib_rate: vec![],
+            vib_depth: vec![],
+            vib_phase: vec![],
+            pan_l: vec![],
+            pan_r: vec![],
+            wander: vec![],
+            dt: vec![0.0; k],
+            count: 0,
+        };
         for (i, f) in notes.iter().enumerate() {
             s.freq.push(f * cents(detune * rng.bipolar()));
             s.phase.push(rng.unit());
             s.vib_rate.push(vib.0 + (vib.1 - vib.0) * rng.unit());
             s.vib_depth.push(vib_depth * (0.6 + 0.4 * rng.unit()));
             s.vib_phase.push(rng.unit());
-            let pos = if k <= 1 { 0.0 } else { i as f32 / (k - 1) as f32 * 2.0 - 1.0 };
+            let pos = if k <= 1 {
+                0.0
+            } else {
+                i as f32 / (k - 1) as f32 * 2.0 - 1.0
+            };
             let (pl, pr) = pan_gains(pos * 0.8);
             s.pan_l.push(pl);
             s.pan_r.push(pr);
@@ -536,7 +602,8 @@ impl SawSection {
         if self.count.is_multiple_of(STEP) {
             // Vibrato and drift at control rate.
             for i in 0..self.freq.len() {
-                self.vib_phase[i] = (self.vib_phase[i] + self.vib_rate[i] * STEP as f32 / sr).fract();
+                self.vib_phase[i] =
+                    (self.vib_phase[i] + self.vib_rate[i] * STEP as f32 / sr).fract();
                 let mut w = 0.0;
                 for _ in 0..STEP {
                     w = self.wander[i].next(rng);
@@ -572,7 +639,13 @@ struct Phasors {
 
 impl Phasors {
     fn new() -> Phasors {
-        Phasors { re: vec![], im: vec![], c: vec![], s: vec![], count: 0 }
+        Phasors {
+            re: vec![],
+            im: vec![],
+            c: vec![],
+            s: vec![],
+            count: 0,
+        }
     }
     fn add(&mut self, freq: f32, phase: f32, sr: f32) -> usize {
         let w = (freq as f64 / sr as f64 * std::f64::consts::TAU).min(std::f64::consts::PI);
@@ -612,7 +685,12 @@ fn choir(l: &mut [f32], r: &mut [f32], sr: f32) {
     let notes = [C4, C4, C4, C4, C4 * 0.5, C4 * 0.5, C4, C4 * 0.5];
     let mut sec = SawSection::new(&mut rng, &notes, 9.0, (4.6, 5.8), 18.0, sr);
     // (centre, Q, gain) of the "aah" formants.
-    let formants = [(780.0, 6.0, 1.0), (1150.0, 8.0, 0.7), (2800.0, 12.0, 0.32), (3500.0, 14.0, 0.18)];
+    let formants = [
+        (780.0, 6.0, 1.0),
+        (1150.0, 8.0, 0.7),
+        (2800.0, 12.0, 0.32),
+        (3500.0, 14.0, 0.18),
+    ];
     let mut bank_l: Vec<Biquad> = vec![Biquad::default(); formants.len()];
     let mut bank_r: Vec<Biquad> = vec![Biquad::default(); formants.len()];
     for (i, (f, q, _)) in formants.iter().enumerate() {
@@ -722,7 +800,10 @@ fn ember(l: &mut [f32], r: &mut [f32], sr: f32) {
         let sub = ph.sin(sub_i) * 0.35;
         ph.step();
         let ra = 0.12 * (1.0 + 0.6 * roar_amp.next(&mut rng));
-        let roar = [roar_lp[0].process(rng.bipolar()) * ra, roar_lp[1].process(rng.bipolar()) * ra];
+        let roar = [
+            roar_lp[0].process(rng.bipolar()) * ra,
+            roar_lp[1].process(rng.bipolar()) * ra,
+        ];
         if rng.unit() < crackle_p {
             let a = rng.unit();
             crackle = 0.4 + 1.6 * a * a;
@@ -743,7 +824,18 @@ fn ember(l: &mut [f32], r: &mut [f32], sr: f32) {
 /// String ensemble at C4/C3: detuned saws, soft attack, warm filtering.
 fn strings(l: &mut [f32], r: &mut [f32], sr: f32) {
     let mut rng = Rng::new(0x5751);
-    let notes = [C4, C4, C4, C4, C4, C4 * 0.5, C4 * 0.5, C4 * 0.5, C4, C4 * 0.5];
+    let notes = [
+        C4,
+        C4,
+        C4,
+        C4,
+        C4,
+        C4 * 0.5,
+        C4 * 0.5,
+        C4 * 0.5,
+        C4,
+        C4 * 0.5,
+    ];
     let mut sec = SawSection::new(&mut rng, &notes, 11.0, (5.0, 6.2), 9.0, sr);
     let mut lp = [Svf::default(), Svf::default()];
     lp[0].set(3000.0, 0.1, sr);
@@ -768,7 +860,14 @@ fn strings(l: &mut [f32], r: &mut [f32], sr: f32) {
 /// Breathy band-passed noise with resonances on C harmonics.
 fn air(l: &mut [f32], r: &mut [f32], sr: f32) {
     let mut rng = Rng::new(0xa112);
-    let harmonics = [(1.0, 1.0), (2.0, 0.85), (3.0, 0.6), (4.0, 0.5), (6.0, 0.35), (8.0, 0.25)];
+    let harmonics = [
+        (1.0, 1.0),
+        (2.0, 0.85),
+        (3.0, 0.6),
+        (4.0, 0.5),
+        (6.0, 0.35),
+        (8.0, 0.25),
+    ];
     let mut res_l: Vec<Biquad> = vec![Biquad::default(); harmonics.len()];
     let mut res_r: Vec<Biquad> = vec![Biquad::default(); harmonics.len()];
     for (i, (h, _)) in harmonics.iter().enumerate() {

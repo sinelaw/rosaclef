@@ -34,9 +34,17 @@ function enrich(e) {
     scrollTop: t ? t.scrollTop : 0,
   };
   for (const k of Object.keys(extra)) {
-    try { Object.defineProperty(e, k, { value: extra[k], configurable: true }); } catch (_) { /* ignore */ }
+    try {
+      Object.defineProperty(e, k, { value: extra[k], configurable: true });
+    } catch (_) {
+      /* ignore */
+    }
   }
-  try { Object.defineProperty(e, "__rc", { value: true }); } catch (_) { /* ignore */ }
+  try {
+    Object.defineProperty(e, "__rc", { value: true });
+  } catch (_) {
+    /* ignore */
+  }
   return e;
 }
 
@@ -54,7 +62,11 @@ export function listenWindow(type, fn) {
 }
 
 export function capturePointer(el, id) {
-  try { el.setPointerCapture(id); } catch (_) { /* ignore */ }
+  try {
+    el.setPointerCapture(id);
+  } catch (_) {
+    /* ignore */
+  }
 }
 
 export const now = () => performance.now();
@@ -73,8 +85,12 @@ export function canvas2d(canvas, width, height) {
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (!ctx.fillGradient) {
-    ctx.fillGradient = (g) => { ctx.fillStyle = g; };
-    ctx.strokeGradient = (g) => { ctx.strokeStyle = g; };
+    ctx.fillGradient = (g) => {
+      ctx.fillStyle = g;
+    };
+    ctx.strokeGradient = (g) => {
+      ctx.strokeStyle = g;
+    };
   }
   if (!ctx.roundRect) {
     ctx.roundRect = (x, y, w2, h2) => ctx.rect(x, y, w2, h2);
@@ -109,14 +125,21 @@ export function connectRaw(url, h) {
       else h.onBinary(new Uint8Array(e.data));
     };
     inner = {
-      send: (s) => { if (ws.readyState === 1) ws.send(s); },
+      send: (s) => {
+        if (ws.readyState === 1) ws.send(s);
+      },
       close: () => ws.close(),
       isOpen: () => ws.readyState === 1,
     };
   });
   return {
-    send: (s) => { if (inner) inner.send(s); },
-    close: () => { closed = true; if (inner) inner.close(); },
+    send: (s) => {
+      if (inner) inner.send(s);
+    },
+    close: () => {
+      closed = true;
+      if (inner) inner.close();
+    },
     isOpen: () => !!inner && inner.isOpen(),
   };
 }
@@ -156,7 +179,9 @@ export async function storageEstimate() {
 }
 
 export function onFileDrop(el, fn) {
-  el.addEventListener("dragover", (e) => { if (e.dataTransfer && e.dataTransfer.types.includes("Files")) e.preventDefault(); });
+  el.addEventListener("dragover", (e) => {
+    if (e.dataTransfer && e.dataTransfer.types.includes("Files")) e.preventDefault();
+  });
   el.addEventListener("drop", (e) => {
     if (!e.dataTransfer || e.dataTransfer.files.length === 0) return;
     e.preventDefault();
@@ -249,10 +274,22 @@ export function createTerm(el, onData) {
       cursor: "#e3c47a",
       cursorAccent: "#0b0a0d",
       selectionBackground: "rgba(212,175,55,0.28)",
-      black: "#1a1720", red: "#d9707e", green: "#8fbf9a", yellow: "#e3c47a",
-      blue: "#7f9fd6", magenta: "#c98bc4", cyan: "#7cc3c1", white: "#e9dfcb",
-      brightBlack: "#5d5566", brightRed: "#f08c99", brightGreen: "#a9d8b3", brightYellow: "#f3d894",
-      brightBlue: "#9fbaf0", brightMagenta: "#e2a8dd", brightCyan: "#9fe0dd", brightWhite: "#fff8ea",
+      black: "#1a1720",
+      red: "#d9707e",
+      green: "#8fbf9a",
+      yellow: "#e3c47a",
+      blue: "#7f9fd6",
+      magenta: "#c98bc4",
+      cyan: "#7cc3c1",
+      white: "#e9dfcb",
+      brightBlack: "#5d5566",
+      brightRed: "#f08c99",
+      brightGreen: "#a9d8b3",
+      brightYellow: "#f3d894",
+      brightBlue: "#9fbaf0",
+      brightMagenta: "#e2a8dd",
+      brightCyan: "#9fe0dd",
+      brightWhite: "#fff8ea",
     },
   });
   const fit = new FitAddon();
@@ -263,7 +300,13 @@ export function createTerm(el, onData) {
   return {
     write: (b) => term.write(b),
     writeText: (s) => term.write(s),
-    fit: () => { try { fit.fit(); } catch (_) { /* hidden */ } },
+    fit: () => {
+      try {
+        fit.fit();
+      } catch (_) {
+        /* hidden */
+      }
+    },
     cols: () => term.cols,
     rows: () => term.rows,
     focus: () => term.focus(),
@@ -323,7 +366,10 @@ export function audioPost(msg) {
 export function audioPostSample(path, decoded) {
   if (!node) return;
   const channels = decoded.channels.map((c) => new Float32Array(c));
-  node.port.postMessage({ t: "sample", path, sampleRate: decoded.sampleRate, channels }, channels.map((c) => c.buffer));
+  node.port.postMessage(
+    { t: "sample", path, sampleRate: decoded.sampleRate, channels },
+    channels.map((c) => c.buffer),
+  );
 }
 
 export async function audioResume() {
@@ -365,11 +411,22 @@ function encodeWav(chunks, sampleRate) {
   const frames = chunks.reduce((n, c) => n + c[0].length, 0);
   const buf = new ArrayBuffer(44 + frames * 4);
   const v = new DataView(buf);
-  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-  str(0, "RIFF"); v.setUint32(4, 36 + frames * 4, true); str(8, "WAVE"); str(12, "fmt ");
-  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
-  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 4, true);
-  v.setUint16(32, 4, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, frames * 4, true);
+  const str = (o, s) => {
+    for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
+  };
+  str(0, "RIFF");
+  v.setUint32(4, 36 + frames * 4, true);
+  str(8, "WAVE");
+  str(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 2, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * 4, true);
+  v.setUint16(32, 4, true);
+  v.setUint16(34, 16, true);
+  str(36, "data");
+  v.setUint32(40, frames * 4, true);
   let o = 44;
   for (const [l, r] of chunks) {
     for (let i = 0; i < l.length; i++) {
@@ -409,11 +466,19 @@ export function promptBox(msg, def) {
 
 /** A small persisted UI preference; "" when absent or storage is unavailable. */
 export function loadPref(key) {
-  try { return localStorage.getItem(key) ?? ""; } catch (_) { return ""; }
+  try {
+    return localStorage.getItem(key) ?? "";
+  } catch (_) {
+    return "";
+  }
 }
 
 export function savePref(key, value) {
-  try { localStorage.setItem(key, value); } catch (_) { /* private mode, quota: not persisted */ }
+  try {
+    localStorage.setItem(key, value);
+  } catch (_) {
+    /* private mode, quota: not persisted */
+  }
 }
 
 export function fmt(n, digits) {
@@ -494,22 +559,35 @@ export function domBackend(rootId) {
       }
       t.data = s;
     },
-    setClass: (h, c) => { nodes[h].setAttribute("class", c); },
-    setAttr: (h, k, v) => { nodes[h].setAttribute(k, v); },
-    removeAttr: (h, k) => { nodes[h].removeAttribute(k); },
-    setStyle: (h, k, v) => { nodes[h].style.setProperty(k, v); },
+    setClass: (h, c) => {
+      nodes[h].setAttribute("class", c);
+    },
+    setAttr: (h, k, v) => {
+      nodes[h].setAttribute(k, v);
+    },
+    removeAttr: (h, k) => {
+      nodes[h].removeAttribute(k);
+    },
+    setStyle: (h, k, v) => {
+      nodes[h].style.setProperty(k, v);
+    },
     setProp: (h, k, v) => {
       const el = nodes[h];
       if (k === "checked" || k === "disabled") el[k] = v === "true";
-      else if (k === "focus") { if (v === "true") setTimeout(() => el.focus(), 0); }
-      else if (k === "scrollLeft" || k === "scrollTop") {
+      else if (k === "focus") {
+        if (v === "true") setTimeout(() => el.focus(), 0);
+      } else if (k === "scrollLeft" || k === "scrollTop") {
         // Scrolling a node that is not in the document yet is ignored.
         if (el.isConnected) el[k] = Number(v);
-        else requestAnimationFrame(() => { el[k] = Number(v); });
-      }
-      else if (el[k] !== v) el[k] = v;
+        else
+          requestAnimationFrame(() => {
+            el[k] = Number(v);
+          });
+      } else if (el[k] !== v) el[k] = v;
     },
-    append: (p, c) => { nodes[p].appendChild(nodes[c]); },
+    append: (p, c) => {
+      nodes[p].appendChild(nodes[c]);
+    },
     remove: (h) => {
       const el = nodes[h];
       if (el) el.remove();
@@ -539,6 +617,8 @@ export function domBackend(rootId) {
       ctx.clearRect(0, 0, w, hh);
       fn(ctx, w, hh);
     },
-    frame: (fn) => { requestAnimationFrame(() => fn()); },
+    frame: (fn) => {
+      requestAnimationFrame(() => fn());
+    },
   };
 }

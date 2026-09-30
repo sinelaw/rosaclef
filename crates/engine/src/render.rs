@@ -22,11 +22,21 @@ pub struct Audio {
 
 impl Audio {
     pub fn peak(&self) -> f32 {
-        self.left.iter().chain(self.right.iter()).fold(0.0f32, |m, x| m.max(x.abs()))
+        self.left
+            .iter()
+            .chain(self.right.iter())
+            .fold(0.0f32, |m, x| m.max(x.abs()))
     }
     pub fn rms(&self) -> f32 {
         let n = (self.left.len() * 2).max(1) as f32;
-        (self.left.iter().chain(self.right.iter()).map(|x| x * x).sum::<f32>() / n).sqrt()
+        (self
+            .left
+            .iter()
+            .chain(self.right.iter())
+            .map(|x| x * x)
+            .sum::<f32>()
+            / n)
+            .sqrt()
     }
     pub fn duration(&self) -> f64 {
         self.left.len() as f64 / self.sample_rate as f64
@@ -47,7 +57,12 @@ pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
         }
         RenderScope::Pattern { id, loops } => {
             engine.set_mode(PlayMode::Pattern(id.clone()));
-            let beats = engine.project().pattern(id).map(|p| p.length).unwrap_or(0.0) * (*loops).max(1) as f64;
+            let beats = engine
+                .project()
+                .pattern(id)
+                .map(|p| p.length)
+                .unwrap_or(0.0)
+                * (*loops).max(1) as f64;
             beats * engine.project().seconds_per_beat()
         }
     };
@@ -55,7 +70,11 @@ pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
     engine.play();
     // Rounded down: one frame too many would wrap the song back to its start.
     let music_frames = (seconds * sr as f64).floor() as usize;
-    let mut out = Audio { sample_rate: sr, left: Vec::with_capacity(music_frames), right: Vec::with_capacity(music_frames) };
+    let mut out = Audio {
+        sample_rate: sr,
+        left: Vec::with_capacity(music_frames),
+        right: Vec::with_capacity(music_frames),
+    };
     let mut bl = [0f32; MAX_BLOCK];
     let mut br = [0f32; MAX_BLOCK];
     let mut done = 0;
@@ -74,7 +93,10 @@ pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
     let mut tail = 0;
     while tail < max_tail && quiet < quiet_needed {
         engine.process(&mut bl, &mut br);
-        let peak = bl.iter().chain(br.iter()).fold(0.0f32, |m, x| m.max(x.abs()));
+        let peak = bl
+            .iter()
+            .chain(br.iter())
+            .fold(0.0f32, |m, x| m.max(x.abs()));
         if peak < 1e-4 {
             quiet += MAX_BLOCK;
         } else {
@@ -96,7 +118,13 @@ pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
 }
 
 /// Render a single note of an instrument (used to generate samples).
-pub fn render_note(device: &Device, pitch: u8, velocity: f32, seconds: f32, sample_rate: f32) -> Audio {
+pub fn render_note(
+    device: &Device,
+    pitch: u8,
+    velocity: f32,
+    seconds: f32,
+    sample_rate: f32,
+) -> Audio {
     let mut project = Project::empty("note");
     project.channels.push(rosaclef_core::Channel {
         id: "x".into(),
@@ -113,7 +141,10 @@ pub fn render_note(device: &Device, pitch: u8, velocity: f32, seconds: f32, samp
     engine.set_project(project);
     engine.note_on("x", pitch, velocity);
     let frames = (seconds * sample_rate) as usize;
-    let mut out = Audio { sample_rate, ..Default::default() };
+    let mut out = Audio {
+        sample_rate,
+        ..Default::default()
+    };
     let mut bl = [0f32; MAX_BLOCK];
     let mut br = [0f32; MAX_BLOCK];
     let mut done = 0;
@@ -206,16 +237,27 @@ pub fn decode_wav(bytes: &[u8]) -> Result<crate::samples::SampleData, String> {
                     let x = match (fmt, bits) {
                         (1, 8) => (s[0] as f32 - 128.0) / 128.0,
                         (1, 16) => i16::from_le_bytes([s[0], s[1]]) as f32 / 32768.0,
-                        (1, 24) => (i32::from_le_bytes([0, s[0], s[1], s[2]]) >> 8) as f32 / 8_388_608.0,
-                        (1, 32) => i32::from_le_bytes([s[0], s[1], s[2], s[3]]) as f32 / 2_147_483_648.0,
+                        (1, 24) => {
+                            (i32::from_le_bytes([0, s[0], s[1], s[2]]) >> 8) as f32 / 8_388_608.0
+                        }
+                        (1, 32) => {
+                            i32::from_le_bytes([s[0], s[1], s[2], s[3]]) as f32 / 2_147_483_648.0
+                        }
                         (3, 32) => f32::from_le_bytes([s[0], s[1], s[2], s[3]]),
                         (3, 64) => f64::from_le_bytes(s[..8].try_into().unwrap()) as f32,
-                        _ => return Err(format!("unsupported WAV encoding (format {fmt}, {bits} bits)")),
+                        _ => {
+                            return Err(format!(
+                                "unsupported WAV encoding (format {fmt}, {bits} bits)"
+                            ))
+                        }
                     };
                     ch.push(x);
                 }
             }
-            return Ok(crate::samples::SampleData { sample_rate: sr as f32, channels: out });
+            return Ok(crate::samples::SampleData {
+                sample_rate: sr as f32,
+                channels: out,
+            });
         }
         i += 8 + len + (len & 1);
     }

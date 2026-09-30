@@ -51,7 +51,9 @@ fn conflict(e: impl std::fmt::Display) -> Response {
 
 /// Run blocking file work off the async runtime.
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
-    tokio::task::spawn_blocking(f).await.map_err(|e| anyhow!("task failed: {e}"))?
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| anyhow!("task failed: {e}"))?
 }
 
 fn current_dir(app: &Shared) -> PathBuf {
@@ -83,7 +85,11 @@ struct CreateReq {
     demo: bool,
 }
 
-async fn create_project(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<CreateReq>) -> Response {
+async fn create_project(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<CreateReq>,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -101,7 +107,11 @@ struct NameReq {
     name: String,
 }
 
-async fn open_project(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<NameReq>) -> Response {
+async fn open_project(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<NameReq>,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -119,7 +129,9 @@ async fn open_project(State(app): State<Shared>, headers: HeaderMap, Json(req): 
     })
     .await;
     match res {
-        Ok(switched) => Json(json!({"ok": true, "name": req.name, "switched": switched})).into_response(),
+        Ok(switched) => {
+            Json(json!({"ok": true, "name": req.name, "switched": switched})).into_response()
+        }
         Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
     }
 }
@@ -130,7 +142,11 @@ struct RenameReq {
     to: String,
 }
 
-async fn duplicate_project(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<RenameReq>) -> Response {
+async fn duplicate_project(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<RenameReq>,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -144,7 +160,11 @@ async fn duplicate_project(State(app): State<Shared>, headers: HeaderMap, Json(r
     }
 }
 
-async fn rename_project(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<RenameReq>) -> Response {
+async fn rename_project(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<RenameReq>,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -177,7 +197,11 @@ async fn rename_project(State(app): State<Shared>, headers: HeaderMap, Json(req)
     }
 }
 
-async fn delete_project(State(app): State<Shared>, headers: HeaderMap, UrlPath(name): UrlPath<String>) -> Response {
+async fn delete_project(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    UrlPath(name): UrlPath<String>,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -209,10 +233,19 @@ struct ImportQuery {
 
 impl ImportQuery {
     fn project_name(&self, fallback: &str) -> String {
-        if let Some(n) = self.name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+        if let Some(n) = self
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+        {
             return n.to_string();
         }
-        let stem = self.filename.as_deref().and_then(|f| Path::new(f).file_stem()).map(|s| s.to_string_lossy().to_string());
+        let stem = self
+            .filename
+            .as_deref()
+            .and_then(|f| Path::new(f).file_stem())
+            .map(|s| s.to_string_lossy().to_string());
         stem.unwrap_or_else(|| fallback.to_string())
     }
 }
@@ -224,7 +257,12 @@ fn import_reply(res: Result<(String, Vec<String>)>) -> Response {
     }
 }
 
-async fn import_lmms(State(app): State<Shared>, headers: HeaderMap, Query(q): Query<ImportQuery>, body: Bytes) -> Response {
+async fn import_lmms(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<ImportQuery>,
+    body: Bytes,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -232,14 +270,20 @@ async fn import_lmms(State(app): State<Shared>, headers: HeaderMap, Query(q): Qu
     let name = library::sanitize_name(&q.project_name("LMMS import"));
     import_reply(
         blocking(move || {
-            let im = rosaclef_import::lmms::import(&body, &rosaclef_import::lmms::Options::new(&name))?;
+            let im =
+                rosaclef_import::lmms::import(&body, &rosaclef_import::lmms::Options::new(&name))?;
             library.save_imported(&name, &im)
         })
         .await,
     )
 }
 
-async fn import_midi(State(app): State<Shared>, headers: HeaderMap, Query(q): Query<ImportQuery>, body: Bytes) -> Response {
+async fn import_midi(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<ImportQuery>,
+    body: Bytes,
+) -> Response {
     if q.into.as_deref() == Some("current") {
         return import_midi_into(State(app), headers, Query(q), body).await;
     }
@@ -250,7 +294,8 @@ async fn import_midi(State(app): State<Shared>, headers: HeaderMap, Query(q): Qu
     let name = library::sanitize_name(&q.project_name("MIDI import"));
     import_reply(
         blocking(move || {
-            let im = rosaclef_import::midi::import(&body, &rosaclef_import::midi::Options::new(&name))?;
+            let im =
+                rosaclef_import::midi::import(&body, &rosaclef_import::midi::Options::new(&name))?;
             library.save_imported(&name, &im)
         })
         .await,
@@ -259,7 +304,12 @@ async fn import_midi(State(app): State<Shared>, headers: HeaderMap, Query(q): Qu
 
 /// `POST /api/projects/import-zip`: a project folder packed as a zip archive
 /// (see `GET /api/projects/export`) becomes a new project.
-async fn import_zip(State(app): State<Shared>, headers: HeaderMap, Query(q): Query<ImportQuery>, body: Bytes) -> Response {
+async fn import_zip(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<ImportQuery>,
+    body: Bytes,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -285,14 +335,29 @@ async fn export_project(State(app): State<Shared>, Query(q): Query<ExportQuery>)
     };
     let file = format!("{}.zip", slug(&folder.name()));
     match blocking(move || archive::export(&folder)).await {
-        Ok(zip) => ([(header::CONTENT_TYPE, "application/zip".to_string()), (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{file}\""))], zip).into_response(),
+        Ok(zip) => (
+            [
+                (header::CONTENT_TYPE, "application/zip".to_string()),
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{file}\""),
+                ),
+            ],
+            zip,
+        )
+            .into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")).into_response(),
     }
 }
 
 /// `POST /api/import-midi?into=current`: add a MIDI file's parts to the
 /// open song as new channels, patterns, tracks and inserts (one undo step).
-async fn import_midi_into(State(app): State<Shared>, headers: HeaderMap, Query(q): Query<ImportQuery>, body: Bytes) -> Response {
+async fn import_midi_into(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<ImportQuery>,
+    body: Bytes,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -301,13 +366,17 @@ async fn import_midi_into(State(app): State<Shared>, headers: HeaderMap, Query(q
     }
     let a = app.clone();
     let res = blocking(move || {
-        let im = rosaclef_import::midi::import(&body, &rosaclef_import::midi::Options::new("import"))?;
+        let im =
+            rosaclef_import::midi::import(&body, &rosaclef_import::midi::Options::new("import"))?;
         let mut project = a.project();
         let before = project.channels.len();
         let mut warnings = im.warnings;
         warnings.extend(rosaclef_import::merge_into(&mut project, im.project));
         let issues = rosaclef_core::validate::validate(&project);
-        if issues.iter().any(|i| i.severity == rosaclef_core::validate::Severity::Error) {
+        if issues
+            .iter()
+            .any(|i| i.severity == rosaclef_core::validate::Severity::Error)
+        {
             let msgs: Vec<String> = issues.iter().take(3).map(|i| i.to_string()).collect();
             bail!("the merged project would be invalid:\n{}", msgs.join("\n"));
         }
@@ -317,7 +386,9 @@ async fn import_midi_into(State(app): State<Shared>, headers: HeaderMap, Query(q
     })
     .await;
     match res {
-        Ok((channels, warnings)) => Json(json!({"channels": channels, "warnings": warnings})).into_response(),
+        Ok((channels, warnings)) => {
+            Json(json!({"channels": channels, "warnings": warnings})).into_response()
+        }
         Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, format!("{e:#}")).into_response(),
     }
 }
@@ -329,9 +400,17 @@ struct FilesQuery {
 
 async fn list_files(State(app): State<Shared>, Query(q): Query<FilesQuery>) -> Response {
     let (f, project) = (app.folder(), app.project());
-    let res = blocking(move || library::files(&f, q.dir.as_deref().unwrap_or("").trim_matches('/'), &project)).await;
+    let res = blocking(move || {
+        library::files(
+            &f,
+            q.dir.as_deref().unwrap_or("").trim_matches('/'),
+            &project,
+        )
+    })
+    .await;
     match res {
-        Ok(list) => Json(json!({"folder": app.folder().dir.display().to_string(), "files": list})).into_response(),
+        Ok(list) => Json(json!({"folder": app.folder().dir.display().to_string(), "files": list}))
+            .into_response(),
         Err(e) => bad(e),
     }
 }
@@ -342,7 +421,11 @@ struct FileRenameReq {
     to: String,
 }
 
-async fn rename_file(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<FileRenameReq>) -> Response {
+async fn rename_file(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<FileRenameReq>,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -371,7 +454,11 @@ struct PathQuery {
     path: String,
 }
 
-async fn delete_file(State(app): State<Shared>, headers: HeaderMap, Query(q): Query<PathQuery>) -> Response {
+async fn delete_file(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<PathQuery>,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -389,7 +476,11 @@ struct TrashReq {
 }
 
 /// `POST /api/trash/empty`: delete the trash for good.
-async fn empty_trash(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<TrashReq>) -> Response {
+async fn empty_trash(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<TrashReq>,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }

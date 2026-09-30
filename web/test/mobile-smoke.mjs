@@ -39,7 +39,10 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   const y = kb.y + kb.height * 0.85;
   const w = await page.locator(".kb-white").first().boundingBox();
   await touch("touchStart", [{ x: kb.x + w.width * 0.5, y, id: 1 }]);
-  await touch("touchStart", [{ x: kb.x + w.width * 0.5, y, id: 1 }, { x: kb.x + w.width * 2.5, y, id: 2 }]);
+  await touch("touchStart", [
+    { x: kb.x + w.width * 0.5, y, id: 1 },
+    { x: kb.x + w.width * 2.5, y, id: 2 },
+  ]);
   await page.waitForTimeout(100);
   assert((await page.locator(".kb-white.down").count()) === 2, "two fingers hold two keys");
   await touch("touchEnd", [{ x: kb.x + w.width * 2.5, y, id: 2 }]);
@@ -57,14 +60,21 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   // swipe on the playlist scrolls, adds nothing
   const grid = await page.locator(".pl .scroller").last().boundingBox();
   const n0 = await clips(page);
-  const sx = grid.x + grid.width * 0.8, sy = grid.y + 30;
+  const sx = grid.x + grid.width * 0.8,
+    sy = grid.y + 30;
   await touch("touchStart", [{ x: sx, y: sy, id: 3 }]);
-  for (let i = 1; i <= 10; i++) { await touch("touchMove", [{ x: sx - i * 20, y: sy + i * 3, id: 3 }]); await page.waitForTimeout(16); }
+  for (let i = 1; i <= 10; i++) {
+    await touch("touchMove", [{ x: sx - i * 20, y: sy + i * 3, id: 3 }]);
+    await page.waitForTimeout(16);
+  }
   await touch("touchEnd", []);
   await page.waitForTimeout(400);
   const sl = await page.evaluate(() => [...document.querySelectorAll(".pl .scroller")].map((e) => e.scrollLeft));
   assert((await clips(page)) === n0, `a swipe adds no clip (${n0})`);
-  assert(sl.some((v) => v > 0), `a swipe scrolls the playlist (${sl})`);
+  assert(
+    sl.some((v) => v > 0),
+    `a swipe scrolls the playlist (${sl})`,
+  );
   // a tap on an empty cell paints a clip
   await touch("touchStart", [{ x: grid.x + grid.width * 0.5, y: grid.y + 30, id: 4 }]);
   await touch("touchEnd", []);
@@ -74,11 +84,16 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   await page.waitForTimeout(300);
 
   // nav: browser pattern double-click reveals the piano roll
-  await page.click('.nav-item[aria-label=Browser]');
-  await page.locator(".b-item, .b-row").filter({ hasText: "Pad · Prologue" }).first().dblclick().catch(() => {});
+  await page.click(".nav-item[aria-label=Browser]");
+  await page
+    .locator(".b-item, .b-row")
+    .filter({ hasText: "Pad · Prologue" })
+    .first()
+    .dblclick()
+    .catch(() => {});
   await page.waitForTimeout(300);
   assert(await page.evaluate(() => document.querySelector(".studio").className.includes("v-dock")), "double-clicking a pattern switches to the dock");
-  await page.click('.nav-item[aria-label=Maestro]');
+  await page.click(".nav-item[aria-label=Maestro]");
   await page.waitForTimeout(300);
   assert((await page.locator(".keyboard").count()) === 0, "no keys over the terminal");
   await page.close();
