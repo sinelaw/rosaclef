@@ -368,7 +368,7 @@ export function audioPostSample(path, decoded) {
   const channels = decoded.channels.map((c) => new Float32Array(c));
   node.port.postMessage(
     { t: "sample", path, sampleRate: decoded.sampleRate, channels },
-    channels.map((c) => c.buffer),
+    channels.map((c) => c.buffer)
   );
 }
 

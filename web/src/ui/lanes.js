@@ -213,7 +213,7 @@ function dragPoint(e, lane, idx, r, info, zoom, begun) {
     },
     (u) => {
       reportContext();
-    },
+    }
   );
 }
 
@@ -233,7 +233,7 @@ function dragCurve(e, lane, idx, r, info) {
       hint(`${info.label}: curve ${fmt(pt.curve, 2)} (0 = straight)`);
       changed(true);
     },
-    (u) => undefined,
+    (u) => undefined
   );
 }
 

@@ -116,7 +116,7 @@ function rackRow(b, pat, ch, idx) {
         ch.mixer = insertIx(i);
         changed(true);
       },
-      (u) => undefined,
+      (u) => undefined
     );
   });
 
@@ -443,6 +443,6 @@ export function rackTools(b) {
       commit(() => {
         pat.length = Number(v);
       });
-    },
+    }
   );
 }

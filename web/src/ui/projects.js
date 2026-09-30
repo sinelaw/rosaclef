@@ -574,11 +574,11 @@ function card(b, p) {
   }
   iconButton(b, "zip", "small ghost", "export", `Download “${p.name}” as a .zip — a backup, or to open it in another studio`, () => exportProject(p));
   iconButton(b, "dup", "small ghost", "copy", `Duplicate “${p.name}”`, () =>
-    compose("duplicate", p.name, uniqueName(`${nameFrom(p.title)} copy`, pm.projects)),
+    compose("duplicate", p.name, uniqueName(`${nameFrom(p.title)} copy`, pm.projects))
   );
   iconButton(b, "ren", "small ghost", "draw", `Rename “${p.name}”`, () => compose("rename", p.name, p.name));
   iconButton(b, "del", "small ghost danger", "trash", p.current ? "The open project cannot be deleted" : `Move “${p.name}” to the trash`, () =>
-    deleteProject(p),
+    deleteProject(p)
   );
   if (p.current) b.attr("disabled", "true");
   b.close();
@@ -636,7 +636,7 @@ function projectsView(b) {
       "p",
       "p",
       "",
-      q !== "" ? `Nothing is called “${pm.filter}”.` : "Create a project, start from the demo, or import an LMMS or MIDI file or a project .zip.",
+      q !== "" ? `Nothing is called “${pm.filter}”.` : "Create a project, start from the demo, or import an LMMS or MIDI file or a project .zip."
     );
     b.close();
   }
@@ -649,7 +649,7 @@ function fileRow(b, f) {
   b.open("div", `f-${f.path}`, playing ? "pm-file playing" : "pm-file");
   if (f.kind === "audio") {
     iconButton(b, "play", playing ? "small on" : "small", playing ? "stop" : "play", playing ? "Stop the preview" : `Listen to ${f.name}`, () =>
-      togglePreview(f),
+      togglePreview(f)
     );
   } else {
     b.open("span", "doc", "pm-doc");
@@ -806,7 +806,7 @@ export function projectsOverlay(b) {
     "",
     pm.tab === "files"
       ? "Deleted files go to .trash/ in the project · renaming a sample updates the song"
-      : "Double-click a card to open it · deleted projects go to the library's .trash/",
+      : "Double-click a card to open it · deleted projects go to the library's .trash/"
   );
   button(
     b,
@@ -814,7 +814,7 @@ export function projectsOverlay(b) {
     "small ghost",
     "Empty trash",
     pm.tab === "files" ? "Delete this project's deleted files for good" : "Delete the projects in the library's trash for good",
-    () => emptyTrash(pm.tab === "files" ? "project" : "library"),
+    () => emptyTrash(pm.tab === "files" ? "project" : "library")
   );
   if (state.backend === "local" && pm.storage.quota > 0) {
     b.leaf("span", "store", "pm-store", `Browser storage · ${bytes(pm.storage.usage)} of ${bytes(pm.storage.quota)}`);

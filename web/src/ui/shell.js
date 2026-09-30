@@ -155,7 +155,7 @@ export function studio(b) {
         layoutState.dragging = false;
         saveLayout();
         invalidate();
-      },
+      }
     );
   });
 
@@ -206,7 +206,7 @@ export function studio(b) {
         layoutState.agentW = sideSizes(window.innerWidth).agentW;
         saveLayout();
         invalidate();
-      },
+      }
     );
   });
   b.close();
@@ -229,7 +229,7 @@ function hintBar(b) {
     "span",
     "h",
     "hint",
-    state.hint !== "" ? state.hint : "Space plays · F6 rack · F7 piano roll · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels",
+    state.hint !== "" ? state.hint : "Space plays · F6 rack · F7 piano roll · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
   );
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");
@@ -243,7 +243,7 @@ function hintBar(b) {
       ? `Studio engine${state.nativeDevice !== "" ? " · " + state.nativeDevice : ""}`
       : state.audioReady
         ? "Browser engine · WebAssembly"
-        : "Click anywhere to start audio",
+        : "Click anywhere to start audio"
   );
   b.leaf("span", "m3", "meta", `rev ${state.rev}`);
   b.close();

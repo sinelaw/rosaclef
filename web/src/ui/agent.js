@@ -101,7 +101,7 @@ function mountTerm() {
   term.push(t);
   t.fit();
   t.writeText(
-    "\x1b[38;2;227;196;122m  ✦ Rosaclef · Maestro\x1b[0m\r\n\x1b[38;2;163;151;128m  Your own coding agent, working on this project's files.\x1b[0m\r\n\r\n",
+    "\x1b[38;2;227;196;122m  ✦ Rosaclef · Maestro\x1b[0m\r\n\x1b[38;2;163;151;128m  Your own coding agent, working on this project's files.\x1b[0m\r\n\r\n"
   );
   connectTerm();
 }
@@ -249,7 +249,7 @@ export function agentPanel(b) {
       "p",
       "p",
       "",
-      agent.error !== "" ? agent.error : agent.exitCode >= 0 ? `The agent exited (code ${agent.exitCode}). Start it again or pick another.` : intro,
+      agent.error !== "" ? agent.error : agent.exitCode >= 0 ? `The agent exited (code ${agent.exitCode}). Start it again or pick another.` : intro
     );
     b.open("div", "grid", "agent-grid");
     for (const a of state.agents) {
@@ -273,8 +273,8 @@ export function agentPanel(b) {
     b.attr("title", state.backend === "local" ? "Type this into the shell" : "Type this into the agent's prompt");
     b.on("pointerenter", (e) =>
       hint(
-        state.backend === "local" ? `Type “${s}” into the shell (press Enter to run it)` : `Suggest to the agent: “${s}” (press Enter in the terminal to send)`,
-      ),
+        state.backend === "local" ? `Type “${s}” into the shell (press Enter to run it)` : `Suggest to the agent: “${s}” (press Enter in the terminal to send)`
+      )
     );
     b.on("click", (e) => {
       typeIntoAgent(s);

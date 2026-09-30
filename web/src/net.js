@@ -43,7 +43,7 @@ function onMessage(text) {
       toast(
         "Welcome to the browser studio",
         "Your projects are saved in this browser. Back them up from Projects → Download (.zip); open the same zip in the native studio to use your own coding agent.",
-        "info",
+        "info"
       );
     }
   } else if (t === "project") {

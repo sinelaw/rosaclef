@@ -19,7 +19,7 @@ export function toast(title, body, kind) {
     () => {
       expire();
     },
-    kind === "error" ? 9100 : 4600,
+    kind === "error" ? 9100 : 4600
   );
 }
 

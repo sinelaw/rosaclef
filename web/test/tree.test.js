@@ -42,7 +42,7 @@ state.items = ["a", "d"];
 ui.flush();
 check(
   "removed keys are disposed and new keys created",
-  mem.dump().includes('li.item "a"\n    li.item "d"\n') && !mem.dump().includes('"b"') && ui.stats().created === created + 1,
+  mem.dump().includes('li.item "a"\n    li.item "d"\n') && !mem.dump().includes('"b"') && ui.stats().created === created + 1
 );
 
 check("handlers dispatch to the latest description", mem.fire("item", "click", blankEvent()) && state.clicks === 1);
