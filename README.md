@@ -47,12 +47,14 @@ the output to **Studio** to use the native engine on the server's audio device
 
 | command | |
 |---|---|
-| `rosaclef serve [DIR] [--port 7470] [--demo]` | open a project folder in the studio |
+| `rosaclef serve [DIR] [--port 7470] [--demo] [--library LIB]` | open a project folder in the studio; the **Projects** window (Ctrl+O) manages the projects in `LIB` (default: the parent of `DIR`) and the open project's files |
 | `rosaclef new DIR [--demo]` | create a project folder |
 | `rosaclef validate [DIR\|FILE]` | check `project.json` (errors carry JSON paths) |
 | `rosaclef summary [DIR]` | compact overview of a project |
 | `rosaclef render [DIR] [--pattern ID] [--out FILE] [--bits 16\|24\|32]` | offline mixdown to WAV |
 | `rosaclef note --channel ID --pitch 60 --out samples/x.wav` | synthesize a note into a sample |
+| `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
+| `rosaclef import-midi FILE.mid [--name N] [--library LIB]` | import a Standard MIDI File as a new project |
 | `rosaclef fmt`, `schema`, `catalog`, `guide` | formatting, JSON schema, device catalog, agent guides |
 
 ## A project folder
@@ -77,6 +79,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 | `crates/core` | project model, device catalog, validation, JSON Schema, formatter |
 | `crates/engine` | portable DSP engine: sequencer, synths (Aurum subtractive, Lumière FM, Atelier drums, Vault sampler), effects, mixer, offline render |
 | `crates/wasm` | the engine compiled to WebAssembly (C ABI for the AudioWorklet) |
+| `crates/import` | importers: LMMS projects (.mmp/.mmpz) and Standard MIDI Files |
 | `crates/clap-host` | CLAP plugin hosting (scan, parameters, processing) + tests |
 | `crates/clap-testplug` | a tiny CLAP bundle used by the tests |
 | `crates/server` | the `rosaclef` binary: server, file watching, PTY agent terminal, native audio, CLI |

@@ -111,6 +111,18 @@ function encodePath(path) {
     .join("/");
 }
 
+/** A valid project (folder) name made from a song title (the server's rules:
+ * letters, digits, spaces and _-.()+,&' only, no leading or trailing dot). */
+/** function nameFrom(title: String) => String */
+function nameFrom(title) {
+  const s = title
+    .replace(/[^\p{L}\p{N} _\-.()+,&']+/gu, "-")
+    .replace(/^[-. ]+/, "")
+    .slice(0, 52)
+    .replace(/[-. ]+$/, "");
+  return s === "" ? "Untitled" : s;
+}
+
 /** function uniqueName(base: String, projects: ProjectInfo[]) => String */
 function uniqueName(base, projects) {
   let name = base;
@@ -558,7 +570,7 @@ function card(b, p) {
       return undefined;
     });
   }
-  iconButton(b, "dup", "small ghost", "copy", `Duplicate “${p.name}”`, () => compose("duplicate", p.name, uniqueName(`${p.name} copy`, pm.projects)));
+  iconButton(b, "dup", "small ghost", "copy", `Duplicate “${p.name}”`, () => compose("duplicate", p.name, uniqueName(`${nameFrom(p.title)} copy`, pm.projects)));
   iconButton(b, "ren", "small ghost", "draw", `Rename “${p.name}”`, () => compose("rename", p.name, p.name));
   iconButton(b, "del", "small ghost danger", "trash", p.current ? "The open project cannot be deleted" : `Move “${p.name}” to the trash`, () => deleteProject(p));
   if (p.current) b.attr("disabled", "true");

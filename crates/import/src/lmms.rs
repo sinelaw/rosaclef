@@ -24,7 +24,7 @@
 //! | TripleOscillator | `synth` (Aurum) |
 //! | Kicker | `drum` kick |
 //! | AudioFileProcessor | `sampler` (Vault) |
-//! | LB302 | `synth` (Aurum) acid bass with glide |
+//! | LB302 | `cuivre` acid bass (ladder / screamer filter, mono, legato glide) |
 //! | other instruments | `synth` fallback, with a warning |
 //!
 //! Automation, per-clip mutes, sends between FX channels and unsupported
@@ -561,31 +561,44 @@ impl<'o> Importer<'o> {
                 (d, PitchMode::Normal, 0)
             }
             "lb302" => {
-                // Aurum rather than the (still unfinished) Cuivre engine:
-                // one oscillator into a resonant low-pass with a snappy
-                // filter envelope and optional glide.
-                let mut d = Device::new("synth");
-                let w = match get("shape", 0.0) as i32 {
-                    1 | 5 => "triangle",
-                    2 | 3 => "square",
-                    7 => "noise",
+                // Cuivre (virtual analog) from its acid preset: one oscillator
+                // into the 4-pole ladder (24 dB, `db24`) or the 2-pole
+                // screamer (12 dB), a snappy filter envelope, monophonic, and
+                // legato glide when LB302's slide is on.
+                let mut d = rosaclef_core::presets::find("Acide Émeraude").filter(|p| p.kind == "cuivre").map(|p| p.device()).unwrap_or_else(|| Device::new("cuivre"));
+                // LB302 shapes: 0 saw, 1 triangle, 2 square, 3 round square,
+                // 4 moog, 5 sine, 6 exponential, 7 noise, 8-11 band-limited
+                // saw / square / triangle / moog.
+                let shape = get("shape", 0.0) as i32;
+                let w = match shape {
+                    1 | 5 | 6 | 10 => "triangle",
+                    2 | 3 | 9 => "pulse",
                     _ => "saw",
                 };
                 set_option(&mut d, "wave1", w);
-                set_param(&mut d, "osc2Mix", 0.0);
+                if shape == 7 {
+                    set_param(&mut d, "noise", 1.0);
+                    self.warn.add(format!("track \"{track}\": LB302's noise shape became Cuivre's noise over a saw"));
+                }
+                set_param(&mut d, "mix2", 0.0);
+                set_param(&mut d, "sub", 0.0);
+                set_option(&mut d, "filter", if get("db24", 0.0) != 0.0 { "ladder" } else { "screamer" });
                 let cutoff = 80.0 * 2f64.powf(get("vcf_cut", 0.75) * 7.0);
                 set_param(&mut d, "cutoff", cutoff);
-                set_param(&mut d, "resonance", get("vcf_res", 0.75) * 0.8);
+                set_param(&mut d, "resonance", get("vcf_res", 0.75) * 0.95);
+                set_param(&mut d, "drive", get("dist", 0.0).max(0.1));
                 set_param(&mut d, "filterEnv", 0.2 + get("vcf_mod", 0.1) * 0.8);
                 set_param(&mut d, "filterDecay", 0.05 + get("vcf_dec", 0.1) * 1.2);
+                set_param(&mut d, "filterSustain", 0.0);
                 set_param(&mut d, "attack", 0.002);
                 set_param(&mut d, "decay", 0.4);
-                set_param(&mut d, "sustain", 0.85);
-                set_param(&mut d, "release", 0.03);
+                set_param(&mut d, "sustain", 0.6);
+                set_param(&mut d, "release", 0.05);
                 let slide = get("slide", 0.0) != 0.0;
+                set_option(&mut d, "mode", if slide { "legato" } else { "mono" });
                 set_param(&mut d, "glide", if slide { 0.02 + get("slide_dec", 0.6) * 0.2 } else { 0.0001 });
-                set_param(&mut d, "gain", 0.55);
-                self.warn.add(format!("track \"{track}\": LB302 was approximated by Aurum (synth)"));
+                set_param(&mut d, "gain", 0.6);
+                self.warn.add(format!("track \"{track}\": LB302 was approximated by Cuivre"));
                 (d, PitchMode::Normal, 0)
             }
             "malletsstk" => {

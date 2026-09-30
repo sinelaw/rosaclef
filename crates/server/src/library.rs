@@ -220,7 +220,8 @@ fn copy_dir(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Copy a project (without its live state) under a new name.
+/// Copy a project (without its live state) under a new name. The copy's
+/// song is titled with that name, so library cards tell the two apart.
 pub fn duplicate(library: &Path, name: &str, to: &str) -> Result<()> {
     let src = project_dir(library, name)?;
     check_name(to)?;
@@ -231,7 +232,10 @@ pub fn duplicate(library: &Path, name: &str, to: &str) -> Result<()> {
     copy_dir(&src, &dst)?;
     let f = Folder::new(&dst);
     f.init(false)?;
-    follow_title(&f, name, to)?;
+    if let Ok(Some(mut p)) = f.load().map(|c| c.project) {
+        p.meta.title = to.to_string();
+        f.write_project(&p)?;
+    }
     crate::guide::write(&f)?;
     Ok(())
 }
@@ -798,8 +802,18 @@ mod tests {
         duplicate(&lib, "Alpha", "Gamma").unwrap();
         assert!(lib.join("Gamma/samples/x.wav").is_file());
         assert!(lib.join("Gamma/AGENTS.md").is_file());
-        assert_eq!(Folder::new(lib.join("Gamma")).load().unwrap().project.unwrap().meta.title, "Gamma", "a title that was the folder name follows it");
+        let title = |n: &str| Folder::new(lib.join(n)).load().unwrap().project.unwrap().meta.title;
+        assert_eq!(title("Gamma"), "Gamma", "the copy is titled with its own name");
         assert!(duplicate(&lib, "Alpha", "Beta").is_err());
+        // Even when the song has a title of its own, the copy is told apart.
+        let bf = Folder::new(lib.join("Beta"));
+        let mut bp = bf.load().unwrap().project.unwrap();
+        bp.meta.title = "Velvet Hour".into();
+        bf.write_project(&bp).unwrap();
+        duplicate(&lib, "Beta", "Beta copy").unwrap();
+        assert_eq!(title("Beta"), "Velvet Hour");
+        assert_eq!(title("Beta copy"), "Beta copy");
+        trash_project(&lib, "Beta copy").unwrap();
 
         let trashed = trash_project(&lib, "Gamma").unwrap();
         assert!(trashed.starts_with(lib.join(TRASH_DIR)));
