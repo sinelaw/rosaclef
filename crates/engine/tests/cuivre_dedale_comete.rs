@@ -480,7 +480,7 @@ fn realtime_factor(dev: &Device, keys: &[u8], seconds: f32) -> f64 {
 }
 
 #[test]
-#[cfg_attr(debug_assertions, ignore = "timing is only meaningful in release builds")]
+#[ignore = "wall-clock timing; flaky on a loaded machine (run with --ignored)"]
 fn realtime_performance() {
     let keys = [36u8, 43, 48, 55, 60, 64, 67, 72];
     let cases = [
