@@ -239,6 +239,8 @@ function winButton(b, key, icon, tip, onClick) {
   b.on("click", (e) => {
     e.stopPropagation();
     onClick();
+    // The button under the pointer now does something else; drop the stale tip.
+    hint("");
     return undefined;
   });
   // A quick double click on a button must not also maximize via the header.
@@ -293,6 +295,7 @@ export function paneRail(b, id, title, icon, dot) {
   b.on("pointerenter", (e) => hint(tip));
   b.on("click", (e) => {
     setSide(id, "open");
+    hint("");
     return undefined;
   });
   b.open("div", "ctl", "winctl");

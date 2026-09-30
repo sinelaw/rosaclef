@@ -45,7 +45,7 @@
 
 /* A maximized browser lays its lists out in columns and scrolls as a whole. */
 .side-browser.max .browser { overflow-y: auto; }
-.side-browser.max .panel-head { position: sticky; top: 0; z-index: 2; background: linear-gradient(180deg, #1a171e, #141217); }
+.side-browser.max .panel-head { flex: none; position: sticky; top: 0; z-index: 2; background: linear-gradient(180deg, #1a171e, #141217); }
 .side-browser.max .browser-body { flex: none; overflow: visible; column-width: 250px; column-gap: 18px; column-rule: 1px solid var(--line); padding: 2px 6px 24px; }
 .side-browser.max .b-section { break-inside: avoid; padding-top: 1px; }
 
@@ -149,6 +149,8 @@
 .pane.min { overflow: hidden; }
 .pane.min > .dock-body { visibility: hidden; }
 .pane.min > .tabs { border-bottom-color: transparent; }
+/* A folded pane's tools are out of reach anyway; keep its strip calm. */
+.pane.min > .tabs > .tools { visibility: hidden; }
 .pane-top.min > .tabs .tab { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
