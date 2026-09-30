@@ -6,6 +6,7 @@ import { state, undo, redo, showDock, currentChannel } from "./store.js";
 import { togglePlay, stop, setMode, record, noteOn, noteOff } from "./audio.js";
 import { deleteSelection, selectAll, transpose, quantize, duplicateSelection, setTool } from "./ui/pianoroll.js";
 import { deleteSelectedClips } from "./ui/playlist.js";
+import { auto, closeMenu } from "./automation.js";
 
 // Lower keyboard row plays C4..C5 on the selected channel.
 const PIANO = ["z", "s", "x", "d", "c", "v", "g", "b", "h", "n", "j", "m", ","];
@@ -44,7 +45,8 @@ export function installKeys() {
       e.preventDefault();
       togglePlay();
     } else if (k === "Escape") {
-      stop();
+      if (auto.menu.open) closeMenu();
+      else stop();
     } else if (k === "F6") {
       e.preventDefault();
       showDock("rack");
