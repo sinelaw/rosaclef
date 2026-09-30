@@ -13,8 +13,9 @@ use rosaclef_core::validate::{self, Issue, Severity};
 use rosaclef_core::{format, Project};
 use rosaclef_engine::render::{encode_wav, RenderScope};
 use rosaclef_fs::{Fs, MemFs, SharedFs};
+use rosaclef_studio::fonts::{FontFiles, Fonts};
 use rosaclef_studio::library::{self, rewrite_refs, unique_sample_path, Library};
-use rosaclef_studio::render::{levels_db, render_project, required_samples};
+use rosaclef_studio::render::{levels_db, render_project, required_presets, required_samples};
 use rosaclef_studio::{archive, decode, folder, slug, Folder};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -97,8 +98,58 @@ struct Doc {
     issues: Vec<Issue>,
 }
 
+/// Soundfont files, fetched by the worker from the site (`soundfonts/NAME`)
+/// when a render needs them: a read of a missing file records it and fails
+/// with [`NeedContent`], and the call is retried once the worker provides it.
+#[derive(Default)]
+pub struct MemFonts {
+    files: std::sync::Mutex<HashMap<String, Arc<Vec<u8>>>>,
+    missing: std::sync::Mutex<Vec<String>>,
+}
+
+impl MemFonts {
+    pub fn provide(&self, name: &str, data: Vec<u8>) {
+        self.files
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(name.to_string(), Arc::new(data));
+    }
+
+    pub fn take_missing(&self) -> Vec<String> {
+        std::mem::take(&mut *self.missing.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    /// Drop the sample pieces (decoded presets are cached by [`Fonts`]).
+    pub fn forget_pieces(&self) {
+        self.files
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|k, _| !k.ends_with(".bin"));
+    }
+}
+
+impl FontFiles for MemFonts {
+    fn read(&self, name: &str) -> Result<Vec<u8>> {
+        if let Some(b) = self
+            .files
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(name)
+        {
+            return Ok(b.as_ref().clone());
+        }
+        let mut m = self.missing.lock().unwrap_or_else(|e| e.into_inner());
+        if !m.iter().any(|n| n == name) {
+            m.push(name.to_string());
+        }
+        Err(NeedContent.into())
+    }
+}
+
 pub struct Host {
     pub mem: Arc<MemFs>,
+    pub font_files: Arc<MemFonts>,
+    pub fonts: Arc<Fonts>,
     pub library: Library,
     pub folder: Folder,
     doc: Doc,
@@ -193,8 +244,11 @@ impl Host {
         };
         let folder = library.folder(&name);
         let (project, issues) = Self::load(&folder)?;
+        let font_files = Arc::new(MemFonts::default());
         let host = Host {
             mem,
+            fonts: Arc::new(Fonts::new(font_files.clone())),
+            font_files,
             library,
             folder,
             doc: Doc {
@@ -678,6 +732,7 @@ impl Host {
     ) -> Result<Value> {
         let project = self.doc.project.clone();
         self.ensure_loaded(&required_samples(&project))?;
+        self.fonts.ensure(&required_presets(&project))?;
         let scope = if pattern.is_empty() {
             RenderScope::Song
         } else {
@@ -710,8 +765,12 @@ impl Host {
             project,
             &scope,
             sample_rate.clamp(8000, 192000) as f32,
+            &self.fonts,
             |_| {},
         );
+        // The browser holds this memory: keep only the soundfont indexes.
+        self.fonts.clear();
+        self.font_files.forget_pieces();
         self.folder.write(&rel, &encode_wav(&audio, bits))?;
         let (peak_db, rms_db) = levels_db(&audio);
         Ok(json!({

@@ -28,6 +28,7 @@ behaves the same way:
 | library | create, open, duplicate, rename, delete (to a trash you can empty), filter |
 | files | import audio into `samples/`, rename (the song follows), delete, listen, download |
 | import | LMMS projects (`.mmp`, `.mmpz`), MIDI files (as a new project, or added to the open song) |
+| sampled instruments | the General MIDI soundfont: each program's pieces are fetched from `soundfonts/` the first time a song plays it (the browser caches them) |
 | backup | download any project as a `.zip`; import a `.zip` as a new project |
 | export | render the song offline to a WAV (saved in `renders/` and downloaded) |
 | recording | from the microphone onto a playlist track |
@@ -83,6 +84,10 @@ your coding agent, or to back it up.
   render, a waveform) and dropped after; files are served to the page straight
   from storage. The page asks the browser to keep the storage persistent;
   the Projects window shows how much is used.
+- **Soundfonts.** `soundfonts/` is part of the site. The page's font worker
+  (`engine/fonts.js`) fetches the pieces a preset needs and decodes them for
+  the audio worklet; a render in the back-end worker asks for the same files
+  (`needFonts` in its replies) and the worker fetches them from the site.
 - **One back end for every tab.** A SharedWorker, where the browser has one;
   otherwise (Chrome on Android) each tab has its own worker, and tabs do not
   see each other's edits until reloaded.

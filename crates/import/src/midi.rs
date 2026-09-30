@@ -14,11 +14,14 @@
 //!   pedal (CC 64) is applied: notes released while it is down ring until it
 //!   lifts or the key is struck again. Pitch bend is reported, not applied.
 //! - Channels: one Rosaclef channel per (track, MIDI channel, program) with
-//!   notes, so program changes switch instruments. The instrument comes from
-//!   the General MIDI program family, preferring a factory preset (see
-//!   [`gm_instrument`]). MIDI channel 10 becomes one `drum` channel per GM
-//!   drum group used (kick, snare, hats, toms, ...), notes remapped to pitch
-//!   60 (toms keep their relative tuning).
+//!   notes, so program changes switch instruments. By default each plays its
+//!   General MIDI program on a `soundfont` instrument (the sampled GM
+//!   soundfont), and MIDI channel 10 becomes one channel per track playing
+//!   the GM drum kit its program selects, keys unchanged. With
+//!   [`Options::soundfont`] off, the instrument is a synthesizer preset of
+//!   the program's family (see [`gm_instrument`]) and channel 10 becomes one
+//!   Atelier `drum` channel per GM drum group used (kick, snare, hats, toms,
+//!   ...), notes remapped to pitch 60 (toms keep their relative tuning).
 //! - Mixing: volume × expression (CC 7, 11) and pan (CC 10) when a channel
 //!   starts set its volume and pan; later changes become automation lanes.
 //! - Arrangement: every channel's notes are cut into patterns of
@@ -44,6 +47,11 @@ pub struct Options {
     pub title: String,
     /// Length of the patterns the song is cut into.
     pub bars_per_pattern: u32,
+    /// Play the file with the sampled General MIDI instruments (`soundfont`
+    /// channels with the file's programs and drum kits). When false, each
+    /// program gets a synthesizer preset of its family and the drums become
+    /// synthesized Atelier drums.
+    pub soundfont: bool,
 }
 
 impl Options {
@@ -51,8 +59,16 @@ impl Options {
         Options {
             title: title.to_string(),
             bars_per_pattern: 4,
+            soundfont: true,
         }
     }
+}
+
+/// A `soundfont` device playing a General MIDI program or kit.
+fn gm_device(program: &str) -> Device {
+    let mut d = Device::new("soundfont");
+    set_option(&mut d, "program", program);
+    d
 }
 
 // ---------------------------------------------------------------- parser
@@ -558,6 +574,11 @@ enum Source {
         track: usize,
         group: &'static str,
     },
+    /// Every drum of a track, played by a soundfont kit.
+    Kit {
+        track: usize,
+        kit: &'static str,
+    },
 }
 
 impl Source {
@@ -565,7 +586,7 @@ impl Source {
     fn midi(&self) -> (usize, u8) {
         match self {
             Source::Melodic { track, channel, .. } => (*track, *channel),
-            Source::Drum { track, .. } => (*track, 9),
+            Source::Drum { track, .. } | Source::Kit { track, .. } => (*track, 9),
         }
     }
 }
@@ -927,7 +948,15 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
         }
         done.sort_by_key(|d| d.2);
         for (ch, key, start, end, velocity) in done {
-            let (src, pitch) = if ch == 9 {
+            let (src, pitch) = if ch == 9 && opts.soundfont {
+                (
+                    Source::Kit {
+                        track: ti,
+                        kit: rosaclef_core::gm::kit(program_at(ti, 9, start)),
+                    },
+                    key as i32,
+                )
+            } else if ch == 9 {
                 let Some(g) = drum_group(key) else {
                     unmapped_drums += 1;
                     continue;
@@ -1042,7 +1071,7 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
     let drums_tracks: std::collections::BTreeSet<usize> = order
         .iter()
         .filter_map(|s| match s {
-            Source::Drum { track, .. } => Some(*track),
+            Source::Drum { track, .. } | Source::Kit { track, .. } => Some(*track),
             _ => None,
         })
         .collect();
@@ -1053,13 +1082,20 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
         let raw = &notes[src];
         let (base_name, instrument) = match src {
             Source::Melodic { track, program, .. } => {
-                let (device, _) = gm_instrument(*program);
+                let (device, family) = if opts.soundfont {
+                    let name = rosaclef_core::gm::PROGRAMS[*program as usize];
+                    (gm_device(name), name)
+                } else {
+                    (
+                        gm_instrument(*program).0,
+                        GM_FAMILIES[(program / 8) as usize],
+                    )
+                };
                 let sources_in_track = order
                     .iter()
                     .filter(|s| matches!(s, Source::Melodic { track: t, .. } if t == track))
                     .count();
                 let tname = &track_names[*track];
-                let family = GM_FAMILIES[(program / 8) as usize];
                 let name = if !tname.is_empty() && sources_in_track == 1 {
                     tname.clone()
                 } else if !tname.is_empty() {
@@ -1084,6 +1120,15 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                     group.to_string()
                 };
                 (name, d)
+            }
+            Source::Kit { track, kit } => {
+                let tname = &track_names[*track];
+                let name = if drums_tracks.len() > 1 && !tname.is_empty() {
+                    tname.clone()
+                } else {
+                    "Drums".to_string()
+                };
+                (name, gm_device(kit))
             }
         };
         let n = used_names.entry(base_name.clone()).or_insert(0);

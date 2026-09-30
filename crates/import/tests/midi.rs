@@ -60,6 +60,14 @@ fn smf(format: u16, ppq: u16, tracks: Vec<Vec<u8>>) -> Vec<u8> {
     out
 }
 
+/// The synthesized instruments instead of the General MIDI soundfont.
+fn synth(title: &str) -> Options {
+    Options {
+        soundfont: false,
+        ..Options::new(title)
+    }
+}
+
 fn check_valid(im: &Imported) {
     let issues = validate::validate(&im.project);
     assert!(
@@ -111,7 +119,7 @@ fn format0() -> Vec<u8> {
 
 #[test]
 fn imports_format0() {
-    let im = midi::import(&format0(), &Options::new("Groove")).unwrap();
+    let im = midi::import(&format0(), &synth("Groove")).unwrap();
     check_valid(&im);
     let p = &im.project;
     assert_eq!(p.transport.bpm, 100.0);
@@ -218,7 +226,7 @@ fn format1() -> Vec<u8> {
 
 #[test]
 fn imports_format1_with_dedupe() {
-    let im = midi::import(&format1(), &Options::new("song-file")).unwrap();
+    let im = midi::import(&format1(), &synth("song-file")).unwrap();
     assert_eq!(
         im.project.meta.title, "My Song",
         "the conductor track names the song"
@@ -297,7 +305,7 @@ fn imports_format1_with_dedupe() {
 
 #[test]
 fn merges_into_an_existing_project() {
-    let im = midi::import(&format0(), &Options::new("Groove")).unwrap();
+    let im = midi::import(&format0(), &synth("Groove")).unwrap();
     let mut base = rosaclef_core::Project::empty("Song");
     base.channels.push(rosaclef_core::Channel {
         id: "kick".into(),
@@ -416,7 +424,9 @@ fn imports_meter_tempo_pedal_and_program_changes() {
 
     // Program change: one channel per program.
     let names: Vec<&str> = p.channels.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(names, ["Keys · Piano", "Keys · Strings"]);
+    assert_eq!(names, ["Keys · Acoustic Grand Piano", "Keys · Violin"]);
+    assert_eq!(p.channels[1].instrument.kind, "soundfont");
+    assert_eq!(p.channels[1].instrument.option("program"), "Violin");
 
     // The pedal holds notes until it lifts or the key is struck again.
     let piano = &p.channels[0];
@@ -472,7 +482,7 @@ fn merging_keeps_channel_lanes_and_the_song_tempo() {
     let im = midi::import(&changes(), &Options::new("changes")).unwrap();
     let mut base = rosaclef_core::Project::empty("Song");
     base.channels.push(rosaclef_core::Channel {
-        id: "keys-piano".into(),
+        id: "keys-acoustic-grand-piano".into(),
         name: "Keys".into(),
         color: "#ffffff".into(),
         instrument: rosaclef_core::Device::new("synth"),
@@ -492,7 +502,31 @@ fn merging_keeps_channel_lanes_and_the_song_tempo() {
     assert_eq!(base.transport.bpm, 120.0);
     assert!(base.transport.meters.is_empty());
     let targets: Vec<&str> = base.automation.iter().map(|l| l.target.as_str()).collect();
-    assert_eq!(targets, ["channel/keys-piano-2/volume"]);
+    assert_eq!(targets, ["channel/keys-acoustic-grand-piano-2/volume"]);
     assert!(warnings.iter().any(|w| w.contains("tempo changes")));
     assert!(warnings.iter().any(|w| w.contains("time signature")));
+}
+
+#[test]
+fn plays_programs_and_drums_on_the_gm_soundfont_by_default() {
+    let im = midi::import(&format0(), &Options::new("Groove")).unwrap();
+    check_valid(&im);
+    let p = &im.project;
+    let names: Vec<&str> = p.channels.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["Groove", "Drums"]);
+    let bass = &p.channels[0];
+    assert_eq!(bass.instrument.kind, "soundfont");
+    assert_eq!(bass.instrument.option("program"), "Electric Bass (finger)");
+    let drums = &p.channels[1];
+    assert_eq!(drums.instrument.option("program"), "Standard Kit");
+    let mut keys: Vec<i32> = p
+        .patterns
+        .iter()
+        .flat_map(|x| &x.notes)
+        .filter(|n| n.channel == drums.id)
+        .map(|n| n.pitch)
+        .collect();
+    keys.sort();
+    assert_eq!(keys, [20, 36, 38, 42, 49], "drum keys stay as written");
+    assert!(!warned(&im, "drum map"), "{:?}", im.warnings);
 }

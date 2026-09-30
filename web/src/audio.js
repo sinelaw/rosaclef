@@ -7,7 +7,7 @@
 //    lowest latency).
 // The UI sends the same transport commands to whichever one is selected.
 
-import { audioStart, audioPost, audioPostSample, audioResume, decodeAudioUrl, recStart, recStop } from "#platform";
+import { audioStart, audioPost, audioPostSample, audioLoadPreset, audioResume, decodeAudioUrl, recStart, recStop } from "#platform";
 import { state, hooks, invalidate, commit, currentPattern, reportContext } from "./store.js";
 import { send } from "./net.js";
 import { toast } from "./ui/toast.js";
@@ -33,6 +33,7 @@ function onEngineMessage(m) {
     invalidate();
   } else if (m.t === "loaded") {
     for (const path of m.missing) loadSample(path);
+    for (const p of m.presets) loadPreset(p);
   } else if (m.t === "loadError") {
     toast("The audio engine rejected the project", m.message, "error");
   }
@@ -52,6 +53,24 @@ function loadSample(path) {
       toast("Could not load sample", path, "error");
       return false;
     });
+}
+
+/** Soundfont presets in the browser engine, or on their way ("font/bank/program"). */
+/** const presets: String[] */
+const presets = [];
+
+/** Load a soundfont preset (decoded in a worker, see platform.js); the
+ * instrument is silent until it arrives. */
+/** function loadPreset(p: PresetRef) => Undefined */
+function loadPreset(p) {
+  const key = `${p.font}/${p.bank}/${p.program}`;
+  if (presets.includes(key)) return undefined;
+  presets.push(key);
+  audioLoadPreset(p.font, p.bank, p.program).catch((e) => {
+    presets.splice(presets.indexOf(key), 1);
+    toast("Could not load an instrument", String(e), "error");
+    return false;
+  });
 }
 
 /** const startup: Promise<Boolean>[] */

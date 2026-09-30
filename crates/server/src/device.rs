@@ -164,7 +164,33 @@ impl Native {
         self.load_missing_samples(folder);
     }
 
+    /// Load the soundfont presets the project plays, in the background
+    /// (a large preset takes a moment to decode).
+    fn load_missing_presets(&self) {
+        let missing: Vec<_> = {
+            let e = self.engine.lock();
+            e.required_presets()
+                .into_iter()
+                .filter(|k| !e.has_preset(k))
+                .collect()
+        };
+        if missing.is_empty() {
+            return;
+        }
+        let engine = self.engine.clone();
+        std::thread::spawn(move || {
+            let fonts = crate::server::fonts();
+            for key in missing {
+                match fonts.preset(&key) {
+                    Ok(p) => engine.lock().set_preset(key, p),
+                    Err(e) => eprintln!("soundfont: {e:#}"),
+                }
+            }
+        });
+    }
+
     fn load_missing_samples(&self, folder: &Folder) {
+        self.load_missing_presets();
         let missing: Vec<String> = {
             let e = self.engine.lock();
             e.required_samples()

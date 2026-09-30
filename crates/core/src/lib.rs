@@ -5,6 +5,7 @@ pub mod automation;
 pub mod catalog;
 pub mod context;
 pub mod format;
+pub mod gm;
 pub mod model;
 pub mod presets;
 pub mod schema;

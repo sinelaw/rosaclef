@@ -302,6 +302,25 @@ pub static DEVICES: &[DeviceSpec] = &[
         open_params: false,
     },
     DeviceSpec {
+        kind: "soundfont",
+        label: "Orchestre",
+        category: Category::Instrument,
+        doc: "Sampled General MIDI instruments from the built-in soundfont (MuseScore General): pianos, strings, brass, winds, guitars, basses, choirs and drum kits. options.program names a GM program (\"Acoustic Grand Piano\", \"String Ensemble 1\", ...) or a drum kit (\"Standard Kit\", ...; notes follow the GM drum map: 36 kick, 38 snare, 42 closed hat, 46 open hat, 49 crash). Velocity shapes loudness and tone as on the real instrument. The sounds load on first use.",
+        params: &[
+            p("gain", "Gain", 0.0, 2.0, 1.0, "", "Output level."),
+            pi("transpose", "Transpose", -24.0, 24.0, 0.0, "st", "Shift every note by semitones."),
+            pe("release", "Release", 0.1, 4.0, 1.0, "×", "Scales the release time of the notes."),
+        ],
+        options: &[o(
+            "program",
+            "Program",
+            &crate::gm::CHOICES,
+            "Acoustic Grand Piano",
+            "General MIDI program or drum kit.",
+        )],
+        open_params: false,
+    },
+    DeviceSpec {
         kind: "prisme",
         label: "Prisme",
         category: Category::Instrument,

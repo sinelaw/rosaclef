@@ -73,6 +73,9 @@ export const audioPost;
 /** const audioPostSample: (String, Decoded) => Undefined */
 export const audioPostSample;
 
+/** const audioLoadPreset: (String, Number, Number) => Promise<Boolean> */
+export const audioLoadPreset;
+
 /** const audioResume: () => Promise<Boolean> */
 export const audioResume;
 

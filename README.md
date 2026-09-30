@@ -71,7 +71,7 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef render [DIR] [--pattern ID] [--out FILE] [--bits 16\|24\|32]` | offline mixdown to WAV |
 | `rosaclef note --channel ID --pitch 60 --out samples/x.wav` | synthesize a note into a sample |
 | `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
-| `rosaclef import-midi FILE.mid [--name N] [--library LIB]` | import a Standard MIDI File as a new project |
+| `rosaclef import-midi FILE.mid [--name N] [--library LIB] [--synth]` | import a Standard MIDI File as a new project: tempo and time signature changes, sustain pedal, program changes, volume/pan automation; played on the sampled General MIDI instruments (`--synth`: on Rosaclef's synthesizers) |
 | `rosaclef fmt`, `schema`, `catalog`, `guide` | formatting, JSON schema, device catalog, agent guides |
 
 ## Voice to notes
@@ -113,6 +113,23 @@ The analysis runs in Rust
 (`crates/studio/src/transcribe.rs`, `GET /api/transcribe?path=…&mode=melody|drums`),
 natively or in the browser-only build.
 
+## Sampled instruments
+
+**Orchestre** (`"type": "soundfont"`) plays sampled instruments: the 128
+General MIDI programs (pianos, strings, brass, winds, guitars, basses,
+choirs, …) and 8 drum kits, from the built-in
+[MuseScore General](web/soundfonts/gm/LICENSE.md) soundfont (MIT). Pick one
+with `options.program`, e.g. `"Acoustic Grand Piano"` or `"Standard Kit"`.
+Imported MIDI files use it by default.
+
+The soundfont ships split into 1 MB pieces (`web/soundfonts/gm/`, made by
+`tools/split_soundfont.py`), and a song loads only the pieces its programs
+use: a string section is about 1 MB, the grand piano 15 MB. Loading never
+blocks the studio: in the browser a worker fetches and decodes the samples
+and hands them to the audio engine in small steps; natively the server loads
+them on a background thread. An instrument stays silent until its sounds
+arrive.
+
 ## A project folder
 
 ```
@@ -147,6 +164,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 | `crates/clap-testplug` | a tiny CLAP bundle used by the tests |
 | `crates/server` | the `rosaclef` binary: server, file watching, PTY agent terminal, native audio, CLI |
 | `web/` | the studio UI (plain JS checked by [inty](https://sinelaw.github.io/inty/)) |
+| `web/soundfonts/` | the General MIDI soundfont, split for loading on demand |
 | `docs/` | architecture and notes |
 
 ## Development
@@ -172,4 +190,5 @@ Known inty rough edges are tracked in [`docs/inty-notes.md`](docs/inty-notes.md)
 
 ## License
 
-GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js).
+GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js). `web/soundfonts/gm`
+is MuseScore General (MIT; see its [license](web/soundfonts/gm/LICENSE.md)).
