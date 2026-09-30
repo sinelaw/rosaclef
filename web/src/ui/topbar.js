@@ -27,7 +27,7 @@ function exportSong() {
   toast(
     "Rendering mixdown…",
     state.backend === "local" ? "The engine renders the song offline, in your browser." : "The native engine renders the song offline (plugins included).",
-    "info",
+    "info"
   );
   sendJson("/api/render", "POST", { bits: 24 })
     .then((r) => {
@@ -103,7 +103,7 @@ export function topbar(b) {
         state.project.transport.bpm = Math.max(20, Math.min(400, v));
         changed(true);
       },
-      (u) => undefined,
+      (u) => undefined
     );
   });
   lcd(b, "bpm", "Tempo", fmt(shownValue("tempo", p.transport.bpm), 2), "BPM");
@@ -131,7 +131,7 @@ export function topbar(b) {
       state.output === "native" ? "on" : "",
       "Studio",
       "Play through the native engine on the server's audio device (plugins, lowest latency)",
-      () => setOutput("native"),
+      () => setOutput("native")
     );
     b.close();
   }
@@ -157,7 +157,7 @@ export function topbar(b) {
     keyboard.shown ? "Hide the on-screen piano" : "Show the on-screen piano (plays the selected channel)",
     () => {
       toggleKeyboard();
-    },
+    }
   );
   iconButton(b, "undo", "", "undo", "Undo (Ctrl+Z) — includes the agent's edits", () => {
     undo();

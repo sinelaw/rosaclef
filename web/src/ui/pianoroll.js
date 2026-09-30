@@ -218,7 +218,7 @@ function onGridDown(e, pat, ch, g) {
         }
         changed(true);
       },
-      (u) => undefined,
+      (u) => undefined
     );
     return undefined;
   }
@@ -247,7 +247,7 @@ function onGridDown(e, pat, ch, g) {
         setSelection(inside);
         view.marqueeOn = false;
         invalidate();
-      },
+      }
     );
     return undefined;
   }
@@ -272,7 +272,7 @@ function onGridDown(e, pat, ch, g) {
       view.lastLength = l;
       changed(true);
     },
-    (u) => undefined,
+    (u) => undefined
   );
 }
 
@@ -337,7 +337,7 @@ function keysView(b, g, ch) {
           noteOff(ch.id, p);
           view.keyDown = -1;
           invalidate();
-        },
+        }
       );
     });
     if (p % 12 === 0) b.leaf("span", "l", "", noteName(p));

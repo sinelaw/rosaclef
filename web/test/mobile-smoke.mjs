@@ -73,7 +73,7 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   assert((await clips(page)) === n0, `a swipe adds no clip (${n0})`);
   assert(
     sl.some((v) => v > 0),
-    `a swipe scrolls the playlist (${sl})`,
+    `a swipe scrolls the playlist (${sl})`
   );
   // a tap on an empty cell paints a clip
   await touch("touchStart", [{ x: grid.x + grid.width * 0.5, y: grid.y + 30, id: 4 }]);

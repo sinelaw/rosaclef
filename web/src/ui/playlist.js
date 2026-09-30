@@ -236,7 +236,7 @@ function onLaneDown(e, g) {
         }
         changed(true);
       },
-      (u) => undefined,
+      (u) => undefined
     );
     return undefined;
   }
@@ -258,7 +258,7 @@ function onLaneDown(e, g) {
       p.playlist.clips[idx].length = Math.max(snap, snapTo(pat.length + db, snap));
       changed(true);
     },
-    (u) => undefined,
+    (u) => undefined
   );
 }
 
@@ -572,7 +572,7 @@ export function followButton(b) {
     () => {
       state.follow = !state.follow;
       invalidate();
-    },
+    }
   );
 }
 
@@ -593,7 +593,7 @@ export function playlistTools(b) {
     (v) => {
       selectPattern(v);
       followPattern();
-    },
+    }
   );
   if (pat) {
     b.leaf("span", "sw", "swatch", "");

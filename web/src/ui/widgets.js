@@ -99,7 +99,7 @@ export function knobAt(b, key, cls, v, label, tip, dflt, target, onSet) {
         onSet(clamp01(v0 + (y0 - m.clientY) / scale));
         changed(true);
       },
-      (u) => undefined,
+      (u) => undefined
     );
   });
   b.on("dblclick", (e) => {
@@ -173,7 +173,7 @@ export function faderAt(b, key, v, tip, dflt, target, onSet) {
         onSet(clamp01(v0 + (y0 - m.clientY) / scale));
         changed(true);
       },
-      (u) => undefined,
+      (u) => undefined
     );
   });
   b.on("dblclick", (e) => {

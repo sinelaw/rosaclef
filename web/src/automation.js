@@ -239,7 +239,7 @@ export function createLane(target) {
   const end = Math.max(songLength(p), p.transport.beatsPerBar * 4);
   const id = uniqueId(
     laneSlug(target),
-    p.automation.map((l) => l.id),
+    p.automation.map((l) => l.id)
   );
   const v = info.base;
   commit(() => {

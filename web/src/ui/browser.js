@@ -15,7 +15,7 @@ export function addChannel(type, name, setup) {
   const p = state.project;
   const id = uniqueId(
     name,
-    p.channels.map((c) => c.id),
+    p.channels.map((c) => c.id)
   );
   const dev = newDevice(type);
   setup(dev);
@@ -36,7 +36,7 @@ export function addPattern() {
   const n = p.patterns.length + 1;
   const id = uniqueId(
     `pattern-${n}`,
-    p.patterns.map((x) => x.id),
+    p.patterns.map((x) => x.id)
   );
   commit(() => {
     p.patterns.push({ id: id, name: `Pattern ${n}`, color: paletteColor(n + 2), length: 4, notes: [] });
