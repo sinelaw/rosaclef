@@ -277,7 +277,13 @@ pub async fn handle(app: Arc<App>, t: &str, v: &Value) -> Option<Value> {
                     } else {
                         PlayMode::Pattern(pattern)
                     });
-                    e.play();
+                    match v.get("countIn").and_then(|x| x.as_f64()) {
+                        Some(beats) if beats > 0.0 => e.play_count_in(beats),
+                        _ => e.play(),
+                    }
+                }
+                "native.metronome" => {
+                    e.set_metronome(v.get("on").and_then(|x| x.as_bool()).unwrap_or(false))
                 }
                 "native.pause" => e.pause(),
                 "native.stop" => {

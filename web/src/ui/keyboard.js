@@ -5,23 +5,24 @@
 // its letters are printed on them; the letter shortcuts take Shift, so every
 // letter row is free to play.
 //
-// The record button writes what is played into the selected pattern: in time
-// while the pattern plays, or one step at a time (chords together) while it is
-// stopped.
+// The record button counts in a bar of metronome clicks, then plays the
+// selected pattern and writes what is played into it in real time: each key where it went down and for as long as it was held
+// (keys together make a chord, the gaps between them rests), both ends
+// snapped to the piano roll's grid. The pattern loops, so a take overdubs.
 
 import { drag, loadPref, savePref, now } from "#platform";
 import { state, currentChannel, currentPattern, invalidate, hint, commit } from "../store.js";
-import { noteOn, noteOff, startAudio, livePosition, seek, setMode } from "../audio.js";
-import { isBlackKey, noteName } from "../model.js";
+import { noteOn, noteOff, startAudio, livePosition, seek, setMode, playCountIn, stop } from "../audio.js";
+import { isBlackKey, noteName, snapTo } from "../model.js";
 import { glyph } from "./widgets.js";
 import { openDock } from "./panes.js";
 import { revealNote } from "./pianoroll.js";
 import { toast } from "./toast.js";
 
 /** A sounding key: who holds it (a pointer or a computer key), on which channel;
- * `take` is how it is being recorded ("" not, "live" in time, "step" step by
- * step), into which pattern, from which beat, since when (ms). */
-/** type Held = { source: String, channel: String, pitch: Number, velocity: Number, take: String, pattern: String, start: Number, at: Number } */
+ * whether it is being recorded (`take`), into which pattern, from which beat
+ * (`start`, on the grid; `beat`, where it really went down), since when (ms). */
+/** type Held = { source: String, channel: String, pitch: Number, velocity: Number, take: Boolean, pattern: String, start: Number, beat: Number, at: Number } */
 
 /** A computer key of the typing piano: its `code`, the letter printed on the
  * on-screen key, semitones above the base C, and whether it is on the lower
@@ -193,11 +194,13 @@ function revealTyped() {
 
 // ------------------------------------------------------------------ recording
 
-/** Arm (or disarm) recording the keys into the selected pattern: it switches
- * to pattern mode and shows the piano roll. */
+/** Arm recording the keys into the selected pattern: it switches to pattern
+ * mode, shows the piano roll and plays the pattern from its start after a bar
+ * of count-in. Disarming stops it. */
 export function toggleRecordKeys() {
   if (keyboard.armed) {
     keyboard.armed = false;
+    stop();
     hint("");
     invalidate();
     return undefined;
@@ -208,25 +211,37 @@ export function toggleRecordKeys() {
     return undefined;
   }
   keyboard.armed = true;
-  const switched = state.mode !== "pattern";
-  if (switched) setMode("pattern");
-  if (!state.playing && (switched || state.position >= pat.length)) seek(0);
-  startAudio();
+  if (state.mode !== "pattern") setMode("pattern");
+  if (!state.playing) {
+    seek(0);
+    playCountIn(state.project.transport.beatsPerBar);
+  }
   openDock("piano");
   revealTyped();
-  hint(`Recording notes into ${pat.name} — Space plays and records in time; stopped, each key or chord is one step (the snap) · Esc stops`);
+  hint(`Recording notes into ${pat.name} after a bar of count-in — snapped to the grid (${gridName()}) · Shift+M metronome · Space pauses · Esc stops`);
   invalidate();
 }
 
-/** How a key pressed now is recorded: "" (not), "live" or "step". */
-function takeNow() {
-  if (!keyboard.armed || state.mode !== "pattern" || !currentPattern()) return "";
-  return state.playing ? "live" : "step";
+/** Whether a key pressed at `beat` is recorded: while armed and the pattern
+ * plays (in the count-in, only just before the first beat). */
+/** function takeAt(beat: Number) => Boolean */
+function takeAt(beat) {
+  if (!keyboard.armed || !state.playing || state.mode !== "pattern" || !currentPattern()) return false;
+  return beat > -Math.max(0.25, grid() / 2);
 }
 
-/** The length of one step: the snap, or a sixteenth without one. */
-function stepLength() {
-  return state.snap > 0 ? state.snap : 0.25;
+/** The recording grid: the piano roll's snap (0: off, notes land where played). */
+function grid() {
+  return state.snap;
+}
+
+/** function gridName() => String */
+function gridName() {
+  const g = grid();
+  if (g <= 0) return "snap off";
+  if (g >= 4) return "a bar";
+  if (g >= 1) return "a beat";
+  return `1/${Math.round(4 / g)}`;
 }
 
 /** function round3(x: Number) => Number */
@@ -234,7 +249,7 @@ function round3(x) {
   return Math.round(x * 1000) / 1000;
 }
 
-/** Add a recorded note; a step past the pattern's end lengthens it by whole bars. */
+/** Add a recorded note; one past the pattern's end lengthens it by whole bars. */
 /** function writeNote(h: Held, length: Number) => Undefined */
 function writeNote(h, length) {
   const pat = state.project.patterns.find((p) => p.id === h.pattern);
@@ -247,19 +262,15 @@ function writeNote(h, length) {
   if (pat.id === state.pattern) revealNote(h.start, h.pitch);
 }
 
-/** Where a key pressed now starts, for a take. */
-/** function takeStart(take: String) => Number */
-function takeStart(take) {
+/** Where a key pressed at `beat` starts: on the grid, and a hair before the
+ * loop comes round is meant for its first beat. */
+/** function takeStart(beat: Number) => Number */
+function takeStart(beat) {
   const pat = currentPattern();
-  if (take === "step") {
-    // Keys pressed while another step key is down make a chord.
-    const chord = held.find((x) => x.take === "step");
-    return chord ? chord.start : state.position;
-  }
-  if (take !== "live" || !pat) return 0;
-  const p = livePosition();
-  // A hair before the loop comes round is meant for its first beat.
-  return p > pat.length - 1 / 16 ? 0 : p;
+  if (!pat) return 0;
+  const g = grid();
+  const at = g > 0 ? snapTo(beat, g) : beat;
+  return at > pat.length - (g > 0 ? 1e-6 : 1 / 16) ? 0 : Math.max(0, at);
 }
 
 /** Start a note on the selected channel for `source` (it stops the note that source held). */
@@ -269,25 +280,28 @@ export function pressKey(source, pitch, velocity) {
   const ch = currentChannel();
   const pat = currentPattern();
   if (!ch || pitch < 0) return undefined;
-  const take = takeNow();
-  const h = {
+  const played = livePosition();
+  const take = takeAt(played);
+  const start = take ? takeStart(played) : 0;
+  // A key that came round to the first beat is timed from the loop's start.
+  const beat = pat && take && start === 0 && played > pat.length / 2 ? played - pat.length : played;
+  held.push({
     source: source,
     channel: ch.id,
     pitch: pitch,
     velocity: Math.round(velocity * 100) / 100,
     take: take,
     pattern: pat ? pat.id : "",
-    start: takeStart(take),
+    start: start,
+    beat: beat,
     at: now(),
-  };
-  held.push(h);
+  });
   noteOn(ch.id, pitch, velocity);
-  if (take === "step") writeNote(h, stepLength());
   invalidate();
 }
 
-/** Stop the note `source` holds, if any; a recorded one is written down (in
- * time) or moves the step on once the whole chord is up. */
+/** Stop the note `source` holds, if any; a recorded one is written down, held
+ * for as long as the key was, its end on the grid. */
 /** function releaseKey(source: String) => Undefined */
 export function releaseKey(source) {
   let at = -1;
@@ -296,17 +310,30 @@ export function releaseKey(source) {
   const h = held[at];
   held.splice(at, 1);
   noteOff(h.channel, h.pitch);
-  if (h.take === "live") {
-    const pat = state.project.patterns.find((p) => p.id === h.pattern);
-    const beats = ((now() - h.at) / 60000) * state.project.transport.bpm;
-    const room = pat ? pat.length - h.start : beats;
-    writeNote(h, Math.max(1 / 32, Math.min(room, beats)));
-  } else if (h.take === "step" && !held.some((x) => x.take === "step") && !state.playing) {
-    const next = h.start + stepLength();
-    seek(next);
-    revealNote(next, h.pitch);
-  }
+  if (h.take) recordNote(h);
   invalidate();
+}
+
+/** Write down a recorded key that has just come up. */
+/** function recordNote(h: Held) => Undefined */
+function recordNote(h) {
+  const pat = state.project.patterns.find((p) => p.id === h.pattern);
+  if (!pat) return undefined;
+  const bpm = state.project.transport.bpm;
+  const beats = ((now() - h.at) / 60000) * bpm;
+  const g = grid();
+  // The end snaps too (a whole step at least), so held lengths and the rests
+  // between keys land on the grid.
+  const len = g > 0 ? Math.max(g, snapTo(h.beat + beats, g) - h.start) : Math.max(1 / 32, beats);
+  const length = Math.min(len, Math.max(g > 0 ? g : 1 / 32, pat.length - h.start));
+  // A short key let go just before the grid line it snapped forward to: wait
+  // for the playhead to pass that line, or the pattern would play it again.
+  const loop = pat.length;
+  let ahead = h.start - livePosition();
+  if (ahead < -loop / 2) ahead += loop;
+  if (state.playing && ahead > 0) {
+    setTimeout(() => writeNote(h, length), (ahead / bpm) * 60000 + 60);
+  } else writeNote(h, length);
 }
 
 /** function isDown(pitch: Number) => Boolean */
@@ -381,7 +408,7 @@ export function keyboardStrip(b, compact) {
   b.close();
   const recTip = keyboard.armed
     ? "Stop recording notes (Esc)"
-    : "Record notes from the keys into the piano roll — in time while the pattern plays (Space), one step at a time while it is stopped";
+    : "Record notes from the keys into the piano roll: plays the pattern and writes what you play in real time, snapped to the grid";
   toolButton(b, "rec", keyboard.armed ? "kb-shift kb-rec armed" : "kb-shift kb-rec", "record", recTip, () => toggleRecordKeys());
   b.close();
   b.close();

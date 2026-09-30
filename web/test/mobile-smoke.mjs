@@ -151,7 +151,7 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   await page.waitForTimeout(80);
   assert((await page.locator(".kb-white.down").count()) === 1, "desktop: the Z key lights C4");
   await page.keyboard.up("z");
-  // The Q row plays too; letter shortcuts take Shift; the record button writes steps into the piano roll.
+  // The Q row plays too; letter shortcuts take Shift; Shift+M the metronome.
   await page.keyboard.down("q");
   await page.waitForTimeout(80);
   assert((await page.locator(".kb-white.down").count()) === 1, "desktop: Q plays a key");
@@ -161,18 +161,54 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   await page.keyboard.press("Shift+L");
   await page.waitForTimeout(80);
   assert((await mode()) !== mode0, "desktop: Shift+L switches pattern/song");
+  await page.keyboard.press("Shift+M");
+  await page.waitForTimeout(80);
+  assert((await page.locator(".btn.metro.on").count()) === 1, "desktop: Shift+M turns the metronome on");
+  await page.click(".btn.metro");
+  await page.waitForTimeout(80);
+  assert((await page.locator(".btn.metro.on").count()) === 0, "desktop: its button turns it off");
   const notes = () =>
     page.evaluate(async () => {
       const s = await import("/src/store.js");
       const p = s.currentPattern();
       return p ? p.notes.length : -1;
     });
+  // Recording counts in a bar, then writes what is played in real time: each
+  // key where it went down, as long as it was held, both ends on the grid.
   const before = await notes();
+  const pos = () => page.evaluate(async () => (await import("/src/audio.js")).livePosition());
   await page.click(".kb-rec");
+  await page.waitForTimeout(150);
+  assert((await pos()) < 0, "desktop: recording starts with a count-in");
+  assert((await page.locator(".lcd").first().textContent()).includes("Count-in"), "the position shows the count-in");
   await page.keyboard.press("z");
+  await page.waitForTimeout(50);
+  assert((await notes()) === before, "a key early in the count-in is not recorded");
+  for (let i = 0; i < 100 && (await pos()) < 0.3; i++) await page.waitForTimeout(50);
+  await page.keyboard.down("z");
+  await page.keyboard.down("c");
+  await page.waitForTimeout(600);
+  await page.keyboard.up("z");
+  await page.keyboard.up("c");
+  await page.waitForTimeout(300);
   await page.keyboard.press("x");
-  await page.waitForTimeout(100);
-  assert((await notes()) === before + 2, "desktop: armed, each key adds a step to the pattern");
+  await page.waitForTimeout(500);
+  assert((await notes()) === before + 3, "desktop: armed, keys played in time are written, a chord together");
+  const took = await page.evaluate(async () => {
+    const s = await import("/src/store.js");
+    const g = s.state.snap;
+    const n = s.currentPattern().notes.slice(-3);
+    const onGrid = (x) => Math.abs(x / g - Math.round(x / g)) < 1e-6;
+    return {
+      grid: n.every((x) => onGrid(x.start) && onGrid(x.length)),
+      chord: n[0].start === n[1].start && n[0].length === n[1].length,
+      rest: n[2].start > n[0].start + n[0].length,
+      held: n[0].length > n[2].length,
+    };
+  });
+  assert(took.grid, "recorded notes start and end on the grid");
+  assert(took.chord, "keys held together make a chord");
+  assert(took.rest && took.held, "a key held longer is longer, and the gap before the next is a rest");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(80);
   assert((await page.locator(".kb-rec.armed").count()) === 0, "Esc stops recording notes");

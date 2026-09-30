@@ -297,6 +297,14 @@ pub struct Engine {
     position: f64,
     clock: f64,
     pending: Vec<Pending>,
+    /// Clicks on every beat while playing (the downbeat higher).
+    metronome: bool,
+    /// Count-in before the sequencer starts: its length and the beats left.
+    pre_total: f64,
+    pre: f64,
+    /// Clicks starting in this block (frame, downbeat), and the one sounding.
+    clicks: Vec<(usize, bool)>,
+    click: Click,
     master_l: Vec<f32>,
     master_r: Vec<f32>,
     dc: [dsp::DcBlock; 2],
@@ -331,6 +339,11 @@ impl Engine {
             position: 0.0,
             clock: 0.0,
             pending: vec![],
+            metronome: false,
+            pre_total: 0.0,
+            pre: 0.0,
+            clicks: vec![],
+            click: Click::default(),
             master_l: vec![0.0; MAX_BLOCK],
             master_r: vec![0.0; MAX_BLOCK],
             dc: Default::default(),
@@ -657,9 +670,25 @@ impl Engine {
         }
     }
 
+    /// Play after a count-in of `beats` beats of clicks (the sequencer waits;
+    /// the position reads negative until it starts).
+    pub fn play_count_in(&mut self, beats: f64) {
+        if !self.playing {
+            self.play();
+            self.pre_total = beats.max(0.0);
+            self.pre = self.pre_total;
+        }
+    }
+
+    /// Click on every beat while playing.
+    pub fn set_metronome(&mut self, on: bool) {
+        self.metronome = on;
+    }
+
     /// Pause keeps the position. Automated values return to the project's.
     pub fn pause(&mut self) {
         self.playing = false;
+        self.pre = 0.0;
         self.auto_hold = false;
         self.release_all();
         self.restore_automation();
@@ -668,6 +697,7 @@ impl Engine {
     /// Stop rewinds to the start. Automated values return to the project's.
     pub fn stop(&mut self) {
         self.playing = false;
+        self.pre = 0.0;
         self.auto_hold = false;
         self.position = 0.0;
         self.release_all();
@@ -709,13 +739,15 @@ impl Engine {
         &self.mode
     }
 
-    /// Position in beats (within the pattern in pattern mode).
+    /// Position in beats (within the pattern in pattern mode); during a
+    /// count-in, minus the beats left before it.
     pub fn position(&self) -> f64 {
-        self.position
+        self.position - self.pre
     }
 
     pub fn seek(&mut self, beat: f64) {
         self.position = beat.max(0.0);
+        self.pre = 0.0;
         self.release_all();
     }
 
@@ -805,8 +837,12 @@ impl Engine {
         } else if self.auto_applied && !self.auto_hold {
             self.restore_automation();
         }
+        self.clicks.clear();
         if self.playing {
-            self.schedule(n);
+            let from = self.count_in(n);
+            if from < n {
+                self.schedule(from, n);
+            }
         }
 
         // Instruments into their inserts.
@@ -855,19 +891,75 @@ impl Engine {
             out_l[i] = if l.is_finite() { l } else { 0.0 };
             out_r[i] = if r.is_finite() { r } else { 0.0 };
         }
+        // The metronome goes straight to the output, past the mixer.
+        if !self.clicks.is_empty() || self.click.sounding(self.ctx.sr) {
+            let mut next = 0;
+            for i in 0..n {
+                while next < self.clicks.len() && self.clicks[next].0 <= i {
+                    self.click = Click::new(self.clicks[next].1);
+                    next += 1;
+                }
+                let v = self.click.next(self.ctx.sr);
+                out_l[i] += v;
+                out_r[i] += v;
+            }
+        }
+    }
+
+    /// Run the count-in for up to `n` frames, clicking its beats (the first
+    /// of each bar high); returns the frames it took.
+    fn count_in(&mut self, n: usize) -> usize {
+        if self.pre <= 0.0 {
+            return 0;
+        }
+        let bpf = self.ctx.bpm as f64 / 60.0 / self.ctx.sr as f64;
+        let frames = ((self.pre / bpf).ceil() as usize).clamp(1, n);
+        let p0 = self.pre_total - self.pre;
+        let p1 = p0 + frames as f64 * bpf;
+        let bar = self.project.transport.beats_per_bar.max(1) as i64;
+        let mut k = p0.ceil();
+        while k < p1 && k < self.pre_total - 1e-9 {
+            let off = (((k - p0) / bpf) as usize).min(frames - 1);
+            self.clicks.push((off, (k as i64) % bar == 0));
+            k += 1.0;
+        }
+        self.pre -= frames as f64 * bpf;
+        if self.pre < 1e-9 {
+            self.pre = 0.0;
+        }
+        frames
+    }
+
+    /// Metronome clicks on the whole beats in `b0..b1` (frame `frame` is at `b0`).
+    fn beat_clicks(&mut self, frame: usize, seg: usize, b0: f64, b1: f64, bpf: f64) {
+        let mut k = b0.ceil();
+        while k < b1 {
+            let off = frame + (((k - b0) / bpf) as usize).min(seg - 1);
+            let t = &self.project.transport;
+            let down = match self.mode {
+                PlayMode::Pattern(_) => (k as i64) % (t.beats_per_bar.max(1) as i64) == 0,
+                PlayMode::Song => (t.bar_at(k).1 - k).abs() < 1e-6,
+            };
+            self.clicks.push((off, down));
+            k += 1.0;
+        }
     }
 
     /// Queue the sequenced note events for the next `n` frames and mix audio
     /// clips directly into their inserts.
-    fn schedule(&mut self, n: usize) {
+    fn schedule(&mut self, from: usize, n: usize) {
         let bpf = self.ctx.bpm as f64 / 60.0 / self.ctx.sr as f64;
         let loop_len = self.loop_length();
         if loop_len <= 0.0 {
-            self.position += bpf * n as f64;
-            self.clock += bpf * n as f64;
+            let b0 = self.position;
+            self.position += bpf * (n - from) as f64;
+            self.clock += bpf * (n - from) as f64;
+            if self.metronome {
+                self.beat_clicks(from, n - from, b0, self.position, bpf);
+            }
             return;
         }
-        let mut frame = 0usize;
+        let mut frame = from;
         while frame < n {
             if self.position >= loop_len {
                 self.position = 0.0;
@@ -878,6 +970,9 @@ impl Engine {
             let b1 = b0 + seg as f64 * bpf;
             let c0 = self.clock;
             let c1 = c0 + seg as f64 * bpf;
+            if self.metronome {
+                self.beat_clicks(frame, seg, b0, b1, bpf);
+            }
 
             // Note-offs first, so a retriggered key releases before it restarts.
             let channels = &mut self.channels;
@@ -982,6 +1077,49 @@ impl Engine {
             self.clock = c1;
             frame += seg;
         }
+    }
+}
+
+/// The metronome's voice: a short decaying tone.
+#[derive(Clone, Copy, Debug)]
+struct Click {
+    /// Frames since it started.
+    age: usize,
+    down: bool,
+}
+
+impl Default for Click {
+    fn default() -> Click {
+        Click {
+            age: usize::MAX,
+            down: false,
+        }
+    }
+}
+
+impl Click {
+    const SECONDS: f32 = 0.06;
+
+    fn new(down: bool) -> Click {
+        Click { age: 0, down }
+    }
+
+    fn sounding(&self, sr: f32) -> bool {
+        (self.age as f32) < Self::SECONDS * sr
+    }
+
+    fn next(&mut self, sr: f32) -> f32 {
+        if !self.sounding(sr) {
+            return 0.0;
+        }
+        let t = self.age as f32 / sr;
+        self.age += 1;
+        let (freq, amp) = if self.down {
+            (1760.0, 0.45)
+        } else {
+            (1320.0, 0.3)
+        };
+        amp * (-t / 0.012).exp() * (std::f32::consts::TAU * freq * t).sin()
     }
 }
 

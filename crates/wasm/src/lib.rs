@@ -182,6 +182,17 @@ pub extern "C" fn rc_play() {
     with(|s| s.engine.play());
 }
 
+/// Play after `beats` beats of count-in clicks.
+#[no_mangle]
+pub extern "C" fn rc_play_count_in(beats: f64) {
+    with(|s| s.engine.play_count_in(beats));
+}
+
+#[no_mangle]
+pub extern "C" fn rc_set_metronome(on: i32) {
+    with(|s| s.engine.set_metronome(on != 0));
+}
+
 #[no_mangle]
 pub extern "C" fn rc_pause() {
     with(|s| s.engine.pause());

@@ -3,7 +3,7 @@
 import { drag, fmt, sendJson, download } from "#platform";
 import { state, begin, changed, commit, undo, redo, hint } from "../store.js";
 import { barBeat } from "../model.js";
-import { togglePlay, stop, record, setMode, setOutput } from "../audio.js";
+import { togglePlay, stop, record, setMode, setOutput, toggleMetronome } from "../audio.js";
 import { iconButton, button, knobAt, meter } from "./widgets.js";
 import { isAutomated, shownValue, openMenu } from "../automation.js";
 import { toast } from "./toast.js";
@@ -78,8 +78,14 @@ export function topbar(b) {
     record();
   });
 
+  iconButton(b, "metro", state.metronome ? "metro on" : "metro", "metronome", "Metronome: click every beat while playing (Shift+M)", () => {
+    toggleMetronome();
+  });
+
   b.open("div", "pos", "lcd static");
-  lcd(b, "pos", state.mode === "song" ? "Song" : "Pattern", barBeat(state.position, p.transport), "");
+  // During a count-in: the beats left before it starts.
+  if (state.playing && state.position < 0) lcd(b, "pos", "Count-in", String(Math.ceil(-state.position - 1e-6)), "");
+  else lcd(b, "pos", state.mode === "song" ? "Song" : "Pattern", barBeat(state.position, p.transport), "");
   b.close();
 
   b.open("div", "bpm", isAutomated("tempo") ? "lcd automated" : "lcd");
