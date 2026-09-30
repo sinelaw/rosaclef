@@ -5,7 +5,7 @@
 // every setting here re-shapes the result instantly (../voice.js), and "Add
 // to song" makes it a pattern with a clip on the playlist (one undo step).
 
-import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview } from "#platform";
+import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview, pickFiles, uploadFile } from "#platform";
 import { state, commit, invalidate, hint, selectPattern, currentChannel } from "../store.js";
 import { uniqueId, paletteColor, setOption, optionValue, snapDown } from "../model.js";
 import { startAudio, play, stop, setMode } from "../audio.js";
@@ -229,6 +229,38 @@ function pickTake(path) {
   voice.origin = 0;
   voice.at = -1;
   analyze(path);
+}
+
+/** Analyze the current take again (after a change of mind, or an update). */
+function analyzeAgain() {
+  if (voice.path === "" || voice.status !== "idle") return undefined;
+  analyze(voice.path);
+}
+
+/** Add an audio file from the device to the project's samples and analyze it. */
+function openRecording() {
+  if (voice.status !== "idle") return undefined;
+  pickFiles("audio/*", (files) => {
+    if (files.length === 0) return undefined;
+    const f = files[0];
+    voice.status = "analyzing";
+    invalidate();
+    uploadFile(`/api/samples?name=${encodeURIComponent(f.name)}`, f)
+      .then((r) => {
+        voice.status = "idle";
+        voice.aligned = true;
+        voice.origin = 0;
+        voice.at = -1;
+        analyze(String(r.path));
+        return true;
+      })
+      .catch((e) => {
+        voice.status = "idle";
+        toast("Could not add the recording", String(e), "error");
+        invalidate();
+        return false;
+      });
+  });
 }
 
 // ------------------------------------------------------------------ channels
@@ -881,8 +913,8 @@ function previewView(b, r) {
       "d",
       "voice-empty-doc",
       drums
-        ? "Kicks (a low “b” or “boom”), snares (“pf”, “k”) and hats (“ts”, “t”) become a drum loop on Atelier channels."
-        : "The notes come out on the beat grid, snapped to a key and scale — a pattern for the piano roll."
+        ? "Kicks (a low “b” or “boom”), snares (“pf”, “k”) and hats (“ts”, “t”) become a drum loop on Atelier channels. Record a take, or open a recording."
+        : "The notes come out on the beat grid, snapped to a key and scale — a pattern for the piano roll. Record a take, or open a recording."
     );
     b.close();
   }
@@ -961,8 +993,11 @@ export function voicePanel(b) {
     takeLabels.push(path.split("/").pop() ?? path);
   }
   choice(b, "take", "Take", voice.path, takes, takeLabels, "Analyze an earlier recording (any sample of the project)", (v) => pickTake(v));
+  b.open("div", "acts", "voice-actions");
+  button(b, "open", "small", "Open a recording…", "Analyze an audio file from this device (it is added to the project's samples)", () => openRecording());
   if (voice.path !== "") {
-    button(b, "listen", voice.playing ? "small on" : "small", voice.playing ? "Stop listening" : "Listen to the take", "Play the recording", () => {
+    button(b, "again", "small", "Analyze again", "Run the analysis on this take again (in the current mode)", () => analyzeAgain());
+    button(b, "listen", voice.playing ? "small on" : "small", voice.playing ? "Stop" : "Listen", "Play the recording", () => {
       if (voice.playing) {
         stopPreview();
         voice.playing = false;
@@ -981,6 +1016,7 @@ export function voicePanel(b) {
       );
     });
   }
+  b.close();
   b.close();
 
   settingsView(b);

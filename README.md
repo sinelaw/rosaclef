@@ -94,8 +94,10 @@ instrument:
   and how many times it repeats; click a hit to make it another drum.
 
 Record silently (the first note starts the pattern) or play along with the
-pattern or the song (the take keeps its place in time). Any earlier take in
-`samples/` can be analyzed again. **Add to song** creates the pattern and a
+pattern or the song (the take keeps its place in time). Any recording in
+`samples/` can be picked and analyzed again (**Analyze again** re-runs the
+current one), and **Open a recording…** brings in an audio file from the
+phone or computer. **Add to song** creates the pattern and a
 playlist clip in one undoable step. The analysis runs in Rust
 (`crates/studio/src/transcribe.rs`, `GET /api/transcribe?path=…&mode=melody|drums`),
 natively or in the browser-only build.

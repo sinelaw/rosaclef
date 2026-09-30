@@ -96,6 +96,29 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   await page.click(".nav-item[aria-label=Maestro]");
   await page.waitForTimeout(300);
   assert((await page.locator(".keyboard").count()) === 0, "no keys over the terminal");
+  // The keys make room where they do not help, and come back where they do.
+  for (const view of ["Mixer", "Voice"]) {
+    await page.click(`.nav-item[aria-label=${view}]`);
+    await page.waitForTimeout(300);
+    assert((await page.locator(".keyboard").count()) === 0, `no keys under the ${view.toLowerCase()}`);
+  }
+  await page.click(".nav-item[aria-label=Rack]");
+  await page.waitForTimeout(300);
+  assert((await page.locator(".keyboard").count()) === 1, "the keys are back under the rack");
+  // Everything in the Voice panel can be scrolled to, uncovered, on a phone.
+  await page.click(".nav-item[aria-label=Voice]");
+  await page.waitForTimeout(300);
+  const hidden = await page.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll(".voice button, .voice select, .voice .knob")) {
+      el.scrollIntoView({ block: "center" });
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (r.right > innerWidth + 1 || !top || !(el === top || el.contains(top))) out.push(el.getAttribute("title") || el.textContent);
+    }
+    return out;
+  });
+  assert(hidden.length === 0, `every Voice control is reachable on a phone (not: ${hidden.join(", ")})`);
   await page.close();
 }
 
