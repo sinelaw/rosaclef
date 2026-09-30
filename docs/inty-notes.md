@@ -77,6 +77,23 @@ Works when the classes live in a separate `--lib` file loaded first
 **~90 s**; single modules take 1–30 s (`src/audio.js`: 29 s). Each import
 seems to re-check its dependencies, or inference over the big DOM rows is slow.
 
+It got much worse as the frontend grew (~8k lines, 18 modules). Timings for
+single modules (each checked with its imports, 4-core machine, 2026-09-30):
+
+| module | time | | module | time |
+|---|---|---|---|---|
+| `src/model.js` | 2 s | | `src/ui/widgets.js` | 44 s |
+| `src/store.js` | 3 s | | `src/ui/panes.js` | 73 s |
+| `src/automation.js` | 12 s | | `src/ui/projects.js` | 152 s |
+| `src/net.js` | 390 s | | `src/ui/lanes.js` | 180 s |
+| `src/audio.js` | 653 s | | `src/ui/agent.js` | 319 s |
+| `src/keys.js` | > 3000 s (timed out) | | `src/ui/browser.js` | 2226 s |
+
+`net.js` and `audio.js` are small; the time goes into modules that read
+many fields off one `JSON.parse` result or build large records. Checking
+`src/main.js` (everything) no longer finishes in a practical time, so
+Rosaclef checks module by module.
+
 ## 8. ⚠️ "Presence mismatch: expected present, found absent"
 
 Reported at `console.log(mount, play)` in `main.js` although the cause is
