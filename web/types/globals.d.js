@@ -52,7 +52,8 @@
 
 /** type VoiceNote = { start: Number, end: Number, pitch: Number, velocity: Number } */
 /** type VoiceHit = { time: Number, strength: Number, velocity: Number, centroid: Number, low: Number, high: Number, tone: Number, kind: String } */
-/** type Take = { mode: String, duration: Number, step: Number, level: Number[], contour: Number[], notes: VoiceNote[], hits: VoiceHit[] } */
+/** `details` holds the notes at each detail level (smoothest first); `notes` is the default level. */
+/** type Take = { mode: String, duration: Number, step: Number, level: Number[], contour: Number[], notes: VoiceNote[], details: VoiceNote[][], hits: VoiceHit[] } */
 /** A note the Voice panel places: `lane` is "melody" or a drum ("kick", "snare", "hat"); `raw` is where it was sung (beats); `src` indexes the take's notes or hits. */
 /** type Placed = { lane: String, pitch: Number, start: Number, length: Number, velocity: Number, raw: Number, src: Int } */
 

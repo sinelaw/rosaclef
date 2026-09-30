@@ -1,6 +1,19 @@
 // Tests for the voice-to-notes logic, run with: node web/test/voice.test.js
 // (also type-checked by inty via web/check.sh).
-import { snapPitch, scaleSteps, detectKey, quantize, classify, melodyNotes, drumHits, loopBeats, strengthNeeded, decodeTake, nextDrum } from "../src/voice.js";
+import {
+  snapPitch,
+  scaleSteps,
+  detectKey,
+  quantize,
+  classify,
+  melodyNotes,
+  drumHits,
+  loopBeats,
+  strengthNeeded,
+  decodeTake,
+  nextDrum,
+  sungNotes,
+} from "../src/voice.js";
 
 let failures = 0;
 /** function check(name: String, ok: Boolean) => Undefined */
@@ -47,6 +60,7 @@ check("no grid leaves time alone", near(quantize(1.13, 0, 1), 1.13));
 // ------------------------------------------------------------------ melody
 
 const settings = {
+  detail: 2,
   grid: 0.25,
   strength: 1,
   lengths: true,
@@ -87,6 +101,7 @@ check("dynamics keep the velocities", near(notes[1].velocity, 0.6));
 const flat = melodyNotes(
   take,
   {
+    detail: 2,
     grid: 0.25,
     strength: 1,
     lengths: true,
@@ -130,6 +145,7 @@ const staccato = melodyNotes(gappy, settings, 120, 0, true);
 const legato = melodyNotes(
   gappy,
   {
+    detail: 2,
     grid: 0.25,
     strength: 1,
     lengths: true,
@@ -148,6 +164,60 @@ const legato = melodyNotes(
   true
 );
 check("legato holds a note until the next", near(staccato[0].length, 0.5) && near(legato[0].length, 1));
+
+// ------------------------------------------------------------------ detail
+
+const leveled = decodeTake(
+  JSON.parse(
+    JSON.stringify({
+      mode: "melody",
+      duration: 2,
+      step: 0.01,
+      level: [],
+      contour: [],
+      notes: [{ start: 0.5, end: 1.5, pitch: 60, velocity: 1 }],
+      details: [
+        [{ start: 0.5, end: 1.5, pitch: 60, velocity: 1 }],
+        [{ start: 0.5, end: 1.5, pitch: 60, velocity: 1 }],
+        [{ start: 0.5, end: 1.5, pitch: 60, velocity: 1 }],
+        [
+          { start: 0.5, end: 1.0, pitch: 60, velocity: 1 },
+          { start: 1.0, end: 1.5, pitch: 62, velocity: 1 },
+        ],
+        [
+          { start: 0.5, end: 1.0, pitch: 60, velocity: 1 },
+          { start: 1.0, end: 1.1, pitch: 61, velocity: 1 },
+          { start: 1.1, end: 1.5, pitch: 62, velocity: 1 },
+        ],
+      ],
+      hits: [],
+    })
+  )
+);
+check("each detail level has its notes", sungNotes(leveled, 2).length === 1 && sungNotes(leveled, 3).length === 2 && sungNotes(leveled, 4).length === 3);
+check("a missing level falls back to the default notes", sungNotes(leveled, 9).length === 1 && sungNotes(take, 3).length === 3);
+const detailed = melodyNotes(
+  leveled,
+  {
+    detail: 3,
+    grid: 0.25,
+    strength: 1,
+    lengths: true,
+    key: 0,
+    scale: "major",
+    octave: 0,
+    legato: false,
+    dynamics: true,
+    sensitivity: 0.5,
+    kickBelow: 900,
+    hatAbove: 4200,
+    bars: 0,
+  },
+  120,
+  0,
+  true
+);
+check("the detail setting picks the notes", detailed.length === 2 && detailed[1].pitch === 62 && near(detailed[1].start, 1));
 
 // ------------------------------------------------------------------ drums
 
@@ -183,6 +253,7 @@ check("hits on the grid from the first one", near(hits[0].start, 0) && near(hits
 const moved = drumHits(
   beat,
   {
+    detail: 2,
     grid: 0.25,
     strength: 1,
     lengths: true,
@@ -207,6 +278,7 @@ check("a clicked hit keeps its drum", fixed[1].lane === "snare" && fixed[0].lane
 const all = drumHits(
   beat,
   {
+    detail: 2,
     grid: 0.25,
     strength: 1,
     lengths: true,

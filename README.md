@@ -79,8 +79,11 @@ there is no Studio audio output or CLAP plugins. See
 The **Voice** tab in the bottom dock (F8) turns the microphone into an
 instrument:
 
-- **Melody** — sing, hum or whistle a line. The pitch is tracked and cut into
-  notes, which you shape before they land: quantize grid and strength, note
+- **Melody** — sing, hum or whistle a line. The pitch is tracked (two
+  methods that must agree) and fitted to whole notes, so slides, scoops and
+  vibrato don't turn into stray little notes; **Detail** goes from *Smooth*
+  to *Every note* for quick runs. You shape the notes before they land:
+  quantize grid and strength, note
   ends, legato, auto-tune to a key and scale (or let it detect the key),
   octave, and velocities that follow how loud you sang. The result is a new
   pattern for the piano roll, on the selected channel or a new one.

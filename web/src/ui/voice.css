@@ -1,9 +1,32 @@
 /* The Voice dock: voice to notes (voice.js). */
 
+/* The panel adapts to the room the dock gives it (a container query, not
+   the window: the side panels decide the dock's width):
+   - wide: record | settings | preview, side by side;
+   - medium: record and settings share a scrolling column beside the preview;
+   - narrow (a phone): one scrolling column, preview right after recording. */
 .voice {
-  display: flex;
   height: 100%;
   min-height: 0;
+  container-type: inline-size;
+  container-name: voice;
+}
+.voice-grid {
+  display: grid;
+  grid-template-columns: 184px 276px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "side set main";
+  height: 100%;
+  min-height: 0;
+}
+.voice-side {
+  grid-area: side;
+}
+.voice-settings {
+  grid-area: set;
+}
+.voice-main {
+  grid-area: main;
 }
 
 /* ---------------------------------------------------------------- record */
@@ -187,4 +210,81 @@
 }
 .voice-target .select {
   max-width: 150px;
+}
+
+/* ---------------------------------------------------------------- narrow docks */
+
+@container voice (max-width: 900px) {
+  .voice-grid {
+    grid-template-columns: 250px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "side main"
+      "set main";
+  }
+  .voice-side,
+  .voice-settings {
+    width: auto;
+    border-right: 1px solid var(--line);
+  }
+  .voice-side {
+    overflow: visible;
+    border-bottom: 1px solid var(--line);
+  }
+  .voice-side .voice-field {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+  .voice-side .voice-field .voice-label {
+    width: 72px;
+    flex: none;
+  }
+  .voice-side .voice-field .select {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+@container voice (max-width: 560px) {
+  .voice {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .voice-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "side"
+      "main"
+      "set";
+    height: auto;
+  }
+  .voice-side,
+  .voice-settings {
+    border-right: none;
+    overflow: visible;
+  }
+  .voice-side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .voice-side .seg {
+    flex: 1 1 100%;
+  }
+  .voice-rec {
+    flex: 1 1 100%;
+  }
+  .voice-side .voice-field {
+    flex: 1 1 100%;
+  }
+  .voice-view {
+    flex: none;
+    height: 220px;
+  }
+  .voice-foot .btn.gold,
+  .voice-foot > .btn {
+    flex: 1 1 100%;
+  }
 }
