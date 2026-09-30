@@ -9,7 +9,22 @@ import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview }
 import { state, commit, invalidate, hint, selectPattern } from "../store.js";
 import { uniqueId, paletteColor, setOption, optionValue, snapDown } from "../model.js";
 import { startAudio, play, stop, setMode } from "../audio.js";
-import { SCALES, KEY_NAMES, DRUMS, scaleLabel, scaleSteps, resolveKey, melodyNotes, drumHits, loopBeats, strengthNeeded, takeStart, nextDrum, decodeTake, emptyTake } from "../voice.js";
+import {
+  SCALES,
+  KEY_NAMES,
+  DRUMS,
+  scaleLabel,
+  scaleSteps,
+  resolveKey,
+  melodyNotes,
+  drumHits,
+  loopBeats,
+  strengthNeeded,
+  takeStart,
+  nextDrum,
+  decodeTake,
+  emptyTake,
+} from "../voice.js";
 import { button, iconButton, select, glyph, clamp01 } from "./widgets.js";
 import { pushChannel } from "./browser.js";
 import { toast } from "./toast.js";
@@ -42,10 +57,27 @@ export const voice = {
   /** "auto" (the selected channel if melodic, else a new one), "new" or a channel id. */
   melodyChannel: "auto",
   /** Per drum: a channel id, "" = the first matching Atelier channel (or a new one). */
-  drumChannels /*: KS[] */: [{ key: "kick", value: "" }, { key: "snare", value: "" }, { key: "hat", value: "" }],
+  drumChannels /*: KS[] */: [
+    { key: "kick", value: "" },
+    { key: "snare", value: "" },
+    { key: "hat", value: "" },
+  ],
   repeat: 1,
   playing: false,
-  settings /*: VoiceSettings */: { grid: 0.25, strength: 1, lengths: true, key: -1, scale: "major", octave: 0, legato: false, dynamics: true, sensitivity: 0.5, kickBelow: 900, hatAbove: 4200, bars: 0 },
+  settings /*: VoiceSettings */: {
+    grid: 0.25,
+    strength: 1,
+    lengths: true,
+    key: -1,
+    scale: "major",
+    octave: 0,
+    legato: false,
+    dynamics: true,
+    sensitivity: 0.5,
+    kickBelow: 900,
+    hatAbove: 4200,
+    bars: 0,
+  },
 };
 
 // ------------------------------------------------------------------ result
@@ -59,7 +91,12 @@ export function voiceResult() {
   const s = voice.settings;
   /** const empty: Placed[] */
   const empty = [];
-  const all = t.mode === "drums" ? drumHits(t, s, bpm, voice.origin, voice.aligned, voice.kinds) : t.mode === "melody" ? melodyNotes(t, s, bpm, voice.origin, voice.aligned) : empty;
+  const all =
+    t.mode === "drums"
+      ? drumHits(t, s, bpm, voice.origin, voice.aligned, voice.kinds)
+      : t.mode === "melody"
+        ? melodyNotes(t, s, bpm, voice.origin, voice.aligned)
+        : empty;
   const length = loopBeats(all, p.transport.beatsPerBar, s.bars);
   /** const notes: Placed[] */
   const notes = [];
@@ -291,7 +328,10 @@ export function addToSong() {
       if (r.notes.some((n) => n.lane === lane)) lanes.push({ key: lane, value: laneChannel(lane) });
     }
     const base = drums ? "Beatbox" : "Voice";
-    id = uniqueId(base.toLowerCase(), p.patterns.map((x) => x.id));
+    id = uniqueId(
+      base.toLowerCase(),
+      p.patterns.map((x) => x.id)
+    );
     let k = 1;
     while (p.patterns.some((x) => x.name === `${base} ${k}`)) k = k + 1;
     name = `${base} ${k}`;
@@ -312,7 +352,11 @@ export function addToSong() {
   });
   selectPattern(id);
   const bar = Math.floor(start / bpb) + 1;
-  toast(`Added ${name}`, `${r.notes.length} ${drums ? "hits" : "notes"} on the playlist at bar ${bar}${voice.repeat > 1 ? `, looped ×${voice.repeat}` : ""}. Ctrl+Z undoes it.`, "info");
+  toast(
+    `Added ${name}`,
+    `${r.notes.length} ${drums ? "hits" : "notes"} on the playlist at bar ${bar}${voice.repeat > 1 ? `, looped ×${voice.repeat}` : ""}. Ctrl+Z undoes it.`,
+    "info"
+  );
 }
 
 // ------------------------------------------------------------------ controls
@@ -329,10 +373,14 @@ function dial(b, key, label, text, v, tip, onSet) {
     e.preventDefault();
     const y0 = e.clientY;
     const v0 = v;
-    drag(e, (m) => {
-      onSet(clamp01(v0 + (y0 - m.clientY) / (m.shiftKey ? 900 : 180)));
-      invalidate();
-    }, (u) => undefined);
+    drag(
+      e,
+      (m) => {
+        onSet(clamp01(v0 + (y0 - m.clientY) / (m.shiftKey ? 900 : 180)));
+        invalidate();
+      },
+      (u) => undefined
+    );
   });
   b.on("wheel", (e) => {
     e.preventDefault();
@@ -378,7 +426,7 @@ function hzUnit(v, lo, hi) {
 
 /** function unitHz(t: Number, lo: Number, hi: Number) => Number */
 function unitHz(t, lo, hi) {
-  return Math.round(lo * Math.pow(hi / lo, t) / 10) * 10;
+  return Math.round((lo * Math.pow(hi / lo, t)) / 10) * 10;
 }
 
 /** function hzText(v: Number) => String */
@@ -398,9 +446,18 @@ function settingsView(b) {
   b.open("div", "q", "voice-group");
   b.leaf("div", "t", "voice-group-title", "Quantize");
   b.open("div", "row", "voice-row");
-  choice(b, "grid", "Grid", String(s.grid), GRIDS.map((g) => String(g)), GRID_LABELS, "Grid the notes snap to", (v) => {
-    s.grid = Number(v);
-  });
+  choice(
+    b,
+    "grid",
+    "Grid",
+    String(s.grid),
+    GRIDS.map((g) => String(g)),
+    GRID_LABELS,
+    "Grid the notes snap to",
+    (v) => {
+      s.grid = Number(v);
+    }
+  );
   dial(b, "str", "Strength", `${Math.round(s.strength * 100)}%`, s.strength, "How far notes move onto the grid (0% keeps the feel of the take)", (v) => {
     s.strength = Math.round(v * 20) / 20;
   });
@@ -412,9 +469,18 @@ function settingsView(b) {
       s.legato = v;
     });
   }
-  choice(b, "bars", "Length", String(s.bars), ["0", "1", "2", "4", "8"], ["Auto", "1 bar", "2 bars", "4 bars", "8 bars"], "Pattern length (notes past it are left out)", (v) => {
-    s.bars = Math.round(Number(v));
-  });
+  choice(
+    b,
+    "bars",
+    "Length",
+    String(s.bars),
+    ["0", "1", "2", "4", "8"],
+    ["Auto", "1 bar", "2 bars", "4 bars", "8 bars"],
+    "Pattern length (notes past it are left out)",
+    (v) => {
+      s.bars = Math.round(Number(v));
+    }
+  );
   b.close();
   b.close();
 
@@ -434,9 +500,18 @@ function settingsView(b) {
     choice(b, "key", "Key", String(s.key), keys, keyLabels, "Key the notes are snapped to (Detect finds it from the take)", (v) => {
       s.key = Math.round(Number(v));
     });
-    choice(b, "scale", "Scale", s.scale, SCALES.map((x) => x.id), SCALES.map((x) => x.label), "Scale the notes are snapped to (Chromatic: the nearest semitone)", (v) => {
-      s.scale = v;
-    });
+    choice(
+      b,
+      "scale",
+      "Scale",
+      s.scale,
+      SCALES.map((x) => x.id),
+      SCALES.map((x) => x.label),
+      "Scale the notes are snapped to (Chromatic: the nearest semitone)",
+      (v) => {
+        s.scale = v;
+      }
+    );
     choice(b, "oct", "Octave", String(s.octave), ["-2", "-1", "0", "1", "2"], ["−2", "−1", "0", "+1", "+2"], "Move the notes by octaves", (v) => {
       s.octave = Math.round(Number(v));
     });
@@ -759,10 +834,20 @@ function previewView(b, r) {
     b.open("div", "empty", "voice-empty");
     glyph(b, "mic");
     const drums = voice.mode === "drums";
-    b.leaf("div", "t", "voice-empty-title", voice.status === "recording" ? (drums ? "Beatbox away…" : "Sing away…") : drums ? "Beatbox a loop" : "Sing, hum or whistle a melody");
-    b.leaf("div", "d", "voice-empty-doc", drums
-      ? "Kicks (a low “b” or “boom”), snares (“pf”, “k”) and hats (“ts”, “t”) become a drum loop on Atelier channels."
-      : "The notes come out on the beat grid, snapped to a key and scale — a pattern for the piano roll.");
+    b.leaf(
+      "div",
+      "t",
+      "voice-empty-title",
+      voice.status === "recording" ? (drums ? "Beatbox away…" : "Sing away…") : drums ? "Beatbox a loop" : "Sing, hum or whistle a melody"
+    );
+    b.leaf(
+      "div",
+      "d",
+      "voice-empty-doc",
+      drums
+        ? "Kicks (a low “b” or “boom”), snares (“pf”, “k”) and hats (“ts”, “t”) become a drum loop on Atelier channels."
+        : "The notes come out on the beat grid, snapped to a key and scale — a pattern for the piano roll."
+    );
     b.close();
   }
   b.close();
@@ -797,16 +882,37 @@ export function voicePanel(b) {
   button(b, "drums", voice.mode === "drums" ? "small on" : "small", "Beatbox", "Vocal percussion: a kick / snare / hat loop", () => setVoiceMode("drums"));
   b.close();
   b.open("div", "rec", "voice-rec");
-  iconButton(b, "btn", rec ? "voice-recbtn armed" : "voice-recbtn", rec ? "stop" : "record", rec ? "Stop and analyze the take" : "Record a take from the microphone", () => {
-    if (rec) stopTake();
-    else startTake();
-  });
+  iconButton(
+    b,
+    "btn",
+    rec ? "voice-recbtn armed" : "voice-recbtn",
+    rec ? "stop" : "record",
+    rec ? "Stop and analyze the take" : "Record a take from the microphone",
+    () => {
+      if (rec) stopTake();
+      else startTake();
+    }
+  );
   const secs = rec ? (now() - voice.recStarted) / 1000 : 0;
-  b.leaf("div", "time", "voice-time", rec ? `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, "0")}` : voice.status === "analyzing" ? "Analyzing…" : "Record");
+  b.leaf(
+    "div",
+    "time",
+    "voice-time",
+    rec ? `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, "0")}` : voice.status === "analyzing" ? "Analyzing…" : "Record"
+  );
   b.close();
-  choice(b, "along", "Play along", voice.playAlong, ["off", "pattern", "song"], ["Silent", "Pattern", "Song"], "Hear the pattern or the song while recording (the take keeps its place in time)", (v) => {
-    voice.playAlong = v;
-  });
+  choice(
+    b,
+    "along",
+    "Play along",
+    voice.playAlong,
+    ["off", "pattern", "song"],
+    ["Silent", "Pattern", "Song"],
+    "Hear the pattern or the song while recording (the take keeps its place in time)",
+    (v) => {
+      voice.playAlong = v;
+    }
+  );
   /** const takes: String[] */
   const takes = [""];
   /** const takeLabels: String[] */
@@ -826,10 +932,16 @@ export function voicePanel(b) {
         return undefined;
       }
       voice.playing = true;
-      previewAudio(`/files/${voice.path.split("/").map((x) => encodeURIComponent(x)).join("/")}`, () => {
-        voice.playing = false;
-        invalidate();
-      });
+      previewAudio(
+        `/files/${voice.path
+          .split("/")
+          .map((x) => encodeURIComponent(x))
+          .join("/")}`,
+        () => {
+          voice.playing = false;
+          invalidate();
+        }
+      );
     });
   }
   b.close();
@@ -841,7 +953,14 @@ export function voicePanel(b) {
   b.open("div", "foot", "voice-foot");
   b.leaf("div", "sum", "voice-summary", summary(r));
   targetView(b);
-  button(b, "add", r.notes.length > 0 ? "gold" : "", "Add to song", "A new pattern with these notes, placed on the playlist at the playhead (Ctrl+Z undoes it)", () => addToSong());
+  button(
+    b,
+    "add",
+    r.notes.length > 0 ? "gold" : "",
+    "Add to song",
+    "A new pattern with these notes, placed on the playlist at the playhead (Ctrl+Z undoes it)",
+    () => addToSong()
+  );
   b.close();
   b.close();
 

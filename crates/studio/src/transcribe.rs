@@ -90,10 +90,26 @@ pub fn transcribe(data: &SampleData, mode: &str) -> Transcription {
     let duration = x.len() as f32 / sr;
     let level = levels(&x, sr);
     if mode == "drums" {
-        Transcription { mode: "drums", duration, step: STEP, level, contour: vec![], notes: vec![], hits: beatbox(&x, sr) }
+        Transcription {
+            mode: "drums",
+            duration,
+            step: STEP,
+            level,
+            contour: vec![],
+            notes: vec![],
+            hits: beatbox(&x, sr),
+        }
     } else {
         let (contour, notes) = melody(&x, sr);
-        Transcription { mode: "melody", duration, step: STEP, level, contour, notes, hits: vec![] }
+        Transcription {
+            mode: "melody",
+            duration,
+            step: STEP,
+            level,
+            contour,
+            notes,
+            hits: vec![],
+        }
     }
 }
 
@@ -114,7 +130,9 @@ fn mono(d: &SampleData) -> Vec<f32> {
     match d.channels.len() {
         0 => vec![],
         1 => d.channels[0].clone(),
-        n => (0..d.len()).map(|i| d.channels.iter().map(|c| c[i]).sum::<f32>() / n as f32).collect(),
+        n => (0..d.len())
+            .map(|i| d.channels.iter().map(|c| c[i]).sum::<f32>() / n as f32)
+            .collect(),
     }
 }
 
@@ -142,7 +160,9 @@ fn rms_frames(x: &[f32], sr: f32) -> Vec<f32> {
 fn levels(x: &[f32], sr: f32) -> Vec<f32> {
     let r = rms_frames(x, sr);
     let max = r.iter().cloned().fold(0.0, f32::max);
-    r.iter().map(|v| if max > 0.0 { round3(v / max) } else { 0.0 }).collect()
+    r.iter()
+        .map(|v| if max > 0.0 { round3(v / max) } else { 0.0 })
+        .collect()
 }
 
 fn round3(v: f32) -> f32 {
@@ -172,7 +192,11 @@ fn decimate(x: &[f32], factor: usize) -> Vec<f32> {
     let taps: Vec<f32> = (0..=2 * m)
         .map(|j| {
             let t = j as f32 - m as f32;
-            let sinc = if t == 0.0 { 2.0 * fc } else { (2.0 * std::f32::consts::PI * fc * t).sin() / (std::f32::consts::PI * t) };
+            let sinc = if t == 0.0 {
+                2.0 * fc
+            } else {
+                (2.0 * std::f32::consts::PI * fc * t).sin() / (std::f32::consts::PI * t)
+            };
             let w = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * j as f32 / (2 * m) as f32).cos();
             sinc * w
         })
@@ -223,7 +247,11 @@ fn yin(x: &[f32], sr: f32, frames: usize) -> Vec<(f32, f32)> {
                 }
                 d[tau] = acc;
                 running += acc;
-                dn[tau] = if running > 0.0 { acc * tau as f32 / running } else { 1.0 };
+                dn[tau] = if running > 0.0 {
+                    acc * tau as f32 / running
+                } else {
+                    1.0
+                };
             }
             // The first dip under the threshold, followed to its bottom;
             // otherwise the deepest dip.
@@ -239,7 +267,15 @@ fn yin(x: &[f32], sr: f32, frames: usize) -> Vec<(f32, f32)> {
                 }
                 tau += 1;
             }
-            let tau = best.unwrap_or_else(|| (tau_min..tau_max).min_by(|&a, &b| dn[a].partial_cmp(&dn[b]).unwrap_or(std::cmp::Ordering::Equal)).unwrap_or(tau_min));
+            let tau = best.unwrap_or_else(|| {
+                (tau_min..tau_max)
+                    .min_by(|&a, &b| {
+                        dn[a]
+                            .partial_cmp(&dn[b])
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .unwrap_or(tau_min)
+            });
             let ap = dn[tau];
             if ap > 0.35 {
                 return (0.0, ap);
@@ -247,7 +283,11 @@ fn yin(x: &[f32], sr: f32, frames: usize) -> Vec<(f32, f32)> {
             // Parabolic interpolation around the dip.
             let (a, b, c) = (dn[tau - 1], dn[tau], dn[tau + 1]);
             let den = a - 2.0 * b + c;
-            let shift = if den.abs() > 1e-9 { ((a - c) / (2.0 * den)).clamp(-1.0, 1.0) } else { 0.0 };
+            let shift = if den.abs() > 1e-9 {
+                ((a - c) / (2.0 * den)).clamp(-1.0, 1.0)
+            } else {
+                0.0
+            };
             (sr / (tau as f32 + shift), ap)
         })
         .collect()
@@ -267,7 +307,14 @@ struct Cur {
 
 impl Cur {
     fn new(start: usize) -> Cur {
-        Cur { start, pitches: vec![], peak: 0.0, away: vec![], fall: None, dip: 0.0 }
+        Cur {
+            start,
+            pitches: vec![],
+            peak: 0.0,
+            away: vec![],
+            fall: None,
+            dip: 0.0,
+        }
     }
 
     /// The pitch the note sits on (robust to vibrato and the attack).
@@ -306,7 +353,9 @@ fn melody(x: &[f32], sr: f32) -> (Vec<f32>, Vec<VoiceNote>) {
     let smooth: Vec<Option<f32>> = (0..frames)
         .map(|i| {
             raw[i]?;
-            let mut v: Vec<f32> = (i.saturating_sub(2)..(i + 3).min(frames)).filter_map(|j| raw[j]).collect();
+            let mut v: Vec<f32> = (i.saturating_sub(2)..(i + 3).min(frames))
+                .filter_map(|j| raw[j])
+                .collect();
             Some(median(&mut v))
         })
         .collect();
@@ -389,7 +438,8 @@ fn melody(x: &[f32], sr: f32) -> (Vec<f32>, Vec<VoiceNote>) {
             let (c, d, _, p) = &spans[j];
             (c.saturating_sub(*b) <= 3 || a.saturating_sub(*d) <= 3) && *p > peak * 4.0
         };
-        (b - a) as f32 * STEP < 0.15 && ((i > 0 && touching(i - 1)) || (i + 1 < spans.len() && touching(i + 1)))
+        (b - a) as f32 * STEP < 0.15
+            && ((i > 0 && touching(i - 1)) || (i + 1 < spans.len() && touching(i + 1)))
     };
     let keep: Vec<bool> = (0..spans.len()).map(|i| !tail(i)).collect();
     let loudest = spans.iter().map(|s| s.3).fold(0.0, f32::max).max(1e-9);
@@ -411,7 +461,10 @@ fn melody(x: &[f32], sr: f32) -> (Vec<f32>, Vec<VoiceNote>) {
             }
         })
         .collect();
-    let contour = smooth.iter().map(|m| m.map(|v| (v * 100.0).round() / 100.0).unwrap_or(0.0)).collect();
+    let contour = smooth
+        .iter()
+        .map(|m| m.map(|v| (v * 100.0).round() / 100.0).unwrap_or(0.0))
+        .collect();
     (contour, notes)
 }
 
@@ -462,7 +515,14 @@ fn twiddles(n: usize) -> Vec<(f32, f32)> {
 }
 
 /// Power spectrum (bins 0..=n/2) of `x` windowed by `win`, zero-padded to n.
-fn power(x: &[f32], win: &[f32], n: usize, tw: &[(f32, f32)], re: &mut Vec<f32>, im: &mut Vec<f32>) -> Vec<f32> {
+fn power(
+    x: &[f32],
+    win: &[f32],
+    n: usize,
+    tw: &[(f32, f32)],
+    re: &mut Vec<f32>,
+    im: &mut Vec<f32>,
+) -> Vec<f32> {
     re.clear();
     re.resize(n, 0.0);
     im.clear();
@@ -484,12 +544,25 @@ fn onsets(x: &[f32], sr: f32) -> Vec<(f32, f32)> {
     let n = if sr > 60000.0 { 4096 } else { 2048 };
     let hop = ((0.005 * sr) as usize).max(1);
     let tw = twiddles(n);
-    let win: Vec<f32> = (0..n).map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / n as f32).cos()).collect();
+    let win: Vec<f32> = (0..n)
+        .map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / n as f32).cos())
+        .collect();
     let (mut re, mut im) = (vec![], vec![]);
-    let frames = if x.len() > n { (x.len() - n) / hop + 1 } else { 0 };
+    let frames = if x.len() > n {
+        (x.len() - n) / hop + 1
+    } else {
+        0
+    };
     // The flux is averaged per band, then summed: a kick moves a few low
     // bins, a hat hundreds of high ones, and both should count alike.
-    let band_of: Vec<usize> = (0..=n / 2).map(|k| BANDS.iter().filter(|&&edge| k as f32 * sr / n as f32 >= edge).count()).collect();
+    let band_of: Vec<usize> = (0..=n / 2)
+        .map(|k| {
+            BANDS
+                .iter()
+                .filter(|&&edge| k as f32 * sr / n as f32 >= edge)
+                .count()
+        })
+        .collect();
     let mut width = vec![0f32; BANDS.len() + 1];
     for &b in &band_of {
         width[b] += 1.0;
@@ -509,11 +582,17 @@ fn onsets(x: &[f32], sr: f32) -> Vec<(f32, f32)> {
         let cur: Vec<f32> = p.iter().map(|v| (1.0 + 10.0 * v.sqrt()).ln()).collect();
         let reference = &back[f % 2];
         for k in 0..bins {
-            let r = reference[k.saturating_sub(1)].max(reference[k]).max(reference[(k + 1).min(bins - 1)]);
+            let r = reference[k.saturating_sub(1)]
+                .max(reference[k])
+                .max(reference[(k + 1).min(bins - 1)]);
             rise[band_of[k]] += (cur[k] - r).max(0.0);
         }
         back[f % 2] = cur;
-        let acc: f32 = rise.iter().zip(&width).map(|(r, w)| if *w > 0.0 { r / w } else { 0.0 }).sum();
+        let acc: f32 = rise
+            .iter()
+            .zip(&width)
+            .map(|(r, w)| if *w > 0.0 { r / w } else { 0.0 })
+            .sum();
         flux.push(if f < 2 { 0.0 } else { acc });
         energy.push(rms(seg));
     }
@@ -541,7 +620,10 @@ fn onsets(x: &[f32], sr: f32) -> Vec<(f32, f32)> {
         if v < mean * 1.3 + 0.02 * max_flux || v < FLUX_FLOOR {
             continue;
         }
-        let e = energy[f..(f + around).min(frames)].iter().cloned().fold(0.0, f32::max);
+        let e = energy[f..(f + around).min(frames)]
+            .iter()
+            .cloned()
+            .fold(0.0, f32::max);
         if e < loud * 0.03 {
             continue;
         }
@@ -559,8 +641,15 @@ fn onsets(x: &[f32], sr: f32) -> Vec<(f32, f32)> {
         .map(|(f, s)| {
             let a = f * hop;
             let b = (a + n).min(x.len());
-            let env: Vec<f32> = x[a..b].chunks(ms).map(|c| c.iter().fold(0.0f32, |m, v| m.max(v.abs()))).collect();
-            let (peak_at, peak) = env.iter().enumerate().fold((0, 0.0f32), |acc, (i, &v)| if v > acc.1 { (i, v) } else { acc });
+            let env: Vec<f32> = x[a..b]
+                .chunks(ms)
+                .map(|c| c.iter().fold(0.0f32, |m, v| m.max(v.abs())))
+                .collect();
+            let (peak_at, peak) =
+                env.iter().enumerate().fold(
+                    (0, 0.0f32),
+                    |acc, (i, &v)| if v > acc.1 { (i, v) } else { acc },
+                );
             let mut at = peak_at;
             while at > 0 && env[at - 1] > peak * 0.25 {
                 at -= 1;
@@ -583,14 +672,25 @@ fn beatbox(x: &[f32], sr: f32) -> Vec<Hit> {
     let tw = twiddles(n);
     // A flat window with a short fade at the end.
     let fade = len / 8;
-    let win: Vec<f32> = (0..len).map(|i| if i + fade < len { 1.0 } else { (len - i) as f32 / fade as f32 }).collect();
+    let win: Vec<f32> = (0..len)
+        .map(|i| {
+            if i + fade < len {
+                1.0
+            } else {
+                (len - i) as f32 / fade as f32
+            }
+        })
+        .collect();
     let (mut re, mut im) = (vec![], vec![]);
     let mut hits: Vec<Hit> = vec![];
     let mut peaks: Vec<f32> = vec![];
     for (i, &(t, strength)) in found.iter().enumerate() {
         let a = (t * sr) as usize;
         // The segment stops at the next onset.
-        let next = found.get(i + 1).map(|&(u, _)| (u * sr) as usize).unwrap_or(x.len());
+        let next = found
+            .get(i + 1)
+            .map(|&(u, _)| (u * sr) as usize)
+            .unwrap_or(x.len());
         let b = (a + len).min(next).min(x.len());
         if b <= a {
             continue;
@@ -645,7 +745,10 @@ mod tests {
     const SR: f32 = 48000.0;
 
     fn take(x: Vec<f32>, sr: f32) -> SampleData {
-        SampleData { sample_rate: sr, channels: vec![x] }
+        SampleData {
+            sample_rate: sr,
+            channels: vec![x],
+        }
     }
 
     /// A voice-like tone: harmonics falling off, a little vibrato, soft edges.
@@ -750,7 +853,11 @@ mod tests {
         x.resize((1.2 * SR) as usize, 0.0);
         let t = transcribe(&take(x, SR), "melody");
         assert_eq!(t.notes.len(), 2, "{:?}", t.notes);
-        assert!(t.notes[0].velocity > t.notes[1].velocity + 0.2, "{:?}", t.notes);
+        assert!(
+            t.notes[0].velocity > t.notes[1].velocity + 0.2,
+            "{:?}",
+            t.notes
+        );
     }
 
     struct Rng(u32);
@@ -852,9 +959,16 @@ mod tests {
         let pattern = [(0.1, "kick"), (0.4, "snare"), (0.7, "hat")];
         let x: Vec<f32> = beat(SR, &pattern, 1.0).iter().map(|v| v * 0.03).collect();
         let t = transcribe(&take(x, SR), "drums");
-        assert_eq!(t.hits.iter().map(|h| h.kind).collect::<Vec<_>>(), vec!["kick", "snare", "hat"], "{:?}", t.hits);
+        assert_eq!(
+            t.hits.iter().map(|h| h.kind).collect::<Vec<_>>(),
+            vec!["kick", "snare", "hat"],
+            "{:?}",
+            t.hits
+        );
         // A held tone is not a drum roll.
-        let x: Vec<f32> = (0..(0.8 * SR) as usize).map(|i| 0.3 * (i as f32 * 0.05).sin()).collect();
+        let x: Vec<f32> = (0..(0.8 * SR) as usize)
+            .map(|i| 0.3 * (i as f32 * 0.05).sin())
+            .collect();
         let t = transcribe(&take(x, SR), "drums");
         assert!(t.hits.len() <= 1, "{:?}", t.hits);
     }
@@ -868,7 +982,11 @@ mod tests {
         hit(&mut x, sr, 0.5, "snare", 0.12, &mut rng);
         let t = transcribe(&take(x, sr), "drums");
         assert_eq!(t.hits.len(), 2, "{:?}", t.hits);
-        assert!(t.hits[0].velocity > t.hits[1].velocity + 0.2, "{:?}", t.hits);
+        assert!(
+            t.hits[0].velocity > t.hits[1].velocity + 0.2,
+            "{:?}",
+            t.hits
+        );
     }
 
     #[test]
@@ -888,7 +1006,13 @@ mod tests {
         sing(&mut l, SR, 0.1, 0.4, 69.0, 0.3);
         l.resize((0.7 * SR) as usize, 0.0);
         let r = l.clone();
-        let t = transcribe(&SampleData { sample_rate: SR, channels: vec![l, r] }, "melody");
+        let t = transcribe(
+            &SampleData {
+                sample_rate: SR,
+                channels: vec![l, r],
+            },
+            "melody",
+        );
         assert_eq!(rounded(&t.notes), vec![69]);
     }
 

@@ -247,15 +247,30 @@ fn samples_peaks_render_and_lazy_contents() {
     assert_eq!(w.file("samples/hit.wav"), wav(0.5));
 
     // Voice to notes: the take is one steady tone (382 Hz).
-    let t = w.json("GET", "/api/transcribe?path=samples/hit.wav&mode=melody", json!(null));
+    let t = w.json(
+        "GET",
+        "/api/transcribe?path=samples/hit.wav&mode=melody",
+        json!(null),
+    );
     assert_eq!(t["mode"], "melody");
     let notes = t["notes"].as_array().unwrap();
     assert_eq!(notes.len(), 1, "{t}");
-    assert!((notes[0]["pitch"].as_f64().unwrap() - 66.55).abs() < 0.1, "{t}");
-    let t = w.json("GET", "/api/transcribe?path=samples/hit.wav&mode=drums", json!(null));
+    assert!(
+        (notes[0]["pitch"].as_f64().unwrap() - 66.55).abs() < 0.1,
+        "{t}"
+    );
+    let t = w.json(
+        "GET",
+        "/api/transcribe?path=samples/hit.wav&mode=drums",
+        json!(null),
+    );
     assert_eq!(t["mode"], "drums");
     assert!(t["hits"].as_array().unwrap().len() <= 1, "{t}");
-    let (status, _, _) = w.req("GET", "/api/transcribe?path=samples/none.wav&mode=melody", b"");
+    let (status, _, _) = w.req(
+        "GET",
+        "/api/transcribe?path=samples/none.wav&mode=melody",
+        b"",
+    );
     assert_eq!(status, 404);
 
     // Use the sample in the song, then render it.

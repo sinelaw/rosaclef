@@ -162,7 +162,9 @@ export function studio(b) {
   });
 
   b.open("section", "dock", `pane pane-dock ${compact ? "open" : workMode("dock")}`);
-  b.on("pointerdown", (e) => setFocus(state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : state.dock === "voice" ? "voice to notes" : "channel rack"));
+  b.on("pointerdown", (e) =>
+    setFocus(state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : state.dock === "voice" ? "voice to notes" : "channel rack")
+  );
   b.open("div", "tabs", "tabs");
   paneHeader(b, "dock");
   tab(b, "rack", "Channel Rack", "rack", "F6");
@@ -234,7 +236,9 @@ function hintBar(b) {
     "span",
     "h",
     "hint",
-    state.hint !== "" ? state.hint : "Space plays · F6 rack · F7 piano roll · F8 voice · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
+    state.hint !== ""
+      ? state.hint
+      : "Space plays · F6 rack · F7 piano roll · F8 voice · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
   );
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");
