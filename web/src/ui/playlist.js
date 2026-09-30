@@ -67,8 +67,17 @@ const peaks = [];
 /** const peaksLoading: String[] */
 const peaksLoading = [];
 
+/** The project folder the cached peaks were read from. */
+const peaksFrom = { folder: "" };
+
 /** function samplePeaks(path: String) => { path: String, duration: Number, data: Number[][] }? */
 function samplePeaks(path) {
+  if (peaksFrom.folder !== state.folder) {
+    // Another project was opened: the same path may be another file.
+    peaks.length = 0;
+    peaksLoading.length = 0;
+    peaksFrom.folder = state.folder;
+  }
   for (const p of peaks) if (p.path === path) return p;
   if (!peaksLoading.includes(path)) {
     peaksLoading.push(path);

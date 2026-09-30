@@ -24,6 +24,8 @@ anyhow = "1"
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["fs"] }
+tower = { version = "0.5", features = ["util"] }
+rosaclef-import.workspace = true
 clap = { version = "4", features = ["derive"] }
 notify = "6"
 portable-pty = "0.9"

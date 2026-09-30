@@ -11,6 +11,7 @@ import { mixer, mixerTools } from "./mixer.js";
 import { agentPanel } from "./agent.js";
 import { toastView } from "./toast.js";
 import { automationMenu } from "./lanes.js";
+import { projectsOverlay } from "./projects.js";
 import { glyph } from "./widgets.js";
 
 export const layoutState = { dockH: 46, agentW: 460 };
@@ -128,6 +129,7 @@ export function studio(b) {
   b.leaf("span", "m3", "meta", `rev ${state.rev}`);
   b.close();
 
+  projectsOverlay(b);
   toastView(b);
   automationMenu(b);
   b.close();

@@ -141,6 +141,42 @@ export function pickFiles(accept, fn) {
   input.click();
 }
 
+// One <audio> element for previewing files (the Projects window).
+let preview = null;
+
+export function previewAudio(url, onEnd) {
+  stopPreview();
+  const a = document.createElement("audio");
+  a.src = url;
+  a.preload = "auto";
+  preview = a;
+  const done = () => {
+    if (preview === a) preview = null;
+    onEnd();
+  };
+  a.onended = done;
+  a.onerror = done;
+  a.play().catch(done);
+}
+
+export function stopPreview() {
+  if (preview) {
+    const a = preview;
+    preview = null;
+    a.pause();
+    a.removeAttribute("src");
+  }
+}
+
+/** The current time as an ISO 8601 string (inty trips over `new Date()`). */
+export function nowIso() {
+  return new Date().toISOString();
+}
+
+export function fmtDate(ms) {
+  return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
 export function download(url, name) {
   const a = document.createElement("a");
   a.href = url;

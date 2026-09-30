@@ -137,10 +137,15 @@ right before editing it, and never rewrite the whole file from memory.
 - `rosaclef note --channel ID --pitch 60 --seconds 2 --out samples/x.wav` — synthesize one note
   of a channel's instrument (or `--instrument '{"type":"drum","options":{"kind":"clap"}}'`) into a sample.
 - You may also create samples any other way (e.g. write a WAV with Python) into `samples/`.
+- `rosaclef import-midi FILE.mid --name NAME --library ..` / `rosaclef import-lmms FILE.mmpz ...` —
+  turn a MIDI file or an LMMS project into a new project next to this one (prints what was approximated).
+  To add a MIDI file's parts to *this* song instead: `curl -X POST --data-binary @FILE.mid "$ROSACLEF_URL/api/import-midi?into=current"`.
 
 HTTP API (while the studio runs, base URL in `$ROSACLEF_URL`): `GET /api/project`,
-`PUT /api/project` (full document; validated), `GET /api/schema`, `GET /api/catalog`.
-Editing the file is preferred.
+`PUT /api/project` (full document; validated), `GET /api/schema`, `GET /api/catalog`,
+`GET /api/projects` (the library), `GET /api/files` (this project's files).
+Editing the file is preferred. The producer can open another project from the studio; when
+that happens your terminal session is restarted in the new project's folder.
 
 ## Data model
 

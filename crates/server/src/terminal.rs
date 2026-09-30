@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -61,9 +62,21 @@ enum Event {
 }
 
 struct Session {
+    /// Identifies the session, so a finished reader thread never tears down
+    /// a newer session that replaced its own.
+    id: u64,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
+}
+
+/// What the last start asked for, to restart the same agent elsewhere.
+#[derive(Clone)]
+struct Launch {
+    agent: String,
+    custom: Option<String>,
+    cols: u16,
+    rows: u16,
 }
 
 pub struct Terminal {
@@ -71,22 +84,48 @@ pub struct Terminal {
     scrollback: Mutex<VecDeque<u8>>,
     status: Mutex<Value>,
     tx: broadcast::Sender<Event>,
-}
-
-impl Default for Terminal {
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Where agents run: the current project folder (changes when the
+    /// studio switches projects).
+    env: Mutex<AgentEnv>,
+    last: Mutex<Option<Launch>>,
+    next_id: AtomicU64,
 }
 
 impl Terminal {
-    pub fn new() -> Terminal {
+    pub fn new(env: AgentEnv) -> Terminal {
         let (tx, _) = broadcast::channel(1024);
         Terminal {
             session: Mutex::new(None),
             scrollback: Mutex::new(VecDeque::new()),
             status: Mutex::new(json!({"t": "status", "running": false})),
             tx,
+            env: Mutex::new(env),
+            last: Mutex::new(None),
+            next_id: AtomicU64::new(1),
+        }
+    }
+
+    /// Point future agent sessions at another project folder.
+    pub fn set_env(&self, env: AgentEnv) {
+        *self.env.lock() = env;
+    }
+
+    /// Restart the running agent (if any) in the current folder: each
+    /// project has its own AGENTS.md, so the agent must start over there.
+    pub fn restart(self: &Arc<Self>) -> Result<(), String> {
+        let running = self.session.lock().is_some();
+        let last = self.last.lock().clone();
+        match (running, last) {
+            (true, Some(l)) => {
+                // Clear every attached terminal view (RIS escape).
+                let _ = self.tx.send(Event::Output(Arc::from(&b"\x1bc"[..])));
+                self.start(&l.agent, l.custom.as_deref(), l.cols, l.rows)
+            }
+            (true, None) => {
+                self.stop();
+                Ok(())
+            }
+            _ => Ok(()),
         }
     }
 
@@ -106,13 +145,19 @@ impl Terminal {
     }
 
     fn stop(&self) {
-        if let Some(mut s) = self.session.lock().take() {
+        let taken = self.session.lock().take();
+        if let Some(mut s) = taken {
             let _ = s.child.kill();
+            let code = s.child.wait().ok().map(|st| st.exit_code());
+            let agent = self.status.lock().get("agent").cloned().unwrap_or(Value::Null);
+            self.set_status(json!({"t": "status", "running": false, "agent": agent, "exitCode": code}));
         }
     }
 
-    fn start(self: &Arc<Self>, agent: &str, custom: Option<&str>, cols: u16, rows: u16, env: &AgentEnv) -> Result<(), String> {
+    fn start(self: &Arc<Self>, agent: &str, custom: Option<&str>, cols: u16, rows: u16) -> Result<(), String> {
         self.stop();
+        *self.last.lock() = Some(Launch { agent: agent.to_string(), custom: custom.map(|c| c.to_string()), cols, rows });
+        let env = self.env.lock().clone();
         let (name, argv): (String, Vec<String>) = if let Some(cmd) = custom.filter(|c| !c.trim().is_empty()) {
             ("Custom".into(), vec!["/bin/sh".into(), "-c".into(), cmd.to_string()])
         } else {
@@ -148,7 +193,8 @@ impl Terminal {
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         self.scrollback.lock().clear();
-        *self.session.lock() = Some(Session { master: pair.master, writer, child });
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        *self.session.lock() = Some(Session { id, master: pair.master, writer, child });
         self.set_status(json!({"t": "status", "running": true, "agent": agent, "name": name}));
 
         let me = self.clone();
@@ -161,9 +207,20 @@ impl Terminal {
                     Ok(n) => me.push_output(&buf[..n]),
                 }
             }
-            let code = me.session.lock().as_mut().and_then(|s| s.child.wait().ok()).map(|st| st.exit_code());
-            *me.session.lock() = None;
-            me.set_status(json!({"t": "status", "running": false, "agent": agent, "exitCode": code}));
+            // Only tear down our own session: a restart may already have
+            // replaced it (and `stop` reported that one's exit).
+            let mine = {
+                let mut guard = me.session.lock();
+                if guard.as_ref().map(|s| s.id) == Some(id) {
+                    guard.take()
+                } else {
+                    None
+                }
+            };
+            if let Some(mut s) = mine {
+                let code = s.child.wait().ok().map(|st| st.exit_code());
+                me.set_status(json!({"t": "status", "running": false, "agent": agent, "exitCode": code}));
+            }
         });
         Ok(())
     }
@@ -176,6 +233,10 @@ impl Terminal {
     }
 
     fn resize(&self, cols: u16, rows: u16) {
+        if let Some(l) = self.last.lock().as_mut() {
+            l.cols = cols;
+            l.rows = rows;
+        }
         if let Some(s) = self.session.lock().as_ref() {
             let _ = s.master.resize(PtySize { rows: rows.max(5), cols: cols.max(20), pixel_width: 0, pixel_height: 0 });
         }
@@ -183,7 +244,7 @@ impl Terminal {
 }
 
 /// Serve one browser terminal view (several may be attached at once).
-pub async fn serve(term: Arc<Terminal>, env: AgentEnv, socket: WebSocket) {
+pub async fn serve(term: Arc<Terminal>, socket: WebSocket) {
     let (mut sink, mut stream) = socket.split();
     let mut rx = term.tx.subscribe();
     let snapshot: Vec<u8> = term.scrollback.lock().iter().copied().collect();
@@ -226,8 +287,8 @@ pub async fn serve(term: Arc<Terminal>, env: AgentEnv, socket: WebSocket) {
                 let agent = v.get("agent").and_then(|a| a.as_str()).unwrap_or("shell").to_string();
                 let custom = v.get("command").and_then(|c| c.as_str()).map(|s| s.to_string());
                 let (cols, rows) = (num("cols", 80), num("rows", 24));
-                let (t2, env2) = (term.clone(), env.clone());
-                let res = tokio::task::spawn_blocking(move || t2.start(&agent, custom.as_deref(), cols, rows, &env2)).await;
+                let t2 = term.clone();
+                let res = tokio::task::spawn_blocking(move || t2.start(&agent, custom.as_deref(), cols, rows)).await;
                 let err = match res {
                     Ok(Ok(())) => None,
                     Ok(Err(e)) => Some(e),
@@ -237,7 +298,10 @@ pub async fn serve(term: Arc<Terminal>, env: AgentEnv, socket: WebSocket) {
                     let _ = err_tx.send(json!({"t": "error", "message": e}).to_string());
                 }
             }
-            "stop" => term.stop(),
+            "stop" => {
+                let t2 = term.clone();
+                let _ = tokio::task::spawn_blocking(move || t2.stop()).await;
+            }
             _ => {}
         }
     }

@@ -3,6 +3,7 @@
 mod decode;
 mod folder;
 mod guide;
+mod library;
 mod server;
 mod terminal;
 
@@ -96,6 +97,21 @@ enum Command {
     },
     /// Write/refresh AGENTS.md, CLAUDE.md and GEMINI.md in a project folder.
     Guide { dir: Option<PathBuf> },
+    /// Import an LMMS project (.mmp or .mmpz) as a new project in the library.
+    ImportLmms(ImportArgs),
+    /// Import a Standard MIDI File (.mid) as a new project in the library.
+    ImportMidi(ImportArgs),
+}
+
+#[derive(clap::Args)]
+struct ImportArgs {
+    file: PathBuf,
+    /// Name of the new project folder (default: the file name).
+    #[arg(long)]
+    name: Option<String>,
+    /// Library folder to create the project in (default: the current folder).
+    #[arg(long)]
+    library: Option<PathBuf>,
 }
 
 #[derive(clap::Args, Default)]
@@ -112,6 +128,10 @@ struct ServeArgs {
     /// Seed new projects with the demo song.
     #[arg(long)]
     demo: bool,
+    /// Project library shown in the Projects window (default: the folder
+    /// containing the project).
+    #[arg(long)]
+    library: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -247,7 +267,43 @@ fn main() -> Result<()> {
             println!("wrote agent guides in {}", f.dir.display());
             Ok(())
         }
+        Command::ImportLmms(a) => import_cli(a, |bytes, name, file| {
+            let mut opts = rosaclef_import::lmms::Options::new(name);
+            opts.source_dir = file.parent().map(|p| p.to_path_buf());
+            rosaclef_import::lmms::import(bytes, &opts)
+        }),
+        Command::ImportMidi(a) => import_cli(a, |bytes, name, _| rosaclef_import::midi::import(bytes, &rosaclef_import::midi::Options::new(name))),
     }
+}
+
+/// Shared driver of `import-lmms` / `import-midi`.
+fn import_cli(a: ImportArgs, run: impl FnOnce(&[u8], &str, &Path) -> Result<rosaclef_import::Imported>) -> Result<()> {
+    let bytes = std::fs::read(&a.file).with_context(|| format!("reading {}", a.file.display()))?;
+    let stem = a.file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Imported".into());
+    let name = library::sanitize_name(a.name.as_deref().unwrap_or(&stem));
+    let file = a.file.canonicalize().unwrap_or(a.file.clone());
+    let imported = run(&bytes, &name, &file)?;
+    let library = a.library.unwrap_or_else(|| PathBuf::from("."));
+    let (name, warnings) = library::save_imported(&library, &name, &imported)?;
+    for w in &warnings {
+        eprintln!("warning: {w}");
+    }
+    let p = &imported.project;
+    let notes: usize = p.patterns.iter().map(|x| x.notes.len()).sum();
+    let dir = library.join(&name);
+    println!(
+        "Imported {} → {} — {} BPM, {} channels, {} patterns ({notes} notes), {} clips, {} samples copied, {} warning(s)",
+        a.file.display(),
+        dir.display(),
+        rosaclef_core::format::format_f64(p.transport.bpm),
+        p.channels.len(),
+        p.patterns.len(),
+        p.playlist.clips.len(),
+        imported.samples.len(),
+        warnings.len()
+    );
+    println!("Open it with: rosaclef serve {}", dir.display());
+    Ok(())
 }
 
 /// Render a project offline, loading its samples and plugins.
@@ -302,8 +358,15 @@ fn serve(a: ServeArgs) -> Result<()> {
     let folder = Folder::new(&dir);
     guide::write(&folder)?;
     let web = a.web.unwrap_or_else(default_web_dir);
+    let library = match a.library {
+        Some(l) => {
+            std::fs::create_dir_all(&l).with_context(|| format!("creating the library {}", l.display()))?;
+            l.canonicalize()?
+        }
+        None => folder.dir.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| folder.dir.clone()),
+    };
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(server::run(server::Config { folder, host: a.host, port: a.port, web }))
+    rt.block_on(server::run(server::Config { folder, library, host: a.host, port: a.port, web }))
 }
 
 fn is_empty_dir(dir: &Path) -> bool {

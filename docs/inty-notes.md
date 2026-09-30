@@ -135,12 +135,21 @@ not accepted where a `Number` field is declared. Array indexing requires
 - An AudioWorklet processor must `extend AudioWorkletProcessor`; with no
   class inheritance, `web/engine/worklet.js` stays unchecked.
 
-## 14. 🐞 `new Date()` without arguments: "Presence mismatch"
+## 14. 🐞 `new Date(...)` fails with "Presence mismatch: expected present, found absent"
 
 ```js
-const at = new Date().toISOString();
-// Error: Presence mismatch: expected present, found absent
+function g() { return new Date().toISOString(); }
+// Error: Presence mismatch: expected present, found absent   (at `new Date()`)
 ```
-With inty 0.1.1 the zero-argument `Date` constructor fails (and, through
-item 4, every module importing `store.js` reported it). `new Date(Date.now())`
-checks. Rosaclef uses that form.
+Any `new Date(...)` (with or without arguments, whatever method follows)
+fails; checked from an importer, the error surfaces at an unrelated line
+(`ui.flush()` at the end of `main.js`, see 4 and 8). `Date.now()` is fine.
+(Another checkout, inty 0.1.1, saw only the zero-argument form fail and
+`new Date(Date.now())` pass.) Workaround: construct dates in the platform layer (`nowIso`, `fmtDate` in
+`web/lib/platform.js`).
+
+## 15. ⚠️ An unknown type in a function annotation is reported as the parameter name
+
+`/** function errText(e: Error) => String */` reports `unknown type 'e'`
+(the real problem: `Error` is not a nameable type). Like 5, the message should
+name the type. Workaround: a type parameter, `function errText<E>(e: E) => String`.

@@ -248,7 +248,7 @@ fn realtime_factor(dev: &Device) -> f64 {
 }
 
 #[test]
-#[ignore = "wall-clock timing; flaky on a loaded machine (run with --ignored)"]
+#[ignore = "wall-clock timing; flaky on a loaded machine (run with --release -- --ignored)"]
 fn realtime_performance() {
     let cases = [
         ("sextant ep (default)", device("sextant", &[("release", 8.0)], &[])),
