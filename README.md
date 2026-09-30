@@ -117,7 +117,13 @@ cargo test --workspace                 # Rust tests (engine, validation, CLAP ho
 ./tools/build-wasm.sh                  # rebuild web/engine/rosaclef.wasm and web/local/rosaclef-local.wasm
 node web/test/tree.test.js             # UI tree tests (no browser needed)
 web/check.sh                           # type-check the frontend with inty
+cargo fmt --all                        # format Rust
+(cd web && npm run format)             # format JS, CSS, HTML, JSON (Prettier)
+ruff format . && ruff check .          # format and lint Python (tools/)
 ```
+
+CI (`.github/workflows/ci.yml`) runs all of these on every pull request —
+formatting is checked, not fixed — plus the browser tests in `web/test/`.
 
 The frontend has no build step: `web/` is served as-is. Its code is plain
 JavaScript that inty type-checks; browser APIs inty doesn't describe yet go
