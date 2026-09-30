@@ -2,19 +2,29 @@
 //!
 //! - Time: `beats = ticks / PPQ` (SMPTE time bases are converted at the file
 //!   tempo, with a warning).
-//! - Tempo: the first tempo event sets the project BPM; later changes are
-//!   reported but not applied (notes keep their positions in beats).
+//! - Tempo: the first tempo event sets the project BPM; later changes become
+//!   vertical steps on a `tempo` automation lane, so the song speeds up and
+//!   slows down where the file does.
+//! - Time signatures: the first one sets `beatsPerBar`; changes become
+//!   `transport.meters` entries on the bar where they happen (a change in
+//!   the middle of a bar moves to the next bar line, with a warning). Eighth
+//!   and odd meters keep their exact length (7/8 bars are 3.5 beats).
 //! - Notes: note-on with velocity 0 is a note-off; overlapping notes on the
-//!   same key pair first-in, first-out; velocity is `v / 127`.
-//! - Channels: one Rosaclef channel per (track, MIDI channel) with notes. The
-//!   instrument comes from the General MIDI program family, preferring a
-//!   factory preset (see [`gm_instrument`]). MIDI channel 10 becomes one
-//!   `drum` channel per GM drum group used (kick, snare, hats, toms, ...),
-//!   notes remapped to pitch 60 (toms keep their relative tuning).
+//!   same key pair first-in, first-out; velocity is `v / 127`. The sustain
+//!   pedal (CC 64) is applied: notes released while it is down ring until it
+//!   lifts or the key is struck again. Pitch bend is reported, not applied.
+//! - Channels: one Rosaclef channel per (track, MIDI channel, program) with
+//!   notes, so program changes switch instruments. The instrument comes from
+//!   the General MIDI program family, preferring a factory preset (see
+//!   [`gm_instrument`]). MIDI channel 10 becomes one `drum` channel per GM
+//!   drum group used (kick, snare, hats, toms, ...), notes remapped to pitch
+//!   60 (toms keep their relative tuning).
+//! - Mixing: volume × expression (CC 7, 11) and pan (CC 10) when a channel
+//!   starts set its volume and pan; later changes become automation lanes.
 //! - Arrangement: every channel's notes are cut into patterns of
-//!   `bars_per_pattern` bars; identical blocks share one pattern, and runs
-//!   of the same block become one looping clip on the channel's own track.
-//!   Each channel gets its own mixer insert.
+//!   `bars_per_pattern` bars (restarting at each meter change); identical
+//!   blocks share one pattern, and runs of the same block become one looping
+//!   clip on the channel's own track. Each channel gets its own mixer insert.
 
 use crate::{
     beats, clamp, color, ensure_valid, has_instrument, pad_tracks, set_option, set_param, Ids,
@@ -23,7 +33,8 @@ use crate::{
 use anyhow::{bail, Result};
 use rosaclef_core::presets;
 use rosaclef_core::{
-    Channel, Clip, Device, Insert, InsertIx, Note, Pattern, Project, Track, TrackIx,
+    AutomationLane, AutomationPoint, Channel, Clip, Device, Insert, InsertIx, Meter, Note, Pattern,
+    Project, Track, TrackIx, Transport,
 };
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
@@ -74,6 +85,11 @@ pub enum Event {
         channel: u8,
         controller: u8,
         value: u8,
+    },
+    /// -8192..8191, 0 = centre.
+    PitchBend {
+        channel: u8,
+        value: i16,
     },
     /// Microseconds per quarter note.
     Tempo(u32),
@@ -263,9 +279,16 @@ fn parse_track(data: &[u8]) -> (Vec<(u64, Event)>, Option<String>) {
                                 }
                             }
                         }
-                        0xa0 | 0xe0 => {
+                        0xa0 => {
                             r.byte()?;
                             Event::Other
+                        }
+                        0xe0 => {
+                            let msb = r.byte()? & 0x7f;
+                            Event::PitchBend {
+                                channel: ch,
+                                value: ((msb as i16) << 7 | a as i16) - 8192,
+                            }
                         }
                         0xb0 => Event::Controller {
                             channel: ch,
@@ -526,8 +549,25 @@ pub fn drum_group(key: u8) -> Option<DrumGroup> {
 /// Where notes of one Rosaclef channel come from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum Source {
-    Melodic { track: usize, channel: u8 },
-    Drum { track: usize, group: &'static str },
+    Melodic {
+        track: usize,
+        channel: u8,
+        program: u8,
+    },
+    Drum {
+        track: usize,
+        group: &'static str,
+    },
+}
+
+impl Source {
+    /// The MIDI track and channel the notes were played on.
+    fn midi(&self) -> (usize, u8) {
+        match self {
+            Source::Melodic { track, channel, .. } => (*track, *channel),
+            Source::Drum { track, .. } => (*track, 9),
+        }
+    }
 }
 
 struct RawNote {
@@ -535,6 +575,103 @@ struct RawNote {
     start: u64,
     end: u64,
     velocity: u8,
+}
+
+/// Rosaclef channel gain for MIDI volume (CC 7) and expression (CC 11):
+/// volume 100 at full expression is the default 0.8.
+fn midi_gain(volume: u8, expression: u8) -> f64 {
+    let g = 0.8 * volume as f64 / 100.0 * expression as f64 / 127.0;
+    (clamp(g, 0.0, 1.5) * 1000.0).round() / 1000.0
+}
+
+/// Rosaclef pan for MIDI pan (CC 10).
+fn midi_pan(pan: u8) -> f64 {
+    (clamp((pan as f64 - 64.0) / 63.0, -1.0, 1.0) * 1000.0).round() / 1000.0
+}
+
+/// Mixer controllers of one MIDI track and channel: the (gain, pan) in
+/// effect after each tick that has CC 7, 10 or 11 events.
+#[derive(Default)]
+struct Controls {
+    events: Vec<(u64, u8, u8)>,
+}
+
+impl Controls {
+    fn states(&self) -> Vec<(u64, f64, f64)> {
+        let (mut vol, mut expr, mut pan) = (100u8, 127u8, 64u8);
+        let mut out: Vec<(u64, f64, f64)> = vec![];
+        for &(tick, cc, v) in &self.events {
+            match cc {
+                7 => vol = v,
+                11 => expr = v,
+                _ => pan = v,
+            }
+            let s = (tick, midi_gain(vol, expr), midi_pan(pan));
+            match out.last_mut() {
+                Some(last) if last.0 == tick => *last = s,
+                _ => out.push(s),
+            }
+        }
+        out
+    }
+}
+
+/// Automation points starting at `initial` and following `changes`
+/// (beat, value). A change becomes a vertical step, except that changes
+/// less than `ramp` beats after the previous one continue it as a line (a
+/// fade written as a stream of controller events).
+fn step_points(initial: f64, changes: &[(f64, f64)], ramp: f64) -> Vec<AutomationPoint> {
+    let point = |beat, value| AutomationPoint {
+        beat,
+        value,
+        curve: 0.0,
+    };
+    let mut pts = vec![point(0.0, initial)];
+    let mut prev = initial;
+    let mut last_change = f64::NEG_INFINITY;
+    for &(beat, value) in changes {
+        if value == prev {
+            continue;
+        }
+        if beat <= 1e-9 && pts.len() == 1 {
+            pts[0].value = value;
+        } else if beat - last_change > ramp {
+            pts.push(point(beat, prev));
+            pts.push(point(beat, value));
+        } else {
+            pts.push(point(beat, value));
+        }
+        prev = value;
+        last_change = beat;
+    }
+    pts
+}
+
+/// Starts of the blocks the song is cut into: `bars` bars each, restarting
+/// at every meter change, up to and including the first start after `end`.
+fn block_starts(t: &Transport, bars: u32, end: f64) -> Vec<f64> {
+    let map = t.meter_map();
+    let mut out = vec![];
+    for (i, span) in map.iter().enumerate() {
+        let stop = map.get(i + 1).map(|n| n.beat).unwrap_or(f64::INFINITY);
+        let step = span.bar_beats * bars as f64;
+        let mut b = span.beat;
+        while b < stop - 1e-9 {
+            out.push((b * 1_000_000.0).round() / 1_000_000.0);
+            if b > end {
+                return out;
+            }
+            b += step;
+        }
+    }
+    out
+}
+
+/// A time signature that Rosaclef can represent: (numerator, denominator).
+fn meter_of(numerator: u8, denominator_pow: u8) -> Option<(u32, u32)> {
+    let n = numerator.max(1) as u32;
+    let d = 1u32 << denominator_pow.min(5);
+    (n <= 64 && 4 * n <= 32 * d).then_some((n, d))
 }
 
 /// Import a Standard MIDI File.
@@ -550,60 +687,31 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
         );
     }
 
-    // Tempo and time signature: the earliest event wins.
-    let mut tempos: Vec<(u64, u32)> = vec![];
-    let mut sigs: Vec<(u64, u8, u8)> = vec![];
+    // Tempo and time signature maps (the last event on a tick wins).
+    let mut tempos: BTreeMap<u64, u32> = BTreeMap::new();
+    let mut sigs: BTreeMap<u64, (u8, u8)> = BTreeMap::new();
     for t in &smf.tracks {
         for (tick, e) in t {
             match e {
-                Event::Tempo(us) if *us > 0 => tempos.push((*tick, *us)),
+                Event::Tempo(us) if *us > 0 => {
+                    tempos.insert(*tick, *us);
+                }
                 Event::TimeSignature {
                     numerator,
                     denominator_pow,
-                } => sigs.push((*tick, *numerator, *denominator_pow)),
+                } => {
+                    sigs.insert(*tick, (*numerator, *denominator_pow));
+                }
                 _ => {}
             }
         }
     }
-    tempos.sort_by_key(|t| t.0);
-    sigs.sort_by_key(|s| s.0);
-    let bpm_raw = tempos
-        .first()
-        .map(|t| 60_000_000.0 / t.1 as f64)
+    let to_bpm = |us: u32| (clamp(60_000_000.0 / us as f64, 20.0, 999.0) * 100.0).round() / 100.0;
+    let bpm = tempos
+        .values()
+        .next()
+        .map(|us| to_bpm(*us))
         .unwrap_or(120.0);
-    let bpm = (clamp(bpm_raw, 20.0, 999.0) * 100.0).round() / 100.0;
-    let distinct: Vec<u32> = {
-        let mut v: Vec<u32> = tempos.iter().map(|t| t.1).collect();
-        v.dedup();
-        v
-    };
-    if distinct.len() > 1 {
-        warn.add(format!("the file has {} tempo changes; the whole song plays at {bpm} BPM (notes keep their positions in beats)", distinct.len() - 1));
-    }
-    let (num, den_pow) = sigs
-        .first()
-        .map(|s| (s.1.max(1), s.2.min(6)))
-        .unwrap_or((4, 2));
-    let bar_beats = num as f64 * 4.0 / (1u32 << den_pow) as f64;
-    if sigs
-        .iter()
-        .map(|s| (s.1, s.2))
-        .collect::<std::collections::BTreeSet<_>>()
-        .len()
-        > 1
-    {
-        warn.add(format!(
-            "the file changes time signature; the whole song uses {num}/{}",
-            1u32 << den_pow
-        ));
-    }
-    let beats_per_bar = bar_beats.round().clamp(1.0, 32.0);
-    if bar_beats.fract() != 0.0 {
-        warn.add(format!(
-            "time signature {num}/{} is not a whole number of beats per bar; using {beats_per_bar}",
-            1u32 << den_pow
-        ));
-    }
     let ticks_per_beat = match smf.division {
         Division::Ppq(p) => p as f64,
         Division::Smpte {
@@ -615,52 +723,231 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
             fps * ticks_per_frame.max(1) as f64 * 60.0 / bpm
         }
     };
+    let to_beats = |tick: u64| beats(tick as f64, ticks_per_beat);
 
-    // Pair notes, collect names, programs and mixer controllers.
+    // Meters: MIDI places time signatures on ticks, Rosaclef on bars.
+    let mut first_meter = (4u32, 4u32);
+    let mut meters: Vec<Meter> = vec![];
+    let (mut span_bar, mut span_beat, mut span_len) = (0u32, 0.0f64, 4.0f64);
+    let mut current = first_meter;
+    let mut misaligned = 0usize;
+    for (&tick, &(num, pow)) in &sigs {
+        let Some(m) = meter_of(num, pow) else {
+            warn.add(format!(
+                "time signature {num}/{} is longer than 32 beats per bar and was ignored",
+                1u32 << pow.min(7)
+            ));
+            continue;
+        };
+        let len = 4.0 * m.0 as f64 / m.1 as f64;
+        let beat = tick as f64 / ticks_per_beat;
+        if tick == 0 {
+            (first_meter, current, span_len) = (m, m, len);
+            continue;
+        }
+        if beat <= span_beat + 1e-9 {
+            // Moved onto the bar line of the previous change: it replaces it.
+            if let Some(last) = meters.last_mut() {
+                (last.numerator, last.denominator) = m;
+                (current, span_len) = (m, len);
+            }
+            continue;
+        }
+        if m == current {
+            continue;
+        }
+        let bars = (beat - span_beat) / span_len;
+        let k = if (bars - bars.round()).abs() < 1e-6 {
+            bars.round()
+        } else {
+            misaligned += 1;
+            bars.ceil()
+        };
+        span_bar += k as u32;
+        span_beat += k * span_len;
+        (current, span_len) = (m, len);
+        meters.push(Meter {
+            bar: span_bar + 1,
+            numerator: m.0,
+            denominator: m.1,
+        });
+    }
+    if misaligned > 0 {
+        warn.add(format!(
+            "{misaligned} time signature change(s) fell inside a bar; they start at the next bar line"
+        ));
+    }
+    let first_len = 4.0 * first_meter.0 as f64 / first_meter.1 as f64;
+    if first_meter.1 != 4 || first_len.fract() != 0.0 {
+        meters.insert(
+            0,
+            Meter {
+                bar: 1,
+                numerator: first_meter.0,
+                denominator: first_meter.1,
+            },
+        );
+    }
+    if meters.len() > 4096 {
+        warn.add("the file has more than 4096 time signature changes; the rest were ignored");
+        meters.truncate(4096);
+    }
+
+    // Programs per track and channel, and per channel over all tracks (for
+    // files that set programs on a different track than the notes).
+    let mut programs: HashMap<(usize, u8), Vec<(u64, u8)>> = HashMap::new();
+    let mut channel_programs: HashMap<u8, Vec<(u64, u8)>> = HashMap::new();
+    for (ti, track) in smf.tracks.iter().enumerate() {
+        for (tick, e) in track {
+            if let Event::Program { channel, program } = e {
+                programs
+                    .entry((ti, *channel))
+                    .or_default()
+                    .push((*tick, *program));
+                channel_programs
+                    .entry(*channel)
+                    .or_default()
+                    .push((*tick, *program));
+            }
+        }
+    }
+    for v in channel_programs.values_mut() {
+        v.sort_by_key(|p| p.0);
+    }
+    let program_at = |track: usize, channel: u8, tick: u64| -> u8 {
+        programs
+            .get(&(track, channel))
+            .or_else(|| channel_programs.get(&channel))
+            .and_then(|v| v.iter().rfind(|p| p.0 <= tick).or(v.first()))
+            .map(|p| p.1)
+            .unwrap_or(0)
+    };
+
+    // Pair notes (with the sustain pedal), collect names and controllers.
     let mut notes: BTreeMap<Source, Vec<RawNote>> = BTreeMap::new();
     let mut order: Vec<Source> = vec![];
     let mut track_names: Vec<String> = vec![];
-    let mut programs: HashMap<(usize, u8), Vec<(u64, u8)>> = HashMap::new();
-    let mut volumes: HashMap<(usize, u8), u8> = HashMap::new();
-    let mut pans: HashMap<(usize, u8), u8> = HashMap::new();
+    let mut controls: HashMap<(usize, u8), Controls> = HashMap::new();
+    let mut bent: std::collections::BTreeSet<(usize, u8)> = Default::default();
     let mut unmapped_drums = 0usize;
     let mut unterminated = 0usize;
     let mut approx_drums: Vec<(u8, &'static str, &'static str)> = vec![];
     for (ti, track) in smf.tracks.iter().enumerate() {
         let mut name = String::new();
         let mut open: HashMap<(u8, u8), VecDeque<(u64, u8)>> = HashMap::new();
+        let mut pedal = [false; 16];
+        // Notes released while the pedal is down: (channel, key, start, velocity).
+        let mut held: Vec<(u8, u8, u64, u8)> = vec![];
+        // Finished notes: (channel, key, start, end, velocity).
+        let mut done: Vec<(u8, u8, u64, u64, u8)> = vec![];
         let last_tick = track.last().map(|e| e.0).unwrap_or(0);
-        let mut emit = |ch: u8,
-                        key: u8,
-                        start: u64,
-                        end: u64,
-                        velocity: u8,
-                        notes: &mut BTreeMap<Source, Vec<RawNote>>,
-                        order: &mut Vec<Source>| {
-            let (src, pitch) = if ch == 9 {
-                match drum_group(key) {
-                    Some(g) => {
-                        if g.approx && !approx_drums.iter().any(|a| a.0 == key) {
-                            approx_drums.push((key, g.name, g.kind));
+        let release = |held: &mut Vec<(u8, u8, u64, u8)>,
+                       done: &mut Vec<(u8, u8, u64, u64, u8)>,
+                       tick: u64,
+                       which: &dyn Fn(u8, u8) -> bool| {
+            held.retain(|&(ch, key, start, vel)| {
+                if which(ch, key) {
+                    done.push((ch, key, start, tick.max(start + 1), vel));
+                    false
+                } else {
+                    true
+                }
+            });
+        };
+        for (tick, e) in track {
+            let tick = *tick;
+            match e {
+                Event::TrackName(n) if name.is_empty() => name = n.clone(),
+                Event::NoteOn {
+                    channel,
+                    key,
+                    velocity,
+                } => {
+                    // Striking a key again ends its pedal-sustained note.
+                    release(&mut held, &mut done, tick, &|c, k| {
+                        c == *channel && k == *key
+                    });
+                    open.entry((*channel, *key))
+                        .or_default()
+                        .push_back((tick, *velocity));
+                }
+                Event::NoteOff { channel, key } => {
+                    if let Some((start, vel)) =
+                        open.get_mut(&(*channel, *key)).and_then(|q| q.pop_front())
+                    {
+                        if pedal[*channel as usize] && *channel != 9 {
+                            held.push((*channel, *key, start, vel));
+                        } else {
+                            done.push((*channel, *key, start, tick, vel));
                         }
-                        (
-                            Source::Drum {
-                                track: ti,
-                                group: g.name,
-                            },
-                            g.pitch,
-                        )
-                    }
-                    None => {
-                        unmapped_drums += 1;
-                        return;
                     }
                 }
+                // Sustain pedal, and "reset all controllers" (which lifts it).
+                Event::Controller {
+                    channel,
+                    controller: c @ (64 | 121),
+                    value,
+                } => {
+                    let down = *c == 64 && *value >= 64;
+                    if pedal[*channel as usize] && !down {
+                        release(&mut held, &mut done, tick, &|ch, _| ch == *channel);
+                    }
+                    pedal[*channel as usize] = down;
+                }
+                Event::Controller {
+                    channel,
+                    controller: c @ (7 | 10 | 11),
+                    value,
+                } => controls
+                    .entry((ti, *channel))
+                    .or_default()
+                    .events
+                    .push((tick, *c, *value)),
+                Event::PitchBend { channel, value } if *value != 0 && *channel != 9 => {
+                    bent.insert((ti, *channel));
+                }
+                _ => {}
+            }
+        }
+        // Pedal still down at the end: the notes ring to the end of the track.
+        release(&mut held, &mut done, last_tick, &|_, _| true);
+        let mut rest: Vec<((u8, u8), (u64, u8))> = open
+            .into_iter()
+            .flat_map(|(k, q)| q.into_iter().map(move |n| (k, n)))
+            .collect();
+        rest.sort_by_key(|r| (r.1 .0, r.0));
+        for ((ch, key), (start, vel)) in rest {
+            unterminated += 1;
+            let end = if last_tick > start {
+                last_tick
+            } else {
+                start + ticks_per_beat as u64
+            };
+            done.push((ch, key, start, end, vel));
+        }
+        done.sort_by_key(|d| d.2);
+        for (ch, key, start, end, velocity) in done {
+            let (src, pitch) = if ch == 9 {
+                let Some(g) = drum_group(key) else {
+                    unmapped_drums += 1;
+                    continue;
+                };
+                if g.approx && !approx_drums.iter().any(|a| a.0 == key) {
+                    approx_drums.push((key, g.name, g.kind));
+                }
+                (
+                    Source::Drum {
+                        track: ti,
+                        group: g.name,
+                    },
+                    g.pitch,
+                )
             } else {
                 (
                     Source::Melodic {
                         track: ti,
                         channel: ch,
+                        program: program_at(ti, ch, start),
                     },
                     key as i32,
                 )
@@ -674,59 +961,6 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                 end,
                 velocity,
             });
-        };
-        for (tick, e) in track {
-            match e {
-                Event::TrackName(n) if name.is_empty() => name = n.clone(),
-                Event::NoteOn {
-                    channel,
-                    key,
-                    velocity,
-                } => open
-                    .entry((*channel, *key))
-                    .or_default()
-                    .push_back((*tick, *velocity)),
-                Event::NoteOff { channel, key } => {
-                    if let Some((start, vel)) =
-                        open.get_mut(&(*channel, *key)).and_then(|q| q.pop_front())
-                    {
-                        emit(*channel, *key, start, *tick, vel, &mut notes, &mut order);
-                    }
-                }
-                Event::Program { channel, program } => programs
-                    .entry((ti, *channel))
-                    .or_default()
-                    .push((*tick, *program)),
-                Event::Controller {
-                    channel,
-                    controller: 7,
-                    value,
-                } => {
-                    volumes.entry((ti, *channel)).or_insert(*value);
-                }
-                Event::Controller {
-                    channel,
-                    controller: 10,
-                    value,
-                } => {
-                    pans.entry((ti, *channel)).or_insert(*value);
-                }
-                _ => {}
-            }
-        }
-        let mut rest: Vec<((u8, u8), (u64, u8))> = open
-            .into_iter()
-            .flat_map(|(k, q)| q.into_iter().map(move |n| (k, n)))
-            .collect();
-        rest.sort_by_key(|r| (r.1 .0, r.0));
-        for ((ch, key), (start, vel)) in rest {
-            unterminated += 1;
-            let end = if last_tick > start {
-                last_tick
-            } else {
-                start + ticks_per_beat as u64
-            };
-            emit(ch, key, start, end, vel, &mut notes, &mut order);
         }
         track_names.push(name);
     }
@@ -745,98 +979,95 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
             "GM drum key {key} ({name}) was approximated by the Atelier \"{kind}\" drum"
         ));
     }
+    let bent_with_notes = bent
+        .iter()
+        .filter(|(t, c)| {
+            order
+                .iter()
+                .any(|s| matches!(s, Source::Melodic { track, channel, .. } if track == t && channel == c))
+        })
+        .count();
+    if bent_with_notes > 0 {
+        warn.add(format!(
+            "pitch bend on {bent_with_notes} channel(s) was ignored (notes keep their key's pitch)"
+        ));
+    }
     if notes.is_empty() {
         warn.add("the file contains no notes");
     }
 
-    // Build channels, patterns, tracks and inserts.
+    // Build channels, patterns, tracks, inserts and automation.
     let mut project = Project::empty(&opts.title);
     project.schema = "./project.schema.json".into();
     project.meta.description = "Imported from a MIDI file".into();
     // A format 1 conductor track (no notes) usually carries the song name.
-    let conductor_has_notes = order.iter().any(|s| {
-        matches!(
-            s,
-            Source::Melodic { track: 0, .. } | Source::Drum { track: 0, .. }
-        )
-    });
+    let conductor_has_notes = order.iter().any(|s| s.midi().0 == 0);
     if smf.format == 1 && !conductor_has_notes && !track_names[0].is_empty() {
         project.meta.title = track_names[0].clone();
     }
     project.transport.bpm = bpm;
-    project.transport.beats_per_bar = beats_per_bar as u32;
+    project.transport.beats_per_bar = first_len.round().clamp(1.0, 32.0) as u32;
+    project.transport.meters = meters;
     project.patterns.clear();
     project.playlist.tracks.clear();
     project.mixer.inserts.truncate(1);
+
+    // Tempo changes become a stepped tempo lane.
+    let tempo_changes: Vec<(f64, f64)> = tempos
+        .iter()
+        .skip(1)
+        .map(|(tick, us)| (to_beats(*tick), to_bpm(*us)))
+        .collect();
+    let tempo_points = step_points(bpm, &tempo_changes, 0.0);
+    if tempo_points.len() > 1 {
+        project.automation.push(AutomationLane {
+            id: "tempo".into(),
+            name: "Tempo".into(),
+            target: "tempo".into(),
+            color: "#d4af37".into(),
+            mute: false,
+            points: tempo_points,
+        });
+    }
+
+    let song_end = notes
+        .values()
+        .flatten()
+        .map(|n| to_beats(n.start))
+        .fold(0.0, f64::max);
+    let starts = block_starts(&project.transport, opts.bars_per_pattern.max(1), song_end);
     let mut channel_ids = Ids::default();
     let mut pattern_ids = Ids::default();
-    let block = opts.bars_per_pattern.max(1) as f64 * bar_beats;
+    let mut lane_ids = Ids::with(project.automation.iter().map(|l| l.id.clone()));
     let drums_tracks: std::collections::BTreeSet<usize> = order
         .iter()
-        .filter_map(|s| {
-            if let Source::Drum { track, .. } = s {
-                Some(*track)
-            } else {
-                None
-            }
+        .filter_map(|s| match s {
+            Source::Drum { track, .. } => Some(*track),
+            _ => None,
         })
         .collect();
     let mut used_names: HashMap<String, usize> = HashMap::new();
+    let no_controls = Controls::default();
 
     for (ci, src) in order.iter().enumerate() {
         let raw = &notes[src];
-        let (base_name, instrument, volume, pan) = match src {
-            Source::Melodic { track, channel } => {
-                let progs = programs.get(&(*track, *channel)).or_else(|| {
-                    programs
-                        .iter()
-                        .find(|(k, _)| k.1 == *channel)
-                        .map(|(_, v)| v)
-                });
-                let first_note = raw.iter().map(|n| n.start).min().unwrap_or(0);
-                let program = progs
-                    .and_then(|v| v.iter().rfind(|p| p.0 <= first_note).or(v.first()))
-                    .map(|p| p.1)
-                    .unwrap_or(0);
-                if progs
-                    .map(|v| {
-                        v.iter()
-                            .map(|p| p.1)
-                            .collect::<std::collections::BTreeSet<_>>()
-                            .len()
-                            > 1
-                    })
-                    .unwrap_or(false)
-                {
-                    warn.add(format!(
-                        "track {} channel {} changes program; only GM program {program} was used",
-                        track + 1,
-                        channel + 1
-                    ));
-                }
-                let (device, _) = gm_instrument(program);
-                let channels_in_track = order
+        let (base_name, instrument) = match src {
+            Source::Melodic { track, program, .. } => {
+                let (device, _) = gm_instrument(*program);
+                let sources_in_track = order
                     .iter()
                     .filter(|s| matches!(s, Source::Melodic { track: t, .. } if t == track))
                     .count();
                 let tname = &track_names[*track];
                 let family = GM_FAMILIES[(program / 8) as usize];
-                let name = if !tname.is_empty() && channels_in_track == 1 {
+                let name = if !tname.is_empty() && sources_in_track == 1 {
                     tname.clone()
                 } else if !tname.is_empty() {
                     format!("{tname} · {family}")
                 } else {
                     family.to_string()
                 };
-                let vol = volumes
-                    .get(&(*track, *channel))
-                    .map(|v| clamp(0.8 * *v as f64 / 100.0, 0.0, 1.5))
-                    .unwrap_or(0.8);
-                let pan = pans
-                    .get(&(*track, *channel))
-                    .map(|v| clamp((*v as f64 - 64.0) / 63.0, -1.0, 1.0))
-                    .unwrap_or(0.0);
-                (name, device, vol, pan)
+                (name, device)
             }
             Source::Drum { track, group } => {
                 let key = raw_group_key(group);
@@ -852,11 +1083,7 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                 } else {
                     group.to_string()
                 };
-                let vol = volumes
-                    .get(&(*track, 9))
-                    .map(|v| clamp(0.8 * *v as f64 / 100.0, 0.0, 1.5))
-                    .unwrap_or(0.8);
-                (name, d, vol, 0.0)
+                (name, d)
             }
         };
         let n = used_names.entry(base_name.clone()).or_insert(0);
@@ -868,6 +1095,38 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
         };
         let id = channel_ids.make(&name);
         let ccolor = color(ci);
+
+        // Volume and pan: the values when the channel starts playing, and
+        // lanes for later changes (up to its last note).
+        let first = raw.iter().map(|n| n.start).min().unwrap_or(0);
+        let last = raw.iter().map(|n| n.end).max().unwrap_or(0);
+        let states = controls.get(&src.midi()).unwrap_or(&no_controls).states();
+        let (volume, pan) = states
+            .iter()
+            .rfind(|s| s.0 <= first)
+            .map(|s| (s.1, s.2))
+            .unwrap_or((0.8, 0.0));
+        let later: Vec<&(u64, f64, f64)> = states
+            .iter()
+            .filter(|s| s.0 > first && s.0 < last)
+            .collect();
+        let lanes: [(&str, f64, fn(&(u64, f64, f64)) -> f64); 2] =
+            [("volume", volume, |s| s.1), ("pan", pan, |s| s.2)];
+        for (what, initial, value) in lanes {
+            let changes: Vec<(f64, f64)> =
+                later.iter().map(|s| (to_beats(s.0), value(s))).collect();
+            let points = step_points(initial, &changes, 0.25);
+            if points.len() > 1 {
+                project.automation.push(AutomationLane {
+                    id: lane_ids.make(&format!("{id}-{what}")),
+                    name: format!("{name} {what}"),
+                    target: format!("channel/{id}/{what}"),
+                    color: ccolor.clone(),
+                    mute: false,
+                    points,
+                });
+            }
+        }
 
         let mixer = if project.mixer.inserts.len() < MAX_INSERTS {
             project.mixer.inserts.push(Insert::new(&name));
@@ -892,14 +1151,13 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
             mute: false,
         });
 
-        // Cut into blocks of `block` beats and dedupe identical blocks.
-        let mut blocks: BTreeMap<u64, Vec<Note>> = BTreeMap::new();
+        // Cut into blocks of whole bars and dedupe identical blocks.
+        let mut blocks: BTreeMap<usize, Vec<Note>> = BTreeMap::new();
         for rn in raw {
-            let start = beats(rn.start as f64, ticks_per_beat);
-            let length =
-                beats(rn.end.saturating_sub(rn.start) as f64, ticks_per_beat).max(1.0 / 64.0);
-            let k = ((start + 1e-9) / block).floor().max(0.0) as u64;
-            let rel = ((start - k as f64 * block) * 1_000_000.0).round() / 1_000_000.0;
+            let start = to_beats(rn.start);
+            let length = to_beats(rn.end.saturating_sub(rn.start)).max(1.0 / 64.0);
+            let k = starts.partition_point(|b| *b <= start + 1e-9).max(1) - 1;
+            let rel = ((start - starts[k]) * 1_000_000.0).round() / 1_000_000.0;
             blocks.entry(k).or_default().push(Note {
                 channel: id.clone(),
                 pitch: rn.pitch.clamp(0, 127),
@@ -908,11 +1166,18 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                 velocity: clamp(rn.velocity as f64 / 127.0, 0.0, 1.0),
             });
         }
+        let block_len = |k: usize| {
+            let end = starts.get(k + 1).copied().unwrap_or(starts[k] + 4.0);
+            ((end - starts[k]) * 1_000_000.0).round() / 1_000_000.0
+        };
         let mut seen: HashMap<String, String> = HashMap::new();
         let mut letters = 0usize;
-        let mut run: Option<(String, u64, u64)> = None; // (pattern, first block, blocks)
+        let mut run: Option<(String, usize, usize)> = None; // (pattern, first block, blocks)
         let unique = {
-            let mut keys: Vec<String> = blocks.values().map(|v| block_key(v)).collect();
+            let mut keys: Vec<String> = blocks
+                .iter()
+                .map(|(k, v)| format!("{}|{}", block_len(*k), block_key(v)))
+                .collect();
             keys.sort();
             keys.dedup();
             keys.len()
@@ -920,7 +1185,8 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
         let mut clips = vec![];
         for (k, mut ns) in blocks {
             ns.sort_by(|a, b| a.start.total_cmp(&b.start).then(a.pitch.cmp(&b.pitch)));
-            let key = block_key(&ns);
+            let length = block_len(k);
+            let key = format!("{length}|{}", block_key(&ns));
             let pid = match seen.get(&key) {
                 Some(p) => p.clone(),
                 None => {
@@ -935,7 +1201,7 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                         id: pid.clone(),
                         name: pname,
                         color: ccolor.clone(),
-                        length: block,
+                        length,
                         notes: ns,
                     });
                     seen.insert(key, pid.clone());
@@ -955,12 +1221,14 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
         }
         clips.extend(run);
         for (pid, first, count) in clips {
+            let start = starts[first];
+            let end = starts[first + count - 1] + block_len(first + count - 1);
             project.playlist.clips.push(Clip {
                 pattern: pid,
                 sample: String::new(),
                 track: tix,
-                start: first as f64 * block,
-                length: count as f64 * block,
+                start,
+                length: ((end - start) * 1_000_000.0).round() / 1_000_000.0,
                 offset: 0.0,
                 gain: 1.0,
                 mixer: InsertIx::MASTER,

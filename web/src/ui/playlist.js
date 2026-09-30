@@ -6,7 +6,7 @@
 
 import { drag, getJson, promptBox, pressOrTap } from "#platform";
 import { state, commit, begin, changed, invalidate, selectPattern, selectChannel, showDock, currentPattern, hint, reportContext } from "../store.js";
-import { snapTo, snapDown, songLength } from "../model.js";
+import { snapTo, snapDown, songLength, barAt, barLines, meterChangeAt } from "../model.js";
 import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
 import { dragSample } from "./browser.js";
@@ -361,18 +361,18 @@ export function playlist(b) {
   b.on("pointerdown", (e) => {
     const beat = (e.clientX - e.targetLeft + view.scrollLeft) / g.zoom;
     if (state.mode !== "song") setMode("song");
-    seek(Math.max(0, snapDown(beat, bpb)));
+    seek(barAt(p.transport, Math.max(0, beat)).start);
   });
   b.open("div", "in", "");
   b.style("transform", `translateX(${-view.scrollLeft}px)`);
   b.style("position", "absolute");
   b.style("inset", "0");
-  const firstBar = Math.max(0, Math.floor(view.scrollLeft / g.zoom / bpb));
-  const lastBar = Math.ceil((view.scrollLeft + view.width) / g.zoom / bpb);
-  for (let bar = firstBar; bar <= lastBar; bar++) {
-    if (g.zoom * bpb < 40 && bar % 2 === 1) continue;
-    b.leaf("div", `m${bar}`, "ruler-mark", String(bar + 1));
-    b.style("left", `${bar * bpb * g.zoom}px`);
+  const bars = barLines(p.transport, view.scrollLeft / g.zoom, (view.scrollLeft + view.width) / g.zoom);
+  for (const bl of bars) {
+    const meter = meterChangeAt(p.transport, bl.bar);
+    if (g.zoom * bl.length < 40 && bl.bar % 2 === 1 && meter === "") continue;
+    b.leaf("div", `m${bl.bar}`, "ruler-mark", meter === "" ? String(bl.bar + 1) : `${bl.bar + 1} · ${meter}`);
+    b.style("left", `${bl.start * g.zoom}px`);
   }
   if (state.mode === "song") {
     b.leaf("div", "ph", "playhead", "");
@@ -472,7 +472,7 @@ export function playlist(b) {
       return undefined;
     }
     const beat = (e.clientX - e.targetLeft + e.scrollLeft) / g.zoom;
-    const bar = Math.floor(beat / bpb) + 1;
+    const bar = barAt(p.transport, beat).bar + 1;
     const pat = currentPattern();
     hint(`Bar ${bar} — click to place “${pat ? pat.name : "a pattern"}”, drag clips to move, edge to resize, Alt-drag to copy, right-click to delete`);
   });
@@ -486,9 +486,19 @@ export function playlist(b) {
     b.style("height", `${g.trackH}px`);
   }
   b.leaf("div", "bg", "grid-bg", "");
-  b.style("--bar", `${g.zoom * bpb}px`);
   b.style("--beat", `${g.zoom}px`);
-  b.style("--step", `${g.zoom * bpb * 4}px`);
+  if (p.transport.meters.length === 0) {
+    b.style("--bar", `${g.zoom * bpb}px`);
+    b.style("--step", `${g.zoom * bpb * 4}px`);
+  } else {
+    // Bars of changing length: drawn one by one below.
+    b.style("--bar", `${g.width + 1}px`);
+    b.style("--step", `${g.width + 1}px`);
+    for (const bl of barLines(p.transport, view.scrollLeft / g.zoom, (view.scrollLeft + view.width) / g.zoom)) {
+      b.leaf("div", `bl${bl.bar}`, "bar-line", "");
+      b.style("left", `${bl.start * g.zoom}px`);
+    }
+  }
 
   const x0 = view.scrollLeft - 60;
   const x1 = view.scrollLeft + view.width + 60;

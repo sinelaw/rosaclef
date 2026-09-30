@@ -39,7 +39,8 @@
 /** type Insert = { name: String, volume: Number, pan: Number, mute: Boolean, solo: Boolean, effects: Device[] } */
 /** type Mixer = { inserts: Insert[] } */
 /** type Meta = { title: String, author: String, description: String } */
-/** type Transport = { bpm: Number, beatsPerBar: Number, swing: Number } */
+/** type Meter = { bar: Number, numerator: Number, denominator: Number } */
+/** type Transport = { bpm: Number, beatsPerBar: Number, swing: Number, meters: Meter[] } */
 /** type AutomationPoint = { beat: Number, value: Number, curve: Number } */
 /** type AutomationLane = { id: String, name: String, target: String, color: String, mute: Boolean, points: AutomationPoint[] } */
 /** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[] } */

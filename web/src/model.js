@@ -67,7 +67,12 @@ export function decodeProject(raw) {
   return {
     format: String(raw.format),
     meta: { title: String(raw.meta.title), author: String(raw.meta.author ?? ""), description: String(raw.meta.description ?? "") },
-    transport: { bpm: Number(t.bpm), beatsPerBar: Number(t.beatsPerBar ?? 4), swing: Number(t.swing ?? 0) },
+    transport: {
+      bpm: Number(t.bpm),
+      beatsPerBar: Number(t.beatsPerBar ?? 4),
+      swing: Number(t.swing ?? 0),
+      meters: (t.meters ?? []).map((m) => ({ bar: Number(m.bar), numerator: Number(m.numerator), denominator: Number(m.denominator) })),
+    },
     channels: (raw.channels ?? []).map((c) => ({
       id: String(c.id),
       name: String(c.name),
@@ -184,7 +189,8 @@ export function encodeProject(p) {
   o["$schema"] = "./project.schema.json";
   o.format = p.format;
   o.meta = p.meta;
-  o.transport = p.transport;
+  o.transport = { bpm: p.transport.bpm, beatsPerBar: p.transport.beatsPerBar, swing: p.transport.swing };
+  if (p.transport.meters.length > 0) o.transport.meters = p.transport.meters;
   o.channels = p.channels.map((c) => ({
     id: c.id,
     name: c.name,
@@ -322,11 +328,73 @@ export function snapDown(x, grid) {
   return Math.floor(x / grid + 1e-9) * grid;
 }
 
-/** function barBeat(beat: Number, beatsPerBar: Number) => String */
-export function barBeat(beat, beatsPerBar) {
+// ------------------------------------------------------------------ meters
+// Bars follow `transport.meters` (see Transport::meter_map in
+// crates/core/src/model.rs): each change holds from its bar (counted from 1)
+// until the next; bars before the first change have `beatsPerBar` beats.
+
+/** type MeterSpan = { bar: Number, beat: Number, barBeats: Number, label: String } */
+/** type BarPos = { bar: Number, start: Number, length: Number } */
+
+/** The bar grid: one span per meter, the first at bar 0, beat 0 (bars counted from 0). */
+/** function meterMap(t: Transport) => MeterSpan[] */
+export function meterMap(t) {
+  /** const out: MeterSpan[] */
+  const out = [{ bar: 0, beat: 0, barBeats: Math.max(1, t.beatsPerBar), label: `${t.beatsPerBar}/4` }];
+  for (const m of t.meters) {
+    const bar = Math.max(1, m.bar) - 1;
+    const len = (4 * m.numerator) / Math.max(1, m.denominator);
+    if (!(len > 0 && Number.isFinite(len))) continue;
+    const label = `${m.numerator}/${m.denominator}`;
+    const last = out[out.length - 1];
+    if (bar === 0 && out.length === 1) out[0] = { bar: 0, beat: 0, barBeats: len, label: label };
+    else if (bar > last.bar) out.push({ bar: bar, beat: last.beat + (bar - last.bar) * last.barBeats, barBeats: len, label: label });
+  }
+  return out;
+}
+
+/** The bar (counted from 0) that contains `beat`. */
+/** function barAt(t: Transport, beat: Number) => BarPos */
+export function barAt(t, beat) {
+  const map = meterMap(t);
+  let s = map[0];
+  for (const m of map) if (m.beat <= beat + 1e-9) s = m;
+  const k = Math.max(0, Math.floor((beat - s.beat) / s.barBeats + 1e-9));
+  return { bar: s.bar + k, start: s.beat + k * s.barBeats, length: s.barBeats };
+}
+
+/** The bars that overlap the song time `lo`..`hi` (beats). */
+/** function barLines(t: Transport, lo: Number, hi: Number) => BarPos[] */
+export function barLines(t, lo, hi) {
+  const map = meterMap(t);
+  /** const out: BarPos[] */
+  const out = [];
+  for (let i = 0; i < map.length; i++) {
+    const s = map[i];
+    const stop = i + 1 < map.length ? map[i + 1].bar : Infinity;
+    for (let bar = s.bar + Math.max(0, Math.floor((lo - s.beat) / s.barBeats)); bar < stop; bar++) {
+      const start = s.beat + (bar - s.bar) * s.barBeats;
+      if (start > hi || out.length >= 4096) return out;
+      out.push({ bar: bar, start: start, length: s.barBeats });
+    }
+  }
+  return out;
+}
+
+/** The meter label ("7/8") of a bar where the meter changes, else "". */
+/** function meterChangeAt(t: Transport, bar: Number) => String */
+export function meterChangeAt(t, bar) {
+  if (t.meters.length === 0) return "";
+  for (const s of meterMap(t)) if (s.bar === bar) return s.label;
+  return "";
+}
+
+/** function barBeat(beat: Number, t: Transport) => String */
+export function barBeat(beat, t) {
   const b = Math.max(0, beat);
-  const bar = Math.floor(b / beatsPerBar) + 1;
-  const inBar = b - (bar - 1) * beatsPerBar;
+  const pos = barAt(t, b);
+  const bar = pos.bar + 1;
+  const inBar = b - pos.start;
   const beatN = Math.floor(inBar) + 1;
   const ticks = Math.floor((inBar - Math.floor(inBar)) * 96);
   const pad = (n, w) => String(n).padStart(w, "0");
@@ -380,7 +448,7 @@ export function emptyProject() {
   return {
     format: "rosaclef/1",
     meta: { title: "Untitled", author: "", description: "" },
-    transport: { bpm: 120, beatsPerBar: 4, swing: 0 },
+    transport: { bpm: 120, beatsPerBar: 4, swing: 0, meters: [] },
     channels: [],
     patterns: [],
     playlist: { tracks: [], clips: [] },

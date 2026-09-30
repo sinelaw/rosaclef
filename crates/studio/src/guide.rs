@@ -196,6 +196,10 @@ Rules and conventions:
 - A pattern clip longer than its pattern **loops** the pattern; `offset` shifts where it starts.
   Notes starting at or after the pattern `length` never play.
 - Drum channels ignore note length (one-shots); pitch 60 plays the drum at its tuned pitch.
+- Time-signature changes go in `transport.meters`, sorted by bar (counted from 1):
+  `"meters": [ { "bar": 9, "numerator": 3, "denominator": 4 }, { "bar": 17, "numerator": 7, "denominator": 8 } ]`.
+  A bar lasts `4 × numerator / denominator` beats (3/4 → 3, 6/8 → 3, 7/8 → 3.5); bars before the
+  first change use `beatsPerBar`. Meters only move bar lines: notes and clips stay on their beats.
 - Omitted `params`/`options` keys take their defaults (see catalog). Unknown keys are errors.
 - Don't reorder `mixer.inserts` or `playlist.tracks` casually — other objects refer to them by index.
 - Keep patterns musically self-contained (e.g. a 4-beat drum loop, a 16-beat bassline) and build

@@ -8,7 +8,7 @@
 
 import { drag, fmt, pressOrTap } from "#platform";
 import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, invalidate, reportContext, hint } from "../store.js";
-import { isBlackKey, noteName, snapTo, snapDown } from "../model.js";
+import { isBlackKey, noteName, snapTo, snapDown, barAt, barLines } from "../model.js";
 import { preview, noteOn, noteOff, seek } from "../audio.js";
 import { select, iconButton } from "./widgets.js";
 import { followButton } from "./playlist.js";
@@ -278,9 +278,24 @@ function onGridDown(e, pat, ch, g) {
 
 // ------------------------------------------------------------------ render
 
+/** Bars over pattern time `lo`..`hi`, numbered from the pattern start. With
+ * meter changes they follow the meter where the pattern first plays in the
+ * song; otherwise they start at the pattern start. */
+/** function patternBars(pat: Pattern, lo: Number, hi: Number) => BarPos[] */
+function patternBars(pat, lo, hi) {
+  const t = state.project.transport;
+  let origin = 0;
+  if (t.meters.length > 0) {
+    let best = Infinity;
+    for (const c of state.project.playlist.clips) if (c.pattern === pat.id && c.start - c.offset < best) best = c.start - c.offset;
+    if (best !== Infinity) origin = best;
+  }
+  const first = barAt(t, Math.max(0, origin)).bar;
+  return barLines(t, origin + lo, origin + hi).map((bl) => ({ bar: bl.bar - first, start: bl.start - origin, length: bl.length }));
+}
+
 /** function rulerView(b: Builder, g: Geo, pat: Pattern) => Undefined */
 function rulerView(b, g, pat) {
-  const bpb = state.project.transport.beatsPerBar;
   b.open("div", "ruler", "ruler");
   b.on("pointerdown", (e) => {
     const beat = (e.clientX - e.targetLeft + view.scrollLeft) / g.zoom;
@@ -292,11 +307,17 @@ function rulerView(b, g, pat) {
   b.style("inset", "0");
   const first = Math.max(0, Math.floor(view.scrollLeft / g.zoom));
   const last = Math.min(g.beats, Math.ceil((view.scrollLeft + view.width) / g.zoom));
-  for (let beat = first; beat <= last; beat++) {
-    const isBar = beat % bpb === 0;
-    if (!isBar && g.zoom < 28) continue;
-    b.leaf("div", `m${beat}`, isBar ? "ruler-mark" : "ruler-mark beat", isBar ? String(beat / bpb + 1) : "");
-    b.style("left", `${beat * g.zoom}px`);
+  for (const bl of patternBars(pat, first, last)) {
+    if (bl.start >= 0) {
+      b.leaf("div", `m${bl.bar}`, "ruler-mark", String(bl.bar + 1));
+      b.style("left", `${bl.start * g.zoom}px`);
+    }
+    if (g.zoom < 28) continue;
+    for (let k = 1; k < bl.length; k++) {
+      if (bl.start + k < 0) continue;
+      b.leaf("div", `m${bl.bar}-${k}`, "ruler-mark beat", "");
+      b.style("left", `${(bl.start + k) * g.zoom}px`);
+    }
   }
   if (state.mode === "pattern") {
     b.leaf("div", "ph", "playhead", "");
@@ -401,11 +422,20 @@ function gridView(b, g, pat, ch) {
     b.style("top", `${pitchY(g, p)}px`);
     b.style("height", `${g.rowH}px`);
   }
-  const bpb = state.project.transport.beatsPerBar;
+  const t = state.project.transport;
   b.leaf("div", "bg", "grid-bg", "");
-  b.style("--bar", `${g.zoom * bpb}px`);
   b.style("--beat", `${g.zoom}px`);
   b.style("--step", `${g.zoom / 4}px`);
+  if (t.meters.length === 0) b.style("--bar", `${g.zoom * t.beatsPerBar}px`);
+  else {
+    // Bars of changing length: drawn one by one.
+    b.style("--bar", `${g.width + 1}px`);
+    for (const bl of patternBars(pat, view.scrollLeft / g.zoom, (view.scrollLeft + view.width) / g.zoom)) {
+      if (bl.start < 0) continue;
+      b.leaf("div", `bl${bl.bar}`, "bar-line", "");
+      b.style("left", `${bl.start * g.zoom}px`);
+    }
+  }
 
   // Pattern end marker.
   b.leaf("div", "end", "playhead", "");

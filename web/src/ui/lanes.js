@@ -208,7 +208,7 @@ function dragPoint(e, lane, idx, r, info, zoom, begun) {
       pt.beat = Math.max(lo, Math.min(hi, Math.max(0, beat)));
       const u = u0 - ((m.clientY - y0) / (LANE_H - 2 * PAD)) * (fine ? 0.2 : 1);
       pt.value = tidy(info, valueOf(r, u));
-      hint(`${info.label}: ${formatValue(info, pt.value)} at ${barBeat(pt.beat, state.project.transport.beatsPerBar)}`);
+      hint(`${info.label}: ${formatValue(info, pt.value)} at ${barBeat(pt.beat, state.project.transport)}`);
       changed(true);
     },
     (u) => {
@@ -350,13 +350,13 @@ export function autoHint(lg, x, y) {
   const r = displayRange(info, lane);
   const boxes = laneBoxes(lane, r, lg.zoom, lg.top + laneTop(k));
   const hit = hitPoint(boxes, x, y);
-  const bpb = state.project.transport.beatsPerBar;
+  const t = state.project.transport;
   if (hit >= 0) {
     const pt = lane.points[hit];
-    return `${info.label}: ${formatValue(info, pt.value)} at ${barBeat(pt.beat, bpb)} — drag to move (Shift: fine), Alt-drag to bend, double-click to type, right-click to delete`;
+    return `${info.label}: ${formatValue(info, pt.value)} at ${barBeat(pt.beat, t)} — drag to move (Shift: fine), Alt-drag to bend, double-click to type, right-click to delete`;
   }
   const beat = x / lg.zoom;
-  return `${info.label}: ${formatValue(info, laneValueAt(lane.points, beat))} at ${barBeat(beat, bpb)} — click to add a point, Alt-drag a segment to bend it`;
+  return `${info.label}: ${formatValue(info, laneValueAt(lane.points, beat))} at ${barBeat(beat, t)} — click to add a point, Alt-drag a segment to bend it`;
 }
 
 // ------------------------------------------------------------------ render
@@ -504,7 +504,7 @@ export function autoBody(b, lg) {
   b.style("top", `${lg.top}px`);
   b.style("height", `${DIV_H}px`);
   if (auto.collapsed) return undefined;
-  const bpb = state.project.transport.beatsPerBar;
+  const t = state.project.transport;
   const left = Math.max(0, lg.x0);
   const width = Math.max(1, lg.x1 - left);
   for (let k = 0; k < lanes.length; k++) {
@@ -531,7 +531,7 @@ export function autoBody(b, lg) {
       b.style("top", `${box.y - top}px`);
       if (sel) {
         const pt = lane.points[k2];
-        b.leaf("div", `tag${k2}`, box.y - top < LANE_H / 2 ? "auto-tag below" : "auto-tag", `${formatValue(info, pt.value)} · ${barBeat(pt.beat, bpb)}`);
+        b.leaf("div", `tag${k2}`, box.y - top < LANE_H / 2 ? "auto-tag below" : "auto-tag", `${formatValue(info, pt.value)} · ${barBeat(pt.beat, t)}`);
         b.style("left", `${box.x}px`);
         b.style("top", `${box.y - top}px`);
       }

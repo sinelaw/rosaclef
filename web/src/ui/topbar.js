@@ -79,7 +79,7 @@ export function topbar(b) {
   });
 
   b.open("div", "pos", "lcd static");
-  lcd(b, "pos", state.mode === "song" ? "Song" : "Pattern", barBeat(state.position, p.transport.beatsPerBar), "");
+  lcd(b, "pos", state.mode === "song" ? "Song" : "Pattern", barBeat(state.position, p.transport), "");
   b.close();
 
   b.open("div", "bpm", isAutomated("tempo") ? "lcd automated" : "lcd");

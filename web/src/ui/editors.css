@@ -78,6 +78,14 @@
     var(--beat) 100%,
     var(--step) 100%;
 }
+.bar-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(212, 175, 55, 0.22);
+  pointer-events: none;
+}
 
 .keys {
   position: relative;

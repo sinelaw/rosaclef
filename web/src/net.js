@@ -171,7 +171,7 @@ export function sendContext() {
         playing: state.playing,
         mode: state.mode,
         positionBeats: Math.round(state.position * 1000) / 1000,
-        position: barBeat(state.position, p.transport.beatsPerBar),
+        position: barBeat(state.position, p.transport),
         bpm: p.transport.bpm,
       },
       selection: {
