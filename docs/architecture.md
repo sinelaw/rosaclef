@@ -12,6 +12,11 @@
 3. **The browser is a control surface.** It renders, edits and plays, but the
    server owns the file on disk, runs the agent and does what browsers can't
    (audio devices, plugins, fast offline rendering).
+4. **The server's logic is portable too.** What the server does without the
+   operating system (project folders, the library, files, rendering) is
+   written against a file system trait, so the static build runs the same
+   code in a worker, on an in-memory tree kept in IndexedDB
+   ([`static.md`](static.md)).
 
 ## The pieces
 
@@ -20,9 +25,13 @@
 | `rosaclef-core` | native + wasm | model, device catalog (single source of truth for params), validation with JSON paths, schema, compact formatter |
 | `rosaclef-engine` | native + wasm | sequencer, instruments, effects, mixer, offline render; `PluginHost` / `ExternalProcessor` traits for plugins |
 | `rosaclef-wasm` | browser AudioWorklet | C-ABI wrapper around the engine (no JS glue) |
+| `rosaclef-import` | native + wasm | LMMS and MIDI importers |
+| `rosaclef-fs` | native + wasm | the `Fs` trait: `DiskFs`, and `MemFs` (lazily loaded blobs, a change journal for the host to persist) |
+| `rosaclef-studio` | native + wasm | the server's portable logic on `Fs`: project folders, library, file manager, zip archives, agent guides, symphonia decoding, offline render |
 | `rosaclef-clap` | native | CLAP plugin host implementing the engine's plugin traits |
-| `rosaclef` (server) | native | HTTP/WebSocket server, file watcher, PTY agent terminal, cpal device I/O, recording, render, CLI |
-| `web/` | browser | the studio UI |
+| `rosaclef` (server) | native | HTTP/WebSocket server, file watcher, PTY agent terminal, cpal device I/O, recording, CLI — on `rosaclef-studio` with the disk |
+| `rosaclef-local` | browser worker | the server's HTTP API and socket protocol on `rosaclef-studio` with a `MemFs`, plus the Rosaclef shell for the terminal (the static build) |
+| `web/` | browser | the studio UI; `web/lib/backend.js` sends its requests to the server or to `rosaclef-local` |
 
 ### Project sync
 
@@ -100,8 +109,9 @@ UI types live in `web/types/globals.d.js`; integers with different meanings are
 `nominal type`s (`InsertIx`, `TrackIx`, `NoteIx`, `Handle`, …) declared in the
 same file, erased at runtime by identity casts (`web/lib/brands.js`).
 `web/check.sh` checks every module in one run (about 2 s). The only unchecked code is the platform boundary
-(`web/lib/platform.js`, typed by `web/types/platform.d.js`) and the
-AudioWorklet processor.
+(`web/lib/platform.js`, typed by `web/types/platform.d.js`, and the back-end
+switch `web/lib/backend.js` behind it), the AudioWorklet processor and the
+static build's worker (`web/local/worker.js`).
 
 ## Agent integration
 

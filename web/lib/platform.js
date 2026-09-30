@@ -6,6 +6,7 @@
 import { Terminal } from "../vendor/xterm/xterm.mjs";
 import { FitAddon } from "../vendor/xterm/addon-fit.mjs";
 import { WebLinksAddon } from "../vendor/xterm/addon-web-links.mjs";
+import { backend, request, localSocket, resolveUrl } from "./backend.js";
 
 // ------------------------------------------------------------------ events
 
@@ -89,38 +90,69 @@ export function wsUrl(path) {
 }
 
 export function connectRaw(url, h) {
-  const ws = new WebSocket(url);
-  ws.binaryType = "arraybuffer";
-  ws.onopen = () => h.onOpen();
-  ws.onclose = () => h.onClose();
-  ws.onmessage = (e) => {
-    if (typeof e.data === "string") h.onText(e.data);
-    else h.onBinary(new Uint8Array(e.data));
-  };
+  // The back end is chosen asynchronously: until then, sends are dropped
+  // (as on a socket that is still connecting).
+  let inner = null;
+  let closed = false;
+  backend.then((m) => {
+    if (closed) return;
+    if (m === "local") {
+      inner = localSocket(new URL(url).pathname.endsWith("/term") ? "term" : "ws", h);
+      return;
+    }
+    const ws = new WebSocket(url);
+    ws.binaryType = "arraybuffer";
+    ws.onopen = () => h.onOpen();
+    ws.onclose = () => h.onClose();
+    ws.onmessage = (e) => {
+      if (typeof e.data === "string") h.onText(e.data);
+      else h.onBinary(new Uint8Array(e.data));
+    };
+    inner = {
+      send: (s) => { if (ws.readyState === 1) ws.send(s); },
+      close: () => ws.close(),
+      isOpen: () => ws.readyState === 1,
+    };
+  });
   return {
-    send: (s) => { if (ws.readyState === 1) ws.send(s); },
-    close: () => ws.close(),
-    isOpen: () => ws.readyState === 1,
+    send: (s) => { if (inner) inner.send(s); },
+    close: () => { closed = true; if (inner) inner.close(); },
+    isOpen: () => !!inner && inner.isOpen(),
   };
 }
 
 export async function getJson(url) {
-  const r = await fetch(url);
+  const r = await request("GET", url);
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();
 }
 
 export async function sendJson(url, method, body) {
-  const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const r = await request(method, url, JSON.stringify(body), { "content-type": "application/json" });
   const text = await r.text();
   if (!r.ok) throw new Error(text || `${r.status}`);
   return text ? JSON.parse(text) : {};
 }
 
 export async function uploadFile(url, file) {
-  const r = await fetch(url, { method: "POST", body: file });
+  const r = await request("POST", url, file);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+/** "server" or "local" (the browser-only studio), once known. */
+export function backendMode() {
+  return backend;
+}
+
+/** How much of the browser's storage the studio uses: { usage, quota } in bytes (0 when unknown). */
+export async function storageEstimate() {
+  try {
+    const e = await navigator.storage.estimate();
+    return { usage: e.usage || 0, quota: e.quota || 0 };
+  } catch (_) {
+    return { usage: 0, quota: 0 };
+  }
 }
 
 export function onFileDrop(el, fn) {
@@ -148,16 +180,24 @@ let preview = null;
 export function previewAudio(url, onEnd) {
   stopPreview();
   const a = document.createElement("audio");
-  a.src = url;
   a.preload = "auto";
   preview = a;
+  let src = "";
   const done = () => {
     if (preview === a) preview = null;
+    if (src.startsWith("blob:")) URL.revokeObjectURL(src);
     onEnd();
   };
   a.onended = done;
   a.onerror = done;
-  a.play().catch(done);
+  resolveUrl(url)
+    .then((u) => {
+      src = u;
+      if (preview !== a) return done();
+      a.src = u;
+      return a.play();
+    })
+    .catch(done);
 }
 
 export function stopPreview() {
@@ -179,12 +219,17 @@ export function fmtDate(ms) {
 }
 
 export function download(url, name) {
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  resolveUrl(url)
+    .then((u) => {
+      const a = document.createElement("a");
+      a.href = u;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (u.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(u), 60000);
+    })
+    .catch((e) => console.error("download failed", e));
 }
 
 // ------------------------------------------------------------------ terminal
@@ -291,7 +336,9 @@ export function audioRunning() {
 }
 
 export async function decodeAudioUrl(url) {
-  const buf = await (await fetch(url)).arrayBuffer();
+  const r = await request("GET", url);
+  if (!r.ok) throw new Error(`${r.status}`);
+  const buf = await r.arrayBuffer();
   const ac = ctx || new OfflineAudioContext(2, 1, 48000);
   const audio = await ac.decodeAudioData(buf);
   const channels = [];
@@ -341,8 +388,7 @@ export async function recStop(name) {
   if (recChunks.length === 0 || !ctx) return "";
   const blob = encodeWav(recChunks, ctx.sampleRate);
   recChunks = [];
-  const r = await fetch(`/api/samples?name=${encodeURIComponent(name)}`, { method: "POST", body: blob });
-  const j = await r.json();
+  const j = await uploadFile(`/api/samples?name=${encodeURIComponent(name)}`, blob);
   return j.path || "";
 }
 

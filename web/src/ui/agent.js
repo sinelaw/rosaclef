@@ -1,6 +1,8 @@
 // The agent panel: a terminal running the producer's own coding agent
 // (Claude Code, Codex, Gemini CLI, ...) inside the project folder, where
-// AGENTS.md / CLAUDE.md teach it the project format.
+// AGENTS.md / CLAUDE.md teach it the project format. The browser-only studio
+// has no processes to run: there the terminal runs the Rosaclef shell (the
+// studio's command line, compiled into the page — see crates/local).
 
 import { connectRaw, wsUrl, createTerm, getJson } from "#platform";
 import { state, invalidate, currentPattern, currentChannel, hint, setFocus } from "../store.js";
@@ -128,6 +130,10 @@ export function loadAgents() {
 
 /** function suggestions() => String[] */
 function suggestions() {
+  if (state.backend === "local") {
+    const pat = currentPattern();
+    return ["help", "summary", "set /transport/bpm 128", pat ? `get /patterns/${Math.max(0, state.project.patterns.indexOf(pat))}/name` : "get /meta", "presets prisme", "render", "context"];
+  }
   const pat = currentPattern();
   const ch = currentChannel();
   const patName = pat ? `the "${pat.name}" pattern` : "a new pattern";
@@ -225,7 +231,11 @@ export function agentPanel(b) {
   if (showChooser) {
     b.open("div", "empty", "term-empty");
     b.leaf("h2", "h", "", "Your maestro awaits");
-    b.leaf("p", "p", "", agent.error !== "" ? agent.error : agent.exitCode >= 0 ? `The agent exited (code ${agent.exitCode}). Start it again or pick another.` : "Bring your own coding agent. It runs in this project's folder and edits the song live — you hear every change.");
+    const intro =
+      state.backend === "local"
+        ? "In the browser studio this panel runs the Rosaclef shell — the studio's command line: inspect and edit the song, render, browse presets. To bring your own coding agent, download the project (Projects → .zip) and open it in the native studio."
+        : "Bring your own coding agent. It runs in this project's folder and edits the song live — you hear every change.";
+    b.leaf("p", "p", "", agent.error !== "" ? agent.error : agent.exitCode >= 0 ? `The agent exited (code ${agent.exitCode}). Start it again or pick another.` : intro);
     b.open("div", "grid", "agent-grid");
     for (const a of state.agents) {
       b.open("button", a.id, a.available ? "agent-choice" : "agent-choice na");
@@ -245,8 +255,8 @@ export function agentPanel(b) {
   b.open("div", "suggest", "suggest");
   for (const s of suggestions()) {
     b.leaf("span", s, "chip", s);
-    b.attr("title", "Type this into the agent's prompt");
-    b.on("pointerenter", (e) => hint(`Suggest to the agent: “${s}” (press Enter in the terminal to send)`));
+    b.attr("title", state.backend === "local" ? "Type this into the shell" : "Type this into the agent's prompt");
+    b.on("pointerenter", (e) => hint(state.backend === "local" ? `Type “${s}” into the shell (press Enter to run it)` : `Suggest to the agent: “${s}” (press Enter in the terminal to send)`));
     b.on("click", (e) => {
       typeIntoAgent(s);
     });

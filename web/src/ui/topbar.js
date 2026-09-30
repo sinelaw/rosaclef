@@ -23,7 +23,7 @@ let exporting = false;
 function exportSong() {
   if (exporting) return;
   exporting = true;
-  toast("Rendering mixdown…", "The native engine renders the song offline (plugins included).", "info");
+  toast("Rendering mixdown…", state.backend === "local" ? "The engine renders the song offline, in your browser." : "The native engine renders the song offline (plugins included).", "info");
   sendJson("/api/render", "POST", { bits: 24 })
     .then((r) => {
       exporting = false;
@@ -112,10 +112,13 @@ export function topbar(b) {
 
   b.leaf("div", "sp", "spacer", "");
 
-  b.open("div", "out", "seg");
-  button(b, "browser", state.output === "browser" ? "on" : "", "Browser", "Play through the WebAssembly engine in this browser", () => setOutput("browser"));
-  button(b, "native", state.output === "native" ? "on" : "", "Studio", "Play through the native engine on the server's audio device (plugins, lowest latency)", () => setOutput("native"));
-  b.close();
+  // The native engine exists only with a server that has an audio device.
+  if (state.nativeAvailable) {
+    b.open("div", "out", "seg");
+    button(b, "browser", state.output === "browser" ? "on" : "", "Browser", "Play through the WebAssembly engine in this browser", () => setOutput("browser"));
+    button(b, "native", state.output === "native" ? "on" : "", "Studio", "Play through the native engine on the server's audio device (plugins, lowest latency)", () => setOutput("native"));
+    b.close();
+  }
 
   const master = p.mixer.inserts.length > 0 ? p.mixer.inserts[0] : undefined;
   if (master) {
@@ -138,7 +141,7 @@ export function topbar(b) {
   });
   b.open("button", "export", "btn gold");
   b.attr("title", "Render the song to a WAV file");
-  b.on("pointerenter", (e) => hint("Export: render the whole song offline to a 24-bit WAV (saved in renders/)"));
+  b.on("pointerenter", (e) => hint("Export: render the whole song offline to a 24-bit WAV (saved in renders/, and downloaded)"));
   b.on("click", (e) => {
     exportSong();
   });

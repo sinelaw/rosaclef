@@ -1,6 +1,6 @@
 //! Audio file decoding (wav, flac, mp3, ogg/vorbis, aac, alac) via symphonia.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use rosaclef_engine::samples::SampleData;
 use std::path::Path;
 use symphonia::core::audio::SampleBuffer;
@@ -17,26 +17,31 @@ pub fn is_audio_file(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()).map(|e| AUDIO_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str())).unwrap_or(false)
 }
 
-/// Decode an audio file into de-interleaved f32 channels (at most two).
-pub fn decode_file(path: &Path) -> Result<SampleData> {
+/// Decode a file of `fs` into de-interleaved f32 channels (at most two).
+pub fn decode_file(fs: &dyn rosaclef_fs::Fs, path: &Path) -> Result<SampleData> {
+    let bytes = fs.read(path)?;
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    decode_bytes(bytes, ext).map_err(|e| anyhow!("{}: {e}", path.display()))
+}
+
+/// Decode an audio file's bytes; `ext` (e.g. "mp3") helps guess the format.
+pub fn decode_bytes(bytes: Vec<u8>, ext: &str) -> Result<SampleData> {
     // Fast path for our own WAV files.
-    if path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("wav")).unwrap_or(false) {
-        let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    if ext.eq_ignore_ascii_case("wav") {
         if let Ok(d) = rosaclef_engine::render::decode_wav(&bytes) {
             return Ok(d);
         }
     }
-    let file = std::fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
-    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mss = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
     let mut hint = Hint::new();
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+    if !ext.is_empty() {
         hint.with_extension(ext);
     }
     let probed = symphonia::default::get_probe()
         .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
-        .map_err(|e| anyhow!("unsupported audio file {}: {e}", path.display()))?;
+        .map_err(|e| anyhow!("unsupported audio file: {e}"))?;
     let mut format = probed.format;
-    let track = format.default_track().ok_or_else(|| anyhow!("no audio track in {}", path.display()))?;
+    let track = format.default_track().ok_or_else(|| anyhow!("no audio track"))?;
     let track_id = track.id;
     let sample_rate = track.codec_params.sample_rate.unwrap_or(44100) as f32;
     let mut decoder = symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
@@ -71,7 +76,7 @@ pub fn decode_file(path: &Path) -> Result<SampleData> {
         }
     }
     if channels.is_empty() {
-        return Err(anyhow!("{} contains no audio", path.display()));
+        return Err(anyhow!("the file contains no audio"));
     }
     Ok(SampleData { sample_rate, channels })
 }

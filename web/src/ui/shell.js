@@ -62,7 +62,7 @@ export function studio(b) {
   }
   if (!state.connected) {
     b.open("div", "offline", "banner");
-    b.leaf("b", "t", "", "Reconnecting to the Rosaclef server…");
+    b.leaf("b", "t", "", state.loaded ? "Reconnecting to the Rosaclef server…" : "Starting the studio…");
     b.close();
   }
 
@@ -158,7 +158,7 @@ export function studio(b) {
   b.leaf("span", "h", "hint", state.hint !== "" ? state.hint : "Space plays · F6 rack · F7 piano roll · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels");
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");
-  b.leaf("span", "t", "", state.connected ? "Synced" : "Offline");
+  b.leaf("span", "t", "", !state.connected ? "Offline" : state.backend === "local" ? "Saved in this browser" : "Synced");
   b.close();
   b.leaf("span", "m2", "meta", state.output === "native" ? `Studio engine${state.nativeDevice !== "" ? " · " + state.nativeDevice : ""}` : state.audioReady ? "Browser engine · WebAssembly" : "Click anywhere to start audio");
   b.leaf("span", "m3", "meta", `rev ${state.rev}`);

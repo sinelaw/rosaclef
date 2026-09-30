@@ -1,0 +1,8 @@
+[package]
+name = "rosaclef-fs"
+description = "File system abstraction for Rosaclef: the disk, or an in-memory tree persisted by the browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

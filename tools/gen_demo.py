@@ -23,8 +23,8 @@ over the Prologue's breath and again, slowly, out of the Fall's ruin.
 
 Usage:
     cargo build --release -p rosaclef
-    python3 tools/gen_demo.py > crates/server/assets/demo/project.json
-    ./target/release/rosaclef fmt crates/server/assets/demo/project.json
+    python3 tools/gen_demo.py > crates/studio/assets/demo/project.json
+    ./target/release/rosaclef fmt crates/studio/assets/demo/project.json
 
 Instrument settings come from the factory presets (`rosaclef presets NAME`),
 so the demo always matches the real preset definitions.
