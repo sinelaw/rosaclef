@@ -174,6 +174,7 @@ cargo test --workspace                 # Rust tests (engine, validation, CLAP ho
 ./tools/build-wasm.sh                  # rebuild web/engine/rosaclef.wasm and web/local/rosaclef-local.wasm
 node web/test/tree.test.js             # UI tree tests (no browser needed)
 node web/test/voice.test.js            # voice-to-notes logic (quantize, auto-tune, drums)
+node tools/bench-engine.mjs            # real-time load of the WebAssembly engine (demo song)
 web/check.sh                           # type-check the frontend with inty
 cargo fmt --all                        # format Rust
 (cd web && npm run format)             # format JS, CSS, HTML, JSON (Prettier)

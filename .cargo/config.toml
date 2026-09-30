@@ -1,0 +1,4 @@
+# WebAssembly SIMD (every current browser supports it): the engine's DSP
+# loops run faster with 128-bit vector instructions.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]

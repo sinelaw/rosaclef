@@ -140,8 +140,11 @@ impl DelayLine {
     }
     #[inline]
     fn write(&mut self, x: f32) {
-        self.buf[self.w] = x;
-        self.w = (self.w + 1) % self.buf.len();
+        self.buf[self.w] = flush(x);
+        self.w += 1;
+        if self.w == self.buf.len() {
+            self.w = 0;
+        }
     }
     /// Read `d` samples behind the last write (linear interpolation).
     #[inline]
@@ -150,10 +153,12 @@ impl DelayLine {
         let d = d.clamp(1.0, (n - 2) as f32);
         let pos = self.w as f32 - d;
         let pos = if pos < 0.0 { pos + n as f32 } else { pos };
-        let i = pos as usize;
+        // `pos` is in [0, n); the checks guard float rounding and the wrap
+        // (an integer `%` per read is costly on the audio thread).
+        let i = (pos as usize).min(n - 1);
         let f = pos - i as f32;
-        let a = self.buf[i % n];
-        let b = self.buf[(i + 1) % n];
+        let a = self.buf[i];
+        let b = self.buf[if i + 1 == n { 0 } else { i + 1 }];
         a + (b - a) * f
     }
     fn clear(&mut self) {
@@ -246,9 +251,12 @@ impl Comb {
     #[inline]
     fn process(&mut self, x: f32, feedback: f32, damp: f32) -> f32 {
         let y = self.buf[self.i];
-        self.store = y * (1.0 - damp) + self.store * damp;
-        self.buf[self.i] = x + self.store * feedback;
-        self.i = (self.i + 1) % self.buf.len();
+        self.store = flush(y * (1.0 - damp) + self.store * damp);
+        self.buf[self.i] = flush(x + self.store * feedback);
+        self.i += 1;
+        if self.i == self.buf.len() {
+            self.i = 0;
+        }
         y
     }
 }
@@ -268,8 +276,11 @@ impl Allpass {
     #[inline]
     fn process(&mut self, x: f32) -> f32 {
         let b = self.buf[self.i];
-        self.buf[self.i] = x + b * 0.5;
-        self.i = (self.i + 1) % self.buf.len();
+        self.buf[self.i] = flush(x + b * 0.5);
+        self.i += 1;
+        if self.i == self.buf.len() {
+            self.i = 0;
+        }
         b - x
     }
 }
