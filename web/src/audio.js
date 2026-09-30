@@ -170,6 +170,14 @@ export async function playCountIn(beats) {
   return true;
 }
 
+/** In pattern mode, play on past the pattern's end instead of looping (while
+ * recording into a pattern that grows as it goes). */
+/** function setOpenEnded(on: Boolean) => Undefined */
+export function setOpenEnded(on) {
+  if (state.output === "native") send({ t: "native.openEnded", on: on });
+  else audioPost({ t: "openEnded", on: on });
+}
+
 const METRONOME_PREF = "rosaclef.metronome";
 
 export function loadMetronome() {

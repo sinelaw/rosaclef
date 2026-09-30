@@ -140,6 +140,9 @@ class RosaclefProcessor extends AudioWorkletProcessor {
       case "metronome":
         w.rc_set_metronome(m.on ? 1 : 0);
         break;
+      case "openEnded":
+        w.rc_set_open_ended(m.on ? 1 : 0);
+        break;
       case "pause":
         w.rc_pause();
         break;

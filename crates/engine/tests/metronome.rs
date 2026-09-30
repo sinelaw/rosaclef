@@ -1,6 +1,7 @@
-//! The metronome and the count-in before recording.
+//! The metronome, the count-in before recording, and a pattern that plays on
+//! past its end while recording into it.
 
-use rosaclef_core::Project;
+use rosaclef_core::{Channel, Device, InsertIx, Note, Project};
 use rosaclef_engine::{Engine, PlayMode};
 
 const SR: f32 = 48000.0;
@@ -96,4 +97,69 @@ fn count_in_clicks_a_bar_before_the_pattern_starts() {
     run(&mut e, 0.3);
     e.stop();
     assert_eq!(e.position(), 0.0);
+}
+
+/// A 4-beat pattern with a short sine blip on its first beat.
+fn blip() -> Engine {
+    let mut p = Project::empty("t");
+    p.mixer.inserts[0].effects.clear();
+    let mut dev = Device::new("synth");
+    for (k, v) in [
+        ("attack", 0.001),
+        ("decay", 0.03),
+        ("sustain", 0.0),
+        ("release", 0.005),
+        ("osc2Mix", 0.0),
+        ("cutoff", 20000.0),
+    ] {
+        dev.params.insert(k.into(), v);
+    }
+    dev.options.insert("wave1".into(), "sine".into());
+    p.channels.push(Channel {
+        id: "b".into(),
+        name: "Blip".into(),
+        color: "#ffffff".into(),
+        instrument: dev,
+        volume: 1.0,
+        pan: 0.0,
+        mute: false,
+        mixer: InsertIx(1),
+    });
+    p.patterns[0].notes.clear();
+    p.patterns[0].length = 4.0;
+    p.patterns[0].notes.push(Note {
+        channel: "b".into(),
+        pitch: 69,
+        start: 0.0,
+        length: 0.1,
+        velocity: 1.0,
+    });
+    let mut e = Engine::new(SR);
+    e.set_project(p);
+    e.set_mode(PlayMode::Pattern("pattern-1".into()));
+    e
+}
+
+#[test]
+fn an_open_ended_pattern_plays_on_past_its_end() {
+    let mut e = blip();
+    e.play();
+    assert_eq!(e.loop_length(), 4.0);
+    // Looping: the blip on beat 1 comes round every 2 s.
+    assert_eq!(onsets(&run(&mut e, 4.5)).len(), 3);
+    e.stop();
+    e.set_open_ended(true);
+    assert_eq!(e.loop_length(), 0.0, "nothing loops");
+    e.play();
+    let on = onsets(&run(&mut e, 4.5));
+    assert_eq!(on.len(), 1, "the pattern plays once: {on:?}");
+    assert!(
+        e.position() > 8.5,
+        "and the playhead goes on: {}",
+        e.position()
+    );
+    // Back to looping: the playhead wraps.
+    e.set_open_ended(false);
+    run(&mut e, 0.1);
+    assert!(e.position() < 4.0, "wraps: {}", e.position());
 }

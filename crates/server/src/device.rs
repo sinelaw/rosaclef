@@ -285,6 +285,9 @@ pub async fn handle(app: Arc<App>, t: &str, v: &Value) -> Option<Value> {
                 "native.metronome" => {
                     e.set_metronome(v.get("on").and_then(|x| x.as_bool()).unwrap_or(false))
                 }
+                "native.openEnded" => {
+                    e.set_open_ended(v.get("on").and_then(|x| x.as_bool()).unwrap_or(false))
+                }
                 "native.pause" => e.pause(),
                 "native.stop" => {
                     e.stop();

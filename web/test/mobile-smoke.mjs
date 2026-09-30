@@ -212,6 +212,34 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   await page.keyboard.press("Escape");
   await page.waitForTimeout(80);
   assert((await page.locator(".kb-rec.armed").count()) === 0, "Esc stops recording notes");
+  // Recording does not loop: a one-bar pattern grows as the playhead goes on,
+  // then ends with the bar of the last note played.
+  const bar = () =>
+    page.evaluate(async () => {
+      const s = await import("/src/store.js");
+      const p = s.currentPattern();
+      return { length: p.length, bpb: s.state.project.transport.beatsPerBar, last: p.notes.length > 0 ? p.notes[p.notes.length - 1].start : -1 };
+    });
+  await page.evaluate(async () => {
+    const s = await import("/src/store.js");
+    const p = s.currentPattern();
+    s.commit(() => {
+      p.notes = [];
+      p.length = s.state.project.transport.beatsPerBar;
+    });
+  });
+  const one = (await bar()).bpb;
+  await page.click(".kb-rec");
+  for (let i = 0; i < 200 && (await pos()) < one + 1.5; i++) await page.waitForTimeout(50);
+  await page.keyboard.press("v");
+  await page.waitForTimeout(300);
+  const grown = await bar();
+  assert(grown.length >= 2 * one && grown.last > one, `the pattern grows while recording (${grown.length} beats, a note at ${grown.last})`);
+  for (let i = 0; i < 200 && (await pos()) < 3 * one + 1.5; i++) await page.waitForTimeout(50);
+  assert((await bar()).length >= 4 * one, "and keeps growing");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+  assert((await bar()).length === 2 * one, "stopping trims it after the last note");
   await page.click(".kb-toggle");
   await page.waitForTimeout(100);
   assert((await page.locator(".keyboard").count()) === 0, "the toggle hides the keys");

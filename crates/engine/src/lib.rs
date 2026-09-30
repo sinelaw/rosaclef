@@ -299,6 +299,9 @@ pub struct Engine {
     pending: Vec<Pending>,
     /// Clicks on every beat while playing (the downbeat higher).
     metronome: bool,
+    /// Pattern mode plays on past the pattern's end instead of looping
+    /// (recording into a pattern that grows as it goes).
+    open_ended: bool,
     /// Count-in before the sequencer starts: its length and the beats left.
     pre_total: f64,
     pre: f64,
@@ -340,6 +343,7 @@ impl Engine {
             clock: 0.0,
             pending: vec![],
             metronome: false,
+            open_ended: false,
             pre_total: 0.0,
             pre: 0.0,
             clicks: vec![],
@@ -685,6 +689,11 @@ impl Engine {
         self.metronome = on;
     }
 
+    /// Play on past the pattern's end instead of looping (pattern mode).
+    pub fn set_open_ended(&mut self, on: bool) {
+        self.open_ended = on;
+    }
+
     /// Pause keeps the position. Automated values return to the project's.
     pub fn pause(&mut self) {
         self.playing = false;
@@ -780,8 +789,17 @@ impl Engine {
         }
     }
 
-    /// Current loop length in beats (0 when there is nothing to play).
+    /// Current loop length in beats (0 when there is nothing to play, or
+    /// when the pattern plays on past its end).
     pub fn loop_length(&self) -> f64 {
+        if self.open_ended && matches!(self.mode, PlayMode::Pattern(_)) {
+            return 0.0;
+        }
+        self.content_length()
+    }
+
+    /// Length of what plays: the pattern's in pattern mode, the song's otherwise.
+    fn content_length(&self) -> f64 {
         match &self.mode {
             PlayMode::Pattern(id) => self
                 .patterns
@@ -949,7 +967,8 @@ impl Engine {
     /// clips directly into their inserts.
     fn schedule(&mut self, from: usize, n: usize) {
         let bpf = self.ctx.bpm as f64 / 60.0 / self.ctx.sr as f64;
-        let loop_len = self.loop_length();
+        let loop_len = self.content_length();
+        let wraps = self.loop_length() > 0.0;
         if loop_len <= 0.0 {
             let b0 = self.position;
             self.position += bpf * (n - from) as f64;
@@ -961,10 +980,14 @@ impl Engine {
         }
         let mut frame = from;
         while frame < n {
-            if self.position >= loop_len {
+            if wraps && self.position >= loop_len {
                 self.position = 0.0;
             }
-            let to_end = ((loop_len - self.position) / bpf).ceil().max(1.0) as usize;
+            let to_end = if wraps {
+                ((loop_len - self.position) / bpf).ceil().max(1.0) as usize
+            } else {
+                n - frame
+            };
             let seg = (n - frame).min(to_end);
             let b0 = self.position;
             let b1 = b0 + seg as f64 * bpf;
