@@ -1,6 +1,6 @@
 # Checks every pull request (and main). To make them gate merging: Settings →
-# Branches (or Rules) → protect main → require status checks → "Rust" and
-# "Web".
+# Branches (or Rules) → protect main → require status checks → "Format",
+# "Rust" and "Web".
 name: CI
 
 on:
@@ -21,6 +21,27 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Fix locally with: cargo fmt --all · (cd web && npx prettier@3.8.1 --write .) · ruff format . && ruff check --fix .
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prettier (JS, CSS, HTML, JSON)
+        working-directory: web
+        run: npx --yes prettier@3.8.1 --check .
+      - name: ruff (Python)
+        run: |
+          pipx run ruff==0.15.8 check .
+          pipx run ruff==0.15.8 format --check .
+
   rust:
     name: Rust
     runs-on: ubuntu-latest
