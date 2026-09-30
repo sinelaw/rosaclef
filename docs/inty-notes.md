@@ -134,3 +134,21 @@ not accepted where a `Number` field is declared. Array indexing requires
 - `promise.catch((e) => false)` must return a `Promise` (`Promise.resolve(false)`).
 - An AudioWorklet processor must `extend AudioWorkletProcessor`; with no
   class inheritance, `web/engine/worklet.js` stays unchecked.
+
+## 14. 🐞 `new Date(...)` fails with "Presence mismatch: expected present, found absent"
+
+```js
+function g() { return new Date().toISOString(); }
+// Error: Presence mismatch: expected present, found absent   (at `new Date()`)
+```
+Any `new Date(...)` (with or without arguments, whatever method follows)
+fails; checked from an importer, the error surfaces at an unrelated line
+(`ui.flush()` at the end of `main.js`, see 4 and 8). `Date.now()` is fine.
+Workaround: construct dates in the platform layer (`nowIso`, `fmtDate` in
+`web/lib/platform.js`).
+
+## 15. ⚠️ An unknown type in a function annotation is reported as the parameter name
+
+`/** function errText(e: Error) => String */` reports `unknown type 'e'`
+(the real problem: `Error` is not a nameable type). Like 5, the message should
+name the type. Workaround: a type parameter, `function errText<E>(e: E) => String`.

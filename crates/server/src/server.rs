@@ -675,6 +675,9 @@ async fn get_peaks(State(app): State<Shared>, Query(q): Query<PeaksQuery>) -> Re
     let Some(path) = app.folder().resolve(&q.path) else {
         return (StatusCode::BAD_REQUEST, "invalid path").into_response();
     };
+    if !path.is_file() {
+        return (StatusCode::NOT_FOUND, format!("{} does not exist", q.path)).into_response();
+    }
     let n = q.n.unwrap_or(1024);
     let res = tokio::task::spawn_blocking(move || crate::decode::decode_file(&path).map(|d| (d.duration(), d.sample_rate, crate::decode::peaks(&d, n)))).await;
     match res {
