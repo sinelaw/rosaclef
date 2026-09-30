@@ -1,14 +1,21 @@
 /* The Voice dock: voice to notes (voice.js). */
 
 /* The panel adapts to the room the dock gives it (a container query, not
-   the window: the side panels decide the dock's width):
+   the window: the side panels and the on-screen piano decide the dock's
+   size):
    - wide: record | settings | preview, side by side;
-   - medium: record and settings share a scrolling column beside the preview;
-   - narrow (a phone): one scrolling column, preview right after recording. */
+   - medium: record and settings share a column beside the preview;
+   - narrow (a phone): one column, preview right after recording;
+   - short (a phone on its side): record beside the preview, settings below.
+   The panel itself scrolls whenever its content is taller than the dock
+   (a container query styles only what is inside the container). */
 .voice {
   height: 100%;
   min-height: 0;
-  container-type: inline-size;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  container-type: size;
   container-name: voice;
 }
 .voice-grid {
@@ -78,6 +85,11 @@
 }
 .voice-side > .btn {
   align-self: flex-start;
+}
+.voice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 /* ---------------------------------------------------------------- settings */
@@ -247,10 +259,6 @@
 }
 
 @container voice (max-width: 560px) {
-  .voice {
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
   .voice-grid {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto auto;
@@ -286,5 +294,31 @@
   .voice-foot .btn.gold,
   .voice-foot > .btn {
     flex: 1 1 100%;
+  }
+}
+
+@container voice (max-height: 430px) and (min-width: 561px) {
+  .voice-grid {
+    grid-template-columns: 250px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "side main"
+      "set set";
+    height: auto;
+  }
+  .voice-side,
+  .voice-settings {
+    overflow: visible;
+  }
+  .voice-settings {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    border-right: none;
+    border-top: 1px solid var(--line);
+  }
+  .voice-view {
+    flex: none;
+    height: 200px;
   }
 }

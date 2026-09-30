@@ -14,7 +14,7 @@ import { toastView } from "./toast.js";
 import { automationMenu } from "./lanes.js";
 import { projectsOverlay } from "./projects.js";
 import { glyph } from "./widgets.js";
-import { keyboard, keyboardStrip } from "./keyboard.js";
+import { keyboard, keyboardStrip, keysHelp } from "./keyboard.js";
 import {
   layoutState,
   sideMode,
@@ -85,8 +85,9 @@ export function studio(b) {
   const sizes = sideSizes(window.innerWidth);
   // A phone shows one view at a time; its panels are never folded.
   const compact = isCompact(window.innerWidth, window.innerHeight);
-  // On a phone the keys show under the editors, not over the browser or the terminal.
-  const keys = keyboard.shown && (!compact || layoutState.view === "playlist" || layoutState.view === "dock");
+  // On a phone the keys show under the editors that use them: not over the
+  // browser or the terminal, nor under the mixer or the Voice panel.
+  const keys = keyboard.shown && (!compact || layoutState.view === "playlist" || (layoutState.view === "dock" && keysHelp(state.dock)));
   const base = compact ? `studio compact v-${layoutState.view}` : "studio";
   const cls = keys ? `${base} has-keys` : base;
   b.open("div", "studio", layoutState.dragging ? `${cls} dragging` : cls);
