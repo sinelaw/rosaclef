@@ -604,41 +604,6 @@
   ],
   "patterns": [
     {
-      "id": "impact",
-      "name": "Impact",
-      "color": "#e8d5b0",
-      "length": 8,
-      "notes": [{ "channel": "impact", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
-    },
-    {
-      "id": "subdrop",
-      "name": "Sub Drop",
-      "color": "#5a4e5e",
-      "length": 4,
-      "notes": [{ "channel": "subdrop", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
-    },
-    {
-      "id": "fall",
-      "name": "Downlifter",
-      "color": "#e8d5b0",
-      "length": 4,
-      "notes": [{ "channel": "fall", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
-    },
-    {
-      "id": "riser",
-      "name": "Riser",
-      "color": "#e8d5b0",
-      "length": 8,
-      "notes": [{ "channel": "riser", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
-    },
-    {
-      "id": "ascent",
-      "name": "Long Ascent",
-      "color": "#e8d5b0",
-      "length": 16,
-      "notes": [{ "channel": "ascent", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
-    },
-    {
       "id": "harp-prologue",
       "name": "Harp · Prologue",
       "color": "#4a6fa5",
@@ -4804,6 +4769,41 @@
       "color": "#d9d4e8",
       "length": 20,
       "notes": [{ "channel": "stardust", "pitch": 77, "start": 0, "length": 20, "velocity": 0.5 }]
+    },
+    {
+      "id": "impact",
+      "name": "Impact",
+      "color": "#e8d5b0",
+      "length": 8,
+      "notes": [{ "channel": "impact", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
+    },
+    {
+      "id": "subdrop",
+      "name": "Sub Drop",
+      "color": "#5a4e5e",
+      "length": 4,
+      "notes": [{ "channel": "subdrop", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
+    },
+    {
+      "id": "fall",
+      "name": "Downlifter",
+      "color": "#e8d5b0",
+      "length": 4,
+      "notes": [{ "channel": "fall", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
+    },
+    {
+      "id": "riser",
+      "name": "Riser",
+      "color": "#e8d5b0",
+      "length": 8,
+      "notes": [{ "channel": "riser", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
+    },
+    {
+      "id": "ascent",
+      "name": "Long Ascent",
+      "color": "#e8d5b0",
+      "length": 16,
+      "notes": [{ "channel": "ascent", "pitch": 60, "start": 0, "length": 0.5, "velocity": 0.85 }]
     }
   ],
   "playlist": {

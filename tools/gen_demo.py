@@ -473,6 +473,7 @@ def ramp(style, bars, e0, e1, fills=None):
 
 # ------------------------------------------------------------------ one-shot FX (reused clips)
 
+ONE_SHOTS = {"impact", "subdrop", "fall", "riser", "ascent"}
 for pid, name, ch, length in [("impact", "Impact", "impact", 8), ("subdrop", "Sub Drop", "subdrop", 4),
                               ("fall", "Downlifter", "fall", 4), ("riser", "Riser", "riser", 8),
                               ("ascent", "Long Ascent", "ascent", 16)]:
@@ -725,7 +726,7 @@ project = {
     "patterns": [
         {"id": pid, "name": patterns[pid]["name"], "color": patterns[pid]["color"], "length": patterns[pid]["length"],
          "notes": sorted(patterns[pid]["notes"], key=lambda n: (n["start"], n["channel"], n["pitch"]))}
-        for pid in order
+        for pid in sorted(order, key=lambda i: i in ONE_SHOTS)  # one-shot FX last
     ],
     "playlist": {
         "tracks": [{"name": t, "mute": False} for t in TRACKS],
