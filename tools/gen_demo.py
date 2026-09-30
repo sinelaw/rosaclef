@@ -16,7 +16,10 @@ A four-minute journey in F minor at 92 BPM, told by one harp theme:
                           and a quiet F minor to close
 
 Drums are written per bar (not looped) with a drummer's ghost notes, dynamic
-hats and phrase-end fills; timing is humanized with a seeded RNG.
+hats and phrase-end fills; timing is humanized with a seeded RNG. A little
+automation breathes with the story: the tempo sags in the Fall and slows to
+a ritardando over the last four bars, and the Textures bus low-pass opens
+over the Prologue's breath and again, slowly, out of the Fall's ruin.
 
 Usage:
     cargo build --release -p rosaclef
@@ -677,6 +680,37 @@ MIXER = [
     ]),
 ]
 
+# ------------------------------------------------------------------ automation
+
+
+def lane(lid, name, target, color, *points):
+    """An automation lane; points are (beat, value) or (beat, value, curve)."""
+    pts = []
+    for pt in points:
+        d = {"beat": pt[0], "value": pt[1]}
+        if len(pt) > 2 and pt[2]:
+            d["curve"] = pt[2]
+        pts.append(d)
+    return {"id": lid, "name": name, "target": target, "color": color, "points": pts}
+
+
+SONG_END = at("epilogue") + SEC["epilogue"][1]
+TEXTURES_FILTER = "insert/7/effect/0/cutoff"
+assert MIXER[7]["name"] == "Textures" and MIXER[7]["effects"][0]["type"] == "filter"
+
+AUTOMATION = [
+    # A slight sag after the impact of the Fall (recovering for the Struggle),
+    # and a ritardando over the last four bars: 92 -> 84 BPM, slowing most at the end.
+    lane("tempo", "Tempo", "tempo", GOLD,
+         (0, BPM), (at("fall"), BPM), (at("fall", 4), BPM - 3, -0.4), (at("struggle"), BPM, 0.3),
+         (SONG_END - 16, BPM), (SONG_END, 84, 0.3)),
+    # The Prologue's breath opens up; the Fall's embers start dark and slowly
+    # let the light back in. (Nothing else plays on the Textures bus meanwhile.)
+    lane("textures-filter", "Textures · Low-pass", TEXTURES_FILTER, EMBER,
+         (0, 2000), (at("prologue", 7), 7000, 0.4), (at("fall") - 4, 7000), (at("fall"), 1500),
+         (at("fall", 12), 7000, 0.45)),
+]
+
 project = {
     "$schema": "./project.schema.json",
     "format": "rosaclef/1",
@@ -699,6 +733,7 @@ project = {
                   for (p, tr, s, l) in sorted(clips, key=lambda c: (c[2], c[1]))],
     },
     "mixer": {"inserts": MIXER},
+    "automation": AUTOMATION,
 }
 json.dump(project, sys.stdout, indent=2, ensure_ascii=False)
 print()

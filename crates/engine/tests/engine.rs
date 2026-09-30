@@ -1,5 +1,6 @@
 //! Engine behaviour tests (offline rendering, no audio device needed).
 
+use rosaclef_core::automation::TempoMap;
 use rosaclef_core::{validate, Channel, Clip, Device, InsertIx, Note, Project, TrackIx};
 use rosaclef_engine::render::{render, render_note, RenderScope};
 use rosaclef_engine::Engine;
@@ -43,7 +44,10 @@ fn demo_song_renders_with_healthy_levels() {
     e.set_project(demo());
     let project = demo();
     let end = project.playlist.clips.iter().map(|c| c.start + c.length).fold(0.0, f64::max);
-    let song_seconds = end * 60.0 / project.transport.bpm;
+    // The demo automates its tempo (a sag in the Fall, a closing ritardando),
+    // so the song's length in seconds follows the tempo map, not the project BPM.
+    let song_seconds = TempoMap::new(&project).seconds_at(end);
+    assert!(song_seconds > end * 60.0 / project.transport.bpm, "the demo's tempo automation slows it down");
     let a = render(&mut e, &RenderScope::Song);
     assert!(a.duration() > song_seconds && a.duration() < song_seconds + 9.0, "duration {}", a.duration());
     assert!(a.peak() > 0.3 && a.peak() <= 1.0, "peak {}", a.peak());

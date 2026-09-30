@@ -5209,16 +5209,30 @@
   },
   "automation": [
     {
-      "id": "pad-cutoff",
-      "name": "Silk Pad · Cutoff",
-      "target": "channel/pad/cutoff",
-      "color": "#8a6bb0",
+      "id": "tempo",
+      "name": "Tempo",
+      "target": "tempo",
+      "color": "#d4af37",
       "points": [
-        { "beat": 0, "value": 420 },
-        { "beat": 32, "value": 1300, "curve": 0.35 },
-        { "beat": 96, "value": 1300 },
-        { "beat": 112, "value": 2600, "curve": 0.3 },
-        { "beat": 128, "value": 900, "curve": -0.4 }
+        { "beat": 0, "value": 92 },
+        { "beat": 192, "value": 92 },
+        { "beat": 208, "value": 89, "curve": -0.4 },
+        { "beat": 224, "value": 92, "curve": 0.3 },
+        { "beat": 352, "value": 92 },
+        { "beat": 368, "value": 84, "curve": 0.3 }
+      ]
+    },
+    {
+      "id": "textures-filter",
+      "name": "Textures · Low-pass",
+      "target": "insert/7/effect/0/cutoff",
+      "color": "#d98c5f",
+      "points": [
+        { "beat": 0, "value": 2000 },
+        { "beat": 28, "value": 7000, "curve": 0.4 },
+        { "beat": 188, "value": 7000 },
+        { "beat": 192, "value": 1500 },
+        { "beat": 240, "value": 7000, "curve": 0.45 }
       ]
     }
   ]
