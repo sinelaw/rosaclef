@@ -135,7 +135,8 @@ async function run(header, body) {
     const r = call(header, body);
     await persist(r.h.changes || [], r.tail);
     const need = r.h.need || [];
-    if (need.length === 0) {
+    const fonts = r.h.needFonts || [];
+    if (need.length === 0 && fonts.length === 0) {
       deliver(r.h.out || []);
       return r;
     }
@@ -144,8 +145,17 @@ async function run(header, body) {
       if (data === undefined) throw new Error(`a file's content is missing from the browser's storage (blob ${id})`);
       call({ op: "provide", blob: id }, data);
     }
+    // Soundfont files come from the site itself (web/soundfonts).
+    const loaded = await Promise.all(fonts.map((name) => fetchFont(name)));
+    fonts.forEach((name, i) => call({ op: "font", name }, loaded[i]));
   }
   throw new Error("file contents did not load");
+}
+
+async function fetchFont(name) {
+  const res = await fetch(new URL(`../soundfonts/${name}`, self.location.href));
+  if (!res.ok) throw new Error(`could not load the soundfont file ${name} (${res.status})`);
+  return new Uint8Array(await res.arrayBuffer());
 }
 
 async function boot() {

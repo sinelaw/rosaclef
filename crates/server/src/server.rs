@@ -18,6 +18,7 @@ use rosaclef_core::{format, Project};
 use rosaclef_engine::render::RenderScope;
 use rosaclef_engine::Engine;
 use rosaclef_fs::Fs;
+use rosaclef_studio::fonts::{DirFonts, Fonts};
 use rosaclef_studio::library::{unique_sample_path, Library};
 use rosaclef_studio::render::{levels_db, render_project};
 use serde::Deserialize;
@@ -36,6 +37,26 @@ pub struct Config {
     pub host: String,
     pub port: u16,
     pub web: PathBuf,
+}
+
+static FONTS: std::sync::OnceLock<Arc<Fonts>> = std::sync::OnceLock::new();
+
+/// Read soundfonts from `web/soundfonts`.
+pub fn init_fonts(web: &std::path::Path) {
+    let _ = FONTS.set(Arc::new(Fonts::new(Arc::new(DirFonts(
+        web.join("soundfonts"),
+    )))));
+}
+
+/// The soundfonts `soundfont` instruments play (loaded presets are cached).
+pub fn fonts() -> Arc<Fonts> {
+    FONTS
+        .get_or_init(|| {
+            Arc::new(Fonts::new(Arc::new(DirFonts(
+                crate::default_web_dir().join("soundfonts"),
+            ))))
+        })
+        .clone()
 }
 
 /// Give an engine access to native plugins.
@@ -851,6 +872,7 @@ async fn render(
             project,
             &scope,
             req.sample_rate.unwrap_or(48000) as f32,
+            &fonts(),
             install_plugin_host,
         );
         folder::write_atomic(

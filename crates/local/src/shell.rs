@@ -11,7 +11,7 @@
 use crate::host::Host;
 use anyhow::{anyhow, bail, Result};
 use rosaclef_core::{validate, Device};
-use rosaclef_engine::render::{encode_wav, render_note};
+use rosaclef_engine::render::{encode_wav, render_note_with};
 use rosaclef_studio::library;
 use rosaclef_studio::render::levels_db;
 use serde_json::{json, Value};
@@ -567,12 +567,20 @@ impl Host {
                     .ok_or_else(|| anyhow!("--out samples/NAME.wav is required"))?
                     .to_string();
                 let seconds: f32 = a.num("seconds", 2.0)?;
-                let audio = render_note(
+                if device.kind == "soundfont" {
+                    let key = rosaclef_engine::instruments::SoundFontInst::preset_key(&device);
+                    self.fonts.ensure(&[key])?;
+                }
+                let fonts = self.fonts.clone();
+                let audio = render_note_with(
                     &device,
                     a.num::<u8>("pitch", 60)?.min(127),
                     a.num("velocity", 0.9)?,
                     seconds.clamp(0.05, 60.0),
                     a.num::<u32>("sample-rate", 48000)? as f32,
+                    |e| {
+                        fonts.provide(e);
+                    },
                 );
                 self.folder.write(&out, &encode_wav(&audio, 24))?;
                 let (peak, _) = levels_db(&audio);

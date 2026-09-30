@@ -4,11 +4,20 @@
 //! module without any JavaScript glue. Strings and buffers are passed through
 //! linear memory: the host calls `rc_alloc`, writes bytes, and passes
 //! pointer + length.
+//!
+//! The same module also serves the page's soundfont worker
+//! (`web/engine/fonts.js`, a second instance): `rc_font_*` parse soundfont
+//! indexes and decode presets there, off the audio thread; the worklet then
+//! receives each preset in small steps (`rc_preset_*`), so a large preset
+//! never holds up the audio.
 
 use rosaclef_core::validate;
-use rosaclef_engine::samples::SampleData;
+use rosaclef_engine::samples::{PresetKey, SampleData};
+use rosaclef_engine::soundfont::{LoadedPreset, PresetBuilder, SoundFont};
 use rosaclef_engine::{Engine, PlayMode};
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 const OUT_FRAMES: usize = 4096;
 
@@ -18,6 +27,8 @@ struct State {
     right: Vec<f32>,
     meters: Vec<f32>,
     result: Vec<u8>,
+    /// A preset being received.
+    building: Option<(PresetKey, PresetBuilder)>,
 }
 
 thread_local! {
@@ -61,6 +72,7 @@ pub extern "C" fn rc_init(sample_rate: f32) {
             right: vec![0.0; OUT_FRAMES],
             meters: vec![0.0; 1024],
             result: vec![],
+            building: None,
         })
     });
 }
@@ -80,14 +92,22 @@ pub unsafe extern "C" fn rc_set_project(ptr: *const u8, len: usize) -> i32 {
             return 1;
         }
         s.engine.set_project(checked.project.unwrap());
-        // Report which samples still need to be provided.
-        let missing: Vec<String> = s
+        // Report which samples and soundfont presets still need to be provided.
+        let samples: Vec<String> = s
             .engine
             .required_samples()
             .into_iter()
             .filter(|p| !s.engine.has_sample(p))
             .collect();
-        s.result = serde_json::to_vec(&missing).unwrap_or_default();
+        let presets: Vec<serde_json::Value> = s
+            .engine
+            .required_presets()
+            .into_iter()
+            .filter(|k| !s.engine.has_preset(k))
+            .map(|k| serde_json::json!({"font": k.font, "bank": k.bank, "program": k.program}))
+            .collect();
+        s.result = serde_json::to_vec(&serde_json::json!({"samples": samples, "presets": presets}))
+            .unwrap_or_default();
         0
     })
     .unwrap_or(2)
@@ -244,4 +264,260 @@ pub extern "C" fn rc_meters() -> usize {
 #[no_mangle]
 pub extern "C" fn rc_meters_ptr() -> *const f32 {
     with(|s| s.meters.as_ptr()).unwrap_or(std::ptr::null())
+}
+
+// ------------------------------------------------------------------ presets (worklet)
+
+/// Start receiving a soundfont preset: `ptr`/`len` hold its header
+/// ([`LoadedPreset::header`]). Returns 0, or 1 when the header is corrupt.
+///
+/// # Safety
+/// Pointers must describe readable memory of the given sizes.
+#[no_mangle]
+pub unsafe extern "C" fn rc_preset_begin(
+    font: *const u8,
+    font_len: usize,
+    bank: u32,
+    program: u32,
+    ptr: *const u8,
+    len: usize,
+) -> i32 {
+    let key = PresetKey {
+        font: text(font, font_len).to_string(),
+        bank: bank.min(u16::MAX as u32) as u16,
+        program: program.min(127) as u8,
+    };
+    let header = std::slice::from_raw_parts(ptr, len);
+    with(|s| match PresetBuilder::from_header(header) {
+        Ok((b, _)) => {
+            s.building = Some((key, b));
+            0
+        }
+        Err(_) => {
+            s.building = None;
+            1
+        }
+    })
+    .unwrap_or(2)
+}
+
+/// The buffer of sample `i` of the preset being received (16-bit frames,
+/// as many as its header says), or null.
+#[no_mangle]
+pub extern "C" fn rc_preset_sample(i: usize) -> *mut i16 {
+    with(|s| {
+        s.building
+            .as_mut()
+            .and_then(|(_, b)| b.sample_mut(i))
+            .map(|d| d.as_mut_ptr())
+            .unwrap_or(std::ptr::null_mut())
+    })
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Finish the preset being received and give it to the engine.
+#[no_mangle]
+pub extern "C" fn rc_preset_end() {
+    with(|s| {
+        if let Some((key, b)) = s.building.take() {
+            s.engine.set_preset(key, Arc::new(b.finish()));
+        }
+    });
+}
+
+// ------------------------------------------------------------------ soundfonts (font worker)
+
+#[derive(Default)]
+struct Fonts {
+    fonts: HashMap<String, SoundFont>,
+    pieces: HashMap<String, HashMap<usize, Vec<u8>>>,
+    loaded: Option<LoadedPreset>,
+    result: Vec<u8>,
+}
+
+thread_local! {
+    static FONTS: RefCell<Fonts> = RefCell::new(Fonts::default());
+}
+
+/// Parse a soundfont index (`<font>/index.sf2`). Returns 0, or 1 (error in
+/// `rc_font_result_*`).
+///
+/// # Safety
+/// Pointers must describe readable memory of the given sizes.
+#[no_mangle]
+pub unsafe extern "C" fn rc_font_index(
+    font: *const u8,
+    font_len: usize,
+    ptr: *const u8,
+    len: usize,
+) -> i32 {
+    let name = text(font, font_len).to_string();
+    let bytes = std::slice::from_raw_parts(ptr, len);
+    FONTS.with(|f| {
+        let mut f = f.borrow_mut();
+        match SoundFont::parse(bytes) {
+            Ok(sf) => {
+                f.fonts.insert(name, sf);
+                0
+            }
+            Err(e) => {
+                f.result = e.into_bytes();
+                1
+            }
+        }
+    })
+}
+
+/// The pieces a preset needs that are not stored yet, as a JSON array in
+/// `rc_font_result_*`. Returns 0, or 1 when the index is not loaded.
+///
+/// # Safety
+/// Pointers must describe readable memory of the given sizes.
+#[no_mangle]
+pub unsafe extern "C" fn rc_font_pieces(
+    font: *const u8,
+    font_len: usize,
+    bank: u32,
+    program: u32,
+) -> i32 {
+    let name = text(font, font_len).to_string();
+    FONTS.with(|f| {
+        let mut f = f.borrow_mut();
+        let Some(sf) = f.fonts.get(&name) else {
+            return 1;
+        };
+        let want: Vec<usize> = match sf.find(bank as u16, program as u16) {
+            Some(p) if sf.is_split() => sf.pieces(p),
+            _ => vec![],
+        };
+        let have = f.pieces.get(&name);
+        let missing: Vec<usize> = want
+            .into_iter()
+            .filter(|k| !have.is_some_and(|h| h.contains_key(k)))
+            .collect();
+        f.result = serde_json::to_vec(&missing).unwrap_or_default();
+        0
+    })
+}
+
+/// Store piece `k` of a split soundfont.
+///
+/// # Safety
+/// Pointers must describe readable memory of the given sizes.
+#[no_mangle]
+pub unsafe extern "C" fn rc_font_piece(
+    font: *const u8,
+    font_len: usize,
+    k: usize,
+    ptr: *const u8,
+    len: usize,
+) {
+    let name = text(font, font_len).to_string();
+    let bytes = std::slice::from_raw_parts(ptr, len).to_vec();
+    FONTS.with(|f| {
+        f.borrow_mut()
+            .pieces
+            .entry(name)
+            .or_default()
+            .insert(k, bytes);
+    });
+}
+
+/// Decode a preset. Returns 0 with its header in `rc_font_result_*` and
+/// its samples in `rc_font_sample_*`, or 1 with an error message.
+///
+/// # Safety
+/// Pointers must describe readable memory of the given sizes.
+#[no_mangle]
+pub unsafe extern "C" fn rc_font_load(
+    font: *const u8,
+    font_len: usize,
+    bank: u32,
+    program: u32,
+) -> i32 {
+    let name = text(font, font_len).to_string();
+    FONTS.with(|f| {
+        let mut f = f.borrow_mut();
+        let f = &mut *f;
+        let result = match f.fonts.get(&name) {
+            None => Err(format!("soundfont {name} is not loaded")),
+            Some(sf) => match sf.find(bank as u16, program as u16) {
+                None => Err(format!("soundfont {name} has no presets")),
+                Some(p) => {
+                    let none = HashMap::new();
+                    let pieces = f.pieces.get(&name).unwrap_or(&none);
+                    sf.load(p, pieces, &mut HashMap::new())
+                }
+            },
+        };
+        match result {
+            Ok(p) => {
+                f.result = p.header();
+                f.loaded = Some(p);
+                0
+            }
+            Err(e) => {
+                f.result = e.into_bytes();
+                1
+            }
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn rc_font_result_ptr() -> *const u8 {
+    FONTS.with(|f| f.borrow().result.as_ptr())
+}
+
+#[no_mangle]
+pub extern "C" fn rc_font_result_len() -> usize {
+    FONTS.with(|f| f.borrow().result.len())
+}
+
+/// Number of samples of the decoded preset.
+#[no_mangle]
+pub extern "C" fn rc_font_sample_count() -> usize {
+    FONTS.with(|f| {
+        f.borrow()
+            .loaded
+            .as_ref()
+            .map(|p| p.samples.len())
+            .unwrap_or(0)
+    })
+}
+
+/// The data of sample `i` of the decoded preset (16-bit frames).
+#[no_mangle]
+pub extern "C" fn rc_font_sample_ptr(i: usize) -> *const i16 {
+    FONTS.with(|f| {
+        f.borrow()
+            .loaded
+            .as_ref()
+            .and_then(|p| p.samples.get(i))
+            .map(|s| s.data.as_ptr())
+            .unwrap_or(std::ptr::null())
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn rc_font_sample_len(i: usize) -> usize {
+    FONTS.with(|f| {
+        f.borrow()
+            .loaded
+            .as_ref()
+            .and_then(|p| p.samples.get(i))
+            .map(|s| s.data.len())
+            .unwrap_or(0)
+    })
+}
+
+/// Forget the decoded preset and the stored pieces (the indexes stay).
+#[no_mangle]
+pub extern "C" fn rc_font_clear() {
+    FONTS.with(|f| {
+        let mut f = f.borrow_mut();
+        f.loaded = None;
+        f.pieces.clear();
+        f.result = vec![];
+    });
 }

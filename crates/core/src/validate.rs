@@ -161,6 +161,40 @@ pub fn validate(p: &Project) -> Vec<Issue> {
         v.err("transport.beatsPerBar", "must be between 1 and 32");
     }
     v.range("transport.swing", p.transport.swing, 0.0, 1.0);
+    let mut prev_bar = 0u32;
+    for (i, m) in p.transport.meters.iter().enumerate() {
+        let path = format!("transport.meters[{i}]");
+        if m.bar == 0 {
+            v.err(format!("{path}.bar"), "bars are counted from 1");
+        } else if m.bar <= prev_bar {
+            v.err(
+                format!("{path}.bar"),
+                format!(
+                    "meters must be sorted by bar, one per bar ({} comes after {prev_bar})",
+                    m.bar
+                ),
+            );
+        } else {
+            prev_bar = m.bar;
+        }
+        if m.numerator == 0 || m.numerator > 64 {
+            v.err(format!("{path}.numerator"), "must be between 1 and 64");
+        }
+        if !m.denominator.is_power_of_two() || m.denominator > 32 {
+            v.err(
+                format!("{path}.denominator"),
+                "must be 1, 2, 4, 8, 16 or 32",
+            );
+        } else if m.bar_beats() > 32.0 {
+            v.err(path, "a bar can be at most 32 beats long");
+        }
+    }
+    if p.transport.meters.len() > 4096 {
+        v.err(
+            "transport.meters",
+            "at most 4096 meter changes are supported",
+        );
+    }
 
     // Mixer.
     if p.mixer.inserts.is_empty() {

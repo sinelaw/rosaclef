@@ -20,6 +20,7 @@ struct Worker {
     /// Messages sent to pages.
     inbox: Vec<Value>,
     loads: usize,
+    font_fetches: usize,
 }
 
 fn split(reply: &[u8]) -> (Value, Vec<u8>) {
@@ -38,6 +39,7 @@ impl Worker {
             now: 1_790_000_000_000.0,
             inbox: vec![],
             loads: 0,
+            font_fetches: 0,
         };
         let entries: Vec<Value> = w.store.entries.values().cloned().collect();
         let (h, _) = w.raw(json!({"op": "boot", "entries": entries}), b"");
@@ -101,7 +103,7 @@ impl Worker {
 
     /// A call, loading what it needs and retrying, like the worker.
     fn call(&mut self, h: Value, body: &[u8]) -> (Value, Vec<u8>) {
-        for _ in 0..4 {
+        for _ in 0..6 {
             let (r, b) = self.raw(h.clone(), body);
             let need: Vec<u64> = r["need"]
                 .as_array()
@@ -109,14 +111,29 @@ impl Worker {
                 .iter()
                 .map(|b| b.as_u64().unwrap())
                 .collect();
-            if need.is_empty() {
+            let fonts: Vec<String> = r["needFonts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|n| n.as_str().unwrap().to_string())
+                .collect();
+            if need.is_empty() && fonts.is_empty() {
                 return (r, b);
             }
             for blob in need {
                 self.provide(blob);
             }
+            // The worker fetches soundfont files from the site (web/soundfonts).
+            for name in fonts {
+                let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../web/soundfonts")
+                    .join(&name);
+                let data = std::fs::read(&path).expect("soundfont file");
+                self.font_fetches += 1;
+                self.raw(json!({"op": "font", "name": name}), &data);
+            }
         }
-        panic!("still needs content after 4 tries");
+        panic!("still needs content after 6 tries");
     }
 
     fn req(&mut self, method: &str, url: &str, body: &[u8]) -> (u64, Vec<u8>, Value) {
@@ -443,4 +460,36 @@ fn shell() {
         .as_str()
         .unwrap()
         .contains("native studio"));
+}
+
+#[test]
+fn renders_soundfont_instruments_with_files_from_the_site() {
+    let mut w = Worker::boot(Store::default());
+    w.json("POST", "/api/projects", json!({"name": "Bass"}));
+    w.json("POST", "/api/projects/open", json!({"name": "Bass"}));
+    let mut p: Value = serde_json::from_slice(&w.req("GET", "/api/project", b"").1).unwrap();
+    p["channels"] = json!([{"id": "bass", "name": "Bass", "instrument": {"type": "soundfont", "options": {"program": "Acoustic Bass"}}}]);
+    p["patterns"] = json!([{"id": "a", "name": "A", "length": 2, "notes": [{"channel": "bass", "pitch": 40, "start": 0, "length": 1}]}]);
+    p["playlist"] = json!({"tracks": [{"name": "Bass"}], "clips": [{"pattern": "a", "track": 0, "start": 0, "length": 2}]});
+    let (status, body, _) = w.req("PUT", "/api/project", p.to_string().as_bytes());
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+
+    let r = w.json("POST", "/api/render", json!({"bits": 16, "pattern": ""}));
+    assert_eq!(r["warnings"], json!([]), "{r}");
+    assert!(
+        r["peakDb"].as_f64().unwrap() > -30.0,
+        "the bass sounds: {r}"
+    );
+    // The index and the pieces holding the bass, not the whole soundfont.
+    assert!((2..6).contains(&w.font_fetches), "{} files", w.font_fetches);
+
+    // The shell's note command plays soundfont instruments too.
+    w.call(json!({"op": "term_open", "client": 1}), b"");
+    w.call(json!({"op": "term", "client": 1, "text": json!({"t": "start", "agent": "shell"}).to_string()}), b"");
+    w.messages("term");
+    let out = term(
+        &mut w,
+        "note --channel bass --pitch 40 --seconds 0.5 --out samples/b.wav\r",
+    );
+    assert!(out.contains("wrote samples/b.wav"), "{out}");
 }

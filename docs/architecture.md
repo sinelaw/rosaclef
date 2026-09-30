@@ -51,10 +51,20 @@
 - **Browser**: `web/engine/worklet.js` instantiates `rosaclef.wasm` inside an
   `AudioWorkletProcessor`; the project JSON is posted to it on change; samples
   are decoded with `decodeAudioData` and passed as float arrays; microphone
-  input is captured in the worklet for recording.
+  input is captured in the worklet for recording. Soundfont presets
+  (`soundfont` instruments) are fetched and decoded by a worker
+  (`web/engine/fonts.js`, a second instance of the same module) and streamed
+  to the worklet in acknowledged 512 kB chunks, so neither the page nor the
+  audio thread does the heavy work.
 - **Native**: the server runs the same engine in a cpal output callback
   (`crates/server/src/device.rs`), records from the default input, and renders
   mixdowns offline (`/api/render`, `rosaclef render`). CLAP plugins load here.
+  Soundfont presets load on a background thread (`crates/studio/src/fonts.rs`).
+- **Soundfonts**: `crates/engine/src/soundfont.rs` reads SF2/SF3 files
+  (generators, modulators, Ogg Vorbis samples) and resolves presets;
+  `instruments/soundfont.rs` plays them (the SoundFont 2 voice model). The
+  built-in General MIDI soundfont is split into an index and 1 MB pieces
+  (`tools/split_soundfont.py`), so a song fetches only what it plays.
 
 ### Automation
 

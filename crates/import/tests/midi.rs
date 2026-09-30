@@ -60,6 +60,14 @@ fn smf(format: u16, ppq: u16, tracks: Vec<Vec<u8>>) -> Vec<u8> {
     out
 }
 
+/// The synthesized instruments instead of the General MIDI soundfont.
+fn synth(title: &str) -> Options {
+    Options {
+        soundfont: false,
+        ..Options::new(title)
+    }
+}
+
 fn check_valid(im: &Imported) {
     let issues = validate::validate(&im.project);
     assert!(
@@ -111,7 +119,7 @@ fn format0() -> Vec<u8> {
 
 #[test]
 fn imports_format0() {
-    let im = midi::import(&format0(), &Options::new("Groove")).unwrap();
+    let im = midi::import(&format0(), &synth("Groove")).unwrap();
     check_valid(&im);
     let p = &im.project;
     assert_eq!(p.transport.bpm, 100.0);
@@ -218,7 +226,7 @@ fn format1() -> Vec<u8> {
 
 #[test]
 fn imports_format1_with_dedupe() {
-    let im = midi::import(&format1(), &Options::new("song-file")).unwrap();
+    let im = midi::import(&format1(), &synth("song-file")).unwrap();
     assert_eq!(
         im.project.meta.title, "My Song",
         "the conductor track names the song"
@@ -226,7 +234,20 @@ fn imports_format1_with_dedupe() {
     check_valid(&im);
     let p = &im.project;
     assert_eq!(p.transport.bpm, 120.0);
-    assert!(warned(&im, "tempo change"), "{:?}", im.warnings);
+    let tempo: Vec<(f64, f64)> = p
+        .automation
+        .iter()
+        .find(|l| l.target == "tempo")
+        .expect("a tempo lane")
+        .points
+        .iter()
+        .map(|pt| (pt.beat, pt.value))
+        .collect();
+    assert_eq!(
+        tempo,
+        [(0.0, 120.0), (16.0, 120.0), (16.0, 140.0)],
+        "the tempo steps up at bar 5"
+    );
     let names: Vec<&str> = p.channels.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(names, ["Piano", "Kick", "Toms"]);
 
@@ -284,7 +305,7 @@ fn imports_format1_with_dedupe() {
 
 #[test]
 fn merges_into_an_existing_project() {
-    let im = midi::import(&format0(), &Options::new("Groove")).unwrap();
+    let im = midi::import(&format0(), &synth("Groove")).unwrap();
     let mut base = rosaclef_core::Project::empty("Song");
     base.channels.push(rosaclef_core::Channel {
         id: "kick".into(),
@@ -331,4 +352,181 @@ fn rejects_garbage_and_reports_truncation() {
     let im = midi::import(&bytes, &Options::new("x")).unwrap();
     check_valid(&im);
     assert!(warned(&im, "truncated"), "{:?}", im.warnings);
+}
+
+/// Meters 3/4 → 6/8 (bar 3) → 7/8 (bar 5) → 4/4 written in the middle of
+/// bar 5; tempo 100 → 150 at bar 3; a piano played with the sustain pedal
+/// that switches to violin (program 40) at bar 5, a volume change and a
+/// pitch bend. 96 PPQ.
+fn changes() -> Vec<u8> {
+    let q = 96u32;
+    let conductor = Trk::new()
+        .tempo(0, 100.0)
+        .meta(0, 0x58, &[3, 2, 24, 8])
+        .tempo(6 * q, 150.0)
+        .meta(0, 0x58, &[6, 3, 24, 8])
+        .meta(6 * q, 0x58, &[7, 3, 24, 8])
+        .meta(2 * q, 0x58, &[4, 2, 24, 8])
+        .end();
+    let keys = Trk::new()
+        .name("Keys")
+        .ev(0, &[0xC0, 0])
+        .ev(0, &[0xB0, 7, 100])
+        .ev(0, &[0xB0, 64, 127]) // pedal down
+        .ev(0, &[0x90, 60, 100])
+        .ev(q / 2, &[0x80, 60, 0])
+        .ev(q / 2, &[0x90, 64, 100])
+        .ev(0, &[0xE0, 0, 0x50]) // a bend
+        .ev(q / 2, &[0x80, 64, 0])
+        .ev(q / 2, &[0xB0, 7, 50]) // beat 2: quieter
+        .ev(q, &[0xB0, 64, 0]) // beat 3: pedal up, 60 and 64 end
+        .ev(q / 2, &[0xB0, 64, 127]) // 3.5: pedal down
+        .ev(q / 2, &[0x90, 67, 100]) // 4
+        .ev(q / 2, &[0x80, 67, 0])
+        .ev(q / 2, &[0x90, 67, 90]) // 5: struck again, the first 67 ends
+        .ev(q / 4, &[0x80, 67, 0])
+        .ev(3 * q / 4, &[0xB0, 64, 0]) // 6: pedal up
+        .ev(6 * q, &[0xC0, 40]) // 12: violin
+        .ev(0, &[0x90, 72, 80])
+        .ev(q, &[0x80, 72, 0])
+        .end();
+    smf(1, q as u16, vec![conductor, keys])
+}
+
+#[test]
+fn imports_meter_tempo_pedal_and_program_changes() {
+    let im = midi::import(&changes(), &Options::new("changes")).unwrap();
+    check_valid(&im);
+    let p = &im.project;
+
+    // Meters: 3/4 from the start, then changes on bars.
+    assert_eq!(p.transport.beats_per_bar, 3);
+    let meters: Vec<(u32, u32, u32)> = p
+        .transport
+        .meters
+        .iter()
+        .map(|m| (m.bar, m.numerator, m.denominator))
+        .collect();
+    assert_eq!(meters, [(3, 6, 8), (5, 7, 8), (6, 4, 4)]);
+    assert!(warned(&im, "fell inside a bar"), "{:?}", im.warnings);
+    assert_eq!(p.transport.bar_start(4), 12.0);
+    assert_eq!(p.transport.bar_start(5), 15.5, "a 7/8 bar is 3.5 beats");
+
+    // Tempo steps from 100 to 150 at beat 6.
+    assert_eq!(p.transport.bpm, 100.0);
+    let tempo: Vec<(f64, f64)> = p.automation[0]
+        .points
+        .iter()
+        .map(|pt| (pt.beat, pt.value))
+        .collect();
+    assert_eq!(p.automation[0].target, "tempo");
+    assert_eq!(tempo, [(0.0, 100.0), (6.0, 100.0), (6.0, 150.0)]);
+
+    // Program change: one channel per program.
+    let names: Vec<&str> = p.channels.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["Keys · Acoustic Grand Piano", "Keys · Violin"]);
+    assert_eq!(p.channels[1].instrument.kind, "soundfont");
+    assert_eq!(p.channels[1].instrument.option("program"), "Violin");
+
+    // The pedal holds notes until it lifts or the key is struck again.
+    let piano = &p.channels[0];
+    let mut notes: Vec<(i32, f64, f64)> = p
+        .patterns
+        .iter()
+        .flat_map(|x| &x.notes)
+        .filter(|n| n.channel == piano.id)
+        .map(|n| (n.pitch, n.start, n.length))
+        .collect();
+    notes.sort_by(|a, b| a.1.total_cmp(&b.1));
+    assert_eq!(
+        notes,
+        [
+            (60, 0.0, 3.0),
+            (64, 1.0, 2.0),
+            (67, 4.0, 1.0),
+            (67, 5.0, 1.0)
+        ]
+    );
+
+    // Patterns follow the bars: 3/4 + 6/8 blocks, then one 7/8 bar.
+    let clips: Vec<(f64, f64)> = p
+        .playlist
+        .clips
+        .iter()
+        .map(|c| (c.start, c.length))
+        .collect();
+    assert_eq!(clips, [(0.0, 6.0), (12.0, 3.5)]);
+    let strings = p
+        .patterns
+        .iter()
+        .find(|x| x.notes.iter().any(|n| n.channel == p.channels[1].id))
+        .unwrap();
+    assert_eq!(strings.length, 3.5);
+    assert_eq!(strings.notes[0].start, 0.0);
+
+    // Volume: 0.8 at the start, a step to 0.4 on beat 2.
+    assert_eq!(piano.volume, 0.8);
+    let vol = p
+        .automation
+        .iter()
+        .find(|l| l.target == format!("channel/{}/volume", piano.id))
+        .expect("a volume lane");
+    let pts: Vec<(f64, f64)> = vol.points.iter().map(|pt| (pt.beat, pt.value)).collect();
+    assert_eq!(pts, [(0.0, 0.8), (2.0, 0.8), (2.0, 0.4)]);
+    assert_eq!(p.automation.len(), 2, "the strings keep a constant volume");
+    assert!(warned(&im, "pitch bend on 1 channel"), "{:?}", im.warnings);
+}
+
+#[test]
+fn merging_keeps_channel_lanes_and_the_song_tempo() {
+    let im = midi::import(&changes(), &Options::new("changes")).unwrap();
+    let mut base = rosaclef_core::Project::empty("Song");
+    base.channels.push(rosaclef_core::Channel {
+        id: "keys-acoustic-grand-piano".into(),
+        name: "Keys".into(),
+        color: "#ffffff".into(),
+        instrument: rosaclef_core::Device::new("synth"),
+        volume: 0.8,
+        pan: 0.0,
+        mute: false,
+        mixer: rosaclef_core::InsertIx(1),
+    });
+    let warnings = rosaclef_import::merge_into(&mut base, im.project);
+    let issues = validate::validate(&base);
+    assert!(
+        issues
+            .iter()
+            .all(|i| i.severity != validate::Severity::Error),
+        "{issues:?}"
+    );
+    assert_eq!(base.transport.bpm, 120.0);
+    assert!(base.transport.meters.is_empty());
+    let targets: Vec<&str> = base.automation.iter().map(|l| l.target.as_str()).collect();
+    assert_eq!(targets, ["channel/keys-acoustic-grand-piano-2/volume"]);
+    assert!(warnings.iter().any(|w| w.contains("tempo changes")));
+    assert!(warnings.iter().any(|w| w.contains("time signature")));
+}
+
+#[test]
+fn plays_programs_and_drums_on_the_gm_soundfont_by_default() {
+    let im = midi::import(&format0(), &Options::new("Groove")).unwrap();
+    check_valid(&im);
+    let p = &im.project;
+    let names: Vec<&str> = p.channels.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["Groove", "Drums"]);
+    let bass = &p.channels[0];
+    assert_eq!(bass.instrument.kind, "soundfont");
+    assert_eq!(bass.instrument.option("program"), "Electric Bass (finger)");
+    let drums = &p.channels[1];
+    assert_eq!(drums.instrument.option("program"), "Standard Kit");
+    let mut keys: Vec<i32> = p
+        .patterns
+        .iter()
+        .flat_map(|x| &x.notes)
+        .filter(|n| n.channel == drums.id)
+        .map(|n| n.pitch)
+        .collect();
+    keys.sort();
+    assert_eq!(keys, [20, 36, 38, 42, 49], "drum keys stay as written");
+    assert!(!warned(&im, "drum map"), "{:?}", im.warnings);
 }

@@ -125,6 +125,19 @@ pub fn render_note(
     seconds: f32,
     sample_rate: f32,
 ) -> Audio {
+    render_note_with(device, pitch, velocity, seconds, sample_rate, |_| {})
+}
+
+/// [`render_note`], with `prepare` giving the engine what the device needs
+/// first (a soundfont preset).
+pub fn render_note_with(
+    device: &Device,
+    pitch: u8,
+    velocity: f32,
+    seconds: f32,
+    sample_rate: f32,
+    prepare: impl FnOnce(&mut Engine),
+) -> Audio {
     let mut project = Project::empty("note");
     project.channels.push(rosaclef_core::Channel {
         id: "x".into(),
@@ -139,6 +152,7 @@ pub fn render_note(
     project.mixer.inserts[0].effects.clear();
     let mut engine = Engine::new(sample_rate);
     engine.set_project(project);
+    prepare(&mut engine);
     engine.note_on("x", pitch, velocity);
     let frames = (seconds * sample_rate) as usize;
     let mut out = Audio {

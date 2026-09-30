@@ -121,11 +121,94 @@ pub struct Meta {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Transport {
     pub bpm: f64,
+    /// Beats (quarter notes) per bar, until the first entry of `meters`.
     #[serde(default = "default_beats_per_bar")]
     pub beats_per_bar: u32,
     /// 0 = straight, 1 = full triplet swing on 16th notes.
     #[serde(default)]
     pub swing: f64,
+    /// Time-signature changes, sorted by bar. Each one holds from its bar
+    /// until the next; bars before the first one have `beats_per_bar` beats.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub meters: Vec<Meter>,
+}
+
+/// A time-signature change. A bar lasts `4 × numerator / denominator` beats
+/// (6/8 → 3 beats, 7/8 → 3.5 beats).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Meter {
+    /// First bar in the new meter, counted from 1 as displayed.
+    pub bar: u32,
+    pub numerator: u32,
+    /// A power of two, 1..32.
+    pub denominator: u32,
+}
+
+impl Meter {
+    /// Length of one bar in beats.
+    pub fn bar_beats(&self) -> f64 {
+        4.0 * self.numerator as f64 / self.denominator.max(1) as f64
+    }
+}
+
+/// A run of bars in one meter (see [`Transport::meter_map`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeterSpan {
+    /// First bar of the run, counted from 0.
+    pub bar: u32,
+    /// Song time of that bar's downbeat, in beats.
+    pub beat: f64,
+    /// Length of each bar in beats.
+    pub bar_beats: f64,
+}
+
+impl Transport {
+    /// The bar grid: one span per meter, the first starting at bar 0, beat 0.
+    /// Changes that are out of order or not after the previous one are
+    /// skipped (validation reports them).
+    pub fn meter_map(&self) -> Vec<MeterSpan> {
+        let mut out = vec![MeterSpan {
+            bar: 0,
+            beat: 0.0,
+            bar_beats: self.beats_per_bar.max(1) as f64,
+        }];
+        for m in &self.meters {
+            let bar = m.bar.max(1) - 1;
+            let bar_beats = m.bar_beats();
+            if !(bar_beats > 0.0 && bar_beats.is_finite()) {
+                continue;
+            }
+            let last = *out.last().expect("non-empty");
+            if bar == 0 && out.len() == 1 {
+                out[0].bar_beats = bar_beats;
+            } else if bar > last.bar {
+                out.push(MeterSpan {
+                    bar,
+                    beat: last.beat + (bar - last.bar) as f64 * last.bar_beats,
+                    bar_beats,
+                });
+            }
+        }
+        out
+    }
+
+    /// The bar (counted from 0) containing `beat`, with its downbeat and length.
+    pub fn bar_at(&self, beat: f64) -> (u32, f64, f64) {
+        let map = self.meter_map();
+        let i = map.partition_point(|s| s.beat <= beat + 1e-9).max(1) - 1;
+        let s = map[i];
+        let k = ((beat - s.beat) / s.bar_beats + 1e-9).floor().max(0.0);
+        (s.bar + k as u32, s.beat + k * s.bar_beats, s.bar_beats)
+    }
+
+    /// Song time of the downbeat of `bar` (counted from 0).
+    pub fn bar_start(&self, bar: u32) -> f64 {
+        let map = self.meter_map();
+        let i = map.partition_point(|s| s.bar <= bar).max(1) - 1;
+        let s = map[i];
+        s.beat + (bar - s.bar) as f64 * s.bar_beats
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -311,6 +394,7 @@ impl Project {
                 bpm: 120.0,
                 beats_per_bar: 4,
                 swing: 0.0,
+                meters: vec![],
             },
             channels: vec![],
             patterns: vec![Pattern {

@@ -93,9 +93,35 @@ class RosaclefProcessor extends AudioWorkletProcessor {
       case "project": {
         const status = this.withStr(m.json, (p, l) => w.rc_set_project(p, l));
         const res = this.result();
-        this.port.postMessage(status === 0 ? { t: "loaded", missing: JSON.parse(res || "[]") } : { t: "loadError", message: res });
+        if (status === 0) {
+          const r = JSON.parse(res || "{}");
+          this.port.postMessage({ t: "loaded", missing: r.samples || [], presets: r.presets || [] });
+        } else {
+          this.port.postMessage({ t: "loadError", message: res });
+        }
         break;
       }
+      // A soundfont preset, decoded by the page's font worker, arrives in
+      // small steps (each acknowledged) so no single message holds up the audio.
+      case "presetBegin": {
+        const h = new Uint8Array(m.header);
+        const ptr = w.rc_alloc(h.length);
+        new Uint8Array(w.memory.buffer, ptr, h.length).set(h);
+        const ok = this.withStr(m.font, (p, l) => w.rc_preset_begin(p, l, m.bank, m.program, ptr, h.length));
+        w.rc_free(ptr, h.length);
+        this.port.postMessage({ t: "presetAck", ok: ok === 0 });
+        break;
+      }
+      case "presetData": {
+        const ptr = w.rc_preset_sample(m.index);
+        if (ptr) new Int16Array(w.memory.buffer, ptr + m.offset * 2, m.data.length).set(m.data);
+        this.port.postMessage({ t: "presetAck", ok: ptr !== 0 });
+        break;
+      }
+      case "presetEnd":
+        w.rc_preset_end();
+        this.port.postMessage({ t: "presetAck", ok: true });
+        break;
       case "sample": {
         const frames = m.channels[0].length;
         const n = m.channels.length;

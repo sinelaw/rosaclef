@@ -7,3 +7,4 @@ license.workspace = true
 
 [dependencies]
 rosaclef-core.workspace = true
+lewton = "0.10"

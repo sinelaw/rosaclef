@@ -112,7 +112,22 @@ pub fn schema() -> Value {
                 "properties": {
                     "bpm": num(20.0, 999.0, "Tempo in beats per minute."),
                     "beatsPerBar": {"type": "integer", "minimum": 1, "maximum": 32, "default": 4},
-                    "swing": num(0.0, 1.0, "16th-note swing: 0 straight, 1 full triplet feel.")
+                    "swing": num(0.0, 1.0, "16th-note swing: 0 straight, 1 full triplet feel."),
+                    "meters": {
+                        "type": "array",
+                        "description": "Time-signature changes, sorted by bar. Each holds from its bar until the next; bars before the first have beatsPerBar beats. A bar lasts 4 × numerator / denominator beats.",
+                        "maxItems": 4096,
+                        "items": {
+                            "type": "object",
+                            "required": ["bar", "numerator", "denominator"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "bar": {"type": "integer", "minimum": 1, "description": "First bar in the new meter, counted from 1."},
+                                "numerator": {"type": "integer", "minimum": 1, "maximum": 64},
+                                "denominator": {"enum": [1, 2, 4, 8, 16, 32]}
+                            }
+                        }
+                    }
                 }
             },
             "channels": {

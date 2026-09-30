@@ -18,13 +18,16 @@
 //! - `boot` `{entries: [{path, dir, blob, len, modified}]}` → `{wanted: [blob]}`:
 //!   rebuild the tree; the worker then provides the wanted blobs.
 //! - `provide` `{blob}` + content.
+//! - `font` `{name}` + content: a soundfont file (`gm/index.sf2`, ...).
 //! - `start` → open the last project (or create the demo on first use).
 //! - `request` `{client, method, url}` + body → an HTTP-like response.
 //! - `ws_open`, `ws` `{text}`, `term_open`, `term` `{text}`, `close`.
 //!
-//! Every reply: `{status, type, bodyLen, blob, need, out, changes}` + the
+//! Every reply: `{status, type, bodyLen, blob, need, needFonts, out, changes}` + the
 //! body, then the contents of new blobs:
 //! - `need`: blobs to load before calling again (nothing else happened);
+//! - `needFonts`: soundfont files to fetch (from `soundfonts/NAME` on the
+//!   site) and provide before calling again;
 //! - `blob`: the response body is this stored blob;
 //! - `out`: messages for pages, `{to, exclude, chan, text, raw}`;
 //! - `changes`: to persist, in order: `{op: "file", path, blob, len,
@@ -132,6 +135,10 @@ impl Backend {
                     self.mem.provide(b, body.to_vec());
                 }
             }
+            ("font", Some(host)) => {
+                let name = h.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                host.font_files.provide(name, body.to_vec());
+            }
             ("start", _) => match Host::start(self.mem.clone()) {
                 Ok(host) => self.host = Some(host),
                 Err(e) => {
@@ -169,7 +176,12 @@ impl Backend {
             .map(|h| std::mem::take(&mut h.out))
             .unwrap_or_default();
         let need = self.mem.take_missing();
-        if !need.is_empty() {
+        let need_fonts = self
+            .host
+            .as_ref()
+            .map(|h| h.font_files.take_missing())
+            .unwrap_or_default();
+        if !need.is_empty() || !need_fonts.is_empty() {
             // Retry once the contents are loaded: nothing of this call counts.
             out.clear();
             resp_body.clear();
@@ -186,6 +198,7 @@ impl Backend {
             }
         }
         reply["need"] = json!(need);
+        reply["needFonts"] = json!(need_fonts);
         reply["out"] = Value::Array(
             out.into_iter()
                 .map(|o| json!({"to": o.to, "exclude": o.exclude, "chan": o.chan, "text": o.text, "raw": o.raw}))

@@ -13,6 +13,7 @@ pub mod lmms;
 pub mod midi;
 
 use anyhow::{bail, Result};
+use rosaclef_core::automation::AutomationTarget;
 use rosaclef_core::catalog::{self, Category};
 use rosaclef_core::validate::{self, Severity};
 use rosaclef_core::{Device, InsertIx, Project, TrackIx};
@@ -277,6 +278,43 @@ pub fn merge_into(base: &mut Project, add: Project) -> Vec<String> {
         }
         c.track = TrackIx(track_map.get(&c.track.0).copied().unwrap_or(track_base));
         base.playlist.clips.push(c);
+    }
+
+    // Automation of the imported channels comes along; song-wide lanes
+    // (tempo, swing, inserts) and meters would change the open song.
+    if add.transport.meters != base.transport.meters
+        || add.transport.beats_per_bar != base.transport.beats_per_bar
+    {
+        warnings.add("the imported time signature was not applied; the project keeps its own");
+    }
+    let mut lane_ids = Ids::with(base.automation.iter().map(|l| l.id.clone()));
+    for mut lane in add.automation {
+        let target = match lane.target.parse::<AutomationTarget>() {
+            Ok(AutomationTarget::ChannelVolume(c)) => channel_map
+                .get(&c)
+                .map(|c| AutomationTarget::ChannelVolume(c.clone())),
+            Ok(AutomationTarget::ChannelPan(c)) => channel_map
+                .get(&c)
+                .map(|c| AutomationTarget::ChannelPan(c.clone())),
+            Ok(AutomationTarget::ChannelParam(c, k)) => channel_map
+                .get(&c)
+                .map(|c| AutomationTarget::ChannelParam(c.clone(), k)),
+            _ => None,
+        };
+        match target {
+            Some(t) => {
+                lane.id = lane_ids.keep(&lane.id);
+                lane.target = t.to_string();
+                base.automation.push(lane);
+            }
+            None if lane.target == "tempo" => warnings.add(
+                "the imported tempo changes were not applied; the project keeps its own tempo",
+            ),
+            None => warnings.add(format!(
+                "the imported \"{}\" automation lane was skipped",
+                lane.name
+            )),
+        }
     }
     warnings.finish()
 }

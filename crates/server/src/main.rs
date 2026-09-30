@@ -116,6 +116,10 @@ struct ImportArgs {
     /// Library folder to create the project in (default: the current folder).
     #[arg(long)]
     library: Option<PathBuf>,
+    /// MIDI: play the file with Rosaclef's synthesizers instead of the
+    /// sampled General MIDI instruments.
+    #[arg(long)]
+    synth: bool,
 }
 
 #[derive(clap::Args, Default)]
@@ -226,6 +230,7 @@ fn main() -> Result<()> {
                 project,
                 &scope,
                 sample_rate as f32,
+                &server::fonts(),
                 server::install_plugin_host,
             );
             for w in &warnings {
@@ -268,7 +273,19 @@ fn main() -> Result<()> {
                 }
                 _ => bail!("pass exactly one of --channel or --instrument"),
             };
-            let audio = render::render_note(&device, pitch, velocity, seconds, sample_rate as f32);
+            let fonts = server::fonts();
+            let audio = render::render_note_with(
+                &device,
+                pitch,
+                velocity,
+                seconds,
+                sample_rate as f32,
+                |e| {
+                    for w in fonts.provide(e) {
+                        eprintln!("warning: {w}");
+                    }
+                },
+            );
             if let Some(parent) = out.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -307,9 +324,16 @@ fn main() -> Result<()> {
             opts.source_dir = file.parent().map(|p| p.to_path_buf());
             rosaclef_import::lmms::import(bytes, &opts)
         }),
-        Command::ImportMidi(a) => import_cli(a, |bytes, name, _| {
-            rosaclef_import::midi::import(bytes, &rosaclef_import::midi::Options::new(name))
-        }),
+        Command::ImportMidi(a) => {
+            let soundfont = !a.synth;
+            import_cli(a, move |bytes, name, _| {
+                let opts = rosaclef_import::midi::Options {
+                    soundfont,
+                    ..rosaclef_import::midi::Options::new(name)
+                };
+                rosaclef_import::midi::import(bytes, &opts)
+            })
+        }
     }
 }
 
@@ -390,6 +414,7 @@ fn serve(a: ServeArgs) -> Result<()> {
     let folder = Folder::on_disk(&dir);
     guide::write(&folder, &exe())?;
     let web = a.web.unwrap_or_else(default_web_dir);
+    server::init_fonts(&web);
     let library = match a.library {
         Some(l) => {
             std::fs::create_dir_all(&l)

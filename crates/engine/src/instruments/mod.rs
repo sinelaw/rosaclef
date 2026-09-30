@@ -9,6 +9,7 @@ mod nebula;
 mod prisme;
 mod sampler;
 mod sextant;
+mod soundfont;
 mod synth;
 mod tessera;
 
@@ -21,6 +22,7 @@ pub use nebula::Nebula;
 pub use prisme::Prisme;
 pub use sampler::Sampler;
 pub use sextant::Sextant;
+pub use soundfont::SoundFontInst;
 pub use synth::Synth;
 pub use tessera::Tessera;
 
@@ -116,6 +118,7 @@ pub fn create(dev: &Device, ctx: &Ctx) -> Option<Box<dyn Instrument>> {
         "nebula" => Box::new(Nebula::new(ctx.sr)),
         "dedale" => Box::new(Dedale::new(ctx.sr)),
         "comete" => Box::new(Comete::new(ctx.sr)),
+        "soundfont" => Box::new(SoundFontInst::new(ctx.sr)),
         _ => return None,
     };
     inst.set_device(dev, ctx);

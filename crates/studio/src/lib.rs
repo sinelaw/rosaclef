@@ -10,6 +10,7 @@
 pub mod archive;
 pub mod decode;
 pub mod folder;
+pub mod fonts;
 pub mod guide;
 pub mod library;
 pub mod render;

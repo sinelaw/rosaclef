@@ -14,6 +14,7 @@ pub mod effects;
 pub mod instruments;
 pub mod render;
 pub mod samples;
+pub mod soundfont;
 
 use automation::CLane;
 use dsp::{hermite, pan_gains, Ramp};
@@ -21,7 +22,7 @@ use effects::Effect;
 use instruments::{Instrument, NoteEvent, NoteKind};
 use rosaclef_core::automation::TempoMap;
 use rosaclef_core::{Device, InsertIx, Project};
-use samples::{SampleBank, SampleData, SampleRef};
+use samples::{PresetKey, SampleBank, SampleData, SampleRef};
 use std::sync::Arc;
 
 /// Largest block processed in one go; larger requests are split.
@@ -594,6 +595,30 @@ impl Engine {
             add(&c.sample);
         }
         out
+    }
+
+    /// Soundfont presets the project's channels play (see [`soundfont`]).
+    pub fn required_presets(&self) -> Vec<PresetKey> {
+        let mut out: Vec<PresetKey> = vec![];
+        for ch in &self.project.channels {
+            if ch.instrument.kind == "soundfont" {
+                let k = instruments::SoundFontInst::preset_key(&ch.instrument);
+                if !out.contains(&k) {
+                    out.push(k);
+                }
+            }
+        }
+        out
+    }
+
+    pub fn has_preset(&self, key: &PresetKey) -> bool {
+        self.samples.has_preset(key)
+    }
+
+    /// Provide a loaded soundfont preset.
+    pub fn set_preset(&mut self, key: PresetKey, preset: Arc<soundfont::LoadedPreset>) {
+        self.samples.insert_preset(key, preset);
+        self.relink_samples();
     }
 
     pub fn has_sample(&self, path: &str) -> bool {

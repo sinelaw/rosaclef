@@ -5,6 +5,7 @@ pub mod automation;
 pub mod catalog;
 pub mod context;
 pub mod format;
+pub mod gm;
 pub mod model;
 pub mod presets;
 pub mod schema;
@@ -28,6 +29,16 @@ pub fn summary(p: &Project) -> String {
         t.beats_per_bar,
         format::format_f64(t.swing)
     );
+    if !t.meters.is_empty() {
+        let list: Vec<String> = t
+            .meters
+            .iter()
+            .take(12)
+            .map(|m| format!("bar {}: {}/{}", m.bar, m.numerator, m.denominator))
+            .collect();
+        let more = if t.meters.len() > 12 { ", ..." } else { "" };
+        let _ = writeln!(s, "Meter changes: {}{more}", list.join(", "));
+    }
     let _ = writeln!(s, "\nChannels ({}):", p.channels.len());
     for (i, c) in p.channels.iter().enumerate() {
         let detail = match c.instrument.kind.as_str() {
@@ -252,6 +263,43 @@ mod tests {
         let paths: Vec<&str> = issues.iter().map(|i| i.path.as_str()).collect();
         assert!(paths.contains(&"channels[0].mixer"));
         assert!(paths.contains(&"channels[0].instrument.params.cutoff"));
+    }
+
+    #[test]
+    fn meters_map_bars_to_beats() {
+        let mut p = Project::empty("Test");
+        p.transport.beats_per_bar = 3;
+        p.transport.meters = vec![
+            Meter {
+                bar: 3,
+                numerator: 7,
+                denominator: 8,
+            },
+            Meter {
+                bar: 5,
+                numerator: 4,
+                denominator: 4,
+            },
+        ];
+        assert!(validate::validate(&p).is_empty());
+        let t = &p.transport;
+        assert_eq!(t.bar_start(2), 6.0);
+        assert_eq!(t.bar_start(4), 13.0);
+        assert_eq!(t.bar_start(6), 21.0);
+        assert_eq!(t.bar_at(12.9), (3, 9.5, 3.5));
+        assert_eq!(t.bar_at(13.0), (4, 13.0, 4.0));
+
+        p.transport.meters.push(Meter {
+            bar: 5,
+            numerator: 5,
+            denominator: 6,
+        });
+        let issues = validate::validate(&p);
+        let paths: Vec<&str> = issues.iter().map(|i| i.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            ["transport.meters[2].bar", "transport.meters[2].denominator"]
+        );
     }
 
     fn lane(id: &str, target: &str, points: &[(f64, f64, f64)]) -> AutomationLane {

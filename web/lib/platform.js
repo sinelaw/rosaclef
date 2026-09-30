@@ -332,6 +332,7 @@ function normalizeMsg(m) {
     loopLength: m.loopLength || 0,
     meters: m.meters ? Array.from(m.meters) : [],
     missing: m.missing || [],
+    presets: m.presets || [],
     message: m.message || "",
     sampleRate: m.sampleRate || 0,
   };
@@ -349,6 +350,11 @@ export async function audioStart(workletUrl, wasmUrl, onMsg) {
       const m = e.data;
       if (m.t === "rec") {
         if (recording) recChunks.push([m.left, m.right]);
+        return;
+      }
+      if (m.t === "presetAck") {
+        const ack = presetAcks.shift();
+        if (ack) ack(m.ok);
         return;
       }
       if (m.t === "ready") resolve(m.sampleRate);
@@ -370,6 +376,84 @@ export function audioPostSample(path, decoded) {
     { t: "sample", path, sampleRate: decoded.sampleRate, channels },
     channels.map((c) => c.buffer)
   );
+}
+
+// ------------------------------------------------------------------ soundfonts
+// Presets of `soundfont` instruments are fetched and decoded by a worker
+// (engine/fonts.js), then streamed to the worklet in acknowledged chunks:
+// neither the page nor the audio thread does the heavy work.
+
+let fontWorker = null;
+let fontIdle = 0;
+let fontSeq = 0;
+const fontWaiting = new Map();
+const presetAcks = [];
+let presetChain = Promise.resolve(true);
+/** Frames per chunk sent to the worklet (512 kB). */
+const PRESET_CHUNK = 1 << 18;
+
+function fontsWorker() {
+  clearTimeout(fontIdle);
+  if (!fontWorker) {
+    fontWorker = new Worker(new URL("engine/fonts.js", document.baseURI));
+    fontWorker.onmessage = (e) => {
+      const done = fontWaiting.get(e.data.id);
+      fontWaiting.delete(e.data.id);
+      if (done) done(e.data);
+      // Idle for a while: end the worker, which returns its memory.
+      if (fontWaiting.size === 0) {
+        fontIdle = setTimeout(() => {
+          if (fontWaiting.size === 0 && fontWorker) {
+            fontWorker.terminate();
+            fontWorker = null;
+          }
+        }, 20000);
+      }
+    };
+  }
+  return fontWorker;
+}
+
+function decodePreset(font, bank, program) {
+  return new Promise((resolve) => {
+    const id = ++fontSeq;
+    fontWaiting.set(id, resolve);
+    fontsWorker().postMessage({ id, font, bank, program });
+  });
+}
+
+function toWorklet(msg, transfer) {
+  return new Promise((resolve) => {
+    presetAcks.push(resolve);
+    node.port.postMessage(msg, transfer || []);
+  });
+}
+
+async function streamPreset(font, bank, program, header, samples) {
+  if (!(await toWorklet({ t: "presetBegin", font, bank, program, header }))) throw new Error("the engine rejected the preset");
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    for (let at = 0; at < s.length; at += PRESET_CHUNK) {
+      // A copy of just this chunk (posting a view would clone its whole buffer).
+      const data = s.slice(at, at + PRESET_CHUNK);
+      await toWorklet({ t: "presetData", index: i, offset: at, data }, [data.buffer]);
+    }
+  }
+  await toWorklet({ t: "presetEnd" });
+  return true;
+}
+
+/** Load a soundfont preset into the browser engine (one at a time). */
+export function audioLoadPreset(font, bank, program) {
+  const run = async () => {
+    if (!node) return false;
+    const r = await decodePreset(font, bank, program);
+    if (!r.ok) throw new Error(r.message);
+    return streamPreset(font, bank, program, r.header, r.samples);
+  };
+  const p = presetChain.then(run, run);
+  presetChain = p.catch(() => false);
+  return p;
 }
 
 export async function audioResume() {
