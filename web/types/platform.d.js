@@ -30,6 +30,13 @@ export const sendJson;
 /** const uploadFile: <T>(String, FileRef) => Promise<T> */
 export const uploadFile;
 
+/** "server" (the Rosaclef server) or "local" (the browser-only studio). */
+/** const backendMode: () => Promise<String> */
+export const backendMode;
+
+/** const storageEstimate: () => Promise<StorageUse> */
+export const storageEstimate;
+
 /** const onFileDrop: <E>(E, (FileRef[], Number, Number) => Undefined) => Undefined */
 export const onFileDrop;
 

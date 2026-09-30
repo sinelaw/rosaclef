@@ -1,8 +1,6 @@
 //! `rosaclef` — the Rosaclef studio server and command line tools.
 
-mod decode;
 mod folder;
-mod guide;
 mod library;
 mod server;
 mod terminal;
@@ -13,9 +11,11 @@ mod device;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use folder::Folder;
+use rosaclef_studio::library::Library;
+use rosaclef_studio::render::render_project;
+use rosaclef_studio::{decode, guide, slug};
 use rosaclef_core::{format, validate, Device, PROJECT_FILE};
 use rosaclef_engine::render::{self, RenderScope};
-use rosaclef_engine::Engine;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -139,12 +139,12 @@ fn main() -> Result<()> {
     match cli.command.unwrap_or(Command::Serve(ServeArgs::default())) {
         Command::Serve(a) => serve(a),
         Command::New { dir, demo } => {
-            let f = Folder::new(&dir);
+            let f = Folder::on_disk(&dir);
             if f.project_path().exists() {
                 bail!("{} already contains a {PROJECT_FILE}", dir.display());
             }
             f.init(demo)?;
-            guide::write(&f)?;
+            guide::write(&f, &exe())?;
             println!("Created {}", f.dir.display());
             println!("Open it with: rosaclef serve {}", dir.display());
             Ok(())
@@ -187,7 +187,7 @@ fn main() -> Result<()> {
         Command::Render { path, out, pattern, loops, bits, sample_rate } => {
             let file = project_file(path)?;
             let dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
-            let folder = Folder::new(&dir);
+            let folder = Folder::on_disk(&dir);
             let project = load_project(&file)?;
             if ![16, 24, 32].contains(&bits) {
                 bail!("--bits must be 16, 24 or 32");
@@ -206,7 +206,7 @@ fn main() -> Result<()> {
                 dir.join(folder::RENDERS_DIR).join(format!("{name}.wav"))
             });
             let t0 = std::time::Instant::now();
-            let (audio, warnings) = render_project(&folder, project, &scope, sample_rate as f32);
+            let (audio, warnings) = render_project(&folder, project, &scope, sample_rate as f32, server::install_plugin_host);
             for w in &warnings {
                 eprintln!("warning: {w}");
             }
@@ -262,8 +262,8 @@ fn main() -> Result<()> {
             Ok(())
         }
         Command::Guide { dir } => {
-            let f = Folder::new(dir.unwrap_or_else(|| PathBuf::from(".")));
-            guide::write(&f)?;
+            let f = Folder::on_disk(dir.unwrap_or_else(|| PathBuf::from(".")));
+            guide::write(&f, &exe())?;
             println!("wrote agent guides in {}", f.dir.display());
             Ok(())
         }
@@ -280,11 +280,11 @@ fn main() -> Result<()> {
 fn import_cli(a: ImportArgs, run: impl FnOnce(&[u8], &str, &Path) -> Result<rosaclef_import::Imported>) -> Result<()> {
     let bytes = std::fs::read(&a.file).with_context(|| format!("reading {}", a.file.display()))?;
     let stem = a.file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Imported".into());
-    let name = library::sanitize_name(a.name.as_deref().unwrap_or(&stem));
+    let name = rosaclef_studio::library::sanitize_name(a.name.as_deref().unwrap_or(&stem));
     let file = a.file.canonicalize().unwrap_or(a.file.clone());
     let imported = run(&bytes, &name, &file)?;
     let library = a.library.unwrap_or_else(|| PathBuf::from("."));
-    let (name, warnings) = library::save_imported(&library, &name, &imported)?;
+    let (name, warnings) = Library::new(rosaclef_fs::disk(), &library, &exe()).save_imported(&name, &imported)?;
     for w in &warnings {
         eprintln!("warning: {w}");
     }
@@ -306,19 +306,9 @@ fn import_cli(a: ImportArgs, run: impl FnOnce(&[u8], &str, &Path) -> Result<rosa
     Ok(())
 }
 
-/// Render a project offline, loading its samples and plugins.
-pub fn render_project(folder: &Folder, project: rosaclef_core::Project, scope: &RenderScope, sample_rate: f32) -> (render::Audio, Vec<String>) {
-    let mut engine = Engine::new(sample_rate);
-    server::install_plugin_host(&mut engine);
-    engine.set_project(project);
-    let mut warnings = engine.device_errors.clone();
-    for path in engine.required_samples() {
-        match folder.resolve(&path).ok_or_else(|| anyhow!("invalid path")).and_then(|p| decode::decode_file(&p)) {
-            Ok(data) => engine.set_sample(&path, data),
-            Err(e) => warnings.push(format!("sample {path}: {e}")),
-        }
-    }
-    (render::render(&mut engine, scope), warnings)
+/// How agents reach this executable (written into the agent guides).
+pub fn exe() -> String {
+    std::env::current_exe().ok().map(|p| p.display().to_string()).unwrap_or_else(|| "rosaclef".into())
 }
 
 fn project_file(path: Option<PathBuf>) -> Result<PathBuf> {
@@ -340,23 +330,13 @@ fn load_project(file: &Path) -> Result<rosaclef_core::Project> {
     Ok(checked.project.unwrap())
 }
 
-pub fn slug(s: &str) -> String {
-    let s: String = s.chars().map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect();
-    let s = s.split('-').filter(|x| !x.is_empty()).collect::<Vec<_>>().join("-");
-    if s.is_empty() {
-        "untitled".into()
-    } else {
-        s
-    }
-}
-
 fn serve(a: ServeArgs) -> Result<()> {
     let dir = a.dir.unwrap_or_else(|| PathBuf::from("."));
-    let folder = Folder::new(&dir);
+    let folder = Folder::on_disk(&dir);
     let fresh = !folder.project_path().exists();
     folder.init(a.demo || fresh && is_empty_dir(&folder.dir))?;
-    let folder = Folder::new(&dir);
-    guide::write(&folder)?;
+    let folder = Folder::on_disk(&dir);
+    guide::write(&folder, &exe())?;
     let web = a.web.unwrap_or_else(default_web_dir);
     let library = match a.library {
         Some(l) => {

@@ -70,7 +70,7 @@ export function startAudio() {
 
 async function boot() {
   try {
-    await audioStart("/engine/worklet.js", "/engine/rosaclef.wasm", onEngineMessage);
+    await audioStart("engine/worklet.js", "engine/rosaclef.wasm", onEngineMessage);
     state.audioReady = true;
     audioPost({ t: "project", json: projectJson(state.project) });
     invalidate();

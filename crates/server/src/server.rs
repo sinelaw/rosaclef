@@ -17,6 +17,9 @@ use rosaclef_core::validate::{self, Issue, Severity};
 use rosaclef_core::{format, Project};
 use rosaclef_engine::render::RenderScope;
 use rosaclef_engine::Engine;
+use rosaclef_fs::Fs;
+use rosaclef_studio::library::{unique_sample_path, Library};
+use rosaclef_studio::render::{levels_db, render_project};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -44,22 +47,7 @@ pub fn install_plugin_host(engine: &mut Engine) {
 static CONTEXT_SEQ: AtomicU64 = AtomicU64::new(0);
 
 fn now_rfc3339() -> String {
-    // Minimal UTC formatter (no chrono dependency).
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) as i64;
-    let (days, rem) = (secs.div_euclid(86400), secs.rem_euclid(86400));
-    let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
-    // Civil-from-days (Howard Hinnant).
-    let z = days + 719468;
-    let era = z.div_euclid(146097);
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if mo <= 2 { y + 1 } else { y };
-    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+    rosaclef_studio::rfc3339(rosaclef_fs::DiskFs.now_ms())
 }
 
 struct Doc {
@@ -81,7 +69,7 @@ pub struct App {
     /// The open project. It changes when the producer opens another one
     /// from the library; take a snapshot with [`App::folder`].
     folder: RwLock<Folder>,
-    pub(crate) library: PathBuf,
+    pub(crate) library: Library,
     doc: Mutex<Doc>,
     tx: broadcast::Sender<Broadcast>,
     next_client: AtomicU64,
@@ -114,7 +102,7 @@ pub async fn run(cfg: Config) -> Result<()> {
     let (tx, _) = broadcast::channel(256);
     let app = Arc::new(App {
         folder: RwLock::new(cfg.folder.clone()),
-        library: cfg.library.clone(),
+        library: Library::new(rosaclef_fs::disk(), cfg.library.clone(), &crate::exe()),
         doc: Mutex::new(Doc { project, rev: 1, last_hash: folder::hash(&text), issues }),
         tx,
         next_client: AtomicU64::new(1),
@@ -268,7 +256,7 @@ impl App {
             bail!("the project is invalid and cannot be opened:\n{}", msgs.join("\n"));
         }
         let project = checked.project.expect("checked");
-        crate::guide::write(&target)?;
+        crate::guide::write(&target, &crate::exe())?;
         {
             let mut doc = self.doc.lock();
             *self.folder.write() = target.clone();
@@ -287,7 +275,7 @@ impl App {
             let doc = self.doc.lock();
             let old = self.folder();
             std::fs::rename(&old.dir, to)?;
-            let target = Folder::new(to);
+            let target = Folder::on_disk(to);
             *self.folder.write() = target.clone();
             (target, doc.project.clone())
         };
@@ -630,28 +618,6 @@ struct UploadQuery {
     name: String,
 }
 
-pub(crate) fn unique_sample_path(folder: &Folder, name: &str) -> String {
-    let clean: String = name
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or("sample.wav")
-        .chars()
-        .map(|c| if c.is_alphanumeric() || "._- ".contains(c) { c } else { '_' })
-        .collect();
-    let clean = if clean.trim_start_matches('.').is_empty() { "sample.wav".to_string() } else { clean };
-    let (stem, ext) = match clean.rfind('.') {
-        Some(i) => (clean[..i].to_string(), clean[i..].to_string()),
-        None => (clean.clone(), String::new()),
-    };
-    let mut rel = format!("{}/{stem}{ext}", folder::SAMPLES_DIR);
-    let mut n = 2;
-    while folder.dir.join(&rel).exists() {
-        rel = format!("{}/{stem}-{n}{ext}", folder::SAMPLES_DIR);
-        n += 1;
-    }
-    rel
-}
-
 async fn upload_sample(State(app): State<Shared>, headers: HeaderMap, Query(q): Query<UploadQuery>, body: Bytes) -> Response {
     if !same_origin(&headers) {
         return forbidden();
@@ -679,7 +645,7 @@ async fn get_peaks(State(app): State<Shared>, Query(q): Query<PeaksQuery>) -> Re
         return (StatusCode::NOT_FOUND, format!("{} does not exist", q.path)).into_response();
     }
     let n = q.n.unwrap_or(1024);
-    let res = tokio::task::spawn_blocking(move || crate::decode::decode_file(&path).map(|d| (d.duration(), d.sample_rate, crate::decode::peaks(&d, n)))).await;
+    let res = tokio::task::spawn_blocking(move || crate::decode::decode_file(&rosaclef_fs::DiskFs, &path).map(|d| (d.duration(), d.sample_rate, crate::decode::peaks(&d, n)))).await;
     match res {
         Ok(Ok((duration, sr, peaks))) => Json(json!({"duration": duration, "sampleRate": sr, "peaks": peaks})).into_response(),
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
@@ -708,21 +674,22 @@ async fn render(State(app): State<Shared>, headers: HeaderMap, Json(req): Json<R
             None => RenderScope::Song,
         };
         let bits = req.bits.filter(|b| [16, 24, 32].contains(b)).unwrap_or(24);
-        let title = crate::slug(&project.meta.title);
+        let title = rosaclef_studio::slug(&project.meta.title);
         let name = match &req.pattern {
             Some(p) if !p.is_empty() => format!("{title}-{p}"),
             _ => title,
         };
         let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         let rel = format!("{}/{name}-{stamp}.wav", folder::RENDERS_DIR);
-        let (audio, warnings) = crate::render_project(&folder, project, &scope, req.sample_rate.unwrap_or(48000) as f32);
+        let (audio, warnings) = render_project(&folder, project, &scope, req.sample_rate.unwrap_or(48000) as f32, install_plugin_host);
         folder::write_atomic(&folder.dir.join(&rel), &rosaclef_engine::render::encode_wav(&audio, bits))?;
+        let (peak_db, rms_db) = levels_db(&audio);
         Ok(json!({
             "path": rel,
             "url": format!("/files/{rel}"),
             "duration": audio.duration(),
-            "peakDb": 20.0 * audio.peak().max(1e-9).log10(),
-            "rmsDb": 20.0 * audio.rms().max(1e-9).log10(),
+            "peakDb": peak_db,
+            "rmsDb": rms_db,
             "warnings": warnings,
         }))
     })
@@ -741,7 +708,7 @@ async fn get_agents() -> impl IntoResponse {
 async fn get_info(State(app): State<Shared>) -> impl IntoResponse {
     Json(json!({
         "folder": app.folder().dir.display().to_string(),
-        "library": app.library.display().to_string(),
+        "library": app.library.dir.display().to_string(),
         "url": app.url,
         "version": env!("CARGO_PKG_VERSION"),
         "native": native_status(&app),

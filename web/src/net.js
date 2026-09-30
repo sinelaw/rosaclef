@@ -1,6 +1,6 @@
 // Connection to the Rosaclef server: project sync, native engine status.
 
-import { connectRaw, wsUrl } from "#platform";
+import { connectRaw, wsUrl, loadPref, savePref } from "#platform";
 import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel } from "./store.js";
 import { toast } from "./ui/toast.js";
 import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
@@ -32,8 +32,13 @@ function onMessage(text) {
     state.rev = Number(m.rev);
     state.nativeAvailable = m.native.available === true;
     state.nativeEnabled = m.native.enabled === true;
+    state.backend = m.backend === "local" ? "local" : "server";
     load(decodeProject(m.project));
     if (t === "switched") projectSwitched();
+    else if (state.backend === "local" && loadPref("rosaclef.localIntro") === "") {
+      savePref("rosaclef.localIntro", "shown");
+      toast("Welcome to the browser studio", "Your projects are saved in this browser. Back them up from Projects → Download (.zip); open the same zip in the native studio to use your own coding agent.", "info");
+    }
   } else if (t === "project") {
     state.rev = Number(m.rev);
     state.diskIssues = [];
@@ -81,7 +86,9 @@ function onMessage(text) {
   } else if (t === "recorded") {
     toast("Recording saved", String(m.path), "info");
   } else if (t === "error") {
-    toast("Server error", String(m.message), "error");
+    toast(state.backend === "local" ? "Studio error" : "Server error", String(m.message), "error");
+  } else if (t === "notice") {
+    toast(String(m.title), String(m.message), "error");
   }
 }
 

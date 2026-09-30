@@ -43,6 +43,23 @@ Audio plays in the browser through the WebAssembly engine by default. Switch
 the output to **Studio** to use the native engine on the server's audio device
 (required for CLAP plugins; lowest latency).
 
+## In the browser only
+
+The studio also builds into a static site — no server, nothing to install:
+
+```sh
+tools/build-static.sh                 # → dist/, for GitHub Pages or any static host
+python3 -m http.server -d dist 8080   # try it at http://localhost:8080
+```
+
+The server's own code runs in the page (compiled to WebAssembly), so nearly
+everything works: editing, playback, the project library and files, LMMS/MIDI
+import, rendering to WAV, recording. Projects are saved in the browser's
+storage and download as `.zip` files that also open in the native studio. The
+terminal runs the built-in **Rosaclef shell** instead of a coding agent, and
+there is no Studio audio output or CLAP plugins. See
+[`docs/static.md`](docs/static.md).
+
 ## Command line
 
 | command | |
@@ -84,6 +101,9 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 | `crates/engine` | portable DSP engine: sequencer, synths (Aurum subtractive, Lumière FM, Atelier drums, Vault sampler), effects, mixer, offline render |
 | `crates/wasm` | the engine compiled to WebAssembly (C ABI for the AudioWorklet) |
 | `crates/import` | importers: LMMS projects (.mmp/.mmpz) and Standard MIDI Files |
+| `crates/fs` | the file system the studio works on: the disk, or an in-memory tree the browser persists |
+| `crates/studio` | the server's portable logic: project folders, library, file manager, zip archives, agent guides, audio decoding, rendering |
+| `crates/local` | the server's API and sockets in the browser (WebAssembly, for the static build) + the Rosaclef shell |
 | `crates/clap-host` | CLAP plugin hosting (scan, parameters, processing) + tests |
 | `crates/clap-testplug` | a tiny CLAP bundle used by the tests |
 | `crates/server` | the `rosaclef` binary: server, file watching, PTY agent terminal, native audio, CLI |
@@ -94,7 +114,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 
 ```sh
 cargo test --workspace                 # Rust tests (engine, validation, CLAP host)
-./tools/build-wasm.sh                  # rebuild web/engine/rosaclef.wasm after engine changes
+./tools/build-wasm.sh                  # rebuild web/engine/rosaclef.wasm and web/local/rosaclef-local.wasm
 node web/test/tree.test.js             # UI tree tests (no browser needed)
 web/check.sh                           # type-check the frontend with inty
 ```

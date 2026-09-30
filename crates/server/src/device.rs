@@ -155,7 +155,7 @@ impl Native {
         };
         for path in missing {
             if let Some(file) = folder.resolve(&path) {
-                match crate::decode::decode_file(&file) {
+                match crate::decode::decode_file(folder.fs.as_ref(), &file) {
                     Ok(data) => self.engine.lock().set_sample(&path, data),
                     Err(e) => eprintln!("sample {path}: {e}"),
                 }
@@ -288,7 +288,7 @@ fn finish_recording(app: &Arc<App>) {
     }
     let audio = rosaclef_engine::render::Audio { sample_rate: sr as f32, left, right };
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let rel = crate::server::unique_sample_path(&app.folder(), &format!("take-{stamp}.wav"));
+    let rel = rosaclef_studio::library::unique_sample_path(&app.folder(), &format!("take-{stamp}.wav"));
     if folder::write_atomic(&app.folder().dir.join(&rel), &rosaclef_engine::render::encode_wav(&audio, 24)).is_err() {
         return;
     }

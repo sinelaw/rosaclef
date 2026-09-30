@@ -114,6 +114,9 @@
 
 /** type Decoded = { sampleRate: Number, channels: Floats[], duration: Number } */
 
+/** Bytes of the browser's storage in use, and available (0 when unknown). */
+/** type StorageUse = { usage: Number, quota: Number } */
+
 // ------------------------------------------------------------- ui library
 // See web/src/ui/tree.js. Descriptions are flat (parent index, not nested
 // children), which keeps them cheap to rebuild and easy to type.

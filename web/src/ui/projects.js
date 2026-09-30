@@ -5,9 +5,11 @@
 // The server owns the library (GET /api/projects, /api/files, ...); this
 // module keeps a copy of what it last listed and asks again after every
 // action. Opening a project makes the server broadcast `switched`, which
-// reloads every client (net.js) and calls `projectSwitched` here.
+// reloads every client (net.js) and calls `projectSwitched` here. In the
+// browser-only studio the "server" is the back end in a worker, and the
+// library lives in the browser's storage: projects download as .zip files.
 
-import { getJson, sendJson, uploadFile, pickFiles, download, previewAudio, stopPreview, fmtDate, fmt, confirmBox, listenWindow } from "#platform";
+import { getJson, sendJson, uploadFile, pickFiles, download, previewAudio, stopPreview, fmtDate, fmt, confirmBox, listenWindow, storageEstimate } from "#platform";
 import { state, invalidate, hint } from "../store.js";
 import { PALETTE } from "../model.js";
 import { glyph, iconButton, button } from "./widgets.js";
@@ -39,6 +41,8 @@ const pm = {
   samplesKey: "",
   /** The last import (zero or one entry). */
   imported /*: ImportNote[] */: [],
+  /** Browser storage in use and available, in bytes (the browser-only studio). */
+  storage: { usage: 0, quota: 0 },
 };
 
 // ------------------------------------------------------------------ icons
@@ -135,7 +139,19 @@ function uniqueName(base, projects) {
 
 // ------------------------------------------------------------------ server
 
+function refreshStorage() {
+  if (state.backend !== "local") return undefined;
+  storageEstimate()
+    .then((s) => {
+      pm.storage = s;
+      invalidate();
+      return true;
+    })
+    .catch((e) => false);
+}
+
 function refreshProjects() {
+  refreshStorage();
   getJson("/api/projects")
     .then((r) => {
       pm.library = String(r.library);
@@ -152,6 +168,7 @@ function refreshProjects() {
 }
 
 function refreshFiles() {
+  refreshStorage();
   getJson("/api/files")
     .then((r) => {
       pm.files = r.files;
@@ -216,7 +233,8 @@ function renameProject(name, to) {
 
 /** function deleteProject(p: ProjectInfo) => Undefined */
 function deleteProject(p) {
-  if (!confirmBox(`Move “${p.title}” (${p.name}) to the library trash?\n\nIt is kept in ${pm.library}/.trash and can be restored from there.`)) return undefined;
+  const kept = state.backend === "local" ? "It stays in the trash until you empty it." : `It is kept in ${pm.library}/.trash and can be restored from there.`;
+  if (!confirmBox(`Move “${p.title}” (${p.name}) to the library trash?\n\n${kept}`)) return undefined;
   act(`Deleting “${p.name}”…`, sendJson(`/api/projects/${encodeURIComponent(p.name)}`, "DELETE", {}), (r) => {
     toast("Moved to the trash", p.name, "info");
     refreshProjects();
@@ -227,12 +245,13 @@ function deleteProject(p) {
 function importKind(fileName) {
   const lower = fileName.toLowerCase();
   if (lower.endsWith(".mid") || lower.endsWith(".midi") || lower.endsWith(".kar") || lower.endsWith(".rmi")) return "midi";
+  if (lower.endsWith(".zip")) return "zip";
   return "lmms";
 }
 
-/** Import an LMMS project or a MIDI file as a new project. */
+/** Import an LMMS project, a MIDI file or a project .zip as a new project. */
 function importProject() {
-  pickFiles(".mmp,.mmpz,.mid,.midi,.kar,.rmi", (files) => {
+  pickFiles(".mmp,.mmpz,.mid,.midi,.kar,.rmi,.zip", (files) => {
     if (files.length === 0) return undefined;
     const f = files[0];
     const kind = importKind(f.name);
@@ -265,6 +284,24 @@ function importAudio() {
         refreshFiles();
       });
     }
+  });
+}
+
+/** Download a project folder as a .zip (a backup, or to open it elsewhere). */
+/** function exportProject(p: ProjectInfo) => Undefined */
+function exportProject(p) {
+  download(`/api/projects/export?name=${encodeURIComponent(p.name)}`, `${p.name}.zip`);
+}
+
+/** Delete the trash for good: deleted projects, or this project's deleted files. */
+/** function emptyTrash(scope: String) => Undefined */
+function emptyTrash(scope) {
+  const what = scope === "library" ? "the projects in the library's trash" : "the files in this project's trash";
+  if (!confirmBox(`Delete ${what} for good? This cannot be undone.`)) return undefined;
+  act("Emptying the trash…", sendJson("/api/trash/empty", "POST", { scope: scope }), (r) => {
+    const n = Number(r.removed);
+    toast(n === 0 ? "The trash was already empty" : "Trash emptied", n === 0 ? "" : `${n} item${n === 1 ? "" : "s"} deleted for good`, "info");
+    refreshStorage();
   });
 }
 
@@ -522,6 +559,7 @@ function card(b, p) {
       openProject(p.name);
     });
   }
+  iconButton(b, "zip", "small ghost", "export", `Download “${p.name}” as a .zip — a backup, or to open it in another studio`, () => exportProject(p));
   iconButton(b, "dup", "small ghost", "copy", `Duplicate “${p.name}”`, () => compose("duplicate", p.name, uniqueName(`${nameFrom(p.title)} copy`, pm.projects)));
   iconButton(b, "ren", "small ghost", "draw", `Rename “${p.name}”`, () => compose("rename", p.name, p.name));
   iconButton(b, "del", "small ghost danger", "trash", p.current ? "The open project cannot be deleted" : `Move “${p.name}” to the trash`, () => deleteProject(p));
@@ -541,10 +579,10 @@ function projectsView(b) {
   b.close();
   button(b, "demo", "", "New from demo", "Create a project from the bundled demo song", () => compose("demo", "", uniqueName("Demo", pm.projects)));
   b.open("button", "import", "btn");
-  b.attr("title", "Import an LMMS project (.mmp, .mmpz) or a MIDI file (.mid) as a new project");
+  b.attr("title", "Import an LMMS project (.mmp, .mmpz), a MIDI file (.mid) or a project .zip as a new project");
   b.on("click", (e) => importProject());
   icon(b, ICON_IMPORT);
-  b.leaf("span", "t", "", "Import LMMS / MIDI…");
+  b.leaf("span", "t", "", "Import…");
   b.close();
   b.leaf("div", "sp", "spacer", "");
   b.open("label", "search", "pm-search");
@@ -577,7 +615,7 @@ function projectsView(b) {
   if (pm.loaded && shown === 0) {
     b.open("div", "empty", "pm-empty");
     b.leaf("h3", "h", "", q !== "" ? "No project matches" : "The library is empty");
-    b.leaf("p", "p", "", q !== "" ? `Nothing is called “${pm.filter}”.` : "Create a project, start from the demo, or import an LMMS or MIDI file.");
+    b.leaf("p", "p", "", q !== "" ? `Nothing is called “${pm.filter}”.` : "Create a project, start from the demo, or import an LMMS or MIDI file or a project .zip.");
     b.close();
   }
 }
@@ -739,6 +777,11 @@ export function projectsOverlay(b) {
 
   b.open("footer", "foot", "pm-foot");
   b.leaf("span", "l", "", pm.tab === "files" ? "Deleted files go to .trash/ in the project · renaming a sample updates the song" : "Double-click a card to open it · deleted projects go to the library's .trash/");
+  button(b, "trash", "small ghost", "Empty trash", pm.tab === "files" ? "Delete this project's deleted files for good" : "Delete the projects in the library's trash for good", () => emptyTrash(pm.tab === "files" ? "project" : "library"));
+  if (state.backend === "local" && pm.storage.quota > 0) {
+    b.leaf("span", "store", "pm-store", `Browser storage · ${bytes(pm.storage.usage)} of ${bytes(pm.storage.quota)}`);
+    b.attr("title", "Projects are saved in this browser. Download them as .zip files to back them up.");
+  }
   b.leaf("span", "sp", "spacer", "");
   b.open("span", "k", "pm-keys");
   b.leaf("kbd", "k1", "", "Ctrl+O");

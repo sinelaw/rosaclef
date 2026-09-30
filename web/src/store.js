@@ -31,6 +31,8 @@ export const state = {
   follow: true,
   output: "browser",
   nativeAvailable: false,
+  /** "server" (the Rosaclef server) or "local" (the browser-only studio, projects in browser storage). */
+  backend: "server",
   nativeEnabled: false,
   nativeDevice: "",
   audioReady: false,

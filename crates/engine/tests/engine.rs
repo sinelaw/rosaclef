@@ -5,7 +5,7 @@ use rosaclef_core::{validate, Channel, Clip, Device, InsertIx, Note, Project, Tr
 use rosaclef_engine::render::{render, render_note, RenderScope};
 use rosaclef_engine::Engine;
 
-const DEMO: &str = include_str!("../../server/assets/demo/project.json");
+const DEMO: &str = include_str!("../../studio/assets/demo/project.json");
 
 fn demo() -> Project {
     let checked = validate::parse_and_validate(DEMO);

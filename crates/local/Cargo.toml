@@ -1,0 +1,19 @@
+[package]
+name = "rosaclef-local"
+description = "The Rosaclef server's API running in the browser: the studio back end over an in-memory file system, compiled to WebAssembly"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rosaclef-core.workspace = true
+rosaclef-engine.workspace = true
+rosaclef-import.workspace = true
+rosaclef-fs.workspace = true
+rosaclef-studio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow = "1"

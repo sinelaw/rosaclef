@@ -1371,10 +1371,11 @@ dependencies = [
  "rosaclef-clap",
  "rosaclef-core",
  "rosaclef-engine",
+ "rosaclef-fs",
  "rosaclef-import",
+ "rosaclef-studio",
  "serde",
  "serde_json",
- "symphonia",
  "tokio",
  "tower",
  "tower-http",
@@ -1417,6 +1418,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rosaclef-fs"
+version = "0.1.0"
+
+[[package]]
 name = "rosaclef-import"
 version = "0.1.0"
 dependencies = [
@@ -1424,6 +1429,35 @@ dependencies = [
  "flate2",
  "rosaclef-core",
  "roxmltree",
+]
+
+[[package]]
+name = "rosaclef-local"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rosaclef-core",
+ "rosaclef-engine",
+ "rosaclef-fs",
+ "rosaclef-import",
+ "rosaclef-studio",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rosaclef-studio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "flate2",
+ "rosaclef-core",
+ "rosaclef-engine",
+ "rosaclef-fs",
+ "rosaclef-import",
+ "serde",
+ "serde_json",
+ "symphonia",
 ]
 
 [[package]]

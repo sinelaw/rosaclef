@@ -1,0 +1,17 @@
+[package]
+name = "rosaclef-studio"
+description = "The studio's portable back end: project folders, the library, the file manager, audio decoding and rendering (native and WebAssembly)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rosaclef-core.workspace = true
+rosaclef-engine.workspace = true
+rosaclef-import.workspace = true
+rosaclef-fs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow = "1"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+symphonia = { version = "0.5", features = ["mp3", "aac", "isomp4", "alac"] }
