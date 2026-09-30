@@ -92,8 +92,9 @@ instrument:
   Atelier channels (existing ones are reused). A drum recording works too:
   several drums on one beat (a kick and a hat) are told apart, and rolls,
   fills and ghost notes come through. Set the grid, the sensitivity (ghost
-  notes), accents, the loop length and how many times it repeats; click a hit
-  to make it another drum.
+  notes), the separation (hits closer than it to the one before join it — a
+  flam, or one sound heard as two, becomes one hit), accents, the loop length
+  and how many times it repeats; click a hit to make it another drum.
 
 It works in three steps:
 
