@@ -1,6 +1,6 @@
 // Connection to the Rosaclef server: project sync, native engine status.
 
-import { connectRaw, wsUrl, loadPref, savePref } from "#platform";
+import { connectRaw, wsUrl, loadPref, savePref, now } from "#platform";
 import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel } from "./store.js";
 import { toast } from "./ui/toast.js";
 import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
@@ -75,6 +75,7 @@ function onMessage(text) {
   } else if (t === "native.meters") {
     if (state.output === "native") {
       state.position = Number(m.position);
+      state.positionAt = now();
       state.playing = m.playing === true;
       state.loopLength = Number(m.loopLength);
       state.recording = m.recording === true;

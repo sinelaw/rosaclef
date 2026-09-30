@@ -1,5 +1,10 @@
 // Global keyboard shortcuts (FL Studio conventions where they exist) and the
-// computer-keyboard piano.
+// computer-keyboard piano (its key map lives in ui/keyboard.js).
+//
+// The piano takes two whole letter rows, so letter shortcuts take Shift:
+// the one modifier that means the same on every platform and that no browser
+// or OS claims for itself (Ctrl/Cmd+Q, R, P, E and L quit, reload, print or
+// grab the address bar; Alt opens menus on Windows and types accents on a Mac).
 
 import { listenWindow } from "#platform";
 import { state, undo, redo, currentChannel } from "./store.js";
@@ -8,14 +13,26 @@ import { deleteSelection, selectAll, transpose, quantize, duplicateSelection, se
 import { deleteSelectedClips } from "./ui/playlist.js";
 import { auto, closeMenu } from "./automation.js";
 import { openDock, paneShortcut } from "./ui/panes.js";
-import { pressKey, releaseKey } from "./ui/keyboard.js";
+import { keyboard, pressKey, releaseKey, typedPitch, shiftTyped, toggleRecordKeys } from "./ui/keyboard.js";
 import { voice, startTake, stopTake } from "./ui/voice.js";
 
-// Lower keyboard row plays C4..C5 on the selected channel.
-const PIANO = ["z", "s", "x", "d", "c", "v", "g", "b", "h", "n", "j", "m", ","];
-
+/** Computer keys holding a note, by `code`. */
 /** const held: String[] */
 const held = [];
+
+/** Shift+<letter> shortcuts; `c` is the lower-case letter. Returns true when handled. */
+/** function letterShortcut(c: String) => Boolean */
+function letterShortcut(c) {
+  if (c === "l") setMode(state.mode === "pattern" ? "song" : "pattern");
+  // In the Voice dock, Shift+R records a take to turn into notes.
+  else if (c === "r" && state.dock === "voice") startTake();
+  else if (c === "r") record();
+  else if (c === "q" && state.dock === "piano") quantize();
+  else if (c === "p" && state.dock === "piano") setTool("draw");
+  else if (c === "e" && state.dock === "piano") setTool("select");
+  else return false;
+  return true;
+}
 
 export function installKeys() {
   listenWindow("keydown", (e) => {
@@ -49,12 +66,29 @@ export function installKeys() {
       return undefined;
     }
     if (mod) return undefined;
+    if (e.shiftKey && !e.altKey && !e.repeat && letterShortcut(k.toLowerCase())) {
+      e.preventDefault();
+      return undefined;
+    }
+    const pitch = typedPitch(e.code);
+    if (pitch >= 0) {
+      if (currentChannel() && !e.repeat && !held.includes(e.code)) {
+        held.push(e.code);
+        pressKey(`k${e.code}`, pitch, 0.85);
+      }
+      return undefined;
+    }
+    if (e.code === "Minus" || e.code === "Equal") {
+      shiftTyped(e.code === "Minus" ? -1 : 1);
+      return undefined;
+    }
     if (k === " ") {
       e.preventDefault();
       togglePlay();
     } else if (k === "Escape") {
       if (auto.menu.open) closeMenu();
       else if (voice.status === "recording") stopTake();
+      else if (keyboard.armed) toggleRecordKeys();
       else stop();
     } else if (k === "F6") {
       e.preventDefault();
@@ -68,38 +102,19 @@ export function installKeys() {
     } else if (k === "F9") {
       e.preventDefault();
       openDock("mixer");
-    } else if (k === "l" || k === "L") {
-      setMode(state.mode === "pattern" ? "song" : "pattern");
-    } else if (k === "r" || k === "R") {
-      // In the Voice dock, R records a take to turn into notes.
-      if (state.dock === "voice") startTake();
-      else record();
     } else if (k === "Delete" || k === "Backspace") {
       if (state.dock === "piano" && state.selection.length > 0) deleteSelection();
       else deleteSelectedClips();
     } else if (state.dock === "piano" && (k === "ArrowUp" || k === "ArrowDown")) {
       e.preventDefault();
       transpose((k === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 12 : 1));
-    } else if (state.dock === "piano" && (k === "q" || k === "Q")) {
-      quantize();
-    } else if (state.dock === "piano" && (k === "p" || k === "P")) {
-      setTool("draw");
-    } else if (state.dock === "piano" && (k === "e" || k === "E")) {
-      setTool("select");
-    } else {
-      const i = PIANO.indexOf(k);
-      if (i >= 0 && currentChannel() && !e.repeat && !held.includes(k)) {
-        held.push(k);
-        pressKey(`k${k}`, 60 + i, 0.85);
-      }
     }
   });
   listenWindow("keyup", (e) => {
-    const k = e.key;
-    const at = held.indexOf(k);
+    const at = held.indexOf(e.code);
     if (at >= 0) {
       held.splice(at, 1);
-      releaseKey(`k${k}`);
+      releaseKey(`k${e.code}`);
     }
   });
 }

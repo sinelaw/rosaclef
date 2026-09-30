@@ -7,7 +7,7 @@
 //    lowest latency).
 // The UI sends the same transport commands to whichever one is selected.
 
-import { audioStart, audioPost, audioPostSample, audioLoadPreset, audioResume, decodeAudioUrl, recStart, recStop } from "#platform";
+import { audioStart, audioPost, audioPostSample, audioLoadPreset, audioResume, decodeAudioUrl, recStart, recStop, now } from "#platform";
 import { state, hooks, invalidate, commit, currentPattern, reportContext } from "./store.js";
 import { send } from "./net.js";
 import { toast } from "./ui/toast.js";
@@ -24,6 +24,7 @@ function onEngineMessage(m) {
   if (m.t === "status") {
     if (state.output !== "browser") return undefined;
     state.position = m.position;
+    state.positionAt = now();
     state.playing = m.playing;
     state.loopLength = m.loopLength;
     const nIns = Math.round(m.meters.length > 0 ? m.meters[0] : 0);
@@ -203,6 +204,16 @@ export function seek(beat) {
   else audioPost({ t: "seek", beat: beat });
   state.position = beat;
   invalidate();
+}
+
+/** The playhead right now: the last reported position, moved on by the time
+ * since (reports come ~40 times a second), wrapped at the loop end. */
+/** function livePosition() => Number */
+export function livePosition() {
+  if (!state.playing) return state.position;
+  const ms = Math.max(0, Math.min(250, now() - state.positionAt));
+  const p = state.position + (ms / 60000) * state.project.transport.bpm;
+  return state.loopLength > 0 && p >= state.loopLength ? p - state.loopLength : p;
 }
 
 /** function noteOn(channel: String, key: Number, velocity: Number) => Undefined */
