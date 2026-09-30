@@ -1,0 +1,69 @@
+# Checks every pull request (and main). To make them gate merging: Settings →
+# Branches (or Rules) → protect main → require status checks → "Rust" and
+# "Web".
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the older run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The server's audio output (cpal) links against ALSA.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Type-check the frontend (web/check.sh).
+      - run: cargo install --git https://github.com/sinelaw/inty inty-cli
+      - run: web/check.sh
+
+      - name: Unit tests
+        working-directory: web
+        run: npm test
+
+      # The browser-only studio, rebuilt from source (WebAssembly included),
+      # driven in Chromium: desktop, phone layout, touch and the on-screen piano.
+      - run: tools/build-static.sh dist
+      - name: Install Playwright
+        working-directory: web
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Browser tests
+        run: |
+          python3 -m http.server -d dist 8765 &
+          for i in $(seq 1 30); do curl -sf http://localhost:8765/ >/dev/null && break; sleep 1; done
+          node web/test/static-smoke.mjs http://localhost:8765/
+          node web/test/mobile-smoke.mjs http://localhost:8765/
