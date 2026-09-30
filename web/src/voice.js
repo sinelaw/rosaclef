@@ -160,7 +160,7 @@ export function nextDrum(kind) {
 
 /** Settings shared by both modes; see the Voice panel (ui/voice.js). */
 /** `detail` picks one of the take's detail levels (0 smooth … 4 every note). */
-/** type VoiceSettings = { detail: Int, grid: Number, strength: Number, lengths: Boolean, key: Int, scale: String, octave: Int, legato: Boolean, dynamics: Boolean, sensitivity: Number, bars: Int } */
+/** type VoiceSettings = { detail: Int, grid: Number, strength: Number, lengths: Boolean, key: Int, scale: String, octave: Int, legato: Boolean, dynamics: Boolean, sensitivity: Number, separation: Number, bars: Int } */
 
 /** The detail levels of the Detail control, smoothest first (the server's
  * DETAIL_CHANGES in crates/studio/src/transcribe.rs). */
@@ -239,11 +239,36 @@ export function melodyNotes(take, s, bpm, origin, aligned) {
   return out;
 }
 
+/** Each hit's time once the kept hits (strength at least `need`) closer
+ * than `separation` seconds to the first of their group have joined it: a
+ * flam, or one sound heard as two, becomes one moment. Weaker hits keep
+ * their time and neither start nor join a group. */
+/** function joinedTimes(take: Take, need: Number, separation: Number) => Number[] */
+export function joinedTimes(take, need, separation) {
+  /** const out: Number[] */
+  const out = [];
+  let open = false;
+  let first = 0;
+  for (const h of take.hits) {
+    if (h.strength < need) {
+      out.push(h.time);
+    } else if (open && h.time - first < separation) {
+      out.push(first);
+    } else {
+      open = true;
+      first = h.time;
+      out.push(h.time);
+    }
+  }
+  return out;
+}
+
 /** Beatbox: the hits kept by the sensitivity, on the grid, each as the drum
  * the server heard (`kinds` overrides that per hit; "" = as heard). */
 /** function drumHits(take: Take, s: VoiceSettings, bpm: Number, origin: Number, aligned: Boolean, kinds: String[]) => Placed[] */
 export function drumHits(take, s, bpm, origin, aligned, kinds) {
   const need = strengthNeeded(s.sensitivity);
+  const times = joinedTimes(take, need, s.separation);
   // The first kept hit starts the loop.
   let t0 = 0;
   if (aligned) {
@@ -262,7 +287,9 @@ export function drumHits(take, s, bpm, origin, aligned, kinds) {
     const h = take.hits[i];
     if (h.strength < need) continue;
     const kind = i < kinds.length && kinds[i] !== "" ? kinds[i] : h.kind;
-    const raw = origin + (h.time - t0) * bps;
+    // Hits joined to the one before land with it; the same drum twice there
+    // is one hit (below).
+    const raw = origin + (times[i] - t0) * bps;
     const start = round4(Math.max(0, quantize(raw, s.grid, s.strength)));
     const velocity = s.dynamics ? h.velocity : 0.8;
     // The same drum twice on one slot: keep the louder.

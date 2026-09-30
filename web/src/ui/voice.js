@@ -94,6 +94,7 @@ export const voice = {
     legato: false,
     dynamics: true,
     sensitivity: 0.5,
+    separation: 0.03,
     bars: 0,
   },
 };
@@ -642,6 +643,9 @@ function toggle(b, key, label, on, tip, onSet) {
   });
 }
 
+/** The Separation dial's range (seconds). */
+const MAX_SEPARATION = 0.25;
+
 const GRIDS = [0, 0.125, 0.25, 0.5, 1, 1 / 6, 1 / 3];
 const GRID_LABELS = ["Off", "1/32", "1/16", "1/8", "Beat", "1/16 T", "1/8 T"];
 
@@ -676,6 +680,17 @@ function settingsView(b) {
     dial(b, "sens", "Sensitivity", `${Math.round(s.sensitivity * 100)}%`, s.sensitivity, "Higher keeps quieter hits (ghost notes)", (v) => {
       s.sensitivity = Math.round(v * 50) / 50;
     });
+    dial(
+      b,
+      "sep",
+      "Separation",
+      s.separation > 0 ? `${Math.round(s.separation * 1000)} ms` : "Off",
+      s.separation / MAX_SEPARATION,
+      "Hits closer than this to the one before join it, on its time (a flam, or one sound heard as two, becomes one hit)",
+      (v) => {
+        s.separation = Math.round(v * MAX_SEPARATION * 200) / 200;
+      }
+    );
     toggle(b, "dyn", "Accents", s.dynamics, "Velocities follow how hard each hit was", (v) => {
       s.dynamics = v;
     });

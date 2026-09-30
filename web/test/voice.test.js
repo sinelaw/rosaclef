@@ -12,6 +12,7 @@ import {
   decodeTake,
   nextDrum,
   sungNotes,
+  joinedTimes,
   cropTake,
   takeStart,
 } from "../src/voice.js";
@@ -71,6 +72,7 @@ const settings = {
   legato: false,
   dynamics: true,
   sensitivity: 0.5,
+  separation: 0,
   bars: 0,
 };
 const take = decodeTake(
@@ -110,6 +112,7 @@ const flat = melodyNotes(
     legato: false,
     dynamics: false,
     sensitivity: 0.5,
+    separation: 0,
     bars: 0,
   },
   120,
@@ -152,6 +155,7 @@ const legato = melodyNotes(
     legato: true,
     dynamics: true,
     sensitivity: 0.5,
+    separation: 0,
     bars: 0,
   },
   120,
@@ -204,6 +208,7 @@ const detailed = melodyNotes(
     legato: false,
     dynamics: true,
     sensitivity: 0.5,
+    separation: 0,
     bars: 0,
   },
   120,
@@ -254,6 +259,7 @@ const all = drumHits(
     legato: false,
     dynamics: true,
     sensitivity: 1,
+    separation: 0,
     bars: 0,
   },
   120,
@@ -262,6 +268,42 @@ const all = drumHits(
   []
 );
 check("full sensitivity keeps the ghost note", all.length === 5);
+
+// ------------------------------------------------------------------ separation
+
+const flam = decodeTake(
+  JSON.parse(
+    JSON.stringify({
+      mode: "drums",
+      duration: 2,
+      step: 0.01,
+      level: [],
+      contour: [],
+      notes: [],
+      hits: [
+        { time: 0.2, strength: 1, velocity: 0.6, kind: "snare" },
+        { time: 0.24, strength: 0.9, velocity: 1, kind: "snare" },
+        { time: 0.27, strength: 0.8, velocity: 0.7, kind: "hat" },
+        { time: 0.29, strength: 0.01, velocity: 0.3, kind: "hat" },
+        { time: 0.33, strength: 0.8, velocity: 0.7, kind: "kick" },
+        { time: 0.7, strength: 0.8, velocity: 0.7, kind: "kick" },
+      ],
+    })
+  )
+);
+const joined = joinedTimes(flam, 0.1, 0.1);
+check("close hits join the first of their group", joined[1] === 0.2 && joined[2] === 0.2);
+check("a group is measured from its first hit, not chained", joined[4] === 0.33);
+check("weak hits neither join nor start a group", joined[3] === 0.29);
+check("separation off keeps every time", joinedTimes(flam, 0.1, 0).join(",") === "0.2,0.24,0.27,0.29,0.33,0.7");
+const apart = drumHits(flam, { ...settings, grid: 0, separation: 0 }, 60, 0, true, []);
+const together = drumHits(flam, { ...settings, grid: 0, separation: 0.1 }, 60, 0, true, []);
+check("without separation a flam is two snares", apart.filter((h) => h.lane === "snare").length === 2);
+check("with separation a flam is one snare, as loud as its louder half", together.filter((h) => h.lane === "snare").length === 1 && together[0].velocity === 1);
+check(
+  "a different drum in the group lands with the first",
+  together.some((h) => h.lane === "hat" && near(h.start, 0))
+);
 
 // ------------------------------------------------------------------ crop
 
