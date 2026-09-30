@@ -227,8 +227,5 @@ const all = drumHits(
 );
 check("full sensitivity keeps the ghost note", all.length === 5);
 
-if (failures > 0) {
-  console.log(`${failures} failed`);
-  process.exit(1);
-}
-console.log("all passed");
+if (failures > 0) throw new Error(`${failures} test(s) failed`);
+console.log("all voice-to-notes tests passed");
