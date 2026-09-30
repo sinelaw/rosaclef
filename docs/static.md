@@ -99,6 +99,14 @@ It needs a Rust toolchain with the `wasm32-unknown-unknown` target; with
 (both are committed). Serve the folder as it is: all URLs are relative, and
 `.nojekyll` keeps GitHub Pages from filtering files.
 
+### GitHub Pages
+
+`.github/workflows/pages.yml` builds the site from source and publishes it on
+every push to `main` (or by hand: Actions → *Deploy the browser-only studio*
+→ Run workflow). Turn it on once in the repository's Settings → Pages →
+Source: **GitHub Actions**. The studio is then at
+`https://<owner>.github.io/<repository>/`.
+
 To check a build end to end in a real browser (Playwright):
 
 ```sh

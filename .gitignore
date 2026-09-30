@@ -22,3 +22,7 @@ target
 
 # Agent worktrees
 .claude/worktrees/
+
+# Static builds (tools/build-static.sh)
+/dist/
+/_site/
