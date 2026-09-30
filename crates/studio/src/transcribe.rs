@@ -1,10 +1,14 @@
 //! Voice to notes: turns a recorded take into music.
 //!
 //! - **Melody** — a sung, hummed or whistled line becomes notes. The pitch is
-//!   tracked with YIN (de Cheveigné & Kawahara, 2002) every 10 ms on a
-//!   ~16 kHz copy of the take, then cut into notes where the pitch settles
-//!   on another semitone, the voice stops, or the level dips and comes back
-//!   (a new syllable on the same pitch).
+//!   tracked every 10 ms on a ~16 kHz copy of the take by YIN (de Cheveigné
+//!   & Kawahara, 2002) and checked against the spectrum (subharmonic
+//!   summation): a frame counts as sung when YIN is sure of it or both
+//!   agree. The sung stretches are cut into syllables where the level dips
+//!   and comes back, and each syllable into notes by a dynamic-programming
+//!   fit of whole semitones with a cost per note change, so glides, scoops
+//!   and vibrato do not turn into little notes of their own. The fit is
+//!   made at five detail levels, in the singer's own tuning.
 //! - **Beatbox** — vocal percussion becomes drum hits. Onsets are peaks of the
 //!   spectral flux; the first 50 ms of each hit are summed up by a *tone*
 //!   (the spectral centroid, pulled down by the share of energy below
@@ -24,8 +28,9 @@ pub const STEP: f32 = 0.01;
 /// The pitch range followed: C2 (hummed) to about C7 (whistled).
 const FMIN: f32 = 62.0;
 const FMAX: f32 = 2200.0;
-/// Notes shorter than this are dropped (clicks, breaths).
-const MIN_NOTE: f32 = 0.06;
+/// Notes shorter than this are dropped (clicks, breaths); the studio's
+/// clean-up merges or drops longer blips.
+const MIN_NOTE: f32 = 0.05;
 
 /// Default tone boundaries between the drums (Hz).
 pub const KICK_BELOW: f32 = 900.0;
@@ -78,7 +83,11 @@ pub struct Transcription {
     pub level: Vec<f32>,
     /// Melody: fractional MIDI pitch per frame, 0 where there is no pitch.
     pub contour: Vec<f32>,
+    /// Melody: the notes at the default detail level.
     pub notes: Vec<VoiceNote>,
+    /// Melody: the notes at every detail level (`DETAIL_CHANGES`), from
+    /// the smoothest to the most detailed.
+    pub details: Vec<Vec<VoiceNote>>,
     pub hits: Vec<Hit>,
 }
 
@@ -97,17 +106,19 @@ pub fn transcribe(data: &SampleData, mode: &str) -> Transcription {
             level,
             contour: vec![],
             notes: vec![],
+            details: vec![],
             hits: beatbox(&x, sr),
         }
     } else {
-        let (contour, notes) = melody(&x, sr);
+        let (contour, details) = melody(&x, sr);
         Transcription {
             mode: "melody",
             duration,
             step: STEP,
             level,
             contour,
-            notes,
+            notes: details[DEFAULT_DETAIL].clone(),
+            details,
             hits: vec![],
         }
     }
@@ -222,13 +233,14 @@ fn hz_to_midi(f: f32) -> f32 {
 
 // ------------------------------------------------------------------ melody
 
-/// YIN pitch per frame: (frequency in Hz or 0, aperiodicity 0..1).
+/// YIN pitch per frame: (frequency in Hz, aperiodicity 0..1). The
+/// frequency is that of the best dip even when the frame is not periodic
+/// (0 only where the frame does not fit the take); voicing is decided later.
 fn yin(x: &[f32], sr: f32, frames: usize) -> Vec<(f32, f32)> {
     let tau_min = ((sr / FMAX) as usize).max(2);
     let tau_max = (sr / FMIN).ceil() as usize;
     let w = tau_max;
     let hop = STEP * sr;
-    let mut d = vec![0f32; tau_max + 2];
     let mut dn = vec![1f32; tau_max + 2];
     (0..frames)
         .map(|i| {
@@ -245,7 +257,6 @@ fn yin(x: &[f32], sr: f32, frames: usize) -> Vec<(f32, f32)> {
                     let v = s[j] - s[j + tau];
                     acc += v * v;
                 }
-                d[tau] = acc;
                 running += acc;
                 dn[tau] = if running > 0.0 {
                     acc * tau as f32 / running
@@ -276,10 +287,6 @@ fn yin(x: &[f32], sr: f32, frames: usize) -> Vec<(f32, f32)> {
                     })
                     .unwrap_or(tau_min)
             });
-            let ap = dn[tau];
-            if ap > 0.35 {
-                return (0.0, ap);
-            }
             // Parabolic interpolation around the dip.
             let (a, b, c) = (dn[tau - 1], dn[tau], dn[tau + 1]);
             let den = a - 2.0 * b + c;
@@ -288,184 +295,376 @@ fn yin(x: &[f32], sr: f32, frames: usize) -> Vec<(f32, f32)> {
             } else {
                 0.0
             };
-            (sr / (tau as f32 + shift), ap)
+            (sr / (tau as f32 + shift), b.clamp(0.0, 1.0))
         })
         .collect()
 }
 
-/// A note being followed.
-struct Cur {
-    start: usize,
-    pitches: Vec<f32>,
-    peak: f32,
-    /// Frames (index, pitch) that left the note's pitch, not yet decided.
-    away: Vec<(usize, f32)>,
-    /// Where the level fell under half the peak, and the quietest frame since.
-    fall: Option<usize>,
-    dip: f32,
+/// A second opinion from the spectrum: the pitch (fractional MIDI, 0 for a
+/// silent frame) whose harmonics hold the most energy — subharmonic
+/// summation (Hermes, 1988), with the half-harmonics subtracted so that
+/// an octave down does not win.
+fn harmonic_sum(x: &[f32], sr: f32, frames: usize) -> Vec<f32> {
+    let n = ((0.064 * sr) as usize).next_power_of_two();
+    let tw = twiddles(n);
+    let win: Vec<f32> = (0..n)
+        .map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / n as f32).cos())
+        .collect();
+    let (mut re, mut im) = (vec![], vec![]);
+    let bin = sr / n as f32;
+    let lo = hz_to_midi(FMIN);
+    let hi = hz_to_midi(FMAX);
+    let candidates: Vec<(f32, f32)> = (0..)
+        .map(|k| lo + k as f32 * 0.1)
+        .take_while(|m| *m <= hi)
+        .map(|m| (m, 440.0 * 2f32.powf((m - 69.0) / 12.0)))
+        .collect();
+    let hop = STEP * sr;
+    let mut seg = vec![0f32; n];
+    (0..frames)
+        .map(|i| {
+            let center = (i as f32 * hop) as isize;
+            for (j, v) in seg.iter_mut().enumerate() {
+                let k = center - (n / 2) as isize + j as isize;
+                *v = if k >= 0 && (k as usize) < x.len() {
+                    x[k as usize]
+                } else {
+                    0.0
+                };
+            }
+            let p = power(&seg, &win, n, &tw, &mut re, &mut im);
+            let peak = p.iter().cloned().fold(0.0, f32::max).sqrt();
+            if peak <= 1e-6 {
+                return 0.0;
+            }
+            let a: Vec<f32> = p
+                .iter()
+                .map(|v| (1.0 + 20.0 * v.sqrt() / peak).ln())
+                .collect();
+            let at = |f: f32| {
+                let k = f / bin;
+                let k0 = k.floor() as usize;
+                if k0 + 1 >= a.len() {
+                    return 0.0;
+                }
+                let t = k - k0 as f32;
+                a[k0] * (1.0 - t) + a[k0 + 1] * t
+            };
+            let mut best = (0.0f32, f32::MIN);
+            for &(m, f0) in &candidates {
+                let mut score = 0.0;
+                let mut w = 1.0;
+                for h in 1..=8 {
+                    let f = f0 * h as f32;
+                    if f >= sr / 2.0 {
+                        break;
+                    }
+                    score += w * (at(f) - 0.5 * at(f - 0.5 * f0));
+                    w *= 0.86;
+                }
+                if score > best.1 {
+                    best = (m, score);
+                }
+            }
+            best.0
+        })
+        .collect()
 }
 
-impl Cur {
-    fn new(start: usize) -> Cur {
-        Cur {
-            start,
-            pitches: vec![],
-            peak: 0.0,
-            away: vec![],
-            fall: None,
-            dip: 0.0,
-        }
-    }
-
-    /// The pitch the note sits on (robust to vibrato and the attack).
-    fn anchor(&self) -> f32 {
-        let from = self.pitches.len().saturating_sub(15);
-        median(&mut self.pitches[from..].to_vec())
-    }
-
-    /// Take back the frames that had wandered off (they were a glide).
-    fn settle(&mut self) {
-        for (_, p) in self.away.drain(..) {
-            self.pitches.push(p);
-        }
-    }
+/// Median of the values in `run` within `half` frames of `i`.
+fn median_around(v: &[f32], run: (usize, usize), i: usize, half: usize) -> f32 {
+    let a = i.saturating_sub(half).max(run.0);
+    let b = (i + half + 1).min(run.1);
+    median(&mut v[a..b].to_vec())
 }
 
-/// Pitch contour (fractional MIDI per frame, 0 = none) and notes.
-fn melody(x: &[f32], sr: f32) -> (Vec<f32>, Vec<VoiceNote>) {
+/// Most a frame can cost in `fit_notes` (squared semitones): a frame far
+/// from every note (mid-glide, an octave slip) should not decide much.
+const CAP: f32 = 1.5;
+/// The cost of a note change in `fit_notes` (squared semitones) at each
+/// detail level, from "smooth" to "every note". A higher cost absorbs
+/// more glides and ornaments; a lower one keeps quicker notes.
+pub const DETAIL_CHANGES: [f32; 5] = [16.0, 11.0, 8.0, 5.5, 4.0];
+/// The detail level of `Transcription::notes`: no stray notes on the test
+/// phrases (see the tests), at the price of merging very quick runs.
+pub const DEFAULT_DETAIL: usize = 2;
+
+/// The whole-semitone notes that best follow a stretch of pitches: the
+/// piecewise-constant fit minimizing the (capped, clarity-weighted) squared
+/// distance to the pitches plus `change` per note change — dynamic
+/// programming over the semitones in range. Glides, scoops and vibrato cost
+/// more as extra notes than they save; a real note, even a quick one, saves
+/// far more than a change costs.
+fn fit_notes(p: &[f32], weight: &[f32], change: f32) -> Vec<i32> {
+    if p.is_empty() {
+        return vec![];
+    }
+    let lo = p.iter().cloned().fold(f32::MAX, f32::min).floor() as i32 - 1;
+    let hi = p.iter().cloned().fold(f32::MIN, f32::max).ceil() as i32 + 1;
+    let n = (hi - lo + 1) as usize;
+    let dist = |v: f32, s: usize| {
+        let d = v - (lo + s as i32) as f32;
+        (d * d).min(CAP)
+    };
+    let mut cost: Vec<f32> = (0..n)
+        .map(|s| weight[0].max(0.05) * dist(p[0], s))
+        .collect();
+    // For each frame after the first: whether a state was entered by a
+    // change, and from which state the cheapest change came.
+    let mut switched = vec![false; p.len() * n];
+    let mut from = vec![0usize; p.len()];
+    for t in 1..p.len() {
+        let (best, best_cost) =
+            cost.iter().enumerate().fold(
+                (0, f32::MAX),
+                |acc, (s, &c)| if c < acc.1 { (s, c) } else { acc },
+            );
+        from[t] = best;
+        let w = weight[t].max(0.05);
+        for s in 0..n {
+            let stay = cost[s];
+            let jump = best_cost + change;
+            if jump < stay {
+                cost[s] = jump;
+                switched[t * n + s] = true;
+            }
+            cost[s] += w * dist(p[t], s);
+        }
+    }
+    let mut s = cost
+        .iter()
+        .enumerate()
+        .fold(
+            (0, f32::MAX),
+            |acc, (s, &c)| if c < acc.1 { (s, c) } else { acc },
+        )
+        .0;
+    let mut out = vec![0i32; p.len()];
+    for t in (0..p.len()).rev() {
+        out[t] = lo + s as i32;
+        if t > 0 && switched[t * n + s] {
+            s = from[t];
+        }
+    }
+    out
+}
+
+/// Pitch contour (fractional MIDI per frame, 0 = none) and the notes at
+/// each detail level (`DETAIL_CHANGES`).
+fn melody(x: &[f32], sr: f32) -> (Vec<f32>, Vec<Vec<VoiceNote>>) {
     let factor = ((sr / 16000.0).floor() as usize).max(1);
     let y = decimate(x, factor);
     let ysr = sr / factor as f32;
     let frames = (x.len() as f32 / sr / STEP).ceil() as usize;
-    let pitch = yin(&y, ysr, frames);
+    let yin = yin(&y, ysr, frames);
+    let spectral = harmonic_sum(&y, ysr, frames);
     let level = rms_frames(&y, ysr);
+    let level_at = |i: usize| level.get(i).copied().unwrap_or(0.0);
     let loud = level.iter().cloned().fold(0.0, f32::max);
-    let gate = (loud * 0.03).max(0.002); // -30 dB under the loudest frame
+    // A sung stretch must reach -26 dB under the loudest frame and lasts
+    // while it stays above -32 dB.
+    let (gate_on, gate_off) = ((loud * 0.05).max(0.003), (loud * 0.025).max(0.002));
 
+    // A frame is sung when YIN is sure of it, or fairly sure and the
+    // spectrum agrees on the pitch (within a semitone).
+    let mut clarity = vec![0f32; frames];
     let raw: Vec<Option<f32>> = (0..frames)
         .map(|i| {
-            let (f, _) = pitch[i];
-            let l = level.get(i).copied().unwrap_or(0.0);
-            (f > 0.0 && l > gate).then(|| hz_to_midi(f))
-        })
-        .collect();
-    // Median of 5 over the voiced neighbours: removes single-frame octave slips.
-    let smooth: Vec<Option<f32>> = (0..frames)
-        .map(|i| {
-            raw[i]?;
-            let mut v: Vec<f32> = (i.saturating_sub(2)..(i + 3).min(frames))
-                .filter_map(|j| raw[j])
-                .collect();
-            Some(median(&mut v))
+            let (f, ap) = yin[i];
+            if f <= 0.0 || level_at(i) <= gate_off {
+                return None;
+            }
+            let m = hz_to_midi(f);
+            let agree = spectral[i] > 0.0 && (m - spectral[i]).abs() < 1.0;
+            let sung = ap < 0.1 || (agree && ap < 0.4);
+            clarity[i] = (1.0 - ap) * if agree { 1.0 } else { 0.6 };
+            sung.then_some(m)
         })
         .collect();
 
-    let mut spans: Vec<(usize, usize, Vec<f32>, f32)> = vec![];
-    let finish = |c: Cur, end: usize, spans: &mut Vec<(usize, usize, Vec<f32>, f32)>| {
-        if end > c.start && !c.pitches.is_empty() {
-            spans.push((c.start, end, c.pitches, c.peak));
-        }
-    };
-    let mut cur: Option<Cur> = None;
-    for i in 0..frames {
-        let l = level.get(i).copied().unwrap_or(0.0);
-        let Some(m) = smooth[i] else {
-            if let Some(mut c) = cur.take() {
-                c.settle();
-                finish(c, i, &mut spans);
-            }
-            continue;
-        };
-        let mut c = cur.take().unwrap_or_else(|| Cur::new(i));
-        if c.pitches.is_empty() {
-            c.pitches.push(m);
-            c.peak = l;
-            cur = Some(c);
+    // Runs of sung frames that get loud enough.
+    let mut runs: Vec<(usize, usize)> = vec![];
+    let mut i = 0;
+    while i < frames {
+        if raw[i].is_none() {
+            i += 1;
             continue;
         }
-        // A new syllable: the level fell under half the peak and rose again
-        // by ~8 dB. The quiet frames between the two are a gap.
-        if let Some(fall) = c.fall {
-            if l > c.dip * 2.5 && l > c.peak * 0.25 {
-                c.settle();
-                c.pitches.truncate(fall - c.start);
-                finish(c, fall, &mut spans);
-                let mut next = Cur::new(i);
-                next.pitches.push(m);
-                next.peak = l;
-                cur = Some(next);
-                continue;
-            }
+        let a = i;
+        while i < frames && raw[i].is_some() {
+            i += 1;
         }
-        if l < c.peak * 0.5 {
-            if c.fall.is_none() {
-                c.fall = Some(i);
-                c.dip = l;
-            }
-            c.dip = c.dip.min(l);
-        } else {
-            c.fall = None;
+        if (a..i).any(|k| level_at(k) > gate_on) {
+            runs.push((a, i));
         }
-        c.peak = c.peak.max(l);
-        if (m - c.anchor()).abs() > 0.75 {
-            c.away.push((i, m));
-            // Settled somewhere else for 40 ms: a new note from where it left.
-            if c.away.len() >= 4 {
-                let at = c.away[0].0;
-                let mut next = Cur::new(at);
-                next.pitches = c.away.drain(..).map(|(_, p)| p).collect();
-                next.peak = l;
-                finish(c, at, &mut spans);
-                cur = Some(next);
-                continue;
-            }
-        } else {
-            c.settle();
-            c.pitches.push(m);
-        }
-        cur = Some(c);
-    }
-    if let Some(mut c) = cur.take() {
-        c.settle();
-        finish(c, frames, &mut spans);
     }
 
-    // A short, quiet stretch pressed against a much louder note is its tail
-    // or the consonant between two syllables, not a note.
-    let tail = |i: usize| {
-        let (a, b, _, peak) = &spans[i];
-        let touching = |j: usize| {
-            let (c, d, _, p) = &spans[j];
-            (c.saturating_sub(*b) <= 3 || a.saturating_sub(*d) <= 3) && *p > peak * 4.0
-        };
-        (b - a) as f32 * STEP < 0.15
-            && ((i > 0 && touching(i - 1)) || (i + 1 < spans.len() && touching(i + 1)))
-    };
-    let keep: Vec<bool> = (0..spans.len()).map(|i| !tail(i)).collect();
-    let loudest = spans.iter().map(|s| s.3).fold(0.0, f32::max).max(1e-9);
-    let notes = spans
-        .into_iter()
-        .zip(keep)
-        .filter(|((a, b, _, _), keep)| *keep && (b - a) as f32 * STEP >= MIN_NOTE)
-        .map(|(s, _)| s)
-        .map(|(a, b, mut ps, peak)| {
-            // Skip the scoop into the note when there is enough of it.
-            let skip = if ps.len() >= 8 { ps.len() / 4 } else { 0 };
-            let pitch = median(&mut ps[skip..]);
-            let db = 20.0 * (peak / loudest).max(1e-6).log10();
-            VoiceNote {
-                start: round3(a as f32 * STEP),
-                end: round3(b as f32 * STEP),
-                pitch: (pitch * 100.0).round() / 100.0,
-                velocity: round3((0.35 + 0.65 * (1.0 + db / 30.0)).clamp(0.2, 1.0)),
+    // The pitch with single-frame octave slips removed (a median of 5).
+    let vals: Vec<f32> = raw.iter().map(|p| p.unwrap_or(0.0)).collect();
+    let mut fine = vec![0f32; frames];
+    for &run in &runs {
+        for (k, f) in fine.iter_mut().enumerate().take(run.1).skip(run.0) {
+            *f = median_around(&vals, run, k, 2);
+        }
+    }
+
+    // Cut each run into syllables where the level dips and comes back
+    // (a new syllable on the same pitch).
+    let mut pieces: Vec<(usize, usize)> = vec![];
+    for &(a, b) in &runs {
+        let mut start = a;
+        let mut peak = level_at(a);
+        let mut fall: Option<usize> = None;
+        let mut dip = 0.0f32;
+        for k in a + 1..b {
+            let l = level_at(k);
+            if let Some(f) = fall {
+                if l > dip * 2.5 && l > peak * 0.25 {
+                    pieces.push((start, f));
+                    start = k;
+                    peak = l;
+                    fall = None;
+                    continue;
+                }
             }
+            if l < peak * 0.5 {
+                if fall.is_none() {
+                    fall = Some(k);
+                    dip = l;
+                }
+                dip = dip.min(l);
+            } else {
+                fall = None;
+            }
+            peak = peak.max(l);
+        }
+        pieces.push((start, b));
+    }
+    pieces.retain(|(a, b)| b > a);
+
+    // Frames where the pitch moves fast (a glide or a scoop, faster than
+    // vibrato) say little about which note is sung.
+    let weight: Vec<f32> = (0..frames)
+        .map(|k| {
+            let Some(&(pa, pb)) = pieces.iter().find(|(a, b)| k >= *a && k < *b) else {
+                return 0.0;
+            };
+            let (u, v) = (k.saturating_sub(2).max(pa), (k + 2).min(pb - 1));
+            let slope = if v > u {
+                (fine[v] - fine[u]).abs() / (v - u) as f32
+            } else {
+                0.0
+            };
+            clarity[k] / (1.0 + (slope / 0.12).powi(2))
         })
         .collect();
-    let contour = smooth
+    // Then each syllable into notes with the piecewise-constant fit, for a
+    // singer `tuning` semitones off equal temperament.
+    let segment = |tuning: f32, change: f32| {
+        let mut spans: Vec<(usize, usize)> = vec![];
+        for &(pa, pb) in &pieces {
+            let tuned: Vec<f32> = fine[pa..pb].iter().map(|p| p - tuning).collect();
+            let states = fit_notes(&tuned, &weight[pa..pb], change);
+            let mut from = pa;
+            for k in pa + 1..=pb {
+                if k == pb || states[k - pa] != states[k - pa - 1] {
+                    spans.push((from, k));
+                    from = k;
+                }
+            }
+        }
+        spans
+    };
+    let middle = |a: usize, b: usize| {
+        let trim = if b - a >= 10 { (b - a) / 5 } else { 0 };
+        median(&mut fine[a + trim..b - trim].to_vec())
+    };
+    // The singer's own tuning, from the notes found in equal temperament:
+    // how far their steady pitches sit from the semitones (a circular mean
+    // weighted by length), used when the notes agree on it.
+    let first = segment(0.0, DETAIL_CHANGES[DEFAULT_DETAIL]);
+    let (mut cs, mut sn, mut total) = (0.0f32, 0.0f32, 0.0f32);
+    for &(a, b) in &first {
+        let p = middle(a, b);
+        let ang = 2.0 * std::f32::consts::PI * (p - p.round());
+        let w = (b - a) as f32;
+        cs += w * ang.cos();
+        sn += w * ang.sin();
+        total += w;
+    }
+    let agreement = if total > 0.0 {
+        (cs * cs + sn * sn).sqrt() / total
+    } else {
+        0.0
+    };
+    let offset = sn.atan2(cs) / (2.0 * std::f32::consts::PI);
+    // At least three notes and a second of singing, or it is not a habit.
+    let enough = first.len() >= 3 && total * STEP >= 1.0;
+    let tuning = if enough && agreement > 0.7 && offset.abs() > 0.1 {
+        offset
+    } else {
+        0.0
+    };
+
+    struct Span {
+        a: usize,
+        b: usize,
+        peak: f32,
+        pitch: f32,
+    }
+    let notes_for = |spans: Vec<(usize, usize)>| -> Vec<VoiceNote> {
+        let spans: Vec<Span> = spans
+            .into_iter()
+            .map(|(a, b)| Span {
+                a,
+                b,
+                peak: (a..b).map(level_at).fold(0.0, f32::max),
+                // The pitch of the steady middle (glides in and out trimmed).
+                pitch: middle(a, b) - tuning,
+            })
+            .collect();
+        // A short, quiet stretch pressed against a much louder note is its
+        // tail or the consonant between two syllables, not a note.
+        let tail = |i: usize| {
+            let s = &spans[i];
+            let touching = |j: usize| {
+                let o = &spans[j];
+                (o.a.saturating_sub(s.b) <= 3 || s.a.saturating_sub(o.b) <= 3)
+                    && o.peak > s.peak * 4.0
+            };
+            (s.b - s.a) as f32 * STEP < 0.15
+                && ((i > 0 && touching(i - 1)) || (i + 1 < spans.len() && touching(i + 1)))
+        };
+        let keep: Vec<bool> = (0..spans.len()).map(|i| !tail(i)).collect();
+        let loudest = spans.iter().map(|s| s.peak).fold(0.0, f32::max).max(1e-9);
+        spans
+            .iter()
+            .zip(keep)
+            .filter(|(s, keep)| *keep && (s.b - s.a) as f32 * STEP >= MIN_NOTE)
+            .map(|(s, _)| {
+                let db = 20.0 * (s.peak / loudest).max(1e-6).log10();
+                VoiceNote {
+                    start: round3(s.a as f32 * STEP),
+                    end: round3(s.b as f32 * STEP),
+                    pitch: (s.pitch * 100.0).round() / 100.0,
+                    velocity: round3((0.35 + 0.65 * (1.0 + db / 30.0)).clamp(0.2, 1.0)),
+                }
+            })
+            .collect()
+    };
+    let details: Vec<Vec<VoiceNote>> = DETAIL_CHANGES
         .iter()
-        .map(|m| m.map(|v| (v * 100.0).round() / 100.0).unwrap_or(0.0))
+        .enumerate()
+        .map(|(i, &change)| {
+            if i == DEFAULT_DETAIL && tuning == 0.0 {
+                notes_for(first.clone())
+            } else {
+                notes_for(segment(tuning, change))
+            }
+        })
         .collect();
-    (contour, notes)
+    let contour = fine.iter().map(|v| (v * 100.0).round() / 100.0).collect();
+    (contour, details)
 }
 
 // ------------------------------------------------------------------ beatbox
@@ -775,6 +974,397 @@ mod tests {
 
     fn rounded(notes: &[VoiceNote]) -> Vec<i32> {
         notes.iter().map(|n| n.pitch.round() as i32).collect()
+    }
+
+    /// A take closer to a real singer: a vowel-like spectrum (the
+    /// fundamental weaker than the next harmonics), scoops into the notes,
+    /// wide vibrato, pitch jitter and shimmer, legato glides between notes,
+    /// consonant bursts, breaths, a pitch drop at phrase ends, room noise
+    /// and mains hum. `notes` are (midi, seconds); 0 is a rest.
+    fn singer(sr: f32, notes: &[(f32, f32)], seed: u32) -> Vec<f32> {
+        singer_with(sr, notes, seed, 0.0, 0.45)
+    }
+
+    /// `singer`, sung `detune` semitones off and with vibrato of `vibrato`
+    /// semitones.
+    fn singer_with(
+        sr: f32,
+        notes: &[(f32, f32)],
+        seed: u32,
+        detune: f32,
+        vibrato: f32,
+    ) -> Vec<f32> {
+        let mut rng = Rng(seed);
+        let lead = 0.4;
+        let total: f32 = lead + notes.iter().map(|n| n.1).sum::<f32>() + 0.6;
+        let n = (total * sr) as usize;
+        let mut out = vec![0.0f32; n];
+        // Room noise (about -50 dB) and 50 Hz hum.
+        for (i, v) in out.iter_mut().enumerate() {
+            *v += 0.001 * rng.noise() + 0.0015 * (2.0 * PI * 50.0 * i as f32 / sr).sin();
+        }
+        // A breath before the phrase.
+        for i in 0..(0.25 * sr) as usize {
+            let t = i as f32 / sr;
+            out[(0.05 * sr) as usize + i] += 0.012 * rng.noise() * (PI * t / 0.25).sin();
+        }
+        let mut phase = 0.0f32;
+        let mut t = lead;
+        let mut jitter = 0.0f32;
+        for (k, &(midi, dur)) in notes.iter().enumerate() {
+            if midi <= 0.0 {
+                t += dur;
+                continue;
+            }
+            let prev = if k > 0 { notes[k - 1].0 } else { 0.0 };
+            let next = notes.get(k + 1).map(|n| n.0).unwrap_or(0.0);
+            // A consonant before notes that follow a rest or start the phrase.
+            if prev <= 0.0 {
+                let a = ((t - 0.05) * sr) as usize;
+                for i in 0..(0.04 * sr) as usize {
+                    let v = rng.noise();
+                    out[a + i] += 0.03 * (v - 0.7 * rng.noise()) * (1.0 - i as f32 / (0.04 * sr));
+                }
+            }
+            let a = (t * sr) as usize;
+            let len = (dur * sr) as usize;
+            for i in 0..len {
+                let tt = i as f32 / sr;
+                // Scoop up from -70 cents over 70 ms; glide the last 90 ms
+                // into the next note, or fall 1.5 semitones at a phrase end.
+                // Scoops and glides take a smaller share of quick notes.
+                let glide = (dur * 0.25).min(0.09);
+                let mut m = midi - 0.7 * (1.0 - (tt / (glide * 0.8)).min(1.0));
+                let left = dur - tt;
+                if left < glide {
+                    let g = 1.0 - left / glide;
+                    m += if next > 0.0 {
+                        (next - midi) * g * 0.5
+                    } else {
+                        -1.5 * g * g
+                    };
+                }
+                if tt < glide && prev > 0.0 {
+                    m += (prev - midi) * 0.5 * (1.0 - tt / glide);
+                }
+                let vib = if tt > 0.15 {
+                    vibrato * (2.0 * PI * 5.3 * tt).sin()
+                } else {
+                    0.0
+                };
+                jitter = (jitter + 0.004 * rng.noise()).clamp(-0.12, 0.12);
+                let f0 = 440.0 * 2f32.powf((m + vib + jitter + detune - 69.0) / 12.0);
+                phase += 2.0 * PI * f0 / sr;
+                // Legato notes run into each other; others have soft edges.
+                let attack = if prev > 0.0 {
+                    1.0
+                } else {
+                    (tt / 0.03).min(1.0)
+                };
+                let release = if next > 0.0 {
+                    1.0
+                } else {
+                    (left / 0.06).min(1.0)
+                };
+                let shimmer = 1.0 + 0.08 * (2.0 * PI * 3.1 * tt + k as f32).sin();
+                let mut v = 0.0;
+                for h in 1..=10 {
+                    let fh = f0 * h as f32;
+                    // A vowel ("ah"): formants near 750 and 1200 Hz.
+                    let formant = (-((fh - 750.0) / 350.0).powi(2)).exp()
+                        + 0.6 * (-((fh - 1200.0) / 400.0).powi(2)).exp()
+                        + 0.15;
+                    v += formant * (phase * h as f32).sin() / h as f32;
+                }
+                out[a + i] += 0.12 * attack * release * shimmer * v;
+            }
+            t += dur;
+        }
+        out
+    }
+
+    /// (expected, found) pitch lists for a sung phrase, and the notes.
+    fn eval_phrase(
+        sr: f32,
+        notes: &[(f32, f32)],
+        seed: u32,
+    ) -> (Vec<i32>, Vec<i32>, Vec<VoiceNote>) {
+        let x = singer(sr, notes, seed);
+        let t = transcribe(&take(x, sr), "melody");
+        let want: Vec<i32> = notes
+            .iter()
+            .filter(|n| n.0 > 0.0)
+            .map(|n| n.0 as i32)
+            .collect();
+        (want, rounded(&t.notes), t.notes)
+    }
+
+    const PHRASES: &[&[(f32, f32)]] = &[
+        &[
+            (60.0, 0.45),
+            (62.0, 0.45),
+            (64.0, 0.45),
+            (65.0, 0.45),
+            (67.0, 0.8),
+        ],
+        &[
+            (67.0, 0.3),
+            (64.0, 0.3),
+            (0.0, 0.25),
+            (64.0, 0.3),
+            (62.0, 0.3),
+            (60.0, 0.9),
+        ],
+        &[
+            (57.0, 0.6),
+            (60.0, 0.4),
+            (62.0, 0.4),
+            (64.0, 0.7),
+            (0.0, 0.3),
+            (62.0, 0.35),
+            (60.0, 1.0),
+        ],
+        &[(48.0, 0.5), (52.0, 0.5), (55.0, 0.5), (60.0, 0.9)],
+        &[
+            (72.0, 0.25),
+            (71.0, 0.25),
+            (69.0, 0.25),
+            (67.0, 0.25),
+            (65.0, 0.25),
+            (64.0, 0.6),
+        ],
+    ];
+
+    /// Held out from tuning `DETAIL_CHANGES`: (phrase, detune, vibrato).
+    const HELD_OUT: &[(&[(f32, f32)], f32, f32)] = &[
+        // Sixteenths at 120 bpm.
+        (
+            &[
+                (64.0, 0.125),
+                (62.0, 0.125),
+                (60.0, 0.125),
+                (62.0, 0.125),
+                (64.0, 0.125),
+                (65.0, 0.125),
+                (67.0, 0.3),
+            ],
+            0.0,
+            0.2,
+        ),
+        // Repeated notes with rests between them.
+        (
+            &[
+                (62.0, 0.2),
+                (0.0, 0.1),
+                (62.0, 0.2),
+                (0.0, 0.1),
+                (62.0, 0.2),
+                (0.0, 0.1),
+                (67.0, 0.6),
+            ],
+            0.0,
+            0.3,
+        ),
+        // Octave leaps.
+        (
+            &[(57.0, 0.5), (69.0, 0.5), (57.0, 0.5), (64.0, 0.8)],
+            0.0,
+            0.45,
+        ),
+        // Heavy vibrato on long notes.
+        (&[(65.0, 1.0), (63.0, 1.0), (60.0, 1.2)], 0.0, 0.8),
+        // A singer 35 cents flat, and one 30 cents sharp.
+        (
+            &[(60.0, 0.4), (62.0, 0.4), (64.0, 0.4), (60.0, 0.8)],
+            -0.35,
+            0.45,
+        ),
+        (
+            &[
+                (69.0, 0.35),
+                (67.0, 0.35),
+                (65.0, 0.35),
+                (64.0, 0.35),
+                (62.0, 0.7),
+            ],
+            0.3,
+            0.45,
+        ),
+        // Whistled (high), and hummed (low).
+        (
+            &[(84.0, 0.3), (86.0, 0.3), (88.0, 0.3), (91.0, 0.6)],
+            0.0,
+            0.3,
+        ),
+        (
+            &[(45.0, 0.5), (47.0, 0.5), (48.0, 0.5), (52.0, 0.8)],
+            0.0,
+            0.3,
+        ),
+    ];
+
+    /// Prints how the held-out phrases come out: `cargo test -p
+    /// rosaclef-studio --release held_out_report -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn held_out_report() {
+        let (mut exact, mut extra, mut missing, mut total) = (0, 0, 0, 0);
+        for (i, (ph, detune, vib)) in HELD_OUT.iter().enumerate() {
+            for seed in [4, 5, 6] {
+                let x = singer_with(44100.0, ph, seed + i as u32 * 7, *detune, *vib);
+                let t = transcribe(&take(x, 44100.0), "melody");
+                let want: Vec<i32> = ph
+                    .iter()
+                    .filter(|n| n.0 > 0.0)
+                    .map(|n| n.0 as i32)
+                    .collect();
+                let got = rounded(&t.notes);
+                total += 1;
+                if want == got {
+                    exact += 1;
+                } else {
+                    println!(
+                        "held-out {i} seed {seed}: want {want:?}\n                   got  {got:?}"
+                    );
+                }
+                extra += got.len().saturating_sub(want.len());
+                missing += want.len().saturating_sub(got.len());
+            }
+        }
+        println!("held-out exact {exact}/{total} · extra notes {extra} · missing {missing}");
+    }
+
+    #[test]
+    fn sung_phrases_come_out_without_stray_notes() {
+        // Glides, scoops, vibrato, consonants and breaths: no notes between
+        // the sung ones.
+        for (i, ph) in PHRASES.iter().enumerate() {
+            let (want, got, notes) = eval_phrase(44100.0, ph, 1 + i as u32 * 10);
+            assert_eq!(got, want, "phrase {i}: {notes:?}");
+        }
+        // Phrases held out from tuning: no stray notes at the default level
+        // either, the pitches right (a flat and a sharp singer, heavy
+        // vibrato, whistling, humming), at most quick runs merged.
+        let mut exact = 0;
+        for (i, (ph, detune, vib)) in HELD_OUT.iter().enumerate() {
+            let x = singer_with(44100.0, ph, 4 + i as u32 * 7, *detune, *vib);
+            let t = transcribe(&take(x, 44100.0), "melody");
+            let want: Vec<i32> = ph
+                .iter()
+                .filter(|n| n.0 > 0.0)
+                .map(|n| n.0 as i32)
+                .collect();
+            let got = rounded(&t.notes);
+            assert!(
+                got.len() <= want.len(),
+                "held-out {i}: {got:?} for {want:?}"
+            );
+            exact += (got == want) as usize;
+            if i == 0 {
+                // The run of sixteenths needs the most detailed level.
+                assert_eq!(
+                    rounded(&t.details[DETAIL_CHANGES.len() - 1]),
+                    want,
+                    "held-out {i}"
+                );
+            }
+        }
+        assert!(
+            exact >= HELD_OUT.len() - 2,
+            "{exact}/{} held-out phrases exact",
+            HELD_OUT.len()
+        );
+    }
+
+    /// Every test phrase (training then held out) with its (want, notes per
+    /// detail level).
+    fn all_phrases() -> Vec<(String, Vec<i32>, Vec<Vec<i32>>)> {
+        let mut out = vec![];
+        for (i, ph) in PHRASES.iter().enumerate() {
+            for seed in [1, 2, 3] {
+                let x = singer(44100.0, ph, seed + i as u32 * 10);
+                let t = transcribe(&take(x, 44100.0), "melody");
+                let want = ph
+                    .iter()
+                    .filter(|n| n.0 > 0.0)
+                    .map(|n| n.0 as i32)
+                    .collect();
+                out.push((
+                    format!("phrase {i}/{seed}"),
+                    want,
+                    t.details.iter().map(|d| rounded(d)).collect(),
+                ));
+            }
+        }
+        for (i, (ph, detune, vib)) in HELD_OUT.iter().enumerate() {
+            for seed in [4, 5, 6] {
+                let x = singer_with(44100.0, ph, seed + i as u32 * 7, *detune, *vib);
+                let t = transcribe(&take(x, 44100.0), "melody");
+                let want = ph
+                    .iter()
+                    .filter(|n| n.0 > 0.0)
+                    .map(|n| n.0 as i32)
+                    .collect();
+                out.push((
+                    format!("held-out {i}/{seed}"),
+                    want,
+                    t.details.iter().map(|d| rounded(d)).collect(),
+                ));
+            }
+        }
+        out
+    }
+
+    /// Prints each detail level's score: `cargo test -p rosaclef-studio
+    /// --release detail_report -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn detail_report() {
+        let all = all_phrases();
+        for level in 0..DETAIL_CHANGES.len() {
+            let (mut exact, mut extra, mut missing) = (0, 0, 0);
+            for (_, want, got) in &all {
+                let got = &got[level];
+                exact += (got == want) as usize;
+                extra += got.len().saturating_sub(want.len());
+                missing += want.len().saturating_sub(got.len());
+            }
+            println!(
+                "detail {level}: exact {exact}/{} · extra {extra} · missing {missing}",
+                all.len()
+            );
+        }
+    }
+
+    /// Prints how each phrase comes out: `cargo test -p rosaclef-studio
+    /// --release sung_phrases_report -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn sung_phrases_report() {
+        let (mut exact, mut extra, mut missing) = (0, 0, 0);
+        for (i, ph) in PHRASES.iter().enumerate() {
+            for seed in [1, 2, 3] {
+                let (want, got, notes) = eval_phrase(44100.0, ph, seed + i as u32 * 10);
+                if want == got {
+                    exact += 1;
+                }
+                extra += got.len().saturating_sub(want.len());
+                missing += want.len().saturating_sub(got.len());
+                println!("phrase {i} seed {seed}: want {want:?}\n                  got  {got:?}");
+                if want != got {
+                    for n in &notes {
+                        println!(
+                            "                    {:.2}-{:.2} {:.2}",
+                            n.start, n.end, n.pitch
+                        );
+                    }
+                }
+            }
+        }
+        println!(
+            "exact {exact}/{} · extra notes {extra} · missing {missing}",
+            PHRASES.len() * 3
+        );
     }
 
     #[test]

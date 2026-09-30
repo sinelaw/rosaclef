@@ -160,13 +160,27 @@ export function nextDrum(kind) {
 // ------------------------------------------------------------------ result
 
 /** Settings shared by both modes; see the Voice panel (ui/voice.js). */
-/** type VoiceSettings = { grid: Number, strength: Number, lengths: Boolean, key: Int, scale: String, octave: Int, legato: Boolean, dynamics: Boolean, sensitivity: Number, kickBelow: Number, hatAbove: Number, bars: Int } */
+/** `detail` picks one of the take's detail levels (0 smooth … 4 every note). */
+/** type VoiceSettings = { detail: Int, grid: Number, strength: Number, lengths: Boolean, key: Int, scale: String, octave: Int, legato: Boolean, dynamics: Boolean, sensitivity: Number, kickBelow: Number, hatAbove: Number, bars: Int } */
+
+/** The detail levels of the Detail control, smoothest first (the server's
+ * DETAIL_CHANGES in crates/studio/src/transcribe.rs). */
+export const DETAILS = ["Smooth", "Clean", "Balanced", "Detailed", "Every note"];
+export const DEFAULT_DETAIL = 2;
+
+/** The notes of a melody take at a detail level (the default level's when
+ * the take has no such level). */
+/** function sungNotes(take: Take, detail: Int) => VoiceNote[] */
+export function sungNotes(take, detail) {
+  if (detail >= 0 && detail < take.details.length) return take.details[detail];
+  return take.notes;
+}
 
 /** A resolved key: `key` is -1 for "detect". */
 /** function resolveKey(take: Take, s: VoiceSettings) => KeyGuess */
 export function resolveKey(take, s) {
   if (s.key >= 0) return { key: s.key, scale: s.scale };
-  const g = detectKey(take.notes);
+  const g = detectKey(sungNotes(take, s.detail));
   // A detected key keeps the chosen scale unless it is major/minor.
   if (s.scale === "major" || s.scale === "minor") return g;
   return { key: g.key, scale: s.scale };
@@ -174,11 +188,12 @@ export function resolveKey(take, s) {
 
 /** When the take starts on the grid (s): the first note or hit when the
  * take was sung without the song, else the start of the take. */
-/** function takeStart(take: Take, aligned: Boolean) => Number */
-export function takeStart(take, aligned) {
+/** function takeStart(take: Take, detail: Int, aligned: Boolean) => Number */
+export function takeStart(take, detail, aligned) {
   if (!aligned) return 0;
   if (take.mode === "drums") return take.hits.length > 0 ? take.hits[0].time : 0;
-  return take.notes.length > 0 ? take.notes[0].start : 0;
+  const notes = sungNotes(take, detail);
+  return notes.length > 0 ? notes[0].start : 0;
 }
 
 /** Melody: notes on the grid, snapped to the scale. `origin` is the beat
@@ -187,13 +202,14 @@ export function takeStart(take, aligned) {
 export function melodyNotes(take, s, bpm, origin, aligned) {
   const k = resolveKey(take, s);
   const steps = scaleSteps(k.scale);
-  const t0 = takeStart(take, aligned);
+  const t0 = takeStart(take, s.detail, aligned);
   const bps = bpm / 60;
   const minLen = s.grid > 0 ? s.grid : 0.0625;
+  const sung = sungNotes(take, s.detail);
   /** const out: Placed[] */
   const out = [];
-  for (let i = 0; i < take.notes.length; i++) {
-    const n = take.notes[i];
+  for (let i = 0; i < sung.length; i++) {
+    const n = sung[i];
     const raw = origin + (n.start - t0) * bps;
     const rawEnd = origin + (n.end - t0) * bps;
     const start = Math.max(0, quantize(raw, s.grid, s.strength));
@@ -266,6 +282,11 @@ export function loopBeats(notes, beatsPerBar, bars) {
   return Math.max(1, Math.ceil(end / beatsPerBar - 1e-6)) * beatsPerBar;
 }
 
+/** function decodeNote<T>(n: T) => VoiceNote */
+function decodeNote(n) {
+  return { start: Number(n.start), end: Number(n.end), pitch: Number(n.pitch), velocity: Number(n.velocity) };
+}
+
 /** function decodeTake<T>(r: T) => Take */
 export function decodeTake(r) {
   return {
@@ -274,7 +295,8 @@ export function decodeTake(r) {
     step: Number(r.step),
     level: (r.level ?? []).map((v) => Number(v)),
     contour: (r.contour ?? []).map((v) => Number(v)),
-    notes: (r.notes ?? []).map((n) => ({ start: Number(n.start), end: Number(n.end), pitch: Number(n.pitch), velocity: Number(n.velocity) })),
+    notes: (r.notes ?? []).map((n) => decodeNote(n)),
+    details: (r.details ?? []).map((d) => d.map((n) => decodeNote(n))),
     hits: (r.hits ?? []).map((h) => ({
       time: Number(h.time),
       strength: Number(h.strength),
@@ -290,5 +312,5 @@ export function decodeTake(r) {
 
 /** function emptyTake() => Take */
 export function emptyTake() {
-  return { mode: "", duration: 0, step: 0.01, level: [], contour: [], notes: [], hits: [] };
+  return { mode: "", duration: 0, step: 0.01, level: [], contour: [], notes: [], details: [], hits: [] };
 }

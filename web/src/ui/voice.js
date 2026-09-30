@@ -21,6 +21,7 @@ import {
   loopBeats,
   strengthNeeded,
   takeStart,
+  DETAILS,
   nextDrum,
   decodeTake,
   emptyTake,
@@ -65,6 +66,7 @@ export const voice = {
   repeat: 1,
   playing: false,
   settings /*: VoiceSettings */: {
+    detail: 2,
     grid: 0.25,
     strength: 1,
     lengths: true,
@@ -457,6 +459,26 @@ function settingsView(b) {
   const drums = voice.mode === "drums";
   b.open("div", "set", "voice-settings");
 
+  if (!drums) {
+    b.open("div", "notes", "voice-group");
+    b.leaf("div", "t", "voice-group-title", "Notes");
+    b.open("div", "row", "voice-row");
+    const last = DETAILS.length - 1;
+    dial(
+      b,
+      "detail",
+      "Detail",
+      s.detail >= 0 && s.detail <= last ? DETAILS[s.detail] : "",
+      s.detail / last,
+      "Smooth absorbs slides, scoops and ornaments into the notes around them; Every note keeps quick runs (and more blips)",
+      (v) => {
+        s.detail = Math.round(v * last);
+      }
+    );
+    b.close();
+    b.close();
+  }
+
   b.open("div", "q", "voice-group");
   b.leaf("div", "t", "voice-group-title", "Quantize");
   b.open("div", "row", "voice-row");
@@ -636,7 +658,7 @@ function paintMelody(g, w, h, r) {
   const t = voice.take;
   const s = voice.settings;
   const shift = 12 * s.octave;
-  const t0 = takeStart(t, voice.aligned);
+  const t0 = takeStart(t, s.detail, voice.aligned);
   const bps = state.project.transport.bpm / 60;
   let lo = 127;
   let hi = 0;
@@ -889,6 +911,7 @@ export function voicePanel(b) {
   const r = voiceResult();
   const rec = voice.status === "recording";
   b.open("div", "voice", `voice ${voice.mode}`);
+  b.open("div", "grid", "voice-grid");
 
   b.open("div", "side", "voice-side");
   b.open("div", "mode", "seg");
@@ -978,6 +1001,7 @@ export function voicePanel(b) {
   b.close();
   b.close();
 
+  b.close();
   b.close();
 }
 

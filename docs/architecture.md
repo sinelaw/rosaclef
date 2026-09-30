@@ -81,8 +81,10 @@
 ### Voice to notes
 
 - `rosaclef_studio::transcribe` analyzes a take once: YIN pitch tracking on a
-  ~16 kHz copy (10 ms frames) cut into notes at pitch changes, silences and
-  level dips (melody); band-normalized SuperFlux onsets, each hit summed up
+  ~16 kHz copy (10 ms frames), confirmed by subharmonic summation, cut into
+  syllables at silences and level dips and into notes by a dynamic-programming
+  fit of whole semitones (a cost per note change, five detail levels, the
+  singer's own tuning) (melody); band-normalized SuperFlux onsets, each hit summed up
   by a *tone* (spectral centroid lowered by its share below 200 Hz) that sorts
   it into kick / snare / hat (beatbox). It returns raw seconds and fractional
   pitches (`GET /api/transcribe`, on the server and in `rosaclef-local`).
