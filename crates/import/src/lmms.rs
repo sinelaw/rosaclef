@@ -279,22 +279,45 @@ fn reverb(decay: f64, dry: f64, wet: f64, tail_db: f64) -> (Device, f64) {
 /// gain the insert must add. Settings are read from the ports of plugins
 /// whose layout is known (TAP Reverberator, Calf Reverb, Phaser, Chorus,
 /// Flanger); others get the family's defaults.
-fn generic_effect(label: &str, wet: f64, ports: &HashMap<u32, f64>) -> Option<(Device, f64)> {
+fn generic_effect(label: &str, wet: f64, ports: &HashMap<u32, f64>) -> Option<(Vec<Device>, f64)> {
     let l = label.to_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| l.contains(w));
     let port = |n: u32, d: f64| ports.get(&n).copied().unwrap_or(d);
     let db = |v: f64| 10f64.powf(v / 20.0);
     let mut d;
     let mut gain = 1.0;
+    let mut before: Vec<Device> = vec![];
     if has(&["tap_reverb"]) {
-        // Decay [ms], dry [dB], wet [dB].
-        let (r, g) = reverb(
-            port(0, 2500.0) / 1000.0,
-            db(port(1, 0.0)),
-            wet * db(port(2, 0.0)),
-            2.0,
+        // Decay [ms], dry [dB], wet [dB], ..., band-pass filter (port 5).
+        // Measured in LMMS on steady tones with its band-pass on: the wet
+        // path adds in step with the dry signal above ~1 kHz (+6 dB at 0 dB
+        // wet) and nothing below ~300 Hz, while fast notes stay crisp. So:
+        // a high shelf for that lift and only a light tail.
+        let (dry, wet) = (db(port(1, 0.0)), wet * db(port(2, 0.0)));
+        let lift = 20.0 * ((dry + wet) / dry.max(1e-3)).log10();
+        if port(5, 1.0) != 0.0 {
+            // A wide bell and a shelf: fitted to its measured lift (0 at
+            // 220 Hz, +2 at 880, +6 at 1760, +6.3 at 3520 for 0 dB wet).
+            let mut eq = Device::new("eq");
+            set_param(&mut eq, "mid", lift);
+            set_param(&mut eq, "midFreq", 1700.0);
+            set_param(&mut eq, "midQ", 0.7);
+            set_param(&mut eq, "high", lift);
+            set_param(&mut eq, "highFreq", 4000.0);
+            before.push(eq);
+        } else {
+            gain *= (dry + wet) / dry.max(1e-3);
+        }
+        d = Device::new("reverb");
+        let decay = port(0, 2500.0) / 1000.0;
+        set_param(
+            &mut d,
+            "size",
+            clamp((10f64.powf(-0.09 / decay.max(0.05)) - 0.7) / 0.28, 0.0, 1.0),
         );
-        (d, gain) = (r, g);
+        let mix = 0.25 * wet.min(1.0);
+        set_param(&mut d, "mix", mix);
+        gain *= dry / (1.0 - mix / 2.0);
     } else if l.contains("calf") && has(&["reverb"]) {
         // Decay time [s], ..., amount, dry.
         let (r, g) = reverb(port(7, 1.5), port(12, 1.0), wet * port(11, 0.25), 2.6);
@@ -305,9 +328,30 @@ fn generic_effect(label: &str, wet: f64, ports: &HashMap<u32, f64>) -> Option<(D
     } else if has(&["delay", "echo"]) {
         d = Device::new("delay");
         set_param(&mut d, "mix", 0.25 * wet);
-    } else if has(&["flang", "phas", "chorus", "ensemble", "vibrato"]) {
+    } else if has(&["phas"]) {
+        // All-pass notches, no delay (a chorus would smear fast notes).
+        d = Device::new("phaser");
+        if l.contains("calf") {
+            // Base freq [Hz], depth [cents], rate [Hz], feedback, stages,
+            // stereo phase [°], ..., amount, dry: the dry kept, the
+            // phased signal added.
+            set_param(&mut d, "freq", port(4, 1000.0));
+            set_param(&mut d, "depth", port(5, 4000.0) / 1200.0 / 6.0);
+            set_param(&mut d, "rate", port(6, 0.25));
+            set_param(&mut d, "feedback", port(7, 0.0));
+            set_param(&mut d, "stages", port(8, 6.0));
+            set_param(&mut d, "stereo", port(9, 180.0) / 360.0);
+            let (amount, dry) = (wet * port(11, 1.0), port(12, 1.0));
+            let ratio = amount / dry.max(1e-3);
+            let mix = (2.0 * ratio / (1.0 + ratio)).min(1.0);
+            set_param(&mut d, "mix", mix);
+            gain = dry / (1.0 - mix / 2.0);
+        } else {
+            set_param(&mut d, "mix", wet);
+        }
+    } else if has(&["flang", "chorus", "ensemble", "vibrato"]) {
         d = Device::new("chorus");
-        if l.contains("calf") && has(&["phaser", "chorus", "flanger"]) {
+        if l.contains("calf") && has(&["chorus", "flanger"]) {
             // Calf keeps `dry` and adds `amount` of the effect; Chœur
             // outputs (dry · (1 − mix/2) + wet · mix/2) · (1 + mix/5).
             let (amount, dry) = (wet * port(11, 1.0), port(12, 1.0));
@@ -354,7 +398,8 @@ fn generic_effect(label: &str, wet: f64, ports: &HashMap<u32, f64>) -> Option<(D
     } else {
         return None;
     }
-    Some((d, gain))
+    before.push(d);
+    Some((before, gain))
 }
 
 /// Which Atelier drum a DrumSynth patch is, judged by its file name.
@@ -918,17 +963,20 @@ impl<'o> Importer<'o> {
                         plugin
                     };
                     match generic_effect(&label, wet, &ladspa_ports(e)) {
-                        Some((d, gain)) => {
-                            if num_or(e, "on", 1.0) != 0.0 {
+                        Some((devices, gain)) => {
+                            let on = num_or(e, "on", 1.0) != 0.0;
+                            if on {
                                 self.fx_gain *= gain;
                             }
+                            let kinds: Vec<&str> = devices.iter().map(|d| d.kind.as_str()).collect();
                             self.warn.add(format!(
                                 "effect \"{label}\" was approximated by the built-in \"{}\"",
-                                d.kind
+                                kinds.join("\" + \"")
                             ));
-                            let mut d = d;
-                            d.enabled = num_or(e, "on", 1.0) != 0.0;
-                            out.push(d);
+                            for mut d in devices {
+                                d.enabled = on;
+                                out.push(d);
+                            }
                         }
                         None => self.warn.add(format!(
                             "effect \"{label}\" on {owner} has no Rosaclef equivalent and was skipped"

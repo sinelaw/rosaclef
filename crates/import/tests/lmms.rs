@@ -719,12 +719,13 @@ fn envelopes_and_bass_booster_follow_lmms() {
 
 #[test]
 fn ladspa_effects_read_their_ports() {
-    // TAP Reverberator: decay 1175 ms, dry 0 dB, wet 0 dB. Calf Phaser:
+    // TAP Reverberator: decay 1175 ms, dry 0 dB, wet 0 dB, band-pass on.
+    // Calf Phaser: base 632 Hz, depth 6210 cents, 0.1 Hz, 6 stages, 180°,
     // amount 1 and dry 1 (dry + effect).
     let fx = r#"<fxchain numofeffects="2" enabled="1">
-        <effect name="ladspaeffect" on="1" wet="1"><ladspacontrols ports="8"><port00 data="1175"/><port01 data="0"/><port02 data="0"/></ladspacontrols>
+        <effect name="ladspaeffect" on="1" wet="1"><ladspacontrols ports="8"><port00 data="1175"/><port01 data="0"/><port02 data="0"/><port05 data="1"/></ladspacontrols>
           <key><attribute name="file" value="tap_reverb"/><attribute name="plugin" value="tap_reverb"/></key></effect>
-        <effect name="ladspaeffect" on="1" wet="1"><ladspacontrols ports="9"><port011 data="1"/><port012 data="1"/></ladspacontrols>
+        <effect name="ladspaeffect" on="1" wet="1"><ladspacontrols ports="9"><port04 data="631.867"/><port05 data="6210"/><port06 data="0.1"/><port07 data="0"/><port08 data="6"/><port09 data="180"/><port011 data="1"/><port012 data="1"/></ladspacontrols>
           <key><attribute name="file" value="calf"/><attribute name="plugin" value="Phaser"/></key></effect>
       </fxchain>"#;
     let tracks = triple(
@@ -736,18 +737,39 @@ fn ladspa_effects_read_their_ports() {
     let mixer = r#"<fxmixer><fxchannel num="0" name="Master" volume="1"/><fxchannel num="1" name="Pad" volume="1"/></fxmixer>"#;
     let im = lmms::import(&song(HEAD, &tracks, mixer), &Options::new("t")).unwrap();
     let ins = &im.project.mixer.inserts[1];
-    let (rev, cho) = (&ins.effects[0], &ins.effects[1]);
-    assert_eq!((rev.kind.as_str(), cho.kind.as_str()), ("reverb", "chorus"));
-    // A 1.2 s decay is a mid-sized room.
+    let kinds: Vec<&str> = ins.effects.iter().map(|e| e.kind.as_str()).collect();
+    assert_eq!(kinds, ["eq", "reverb", "phaser"]);
+    let (eq, rev, ph) = (&ins.effects[0], &ins.effects[1], &ins.effects[2]);
+    // Its band-pass wet path lifts the upper mids and highs by 6 dB (wet =
+    // dry), and
+    // leaves only a light tail: fast notes stay crisp.
+    for band in ["mid", "high"] {
+        assert!(
+            (eq.param(band) - 6.02).abs() < 0.01,
+            "{band} {}",
+            eq.param(band)
+        );
+    }
+    assert_eq!(
+        (eq.param("midFreq"), eq.param("highFreq")),
+        (1700.0, 4000.0)
+    );
     assert!(
         (0.4..0.6).contains(&rev.param("size")),
         "{}",
         rev.param("size")
     );
-    // Equal amounts of dry and phased signal: the widest Chœur mix.
-    assert_eq!(cho.param("mix"), 1.0);
+    assert_eq!(rev.param("mix"), 0.25);
+    // The phaser keeps the Calf settings; equal dry and phased: mix 1.
+    assert_eq!(ph.param("mix"), 1.0);
+    assert!((ph.param("freq") - 631.867).abs() < 1e-9);
+    assert!((ph.param("depth") - 6210.0 / 7200.0).abs() < 1e-9);
+    assert_eq!(
+        (ph.param("rate"), ph.param("stages"), ph.param("stereo")),
+        (0.1, 6.0, 0.5)
+    );
     // Both keep the dry at full level; the insert restores it.
-    let expect = 1.0 / (1.0 - rev.param("mix") / 2.0) / (0.5 * 1.2);
+    let expect: f64 = 1.0 / (1.0 - 0.25 / 2.0) * 2.0;
     assert!(
         (ins.volume - expect.min(2.0)).abs() < 1e-9,
         "{} vs {expect}",
