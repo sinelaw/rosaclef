@@ -32,32 +32,35 @@ export function markup(e) {
 }
 
 /**
- * Ink on paper, as an SVG filter over the engraving (units are staff spaces).
- * Two inks, one at a time:
- *  - wet: fresh and glossy — deep, solid ink whose edges swell and round a
- *    little as it bleeds (a blur sharpened again), standing up off the paper:
- *    lit as a surface, every stroke shines along its rim and broad marks like
- *    noteheads bulge into domes, over a faint shadow on the paper; the
- *    noteheads and dots also catch a crisp glint (drawn over the music, see `GLOSS`).
- *    `gloss` scales how bright the light is (1 full); `shine` how broad (0 a
- *    pin-point speck, 1 the whole dome);
+ * Ink on paper, as an SVG filter over the engraving (units are staff spaces;
+ * `px` is how many device pixels a staff space covers, so what should stay a
+ * hair wide does at any zoom). Two inks, one at a time:
+ *  - wet: fresh and glossy — deep, solid ink, its edges rounded a hair as it
+ *    bleeds, standing up off the paper over a faint shadow. Where the ink is
+ *    thick enough to pool (noteheads, beams, the bowls of the clefs) it bulges,
+ *    and its dome catches the light of a window on the upper left; fine strokes
+ *    and text stay plain black. The noteheads and dots also catch a crisp
+ *    glint (drawn over the music, see `GLOSS`). `gloss` scales how bright the
+ *    light is (1 full); `shine` how broad (0 a pin-point speck, 1 most of the dome);
  *  - dry: faded — paper grain nudges the edges a hair (wicking), the ink
  *    spreads, and the outline is drawn full over a slightly translucent,
  *    mottled body: the darker rim a drop of ink leaves as it dries.
  * Colors pass through, so colored passages stay colored.
  */
-/** function inkFilter(id: String, wet: Boolean, night: Boolean, gloss: Number, shine: Number) => El */
-export function inkFilter(id, wet, night, gloss, shine) {
+/** function inkFilter(id: String, wet: Boolean, night: Boolean, gloss: Number, shine: Number, px: Number) => El */
+export function inkFilter(id, wet, night, gloss, shine, px) {
   const attrs = ["id", id, "x", "-2%", "y", "-10%", "width", "104%", "height", "120%", "color-interpolation-filters", "sRGB"];
-  return el("filter", "ink", attrs, wet ? wetInk(night, gloss, shine) : dryInk());
+  return el("filter", "ink", attrs, wet ? wetInk(night, gloss, shine, px) : dryInk(px));
 }
 
-/** function wetInk(night: Boolean, gloss: Number, shine: Number) => El[] */
-function wetInk(night, gloss, shine) {
+/** function wetInk(night: Boolean, gloss: Number, shine: Number, px: Number) => El[] */
+function wetInk(night, gloss, shine, px) {
   const k = num(gloss, 2);
+  // The bleed: a fraction of a staff space, but never more than half a device pixel.
+  const bleed = num(Math.min(0.045, 0.5 / Math.max(1, px)), 4);
   return [
-    // The ink itself: swollen a little, its edges rounded.
-    el("feGaussianBlur", "soft", ["in", "SourceGraphic", "stdDeviation", "0.045", "result", "soft"], []),
+    // The ink itself: its edges rounded a hair.
+    el("feGaussianBlur", "soft", ["in", "SourceGraphic", "stdDeviation", bleed, "result", "soft"], []),
     el(
       "feComponentTransfer",
       "spread",
@@ -67,38 +70,38 @@ function wetInk(night, gloss, shine) {
         el("feFuncA", "a", ["type", "gamma", "amplitude", "1", "exponent", "0.62", "offset", "0"], []),
       ]
     ),
-    // Its height: a fresh line of ink stands up off the paper. Thin strokes get
-    // a rounded ridge (the fine blur), broad marks a dome (the wide one).
-    el("feGaussianBlur", "ridge", ["in", "SourceAlpha", "stdDeviation", "0.07", "result", "ridge"], []),
-    el("feGaussianBlur", "dome", ["in", "SourceAlpha", "stdDeviation", "0.2", "result", "dome"], []),
-    el("feComposite", "height", ["in", "ridge", "in2", "dome", "operator", "arithmetic", "k2", "0.55", "k3", "0.45", "result", "height"], []),
-    // The light of a window on the upper left, mirrored where the surface turns
-    // toward it: a bright rim along the strokes, a highlight on the domes. The
-    // tighter the shine, the sharper the reflection (and the brighter, to be seen).
+    // Where the ink pools: what is left of it shrunk by a fine stroke's half width
+    // (stems, staff text and hairlines vanish), softened at its edge.
+    el("feMorphology", "pool", ["in", "SourceAlpha", "operator", "erode", "radius", "0.075", "result", "pool"], []),
+    el("feGaussianBlur", "body", ["in", "pool", "stdDeviation", "0.05", "result", "body"], []),
+    // Its height: the pooled ink swells into a dome.
+    el("feGaussianBlur", "dome", ["in", "SourceAlpha", "stdDeviation", "0.17", "result", "dome"], []),
+    // The window's light, mirrored where the dome turns toward it. The tighter
+    // the shine, the sharper the reflection (and the brighter, to be seen).
     el(
       "feSpecularLighting",
       "light",
       [
         "in",
-        "height",
+        "dome",
         "result",
         "light",
         "surfaceScale",
-        "0.3",
+        "0.35",
         "specularConstant",
-        num((2.2 - 0.93 * shine) * (night ? 0.73 : 1), 2),
+        num((2.6 - 1.2 * shine) * (night ? 0.75 : 1), 2),
         "specularExponent",
-        num(120 - 100 * shine, 1),
+        num(90 - 60 * shine, 1),
         "lighting-color",
         night ? "#fff3d6" : "#fffdf6",
       ],
-      [el("feDistantLight", "sun", ["azimuth", "235", "elevation", "34"], [])]
+      [el("feDistantLight", "sun", ["azimuth", "235", "elevation", "42"], [])]
     ),
-    el("feComposite", "lit", ["in", "light", "in2", "spread", "operator", "in", "result", "lit"], []),
+    el("feComposite", "lit", ["in", "light", "in2", "body", "operator", "in", "result", "lit"], []),
     el("feColorMatrix", "glint", ["in", "lit", "type", "matrix", "values", `${k} 0 0 0 0  0 ${k} 0 0 0  0 0 ${k} 0 0  0 0 0 ${k} 0`, "result", "glint"], []),
     // The drop's shadow, cast down and to the right on the paper.
-    el("feGaussianBlur", "fall", ["in", "SourceAlpha", "stdDeviation", "0.06", "result", "fall"], []),
-    el("feOffset", "drop", ["in", "fall", "dx", "0.035", "dy", "0.08", "result", "drop"], []),
+    el("feGaussianBlur", "fall", ["in", "SourceAlpha", "stdDeviation", "0.035", "result", "fall"], []),
+    el("feOffset", "drop", ["in", "fall", "dx", "0.025", "dy", "0.055", "result", "drop"], []),
     el(
       "feColorMatrix",
       "shade",
@@ -108,7 +111,7 @@ function wetInk(night, gloss, shine) {
         "type",
         "matrix",
         "values",
-        night ? "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.5 0" : "0 0 0 0 0.16  0 0 0 0 0.12  0 0 0 0 0.06  0 0 0 0.24 0",
+        night ? "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.45 0" : "0 0 0 0 0.16  0 0 0 0 0.12  0 0 0 0 0.06  0 0 0 0.2 0",
         "result",
         "shade",
       ],
@@ -123,8 +126,10 @@ function wetInk(night, gloss, shine) {
   ];
 }
 
-/** function dryInk() => El[] */
-function dryInk() {
+/** function dryInk(px: Number) => El[] */
+function dryInk(px) {
+  // The spread: a fraction of a staff space, but never more than half a device pixel.
+  const spread = num(Math.min(0.035, 0.5 / Math.max(1, px)), 4);
   return [
     el("feTurbulence", "grain", ["type", "fractalNoise", "baseFrequency", "2.4", "numOctaves", "1", "seed", "11", "result", "grain"], []),
     el(
@@ -133,7 +138,7 @@ function dryInk() {
       ["in", "SourceGraphic", "in2", "grain", "scale", "0.07", "xChannelSelector", "R", "yChannelSelector", "G", "result", "wick"],
       []
     ),
-    el("feGaussianBlur", "soft", ["in", "wick", "stdDeviation", "0.035", "result", "soft"], []),
+    el("feGaussianBlur", "soft", ["in", "wick", "stdDeviation", spread, "result", "soft"], []),
     el(
       "feComponentTransfer",
       "spread",

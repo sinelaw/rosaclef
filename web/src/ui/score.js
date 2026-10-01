@@ -19,7 +19,7 @@
 //  - Write (Shift+P): click on a staff to add a note of the chosen value.
 //  - Delete, ↑/↓ (Shift: octave) act on the selection, as in the piano roll.
 
-import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, downloadImagePdf, textWidth, paperSize } from "#platform";
+import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, downloadImagePdf, textWidth, paperSize, pixelRatio } from "#platform";
 import { state, commit, begin, changed, invalidate, hint, setFocus, reportContext, currentPattern } from "../store.js";
 import { PALETTE, semitonesText } from "../model.js";
 import {
@@ -987,7 +987,7 @@ function inkDefs(b, v) {
   b.attr("height", "0");
   b.attr("aria-hidden", "true");
   b.open("defs", "d", "");
-  build(b, inkFilter(`score-ink-${v.id}`, v.ink === "wet", v.night, v.gloss, v.shine));
+  build(b, inkFilter(`score-ink-${v.id}`, v.ink === "wet", v.night, v.gloss, v.shine, v.size * v.zoom * pixelRatio()));
   b.close();
   b.close();
 }
