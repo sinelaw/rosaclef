@@ -53,22 +53,23 @@ enum Phase {
 }
 
 /// A note waiting for the current syllable to end.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Next {
     key: u8,
     velocity: f32,
-    plan: Option<LyricId>,
+    plan: Arc<Plan>,
 }
 
 pub struct Voice {
     sr: f32,
     p: Params,
     tract: Tract,
-    /// The plan of each syllable the engine may send, by lyric id.
-    plans: Vec<Plan>,
-    vocalise: Plan,
-    /// The syllable being sung (`None`: the vocalise) and where in it.
-    plan: Option<LyricId>,
+    /// The plan of each syllable the engine may send, by lyric id (shared,
+    /// so taking one on the audio thread does not allocate).
+    plans: Vec<Arc<Plan>>,
+    vocalise: Arc<Plan>,
+    /// The syllable being sung (kept across project updates) and where in it.
+    current: Arc<Plan>,
     phase: Phase,
     key: u8,
     velocity: f32,
@@ -101,8 +102,8 @@ impl Voice {
             },
             tract: Tract::new(sr),
             plans: vec![],
-            vocalise: Plan::vocalise(),
-            plan: None,
+            vocalise: Arc::new(Plan::vocalise()),
+            current: Arc::new(Plan::vocalise()),
             phase: Phase::Idle,
             key: 60,
             velocity: 0.0,
@@ -117,9 +118,15 @@ impl Voice {
     }
 
     fn current(&self) -> &Plan {
-        self.plan
+        &self.current
+    }
+
+    /// The plan of a note's syllable (the vocalise without one).
+    fn plan_of(&self, lyric: Option<LyricId>) -> Arc<Plan> {
+        lyric
             .and_then(|id| self.plans.get(id as usize))
             .unwrap_or(&self.vocalise)
+            .clone()
     }
 
     fn spoken(&self) -> bool {
@@ -141,9 +148,8 @@ impl Voice {
             }
             return;
         }
-        let hold = lyric
-            .and_then(|id| self.plans.get(id as usize))
-            .is_some_and(|p| *p == Plan::Hold);
+        let plan = self.plan_of(lyric);
+        let hold = *plan == Plan::Hold;
         let continuing = self.off_in.take().is_some() || self.sounding();
         if hold && continuing {
             // A melisma: the same vowel, a new pitch.
@@ -157,7 +163,7 @@ impl Voice {
         let next = Next {
             key,
             velocity,
-            plan: lyric.filter(|_| !hold),
+            plan: if hold { self.vocalise.clone() } else { plan },
         };
         if continuing {
             self.next = Some(next);
@@ -175,7 +181,7 @@ impl Voice {
 
     /// Begin a syllable; `legato` glides into its pitch.
     fn start(&mut self, n: Next, legato: bool) {
-        self.plan = n.plan;
+        self.current = n.plan;
         self.key = n.key;
         self.velocity = n.velocity;
         self.target_hz = midi_to_hz(n.key as f32);
@@ -328,8 +334,7 @@ impl Instrument for Voice {
     }
 
     fn set_lyrics(&mut self, lyrics: &Arc<Lyrics>) {
-        self.plans = lyrics.sung.iter().map(Plan::of).collect();
-        self.plan = None;
+        self.plans = lyrics.sung.iter().map(|s| Arc::new(Plan::of(s))).collect();
         self.renders.set_lyrics(lyrics);
     }
 

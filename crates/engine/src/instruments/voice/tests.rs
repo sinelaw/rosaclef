@@ -154,3 +154,32 @@ fn spoken_words_ignore_the_notes_pitch() {
     };
     assert_eq!(spoken(48), spoken(72));
 }
+
+#[test]
+fn a_project_update_does_not_cut_the_syllable_being_sung() {
+    let notes = [(57u8, 0.0f32, 1.0f32, Some(0u32))];
+    let mut steady = Voice::new(SR);
+    steady.set_lyrics(&lyrics(sung("ah", &["ɑ"])));
+    let whole = sing(&mut steady, &notes, 1.0);
+    // The same, with the table replaced by an unrelated one halfway.
+    let mut v = Voice::new(SR);
+    v.set_lyrics(&lyrics(sung("ah", &["ɑ"])));
+    let half = (0.5 * SR) as usize;
+    let mut first = sing(&mut v, &[(57, 0.0, 2.0, Some(0))], 0.5);
+    v.set_lyrics(&lyrics(sung("see", &["s i"])));
+    let mut rest = vec![0.0; half];
+    let mut right = vec![0.0; half];
+    let off = NoteEvent {
+        offset: half - 1,
+        kind: NoteKind::Off { key: 57 },
+        lyric: None,
+    };
+    v.process(&[off], &mut rest, &mut right);
+    first.extend(rest);
+    assert_eq!(first[..half], whole[..half]);
+    assert!(
+        rms(&first[half..half + 4800]) > 0.02,
+        "still singing after the update"
+    );
+    assert!((rms(&first[half..half + 4800]) - rms(&whole[half..half + 4800])).abs() < 0.01);
+}

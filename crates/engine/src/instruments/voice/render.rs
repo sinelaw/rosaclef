@@ -59,10 +59,17 @@ pub struct Renders {
 
 impl Renders {
     pub fn set_lyrics(&mut self, lyrics: &Lyrics) {
+        // A phrase playing goes on if the new table still has it.
+        let playing = self.playing.take().and_then(|(id, p)| {
+            let path = self.paths.get(id as usize)?;
+            let now = lyrics.phrases.iter().position(|q| q == path)?;
+            Some((now as PhraseId, p))
+        });
         self.paths = lyrics.phrases.clone();
         self.notes = lyrics.sung.iter().map(|s| s.phrase).collect();
         self.audio = vec![None; self.paths.len()];
-        self.playing = None;
+        self.playing = playing;
+        self.cued = None;
     }
 
     pub fn set_samples(&mut self, bank: &SampleBank) {
