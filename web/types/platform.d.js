@@ -49,6 +49,9 @@ export const download;
 /** Write PDF objects (the catalog first, the document info last) to a file and download it. */
 /** const downloadPdf: (String, PdfObj[]) => Promise<Boolean> */
 export const downloadPdf;
+/** Write a PDF whose pages are images: SVG pages of a size in points, drawn at a scale in pixels a point; with its document info. */
+/** const downloadImagePdf: (String, String, String[], Number, Number, Number) => Promise<Boolean> */
+export const downloadImagePdf;
 
 /** Width of a text in a PDF standard font ("Times-Italic", …) at size 1, measured with a metric-compatible face. */
 /** const textWidth: (String, String) => Number */

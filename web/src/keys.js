@@ -32,6 +32,7 @@ function letterShortcut(c) {
   else if (c === "q" && state.dock === "piano") quantize();
   else if (c === "p" && state.focus === "score") setScoreTool("write");
   else if (c === "e" && state.focus === "score") setScoreTool("select");
+  else if (c === "h" && state.focus === "score") setScoreTool("pan");
   else if (c === "p" && state.dock === "piano") setTool("draw");
   else if (c === "e" && state.dock === "piano") setTool("select");
   else return false;

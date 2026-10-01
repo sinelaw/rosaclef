@@ -8,11 +8,7 @@
 
 .score {
   --paper: #fbf7ec;
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.36 0 0 0 0 0.2 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
-  /* The paper's tooth (fibers in relief, lit from the upper left like the ink) and its
-     cloudy formation, each a tile of noise. */
-  --tooth: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E %3Cfilter id='t' filterUnits='userSpaceOnUse' x='-16' y='-16' width='288' height='288'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' seed='7' stitchTiles='stitch' x='0' y='0' width='256' height='256' result='n'/%3E %3CfeTile in='n' result='t'/%3E %3CfeDiffuseLighting in='t' surfaceScale='1.4' diffuseConstant='1' lighting-color='%23fff' result='l'%3E%3CfeDistantLight azimuth='235' elevation='50'/%3E%3C/feDiffuseLighting%3E %3CfeColorMatrix in='l' result='s' values='0 0 0 0 0.36 0 0 0 0 0.27 0 0 0 0 0.13 -0.22 0 0 0 0.169'/%3E %3CfeColorMatrix in='l' result='h' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 0.97 0.16 0 0 0 -0.123'/%3E %3CfeMerge%3E%3CfeMergeNode in='s'/%3E%3CfeMergeNode in='h'/%3E%3C/feMerge%3E%3C/filter%3E %3Crect x='-16' y='-16' width='288' height='288' filter='url(%23t)'/%3E%3C/svg%3E");
-  --mottle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E %3Cfilter id='m' x='0' y='0' width='1' height='1'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.006' numOctaves='4' seed='3' stitchTiles='stitch'/%3E %3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.42 0 0 0 0 0.22 0.3 0 0 0 -0.1'/%3E%3C/filter%3E %3Crect width='600' height='600' filter='url(%23m)'/%3E%3C/svg%3E");
+  /* The paper's textures (--tooth, --mottle, --grain) are set by the view, from ink.js. */
   --gloss: rgba(255, 252, 242, 0.9);
   --ink: #1b1712;
   --staff: rgba(27, 23, 18, 0.82);
@@ -28,9 +24,6 @@
 }
 .score.night {
   --paper: #15121a;
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.83 0 0 0 0 0.69 0 0 0 0 0.22 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
-  --tooth: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E %3Cfilter id='t' filterUnits='userSpaceOnUse' x='-16' y='-16' width='288' height='288'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' seed='7' stitchTiles='stitch' x='0' y='0' width='256' height='256' result='n'/%3E %3CfeTile in='n' result='t'/%3E %3CfeDiffuseLighting in='t' surfaceScale='1.4' diffuseConstant='1' lighting-color='%23fff' result='l'%3E%3CfeDistantLight azimuth='235' elevation='50'/%3E%3C/feDiffuseLighting%3E %3CfeColorMatrix in='l' result='s' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.3 0 0 0 0.230'/%3E %3CfeColorMatrix in='l' result='h' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 0.97 0.05 0 0 0 -0.038'/%3E %3CfeMerge%3E%3CfeMergeNode in='s'/%3E%3CfeMergeNode in='h'/%3E%3C/feMerge%3E%3C/filter%3E %3Crect x='-16' y='-16' width='288' height='288' filter='url(%23t)'/%3E%3C/svg%3E");
-  --mottle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E %3Cfilter id='m' x='0' y='0' width='1' height='1'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.006' numOctaves='4' seed='3' stitchTiles='stitch'/%3E %3CfeColorMatrix values='0 0 0 0 0.83 0 0 0 0 0.69 0 0 0 0 0.22 0.12 0 0 0 -0.05'/%3E%3C/filter%3E %3Crect width='600' height='600' filter='url(%23m)'/%3E%3C/svg%3E");
   --gloss: rgba(255, 246, 220, 0.75);
   --ink: #ecdcb4;
   --staff: rgba(212, 175, 55, 0.55);
@@ -74,6 +67,12 @@
 }
 .score-scroll.writing {
   cursor: crosshair;
+}
+.score-scroll.hand {
+  cursor: grab;
+}
+.score-scroll.grabbing {
+  cursor: grabbing;
 }
 .score-content {
   position: relative;
@@ -372,10 +371,57 @@
 .score-value.dot {
   font-size: 18px;
 }
+/* The music's size: a small A and a large one. */
+.btn.score-size {
+  min-width: 24px;
+  padding: 0 5px;
+  font: 600 11px/1 var(--serif);
+}
+.btn.score-size.up {
+  font-size: 16px;
+}
 .score-zoom {
   min-width: 36px;
   text-align: center;
   font: 500 10.5px/1 var(--mono);
+  color: var(--muted);
+}
+/* The choice of PDF, under the export button. */
+.score-pdfmenu {
+  position: absolute;
+  top: 40px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 250px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(36, 31, 42, 0.98), rgba(22, 19, 26, 0.98));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+.score-pdfitem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.score-pdfitem:hover {
+  background: rgba(212, 175, 55, 0.1);
+}
+.score-pdfitem-t {
+  font: 600 13px/1.2 var(--serif);
+  color: var(--gold-hi);
+}
+.score-pdfitem-n {
+  font-size: 11px;
   color: var(--muted);
 }
 /* The wet ink's knobs: gloss and shine. */

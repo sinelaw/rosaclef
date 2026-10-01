@@ -19,7 +19,7 @@
 //  - Write (Shift+P): click on a staff to add a note of the chosen value.
 //  - Delete, ↑/↓ (Shift: octave) act on the selection, as in the piano roll.
 
-import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, textWidth, paperSize } from "#platform";
+import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, downloadImagePdf, textWidth, paperSize } from "#platform";
 import { state, commit, begin, changed, invalidate, hint, setFocus, reportContext, currentPattern } from "../store.js";
 import { PALETTE, semitonesText } from "../model.js";
 import {
@@ -38,7 +38,8 @@ import {
   passesText,
 } from "../notation.js";
 import { engrave, timeX, xTick, GLOSS, SHEEN } from "../engrave.js";
-import { scorePdf } from "../pdf.js";
+import { inkFilter, glintOpacity, PAPER, LACQUER, GLOSS_DEFAULT, GLOSS_MAX, SHINE_DEFAULT } from "../ink.js";
+import { scorePdf, pdfLayout, pageSvg, pdfInfo } from "../pdf.js";
 import { preview, seek } from "../audio.js";
 import { select, iconButton, glyph, textInput } from "./widgets.js";
 import { followButton } from "./playlist.js";
@@ -54,23 +55,22 @@ import { trackIx, trackIndex, noteIx, noteIndex } from "#brands";
 /** type Ghost = { sys: Int, row: Int, step: Int, tick: Number, x: Number } */
 /** The engraved score of the last flush, and what it was built from. */
 /** type Cached = { key: String, score: Score, page: Page } */
-/** type ScoreView = { id: String, scope: String, zoom: Number, width: Number, height: Number, scrollTop: Number, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, ink: String, gloss: Number, shine: Number, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, cache: Cached[] } */
-
-/** The wet ink's knobs: how bright its highlights are (1 is full), and how
- * broad (0 a pin-point speck, 1 the whole dome of a notehead). */
-const GLOSS_DEFAULT = 1;
-const GLOSS_MAX = 1.5;
-const SHINE_DEFAULT = 0.75;
+/** `size`: a staff space in pixels at 100% (the music's size, laid out to fit); `zoom`: magnification of that page. */
+/** type ScoreView = { id: String, scope: String, size: Number, zoom: Number, width: Number, height: Number, scrollTop: Number, scrollLeft: Number, panning: Boolean, pdfMenu: Boolean, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, ink: String, gloss: Number, shine: Number, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, cache: Cached[] } */
 
 /** function newView(id: String, scope: String) => ScoreView */
 function newView(id, scope) {
   return {
     id: id,
     scope: scope,
-    zoom: 7,
+    size: 7,
+    zoom: 1,
     width: 900,
     height: 400,
     scrollTop: 0,
+    scrollLeft: 0,
+    panning: false,
+    pdfMenu: false,
     tool: "select",
     value: 48,
     dot: false,
@@ -93,11 +93,20 @@ export const dockScore = newView("dock", "current");
 
 const PREF = "rosaclef.score.";
 
-/** Read the persisted view settings (zoom, paper, sidebar). */
+/** The music's size (a staff space in pixels at 100%), and the zoom's steps. */
+const SIZE_MIN = 4;
+const SIZE_MAX = 16;
+const ZOOMS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+/** Read the persisted view settings (size, zoom, paper, sidebar). */
 export function loadScorePrefs() {
   for (const v of [topScore, dockScore]) {
-    const z = Number(loadPref(`${PREF}${v.id}.zoom`));
-    if (z >= 4 && z <= 16) v.zoom = z;
+    // The size was once kept as "zoom".
+    const sz = loadPref(`${PREF}${v.id}.size`);
+    const size = Number(sz !== "" ? sz : loadPref(`${PREF}${v.id}.zoom`));
+    if (size >= SIZE_MIN && size <= SIZE_MAX) v.size = size;
+    const z = Number(loadPref(`${PREF}${v.id}.magnify`));
+    if (z >= ZOOMS[0] && z <= ZOOMS[ZOOMS.length - 1]) v.zoom = z;
     v.night = loadPref(`${PREF}${v.id}.night`) === "1";
     if (loadPref(`${PREF}${v.id}.ink`) === "dry") v.ink = "dry";
     const gl = loadPref(`${PREF}${v.id}.gloss`);
@@ -112,7 +121,8 @@ export function loadScorePrefs() {
 
 /** function savePrefs(v: ScoreView) => Undefined */
 function savePrefs(v) {
-  savePref(`${PREF}${v.id}.zoom`, String(v.zoom));
+  savePref(`${PREF}${v.id}.size`, String(v.size));
+  savePref(`${PREF}${v.id}.magnify`, fmt(v.zoom, 2));
   savePref(`${PREF}${v.id}.night`, v.night ? "1" : "0");
   savePref(`${PREF}${v.id}.ink`, v.ink);
   savePref(`${PREF}${v.id}.gloss`, fmt(v.gloss, 2));
@@ -154,17 +164,31 @@ function scopeTitle(sc) {
 
 // ------------------------------------------------------------------ geometry
 
-/** Page geometry in pixels for the current width and zoom. */
-/** type PageGeo = { sp: Number, left: Number, top: Number, padX: Number, head: Number, paperW: Number, widthSp: Number } */
+/** Page geometry in pixels for the current width, size and zoom. The page is laid out
+ * to fit the view at 100% (its width in staff spaces depends on the size alone); the
+ * zoom magnifies it, wider than the view if need be. */
+/** type PageGeo = { sp: Number, left: Number, top: Number, outer: Number, padX: Number, head: Number, paperW: Number, widthSp: Number } */
 
 /** function pageGeo(v: ScoreView, sc: Scope) => PageGeo */
 function pageGeo(v, sc) {
-  const sp = v.zoom;
+  const z = v.zoom;
+  const sp = v.size * z;
   const outer = v.width < 640 ? 8 : 22;
-  const paperW = Math.max(240, Math.min(v.width - outer * 2, 230 * sp));
-  const padX = Math.max(10, Math.min(5 * sp, paperW * 0.06));
+  const fitW = Math.max(240, Math.min(v.width - outer * 2, 230 * v.size));
+  const fitPad = Math.max(10, Math.min(5 * v.size, fitW * 0.06));
+  const paperW = fitW * z;
+  const padX = fitPad * z;
   const head = sc.kind === "song" ? 15 * sp : 10 * sp;
-  return { sp: sp, left: Math.max(outer, (v.width - paperW) / 2), top: outer, padX: padX, head: head, paperW: paperW, widthSp: (paperW - padX * 2) / sp };
+  return {
+    sp: sp,
+    left: Math.max(outer, (v.width - paperW) / 2),
+    top: outer,
+    outer: outer,
+    padX: padX,
+    head: head,
+    paperW: paperW,
+    widthSp: (fitW - fitPad * 2) / v.size,
+  };
 }
 
 /** The engraved page for this view (rebuilt only when the project, scope, grid or width changed). */
@@ -414,8 +438,9 @@ function grabNote(e, v, sc, s, hi, y0) {
         moved = true;
         begin();
       }
-      const steps = drum ? 0 : -Math.round((dy / v.zoom) * 2);
-      const tick = xTick(s.times, h.x + h.w / 2 + dx / v.zoom);
+      const sp = v.size * v.zoom;
+      const steps = drum ? 0 : -Math.round((dy / sp) * 2);
+      const tick = xTick(s.times, h.x + h.w / 2 + dx / sp);
       const grid = v.grid / TPQ;
       const db = Math.round((tick - tick0) / v.grid) * grid;
       for (const o of orig) {
@@ -706,11 +731,12 @@ function paperView(b, v, c, geo, sc) {
   const total = geo.top * 2 + paperH(geo, page);
   // The scroller, under a lamp that stays put while the paper slides beneath it.
   b.open("div", "view", "score-view");
-  b.open("div", "scroll", `score-scroll${v.tool === "write" ? " writing" : ""}`);
+  b.open("div", "scroll", `score-scroll${v.tool === "write" ? " writing" : v.tool === "pan" ? " hand" : ""}${v.panning ? " grabbing" : ""}`);
   // The width the page is laid out for: it matches the element once the layout has caught up with a resize.
   b.attr("data-width", String(Math.round(v.width)));
   b.on("scroll", (e) => {
     v.scrollTop = e.scrollTop;
+    v.scrollLeft = e.scrollLeft;
     invalidate();
   });
   b.on("resize", (e) => {
@@ -720,7 +746,21 @@ function paperView(b, v, c, geo, sc) {
       invalidate();
     }
   });
-  b.on("pointerdown", (e) => pressOrTap(e, (d) => onPaperDown(d, v, c, geo)));
+  b.on("pointerdown", (e) => {
+    if (v.pdfMenu) {
+      v.pdfMenu = false;
+      invalidate();
+    }
+    // The hand, the middle button, or a press on the desk beside the page: move the page about.
+    const px = e.clientX - e.targetLeft + e.scrollLeft;
+    const desk = px < geo.left || px > geo.left + geo.paperW;
+    if (e.pointerType !== "touch" && (v.tool === "pan" || e.button === 1 || (desk && e.button === 0))) {
+      e.preventDefault();
+      pan(e, v, geo, total);
+      return undefined;
+    }
+    pressOrTap(e, (d) => onPaperDown(d, v, c, geo));
+  });
   b.on("pointermove", (e) => onPaperMove(e, v, c, geo));
   b.on("pointerleave", (e) => {
     if (v.ghost.sys >= 0) {
@@ -746,13 +786,16 @@ function paperView(b, v, c, geo, sc) {
   b.on("wheel", (e) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
-      setZoom(v, v.zoom + (e.deltaY < 0 ? 0.5 : -0.5));
+      // Magnify about the pointer.
+      zoomAt(v, v.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - e.targetLeft, e.clientY - e.targetTop);
     }
   });
   b.prop("scrollTop", String(v.scrollTop));
+  b.prop("scrollLeft", String(v.scrollLeft));
 
   b.open("div", "content", "score-content");
   b.style("height", `${total}px`);
+  b.style("width", `${contentW(v, geo)}px`);
 
   b.open("div", "paper", "score-paper");
   b.style("left", `${geo.left}px`);
@@ -778,7 +821,7 @@ function paperView(b, v, c, geo, sc) {
   }
   b.close();
 
-  inkFilter(b, `score-ink-${v.id}`, v.ink === "wet", v.night, v.gloss, v.shine);
+  inkDefs(b, v);
 
   // Systems in view (and a screen around).
   const lo = v.scrollTop - v.height;
@@ -795,6 +838,27 @@ function paperView(b, v, c, geo, sc) {
   b.close();
   b.close();
   b.leaf("div", "lamp", "score-lamp", "");
+  b.close();
+}
+
+/** The choice of PDF, under the ribbon's export button. */
+/** function pdfMenu(b: Builder, v: ScoreView) => Undefined */
+function pdfMenu(b, v) {
+  b.open("div", "pdfmenu", "score-pdfmenu");
+  /** function item(key: String, title: String, note: String, asShown: Boolean) => Undefined */
+  function item(key, title, note, asShown) {
+    b.open("button", key, "score-pdfitem");
+    b.on("click", (e) => {
+      v.pdfMenu = false;
+      invalidate();
+      exportPdf(v, asShown);
+    });
+    b.leaf("span", "t", "score-pdfitem-t", title);
+    b.leaf("span", "n", "score-pdfitem-n", note);
+    b.close();
+  }
+  item("vector", "Vector PDF", "Crisp at any size, small, ready to print", false);
+  item("shown", "As on screen", `The paper's texture and the ${v.ink} ink's effects — an image a page`, true);
   b.close();
 }
 
@@ -836,8 +900,13 @@ export function fileName(title) {
 }
 
 /** Download what the view shows as a PDF (A4, or US Letter where that is the paper). */
-/** function exportPdf(v: ScoreView) => Undefined */
-function exportPdf(v) {
+/** Pixels a point for pages drawn as on screen: 200 dots an inch. */
+const PRINT_SCALE = 200 / 72;
+
+/** Download the score as a PDF: vector, or (`asShown`) drawn as on screen, the paper's
+ * textures and the ink's effects in an image a page. */
+/** function exportPdf(v: ScoreView, asShown: Boolean) => Undefined */
+function exportPdf(v, asShown) {
   const sc = scopeOf(v);
   const c = cached(v, sc, pageGeo(v, sc));
   if (c.score.empty) {
@@ -846,17 +915,32 @@ function exportPdf(v) {
   }
   const p = state.project;
   const title = scopeTitle(sc);
-  const objs = scorePdf(
-    c.score,
-    { title: title, subtitle: subtitle(c.score, sc), author: sc.kind === "song" ? p.meta.author : "", bpm: p.transport.bpm },
-    paperSize(),
-    v.condense && sc.kind !== "pattern",
-    textWidth
-  );
+  const info = { title: title, subtitle: subtitle(c.score, sc), author: sc.kind === "song" ? p.meta.author : "", bpm: p.transport.bpm };
+  const hide = v.condense && sc.kind !== "pattern";
   const name = `${fileName(title)}.pdf`;
+  const size = paperSize() === "letter" ? "US Letter" : "A4";
+  if (asShown) {
+    const lay = pdfLayout(c.score, paperSize(), hide);
+    const look = { wet: v.ink === "wet", gloss: v.gloss, shine: v.shine };
+    /** const svgs: String[] */
+    const svgs = [];
+    for (let i = 0; i < lay.pages.length; i++) svgs.push(pageSvg(lay, i, info, look, PRINT_SCALE));
+    toast("Drawing the pages", `${svgs.length} page${svgs.length === 1 ? "" : "s"} on paper, in ${v.ink} ink…`, "info");
+    downloadImagePdf(name, pdfInfo(title), svgs, lay.w, lay.h, PRINT_SCALE)
+      .then((ok) => {
+        toast("Score exported", `${name} — as on screen, ${size}.`, "info");
+        return true;
+      })
+      .catch((e) => {
+        toast("The PDF could not be written", String(e), "error");
+        return false;
+      });
+    return undefined;
+  }
+  const objs = scorePdf(c.score, info, paperSize(), hide, textWidth);
   downloadPdf(name, objs)
     .then((ok) => {
-      toast("Score exported", `${name} — vector, ${paperSize() === "letter" ? "US Letter" : "A4"}.`, "info");
+      toast("Score exported", `${name} — vector, ${size}.`, "info");
       return true;
     })
     .catch((e) => {
@@ -884,122 +968,26 @@ function titleBlock(b, v, score, geo, sc) {
   b.close();
 }
 
-/** One filter primitive: its tag, key and attributes as name, value pairs. */
-/** function fe(b: Builder, type: String, key: String, attrs: String[]) => Undefined */
-function fe(b, type, key, attrs) {
-  b.leaf(type, key, "", "");
-  for (let i = 0; i + 1 < attrs.length; i = i + 2) b.attr(attrs[i], attrs[i + 1]);
+/** Build an SVG element and its children (described in ink.js) into the view. */
+/** function build(b: Builder, e: El) => Undefined */
+function build(b, e) {
+  if (e.kids.length === 0) b.leaf(e.tag, e.key, "", "");
+  else b.open(e.tag, e.key, "");
+  for (let i = 0; i + 1 < e.attrs.length; i = i + 2) b.attr(e.attrs[i], e.attrs[i + 1]);
+  if (e.kids.length === 0) return undefined;
+  for (const k of e.kids) build(b, k);
+  b.close();
 }
 
-/**
- * Ink on paper, as an SVG filter over the engraving (units are staff spaces).
- * Two inks, one at a time:
- *  - wet: fresh and glossy — deep, solid ink whose edges swell and round a
- *    little as it bleeds (a blur sharpened again), standing up off the paper:
- *    lit as a surface, every stroke shines along its rim and broad marks like
- *    noteheads bulge into domes, over a faint shadow on the paper; the
- *    noteheads and dots also catch a crisp glint (drawn over the music, see `GLOSS`);
- *  - dry: faded — paper grain nudges the edges a hair (wicking), the ink
- *    spreads, and the outline is drawn full over a slightly translucent,
- *    mottled body: the darker rim a drop of ink leaves as it dries.
- * Colors pass through, so colored passages stay colored.
- */
-/** function inkFilter(b: Builder, id: String, wet: Boolean, night: Boolean, gloss: Number, shine: Number) => Undefined */
-function inkFilter(b, id, wet, night, gloss, shine) {
+/** The ink filter the engraving is drawn through (see inkFilter in ink.js). */
+/** function inkDefs(b: Builder, v: ScoreView) => Undefined */
+function inkDefs(b, v) {
   b.open("svg", "defs", "score-defs");
   b.attr("width", "0");
   b.attr("height", "0");
   b.attr("aria-hidden", "true");
   b.open("defs", "d", "");
-  b.open("filter", "ink", "");
-  b.attr("id", id);
-  b.attr("x", "-2%");
-  b.attr("y", "-10%");
-  b.attr("width", "104%");
-  b.attr("height", "120%");
-  b.attr("color-interpolation-filters", "sRGB");
-  if (wet) {
-    // The ink itself: swollen a little, its edges rounded.
-    fe(b, "feGaussianBlur", "soft", ["in", "SourceGraphic", "stdDeviation", "0.045", "result", "soft"]);
-    b.open("feComponentTransfer", "spread", "");
-    b.attr("in", "soft");
-    b.attr("result", "spread");
-    // A smooth curve, not a threshold: the edge keeps its antialiasing.
-    fe(b, "feFuncA", "a", ["type", "gamma", "amplitude", "1", "exponent", "0.62", "offset", "0"]);
-    b.close();
-    // Its height: a fresh line of ink stands up off the paper. Thin strokes get
-    // a rounded ridge (the fine blur), broad marks a dome (the wide one).
-    fe(b, "feGaussianBlur", "ridge", ["in", "SourceAlpha", "stdDeviation", "0.07", "result", "ridge"]);
-    fe(b, "feGaussianBlur", "dome", ["in", "SourceAlpha", "stdDeviation", "0.2", "result", "dome"]);
-    fe(b, "feComposite", "height", ["in", "ridge", "in2", "dome", "operator", "arithmetic", "k2", "0.55", "k3", "0.45", "result", "height"]);
-    // The light of a window on the upper left, mirrored where the surface turns
-    // toward it: a bright rim along the strokes, a highlight on the domes. The
-    // tighter the shine, the sharper the reflection (and the brighter, to be seen).
-    b.open("feSpecularLighting", "light", "");
-    b.attr("in", "height");
-    b.attr("result", "light");
-    b.attr("surfaceScale", "0.3");
-    b.attr("specularConstant", fmt((2.2 - 0.93 * shine) * (night ? 0.73 : 1), 2));
-    b.attr("specularExponent", fmt(120 - 100 * shine, 1));
-    b.attr("lighting-color", night ? "#fff3d6" : "#fffdf6");
-    fe(b, "feDistantLight", "sun", ["azimuth", "235", "elevation", "34"]);
-    b.close();
-    fe(b, "feComposite", "lit", ["in", "light", "in2", "spread", "operator", "in", "result", "lit"]);
-    const k = fmt(gloss, 2);
-    fe(b, "feColorMatrix", "glint", ["in", "lit", "type", "matrix", "values", `${k} 0 0 0 0  0 ${k} 0 0 0  0 0 ${k} 0 0  0 0 0 ${k} 0`, "result", "glint"]);
-    // The drop's shadow, cast down and to the right on the paper.
-    fe(b, "feGaussianBlur", "fall", ["in", "SourceAlpha", "stdDeviation", "0.06", "result", "fall"]);
-    fe(b, "feOffset", "drop", ["in", "fall", "dx", "0.035", "dy", "0.08", "result", "drop"]);
-    fe(b, "feColorMatrix", "shade", [
-      "in",
-      "drop",
-      "type",
-      "matrix",
-      "values",
-      night ? "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.5 0" : "0 0 0 0 0.16  0 0 0 0 0.12  0 0 0 0 0.06  0 0 0 0.24 0",
-      "result",
-      "shade",
-    ]);
-    b.open("feMerge", "merge", "");
-    fe(b, "feMergeNode", "m0", ["in", "shade"]);
-    fe(b, "feMergeNode", "m1", ["in", "spread"]);
-    fe(b, "feMergeNode", "m2", ["in", "glint"]);
-    b.close();
-    b.close();
-    b.close();
-    b.close();
-    return undefined;
-  }
-  fe(b, "feTurbulence", "grain", ["type", "fractalNoise", "baseFrequency", "2.4", "numOctaves", "1", "seed", "11", "result", "grain"]);
-  fe(b, "feDisplacementMap", "wick", [
-    "in",
-    "SourceGraphic",
-    "in2",
-    "grain",
-    "scale",
-    "0.07",
-    "xChannelSelector",
-    "R",
-    "yChannelSelector",
-    "G",
-    "result",
-    "wick",
-  ]);
-  fe(b, "feGaussianBlur", "soft", ["in", "wick", "stdDeviation", "0.035", "result", "soft"]);
-  b.open("feComponentTransfer", "spread", "");
-  b.attr("in", "soft");
-  b.attr("result", "spread");
-  fe(b, "feFuncA", "a", ["type", "gamma", "amplitude", "1", "exponent", "0.7", "offset", "0"]);
-  b.close();
-  fe(b, "feMorphology", "core", ["in", "spread", "operator", "erode", "radius", "0.055", "result", "core"]);
-  fe(b, "feComposite", "rim", ["in", "spread", "in2", "core", "operator", "out", "result", "rim"]);
-  fe(b, "feColorMatrix", "mottle", ["in", "grain", "type", "matrix", "values", "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.3 0 0 0 0.78", "result", "mottle"]);
-  fe(b, "feComposite", "body", ["in", "spread", "in2", "mottle", "operator", "in", "result", "body"]);
-  b.open("feMerge", "merge", "");
-  fe(b, "feMergeNode", "m0", ["in", "body"]);
-  fe(b, "feMergeNode", "m1", ["in", "rim"]);
-  b.close();
-  b.close();
+  build(b, inkFilter(`score-ink-${v.id}`, v.ink === "wet", v.night, v.gloss, v.shine));
   b.close();
   b.close();
 }
@@ -1128,9 +1116,7 @@ function systemView(b, v, c, geo, i, y, sel) {
       if (!ink) continue;
       b.leaf("path", run, run, "");
       b.attr("d", ink.d);
-      // As bright as the gloss; the broad sheen fades as the shine tightens to a speck.
-      const o = run === SHEEN ? 0.16 * Math.min(1, v.shine / SHINE_DEFAULT) : 0.62;
-      b.style("opacity", fmt(Math.min(1, o * v.gloss), 3));
+      b.style("opacity", fmt(glintOpacity(run, v.gloss, v.shine), 3));
     }
   }
   // Where Write would put a note.
@@ -1183,6 +1169,10 @@ function playheadView(b, v, c, geo, sc) {
     // Follow: keep the playing system in view.
     if (state.follow && state.playing && (y < v.scrollTop || y + s.height * geo.sp > v.scrollTop + v.height)) {
       v.scrollTop = Math.max(0, y - Math.min(40, v.height * 0.1));
+    }
+    // Zoomed in, keep it in view across too.
+    if (state.follow && state.playing && (x < v.scrollLeft + 20 || x > v.scrollLeft + v.width - 20)) {
+      v.scrollLeft = Math.max(0, x - v.width * 0.25);
     }
     return undefined;
   }
@@ -1500,14 +1490,66 @@ function setScope(v, scope) {
   invalidate();
 }
 
-/** function setZoom(v: ScoreView, z: Number) => Undefined */
-function setZoom(v, z) {
-  const next = Math.max(4, Math.min(16, Math.round(z * 2) / 2));
+/** The music's size: larger notes, fewer bars on a line (the page is laid out again). */
+/** function setSize(v: ScoreView, size: Number) => Undefined */
+function setSize(v, size) {
+  const next = Math.max(SIZE_MIN, Math.min(SIZE_MAX, Math.round(size)));
+  if (next === v.size) return undefined;
+  v.scrollTop = v.scrollTop * (next / v.size);
+  v.size = next;
+  savePrefs(v);
+  invalidate();
+}
+
+/** The next zoom step up (dir 1) or down (-1) from the current one. */
+/** function zoomStep(v: ScoreView, dir: Int) => Number */
+function zoomStep(v, dir) {
+  if (dir > 0) return ZOOMS.find((z) => z > v.zoom + 0.001) ?? ZOOMS[ZOOMS.length - 1];
+  let down = ZOOMS[0];
+  for (const z of ZOOMS) if (z < v.zoom - 0.001) down = z;
+  return down;
+}
+
+/** Magnify the page, keeping the point (ax, ay) of the view (pixels from its corner) where it is. */
+/** function zoomAt(v: ScoreView, z: Number, ax: Number, ay: Number) => Undefined */
+function zoomAt(v, z, ax, ay) {
+  const next = Math.max(ZOOMS[0], Math.min(ZOOMS[ZOOMS.length - 1], Math.round(z * 100) / 100));
   if (next === v.zoom) return undefined;
-  v.scrollTop = v.scrollTop * (next / v.zoom);
+  const r = next / v.zoom;
+  v.scrollTop = Math.max(0, (v.scrollTop + ay) * r - ay);
+  v.scrollLeft = Math.max(0, (v.scrollLeft + ax) * r - ax);
   v.zoom = next;
   savePrefs(v);
   invalidate();
+}
+
+/** Width of the scroller's content: the view, or the zoomed page and its margins. */
+/** function contentW(v: ScoreView, geo: PageGeo) => Number */
+function contentW(v, geo) {
+  return Math.max(v.width, geo.left + geo.paperW + geo.outer);
+}
+
+/** Drag the page about (the view scrolls the other way). */
+/** function pan(e: Ev, v: ScoreView, geo: PageGeo, total: Number) => Undefined */
+function pan(e, v, geo, total) {
+  const x0 = e.clientX;
+  const y0 = e.clientY;
+  const l0 = v.scrollLeft;
+  const t0 = v.scrollTop;
+  v.panning = true;
+  invalidate();
+  drag(
+    e,
+    (m) => {
+      v.scrollLeft = Math.max(0, Math.min(contentW(v, geo) - v.width, l0 - (m.clientX - x0)));
+      v.scrollTop = Math.max(0, Math.min(total - v.height, t0 - (m.clientY - y0)));
+      invalidate();
+    },
+    (u) => {
+      v.panning = false;
+      invalidate();
+    }
+  );
 }
 
 /** The score in a pane: `id` "top" (beside the playlist) or "dock". */
@@ -1515,6 +1557,11 @@ function setZoom(v, z) {
 export function scoreView(b, v) {
   const sc = scopeOf(v);
   b.open("div", `score-${v.id}`, `score score-${v.id}${v.night ? " night" : ""}${v.side ? " with-side" : ""}`);
+  // The paper's textures (ink.js).
+  const paper = v.night ? LACQUER : PAPER;
+  b.style("--tooth", `url("${paper.tooth.url}")`);
+  b.style("--mottle", `url("${paper.mottle.url}")`);
+  b.style("--grain", `url("${paper.grain.url}")`);
   b.on("pointerdown", (e) => setFocus("score"));
   const geo = pageGeo(v, sc);
   const c = cached(v, sc, geo);
@@ -1523,6 +1570,7 @@ export function scoreView(b, v) {
   ribbon(b, v);
   paperView(b, v, c, geo, sc);
   rangeBar(b, v, c);
+  if (v.pdfMenu) pdfMenu(b, v);
   b.close();
   b.close();
 }
@@ -1616,6 +1664,18 @@ function ribbon(b, v) {
     v.range.on = false;
     invalidate();
   });
+  iconButton(
+    b,
+    "pan",
+    v.tool === "pan" ? "small on" : "small",
+    "hand",
+    "Hand: drag to move the page about (Shift+H; or drag with the middle button, or beside the page)",
+    () => {
+      v.tool = "pan";
+      v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
+      invalidate();
+    }
+  );
   if (v.tool === "write") {
     b.open("div", "values", "score-values");
     for (const val of VALUES) {
@@ -1656,9 +1716,20 @@ function ribbon(b, v) {
     v.grid = Math.round(Number(val));
     invalidate();
   });
-  iconButton(b, "zo", "small ghost", "minus", "Smaller (Ctrl+wheel)", () => setZoom(v, v.zoom - 1));
-  b.leaf("span", "z", "score-zoom", `${Math.round((v.zoom / 7) * 100)}%`);
-  iconButton(b, "zi", "small ghost", "plus", "Larger (Ctrl+wheel)", () => setZoom(v, v.zoom + 1));
+  b.leaf("span", "szl", "label", "Size");
+  b.leaf("button", "sz-", "btn small score-size down", "A");
+  b.attr("title", "Smaller music: more bars on a line");
+  b.attr("aria-label", "Smaller music");
+  b.on("click", (e) => setSize(v, v.size - 1));
+  b.leaf("button", "sz+", "btn small score-size up", "A");
+  b.attr("title", "Larger music: fewer bars on a line");
+  b.attr("aria-label", "Larger music");
+  b.on("click", (e) => setSize(v, v.size + 1));
+  iconButton(b, "zo", "small ghost", "zoomout", "Zoom out (Ctrl+wheel)", () => zoomAt(v, zoomStep(v, -1), v.width / 2, 0));
+  b.leaf("span", "z", "score-zoom", `${Math.round(v.zoom * 100)}%`);
+  b.attr("title", "Zoom — double-click for 100%");
+  b.on("dblclick", (e) => zoomAt(v, 1, v.width / 2, 0));
+  iconButton(b, "zi", "small ghost", "zoomin", "Zoom in (Ctrl+wheel)", () => zoomAt(v, zoomStep(v, 1), v.width / 2, 0));
   b.open("button", "night", v.night ? "btn small icon on" : "btn small icon");
   b.attr("title", v.night ? "Paper: ink on ivory" : "Night: gold ink on black lacquer");
   b.on("click", (e) => {
@@ -1688,7 +1759,10 @@ function ribbon(b, v) {
       v.shine = x;
     });
   }
-  iconButton(b, "pdf", "small", "export", "Download as PDF — vector pages, ready to print", () => exportPdf(v));
+  iconButton(b, "pdf", v.pdfMenu ? "small on" : "small", "export", "Download as PDF…", () => {
+    v.pdfMenu = !v.pdfMenu;
+    invalidate();
+  });
   iconButton(b, "side", v.side ? "small on" : "small", "sidebar", "Parts, tracks and colors", () => {
     v.side = !v.side;
     savePrefs(v);
