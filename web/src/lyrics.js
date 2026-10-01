@@ -139,6 +139,36 @@ export function verseText(line, verse) {
 /** function escapeSyllable(s: String) => String */
 export function escapeSyllable(s) {
   let out = "";
-  for (const c of Array.from(s)) out = out + ("\\_/[]-".includes(c) ? `\\${c}` : c);
+  for (const c of Array.from(s)) out = out + ("\\_/[]-".includes(c) || c.trim() === "" ? `\\${c}` : c);
   return out.replace(/\(br\)/g, "\\(br)");
+}
+
+/** Whether a syllable's word goes on after it (it is written with a hyphen). */
+/** function continues(t: LyricToken) => Boolean */
+export function continues(t) {
+  return t.kind === "syllable" && (t.pos === "begin" || t.pos === "middle");
+}
+
+/** One token as notation: a syllable (escaped, with its pronunciation and, when its word goes on, a hyphen), `_` or `(br)`. */
+/** function tokenNotation(t: LyricToken) => String */
+function tokenNotation(t) {
+  if (t.kind === "hold") return "_";
+  if (t.kind === "breath") return "(br)";
+  const ph = t.phonemes.length > 0 ? `[${t.phonemes.join(" ")}]` : "";
+  return `${escapeSyllable(t.text)}${ph}${continues(t) ? "-" : ""}`;
+}
+
+/** Write tokens back as notation (the inverse of parseLyrics): the syllables of a
+ * word joined by hyphens (Hel-lo), words, holds and breaths apart, then line and paragraph breaks. */
+/** function writeLyrics(tokens: LyricToken[]) => String */
+export function writeLyrics(tokens) {
+  let out = "";
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    // A syllable that goes on joins the next one directly (Hel-lo); anything else is set apart.
+    const joined = i > 0 && continues(tokens[i - 1]) && t.kind === "syllable" && tokens[i - 1].brk === "";
+    out = out + (i === 0 || joined ? "" : " ") + tokenNotation(t);
+    if (t.brk !== "") out = out + (t.brk === "paragraph" ? " //" : " /");
+  }
+  return out;
 }

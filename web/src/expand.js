@@ -19,8 +19,9 @@ const MAX_DEPTH = 16;
 /** A note as it sounds in a pattern (its beats); `pattern`/`note` say where it is written. */
 /** type Sounding = { channel: String, pitch: Number, start: Number, length: Number, velocity: Number, pattern: Int, note: Int, sung: Sung | Undefined } */
 
+/** The index of the pattern with this id, or -1. */
 /** function patternIndex(p: Project, id: String) => Int */
-function patternIndex(p, id) {
+export function patternIndex(p, id) {
   for (let i = 0; i < p.patterns.length; i++) if (p.patterns[i].id === id) return i;
   return -1;
 }
@@ -56,12 +57,23 @@ function gather(p, index, verse, stack) {
     note: k,
     sung: undefined,
   }));
-  for (const u of pat.uses) {
-    const j = patternIndex(p, u.pattern);
-    if (j < 0) continue;
-    const inner = expand(p, j, u.verse > 0 ? u.verse : verse, stack);
-    for (const n of place(p, u, p.patterns[j].length, inner)) out.push(n);
-  }
+  for (const u of pat.uses) for (const n of brought(p, u, verse, stack)) out.push(n);
+  out.sort((a, b) => a.start - b.start);
+  return out;
+}
+
+/** The notes a use brings in, placed in the using pattern. */
+/** function brought(p: Project, u: Use, verse: Int, stack: Int[]) => Sounding[] */
+function brought(p, u, verse, stack) {
+  const j = patternIndex(p, u.pattern);
+  if (j < 0) return [];
+  return place(p, u, p.patterns[j].length, expand(p, j, u.verse > 0 ? u.verse : verse, stack));
+}
+
+/** The sounding notes `patterns[index].uses[k]` brings in (singing `verse`), sorted by start. */
+/** function useNotes(p: Project, index: Int, k: Int, verse: Int) => Sounding[] */
+export function useNotes(p, index, k, verse) {
+  const out = brought(p, p.patterns[index].uses[k], verse, [index]);
   out.sort((a, b) => a.start - b.start);
   return out;
 }

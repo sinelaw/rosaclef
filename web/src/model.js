@@ -800,8 +800,26 @@ function usesDiff(id, a, b, out) {
   const kb = b.map((u) => JSON.stringify(encodeUse(u)));
   const added = b.filter((u, i) => !ka.includes(kb[i]));
   const removed = a.filter((u, i) => !kb.includes(ka[i]));
-  for (const u of added) out.push(`pattern "${id}" uses "${u.pattern}" at beat ${fmtNum(u.start)}`);
+  for (const u of added) {
+    const was = removed.find((x) => x.pattern === u.pattern && x.start === u.start);
+    if (was) removed.splice(removed.indexOf(was), 1);
+    const at = `"${u.pattern}" at beat ${fmtNum(u.start)}`;
+    out.push(was ? `pattern "${id}": use of ${at} → ${useText(u)}` : `pattern "${id}" uses ${at}`);
+  }
   for (const u of removed) out.push(`pattern "${id}" no longer uses "${u.pattern}" at beat ${fmtNum(u.start)}`);
+}
+
+/** How a use changes what it plays: "+5, verse 2, on bass", or "as written". */
+/** function useText(u: Use) => String */
+function useText(u) {
+  /** const parts: String[] */
+  const parts = [];
+  if (u.transpose !== 0) parts.push(semitonesText(u.transpose));
+  if (u.verse > 0) parts.push(`verse ${u.verse}`);
+  if (u.channel !== "") parts.push(`on "${u.channel}"`);
+  if (u.velocity !== 1) parts.push(`velocity ×${fmtNum(u.velocity)}`);
+  if (u.from !== 0 || u.to >= 0) parts.push(`beats ${fmtNum(u.from)}–${u.to >= 0 ? fmtNum(u.to) : "end"}`);
+  return parts.length > 0 ? parts.join(", ") : "as written";
 }
 
 /** function lyricsDiff(id: String, a: Lyrics[], b: Lyrics[], out: String[]) => Undefined */

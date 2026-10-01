@@ -1,10 +1,9 @@
 // Tests for the lyric notation and pattern expansion (lyrics.js, expand.js),
 // run with: node web/test/lyrics.test.js (also type-checked by inty).
 import { LYRIC_CASES } from "./lyric-notation.js";
-import { parseLyrics, tokenText, escapeSyllable } from "../src/lyrics.js";
+import { parseLyrics, tokenText, escapeSyllable, writeLyrics } from "../src/lyrics.js";
 import { expandPattern, verseCount } from "../src/expand.js";
-import { emptyProject, noArp } from "../src/model.js";
-import { insertIx } from "#brands";
+import { project, pat, use, words } from "./fixtures.js";
 
 let failures = 0;
 /** function check(name: String, ok: Boolean) => Undefined */
@@ -28,59 +27,20 @@ for (const c of LYRIC_CASES) {
   else check(`parse ${JSON.stringify(c.text)}`, r.error < 0 && r.tokens.map(show).join(" ") === c.tokens.join(" "));
 }
 check("a begin syllable reads with its hyphen", tokenText(parseLyrics("Hel-lo").tokens[0]) === "Hel-");
-check("escaped text reads back as typed", parseLyrics(escapeSyllable("a-b_c/(br)")).tokens[0].text === "a-b_c/(br)");
+check("escaped text reads back as typed", parseLyrics(escapeSyllable("a-b_c/(br) d\\e")).tokens[0].text === "a-b_c/(br) d\\e");
 
-/** A project with a lead and a drum channel. */
-/** function project() => Project */
-function project() {
-  const p = emptyProject();
-  p.patterns = [];
-  for (const [id, type] of [
-    ["lead", "synth"],
-    ["kit", "drum"],
-  ]) {
-    p.channels.push({
-      id: id,
-      name: id,
-      color: "#c9a45c",
-      instrument: { type: type, enabled: true, params: [], options: [] },
-      volume: 0.8,
-      pan: 0,
-      mute: false,
-      mixer: insertIx(0),
-      arp: noArp(),
-    });
-  }
-  return p;
+/** function shown(text: String) => String */
+function shown(text) {
+  return parseLyrics(text).tokens.map(show).join(" ");
 }
 
-/** function pat(id: String, length: Number, notes: Number[][]) => Pattern */
-function pat(id, length, notes) {
-  return {
-    id: id,
-    name: id,
-    color: "#c9a45c",
-    length: length,
-    notes: notes.map((n) => ({ channel: n[0] === 0 ? "lead" : "kit", pitch: n[1], start: n[2], length: 1, velocity: 0.8 })),
-    uses: [],
-    lyrics: [],
-  };
+for (const c of LYRIC_CASES) {
+  if (c.error >= 0) continue;
+  const written = writeLyrics(parseLyrics(c.text).tokens);
+  check(`write ${JSON.stringify(c.text)} back as ${JSON.stringify(written)}`, shown(written) === shown(c.text));
 }
-
-/** function use(pattern: String, start: Number) => Use */
-function use(pattern, start) {
-  return { pattern: pattern, start: start, from: 0, to: -1, transpose: 0, channel: "", velocity: 1, verse: 0 };
-}
-
-/** function word(s: Sung | Undefined) => String */
-function word(s) {
-  return s === undefined ? "." : tokenText(s.token);
-}
-
-/** function words(notes: Sounding[]) => String */
-function words(notes) {
-  return notes.map((n) => word(n.sung)).join(" ");
-}
+check("words are written in their plain form", writeLyrics(parseLyrics("Hel- lo  dark -ness _ / (br) end //").tokens) === "Hel-lo dark-ness _ / (br) end //");
+check("a hold inside a word keeps the word together", shown(writeLyrics(parseLyrics("a- _ gain").tokens)) === "a< _ gain>");
 
 {
   const p = project();
