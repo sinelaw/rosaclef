@@ -95,7 +95,7 @@ class RosaclefProcessor extends AudioWorkletProcessor {
         const res = this.result();
         if (status === 0) {
           const r = JSON.parse(res || "{}");
-          this.port.postMessage({ t: "loaded", missing: r.samples || [], presets: r.presets || [] });
+          this.port.postMessage({ t: "loaded", missing: r.samples || [], renders: r.renders || [], presets: r.presets || [] });
         } else {
           this.port.postMessage({ t: "loadError", message: res });
         }

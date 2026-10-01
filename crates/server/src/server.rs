@@ -393,6 +393,16 @@ impl App {
         self.broadcast(0, self.welcome("switched", 0));
     }
 
+    /// New rendered phrases: the native engine loads them, and every client
+    /// is told so its browser engine can.
+    pub(crate) fn renders_arrived(&self) {
+        #[cfg(feature = "device-audio")]
+        if let Some(n) = self.native.lock().as_ref() {
+            n.load_renders(&self.folder());
+        }
+        self.broadcast(0, json!({"t": "renders"}));
+    }
+
     #[cfg(feature = "device-audio")]
     fn update_native(&self, project: &Project) {
         if let Some(n) = self.native.lock().as_ref() {
@@ -471,6 +481,14 @@ fn spawn_watcher(app: Shared) -> Result<()> {
             }
             if paths.iter().any(|p| p.starts_with(&samples_dir)) {
                 app.broadcast(0, json!({"t": "samples", "samples": folder.list_samples()}));
+            }
+            // Rendered phrases arriving (from a voice, or dropped in by hand).
+            let renders_dir = folder.dir.join(folder::RENDERS_DIR).join("voice");
+            if paths
+                .iter()
+                .any(|p| p.starts_with(&renders_dir) && p.extension().is_some_and(|e| e == "wav"))
+            {
+                app.renders_arrived();
             }
         }
     });

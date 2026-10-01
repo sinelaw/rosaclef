@@ -148,7 +148,8 @@
 } */
 
 /** type PresetRef = { font: String, bank: Number, program: Number } */
-/** type AudioMsg = { t: String, position: Number, playing: Boolean, loopLength: Number, meters: Number[], missing: String[], presets: PresetRef[], message: String, sampleRate: Number } */
+/** `missing`: samples the engine needs; `renders`: rendered phrases it would play if they exist. */
+/** type AudioMsg = { t: String, position: Number, playing: Boolean, loopLength: Number, meters: Number[], missing: String[], renders: String[], presets: PresetRef[], message: String, sampleRate: Number } */
 
 /** type Decoded = { sampleRate: Number, channels: Floats[], duration: Number } */
 
