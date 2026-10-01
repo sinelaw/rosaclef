@@ -623,6 +623,8 @@ function eventsOf(chords, heads, ms, trip) {
       const mi = measureAt(ms, t);
       const m = ms[mi];
       let mEnd = Math.min(e, m.start + m.length);
+      // Past the last bar (never expected): stop rather than spin.
+      if (mEnd <= t) break;
       if (rest && t === m.start && mEnd === m.start + m.length) {
         out.push({ start: t, dur: m.length, base: 192, dots: 0, rest: true, whole: true, heads: [], beam: -1, measure: mi, tuplet: -1 });
         t = mEnd;
@@ -881,7 +883,15 @@ export function buildScore(p, scope, grid) {
       for (const e of r.endings) endBeat = Math.max(endBeat, e.end);
     }
   }
-  const endTick = Math.max(1, Math.ceil(endBeat * TPQ - 1e-6));
+  let endTick = Math.max(1, Math.ceil(endBeat * TPQ - 1e-6));
+  // Quantizing can move a short last note onto the final bar line (its end a
+  // step past it): the bars must hold every note as written
+  // (as chordsOf: a note rounded to nothing lasts a step).
+  for (const n of notes) {
+    const s = Math.round((n.start * TPQ) / grid) * grid;
+    const e = Math.round((n.end * TPQ) / grid) * grid;
+    endTick = Math.max(endTick, e > s ? e : s + Math.max(grid, 16));
+  }
   // A pattern's bars start at its beat 0 whatever the song's meters say there.
   const ms = measuresFor(p.transport, endTick);
 

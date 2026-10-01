@@ -97,6 +97,24 @@ check("6/8: a dotted quarter beat, and a dotted half bar", vals(pieces(m68, 0, 7
   check("the F under the G is cut to an eighth (one voice)", evs[3].dur === 24);
   check("eighths in a beat are beamed", evs[3].beam >= 0 && evs[3].beam === evs[4].beam);
 }
+{
+  // A short note just before the end rounds onto the final bar line (an
+  // arpeggio written out by the LMMS importer): the score must still hold it,
+  // and building it must not hang.
+  const p = song(
+    [
+      [60, 0, 1],
+      [72, 3.95, 0.04],
+    ],
+    4
+  );
+  const sc = buildScore(p, PAT, 12);
+  const heads = sc.staves[0].events.filter((e) => !e.rest);
+  check("a note quantized onto the last bar line gets a bar of its own", sc.measures.length === 2 && heads.length === 2);
+  check("the note sits on the downbeat of that bar", heads[1].start === 4 * TPQ && heads[1].measure === 1);
+  const last = song([[60, 3.75, 0.25]], 4);
+  check("a last sixteenth ending on the bar line adds no bar", buildScore(last, PAT, 12).measures.length === 1);
+}
 
 {
   const p = song(
