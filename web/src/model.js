@@ -50,7 +50,7 @@ export function decodeCatalog(raw) {
           gateMax: Number(a.gateMax),
           octavesMax: Math.round(Number(a.octavesMax)),
         }
-      : { chords: ["octave"], directions: ["up"], modes: ["free"], rateMin: 1 / 64, rateMax: 4, gateMin: 0.05, gateMax: 2, octavesMax: 8 },
+      : defaultArpCatalog(),
     presets: (raw.presets ?? []).map((p) => ({
       name: String(p.name),
       type: String(p.type),
@@ -60,6 +60,12 @@ export function decodeCatalog(raw) {
       options: decodeStrs(p.options),
     })),
   };
+}
+
+/** The arpeggiator's choices before the catalog arrives (or from an older server). */
+/** function defaultArpCatalog() => ArpCatalog */
+export function defaultArpCatalog() {
+  return { chords: ["octave"], directions: ["up"], modes: ["free"], rateMin: 1 / 64, rateMax: 4, gateMin: 0.05, gateMax: 2, octavesMax: 8 };
 }
 
 /** No arpeggiator (its settings are what turning it on starts from). */
