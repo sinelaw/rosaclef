@@ -1,0 +1,9 @@
+[package]
+name = "rosaclef-phonetics"
+description = "Pronunciation for Rosaclef's lyrics: spelling to IPA phonemes, syllables, phoneme alphabets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rosaclef-core.workspace = true
