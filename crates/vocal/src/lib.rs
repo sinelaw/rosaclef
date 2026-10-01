@@ -5,7 +5,8 @@
 //! line as words and lyric lines. [`formats`] writes the song for singing
 //! engines (Synthesizer V, OpenUtau, DiffSinger), notation (MusicXML, MIDI),
 //! karaoke (UltraStar, LRC, TTML), song generators (tagged lyrics, timed
-//! words) and speech (SSML).
+//! words) and speech (SSML). [`align`] turns what a forced aligner found in
+//! a sung take into a lyric line's phoneme timing.
 
 pub mod align;
 pub mod formats;
