@@ -12,7 +12,8 @@
 // into an image per page (downloadImagePdf).
 
 import { G, GLYPHS } from "./smufl.js";
-import { engrave, GLOSS, SHEEN } from "./engrave.js";
+import { engrave } from "./engrave.js";
+import { GLOSS, SHEEN } from "./paint.js";
 import { inkFilter, markup, glintOpacity, PAPER } from "./ink.js";
 
 /** What heads the first page. `bpm` 0: no tempo mark. */

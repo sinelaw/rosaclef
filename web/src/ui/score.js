@@ -37,7 +37,8 @@ import {
   bottomStep,
   passesText,
 } from "../notation.js";
-import { engrave, timeX, xTick, GLOSS, SHEEN } from "../engrave.js";
+import { engrave, timeX, xTick } from "../engrave.js";
+import { GLOSS, SHEEN } from "../paint.js";
 import { inkFilter, glintOpacity, PAPER, LACQUER, GLOSS_DEFAULT, GLOSS_MAX, SHINE_DEFAULT } from "../ink.js";
 import { scorePdf, pdfLayout, pageSvg, pdfInfo } from "../pdf.js";
 import { preview, seek } from "../audio.js";

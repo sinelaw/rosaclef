@@ -28,6 +28,7 @@
 
 import { G } from "./smufl.js";
 import { NO_ACC, bottomStep, TPQ, passesText } from "./notation.js";
+import { GLOSS, SHEEN, painter, rect, quad, glyph, glint, tie, emit, inks } from "./paint.js";
 
 // Bravura's engraving defaults, in staff spaces.
 const STAFF_LINE = 0.13;
@@ -41,16 +42,9 @@ const THICK = 0.5;
 const STEM_LEN = 3.5;
 /** Space between systems. */
 const SYSTEM_GAP = 2.5;
-/** The run holding the glints of the wet ink (drawn in light over the music, not in ink). */
-export const GLOSS = "gloss";
-/** The broad, faint sheen around the glints. */
-export const SHEEN = "sheen";
 /** The SMuFL stem anchor: stems meet a notehead this far from its middle. */
 const STEM_Y = 0.168;
 
-/** type Prim = { kind: Int, color: String, nums: Number[], ch: String } */
-/** type Ink = { color: String, d: String, text: String, xs: String, ys: String } */
-/** type Label = { x: Number, y: Number, text: String, cls: String, anchor: String, color: String } */
 /** A brace: its glyph's origin (bottom left) and its scale (one staff high is 1). */
 /** type Brace = { x: Number, y: Number, s: Number } */
 /** type Band = { x: Number, y: Number, w: Number, h: Number, color: String, label: String, mark: Int, first: Boolean } */
@@ -64,46 +58,6 @@ const STEM_Y = 0.168;
 /** `width`: of the page, in staff spaces; `hideEmpty`: leave out staves that only rest in a system. */
 /** type EngraveOpts = { width: Number, hideEmpty: Boolean } */
 
-// ------------------------------------------------------------------ painter
-
-/** A list of primitives with their vertical extent; shifted into place later. */
-/** type Inker = { prims: Prim[], top: Number, bottom: Number } */
-
-/** function painter() => Inker */
-function painter() {
-  return { prims: [], top: 0, bottom: 4 };
-}
-
-/** function extend(p: Inker, y0: Number, y1: Number) => Undefined */
-function extend(p, y0, y1) {
-  if (y0 < p.top) p.top = y0;
-  if (y1 > p.bottom) p.bottom = y1;
-}
-
-/** function rect(p: Inker, x: Number, y: Number, w: Number, h: Number, color: String) => Undefined */
-function rect(p, x, y, w, h, color) {
-  p.prims.push({ kind: 0, color: color, nums: [x, y, x + w, y, x + w, y + h, x, y + h], ch: "" });
-  extend(p, y, y + h);
-}
-
-/** function quad(p: Inker, x0: Number, y0: Number, x1: Number, y1: Number, t: Number, color: String) => Undefined */
-function quad(p, x0, y0, x1, y1, t, color) {
-  p.prims.push({ kind: 0, color: color, nums: [x0, y0, x1, y1, x1, y1 + t, x0, y0 + t], ch: "" });
-  extend(p, Math.min(y0, y1), Math.max(y0, y1) + t);
-}
-
-/** function glyph(p: Inker, g: Glyph, x: Number, y: Number, color: String) => Undefined */
-function glyph(p, g, x, y, color) {
-  p.prims.push({ kind: 1, color: color, nums: [x, y], ch: g.c });
-  extend(p, y + g.top, y + g.bottom);
-}
-
-/** The gloss of a wet drop of ink: a small ellipse (centre, radii, tilt in degrees) where the light catches it. */
-/** function glint(p: Inker, run: String, cx: Number, cy: Number, rx: Number, ry: Number, deg: Number) => Undefined */
-function glint(p, run, cx, cy, rx, ry, deg) {
-  p.prims.push({ kind: 4, color: run, nums: [cx, cy, rx, ry, deg], ch: "" });
-}
-
 /** Where the light catches a notehead: a broad soft sheen over the upper left of a
  * filled one with a small highlight at its heart; on a hollow one, the highlight on its rim. */
 /** function headGlint(p: Inker, gl: Glyph, x: Number, y: Number) => Undefined */
@@ -113,71 +67,6 @@ function headGlint(p, gl, x, y) {
     glint(p, GLOSS, x + 0.37, y - 0.23, 0.1, 0.045, -22);
   } else if (gl.c === G.noteheadHalf.c) glint(p, GLOSS, x + 0.3, y - 0.32, 0.1, 0.035, -25);
   else if (gl.c === G.noteheadWhole.c) glint(p, GLOSS, x + 0.45, y - 0.37, 0.12, 0.035, -12);
-}
-
-/** A tie or slur: a crescent between two points bulging by `h` (negative: up). */
-/** function tie(p: Inker, x0: Number, x1: Number, y: Number, h: Number, color: String) => Undefined */
-function tie(p, x0, x1, y, h, color) {
-  const len = x1 - x0;
-  if (len < 0.3) return undefined;
-  const a = x0 + len * 0.25;
-  const b = x0 + len * 0.75;
-  // Control points 4/3 of the bulge give the curve its height.
-  const outer = y + h * 1.333;
-  const inner = y + (h - Math.sign(h) * 0.17) * 1.333;
-  p.prims.push({ kind: 2, color: color, nums: [x0, y, a, outer, b, outer, x1, y, b, inner, a, inner, x0, y], ch: "" });
-  extend(p, Math.min(y, y + h), Math.max(y, y + h));
-}
-
-/** function num(v: Number) => String */
-function num(v) {
-  return String(Math.round(v * 100) / 100);
-}
-
-/** Primitives shifted down by `dy`, appended to per-color runs. */
-/** type Run = { color: String, d: String[], text: String[], xs: String[], ys: String[] } */
-
-/** function runFor(runs: Run[], color: String) => Run */
-function runFor(runs, color) {
-  const found = runs.find((r) => r.color === color);
-  if (found) return found;
-  const r = { color: color, d: [], text: [], xs: [], ys: [] };
-  runs.push(r);
-  return r;
-}
-
-/** function emit(runs: Run[], prims: Prim[], dy: Number) => Undefined */
-function emit(runs, prims, dy) {
-  for (const pr of prims) {
-    const r = runFor(runs, pr.color);
-    const n = pr.nums;
-    if (pr.kind === 1) {
-      r.text.push(pr.ch);
-      r.xs.push(num(n[0]));
-      r.ys.push(num(n[1] + dy));
-    } else if (pr.kind === 4) {
-      // An ellipse: two arcs between the ends of its tilted long axis.
-      const a = (n[4] * Math.PI) / 180;
-      const ex = n[2] * Math.cos(a);
-      const ey = n[2] * Math.sin(a);
-      const arc = `A${num(n[2])} ${num(n[3])} ${num(n[4])} 1 0`;
-      r.d.push(`M${num(n[0] - ex)} ${num(n[1] - ey + dy)}${arc} ${num(n[0] + ex)} ${num(n[1] + ey + dy)}${arc} ${num(n[0] - ex)} ${num(n[1] - ey + dy)}Z`);
-    } else if (pr.kind === 0) {
-      let s = `M${num(n[0])} ${num(n[1] + dy)}`;
-      for (let i = 2; i + 1 < n.length; i = i + 2) s = `${s}L${num(n[i])} ${num(n[i + 1] + dy)}`;
-      r.d.push(`${s}Z`);
-    } else {
-      r.d.push(
-        `M${num(n[0])} ${num(n[1] + dy)}C${num(n[2])} ${num(n[3] + dy)} ${num(n[4])} ${num(n[5] + dy)} ${num(n[6])} ${num(n[7] + dy)}` +
-          `C${num(n[8])} ${num(n[9] + dy)} ${num(n[10])} ${num(n[11] + dy)} ${num(n[12])} ${num(n[13] + dy)}Z`
-      );
-    }
-  }
-}
-
-/** function inks(runs: Run[]) => Ink[] */
-function inks(runs) {
-  return runs.map((r) => ({ color: r.color, d: r.d.join(""), text: r.text.join(""), xs: r.xs.join(" "), ys: r.ys.join(" ") }));
 }
 
 // ------------------------------------------------------------------ glyphs
