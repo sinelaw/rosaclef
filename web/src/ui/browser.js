@@ -2,7 +2,7 @@
 
 import { uploadFile, pickFiles } from "#platform";
 import { state, commit, selectPattern, selectChannel, invalidate, hint, setFocus } from "../store.js";
-import { newDevice, setOption, uniqueId, paletteColor, presetDevice } from "../model.js";
+import { newDevice, setOption, uniqueId, paletteColor, presetDevice, noArp } from "../model.js";
 import { followPattern } from "../audio.js";
 import { glyph, iconButton, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
@@ -24,7 +24,17 @@ export function pushChannel(type, name, setup) {
   let mixer = 1;
   while (mixer < p.mixer.inserts.length && p.channels.some((c) => c.mixer === insertIx(mixer))) mixer = mixer + 1;
   if (mixer >= p.mixer.inserts.length) mixer = 0;
-  p.channels.push({ id: id, name: name, color: paletteColor(p.channels.length), instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(mixer) });
+  p.channels.push({
+    id: id,
+    name: name,
+    color: paletteColor(p.channels.length),
+    instrument: dev,
+    volume: 0.8,
+    pan: 0,
+    mute: false,
+    mixer: insertIx(mixer),
+    arp: noArp(),
+  });
   return id;
 }
 

@@ -84,6 +84,7 @@ fn device_def(category: Category) -> Value {
 pub fn schema() -> Value {
     let id = json!({"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"});
     let color = json!({"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"});
+    let arp_chords: Vec<&str> = crate::arp::CHORDS.iter().map(|c| c.0).collect();
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": SCHEMA_ID,
@@ -202,7 +203,22 @@ pub fn schema() -> Value {
                     "volume": num(0.0, 1.5, "Channel gain (linear)."),
                     "pan": num(-1.0, 1.0, "-1 left, 0 centre, 1 right."),
                     "mute": {"type": "boolean"},
-                    "mixer": {"type": "integer", "minimum": 0, "description": "Mixer insert index (0 = master)."}
+                    "mixer": {"type": "integer", "minimum": 0, "description": "Mixer insert index (0 = master)."},
+                    "arp": {"$ref": "#/$defs/arp"}
+                }
+            },
+            "arp": {
+                "type": "object",
+                "description": "The channel's arpeggiator (absent = off). While a note is held it plays the notes of `chord` above it over `octaves` octaves, one every `rate` beats, each `gate` × rate long. The notes stay as written; only playback arpeggiates.",
+                "required": ["rate"],
+                "additionalProperties": false,
+                "properties": {
+                    "chord": {"enum": arp_chords, "default": "octave", "description": "Chord the notes cycle through; \"octave\" plays the note itself in each octave."},
+                    "octaves": {"type": "integer", "minimum": 1, "maximum": crate::arp::OCTAVES_MAX, "default": 1},
+                    "rate": num(crate::arp::RATE_MIN, crate::arp::RATE_MAX, "Beats from one note to the next (0.25 = sixteenths)."),
+                    "direction": {"enum": crate::arp::DIRECTIONS, "default": "up"},
+                    "gate": num(crate::arp::GATE_MIN, crate::arp::GATE_MAX, "Length of each note as a fraction of the rate (default 1)."),
+                    "mode": {"enum": crate::arp::MODES, "default": "free", "description": "free: every held note runs its own arpeggio; sort: notes struck together take turns, lowest first."}
                 }
             },
             "instrument": device_def(Category::Instrument),

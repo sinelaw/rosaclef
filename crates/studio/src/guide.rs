@@ -196,6 +196,12 @@ Rules and conventions:
 - A pattern clip longer than its pattern **loops** the pattern; `offset` shifts where it starts.
   Notes starting at or after the pattern `length` never play.
 - Drum channels ignore note length (one-shots); pitch 60 plays the drum at its tuned pitch.
+- A channel may have an **arpeggiator**, `"arp"` (omit it for none): every note the channel plays
+  becomes a run of notes while it is held, and the notes stay as written (so write the melody, not
+  the run). `{ "chord": "minor", "octaves": 2, "rate": 0.25, "direction": "updown", "gate": 0.5,
+  "mode": "free" }` — `rate` in beats between run notes (0.25 = 16ths), `gate` each note's length as
+  a share of the rate, `direction` up / down / updown / downup / random, `mode` "sort" makes notes
+  struck together take turns. Chords: `rosaclef schema` lists them (`octave` = the note itself).
 - Time-signature changes go in `transport.meters`, sorted by bar (counted from 1):
   `"meters": [ { "bar": 9, "numerator": 3, "denominator": 4 }, { "bar": 17, "numerator": 7, "denominator": 8 } ]`.
   A bar lasts `4 × numerator / denominator` beats (3/4 → 3, 6/8 → 3, 7/8 → 3.5); bars before the

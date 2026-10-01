@@ -124,6 +124,7 @@ fn blip() -> Engine {
         pan: 0.0,
         mute: false,
         mixer: InsertIx(1),
+        arp: None,
     });
     p.patterns[0].notes.clear();
     p.patterns[0].length = 4.0;

@@ -1,6 +1,7 @@
 //! Rosaclef core: the project document model shared by every part of the
 //! system (native server, WebAssembly engine, command line tools).
 
+pub mod arp;
 pub mod automation;
 pub mod catalog;
 pub mod context;
@@ -259,6 +260,7 @@ mod tests {
             pan: 0.0,
             mute: false,
             mixer: InsertIx(99),
+            arp: None,
         });
         let issues = validate::validate(&p);
         let paths: Vec<&str> = issues.iter().map(|i| i.path.as_str()).collect();
@@ -328,6 +330,7 @@ mod tests {
             pan: 0.0,
             mute: false,
             mixer: InsertIx(1),
+            arp: None,
         });
         p
     }

@@ -108,6 +108,7 @@ mod tests {
                 pan: 0.0,
                 mute: false,
                 mixer: InsertIx::MASTER,
+                arp: None,
             });
         }
         let issues = validate::validate(&p);

@@ -11,7 +11,7 @@
 
 import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview, pickFiles, uploadFile, audioPost } from "#platform";
 import { state, commit, invalidate, hint, selectPattern, currentChannel, currentPattern } from "../store.js";
-import { uniqueId, paletteColor, setOption, optionValue, snapDown, newDevice, cloneProject, projectJson } from "../model.js";
+import { uniqueId, paletteColor, setOption, optionValue, snapDown, newDevice, cloneProject, projectJson, noArp } from "../model.js";
 import { startAudio, play, stop, setMode } from "../audio.js";
 import {
   SCALES,
@@ -447,7 +447,7 @@ function previewJson(r) {
       id = `${PREVIEW}-${lane}`;
       const dev = newDevice(drums ? "drum" : "synth");
       if (drums) setOption(dev, "kind", lane);
-      p.channels.push({ id: id, name: id, color: "#d4af37", instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(0) });
+      p.channels.push({ id: id, name: id, color: "#d4af37", instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(0), arp: noArp() });
     }
     lanes.push({ key: lane, value: id });
   }

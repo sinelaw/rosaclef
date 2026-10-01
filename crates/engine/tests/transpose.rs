@@ -45,6 +45,7 @@ fn song(kind: &str, transpose: i32) -> Project {
         pan: 0.0,
         mute: false,
         mixer: InsertIx::MASTER,
+        arp: None,
     });
     let pat = &mut p.patterns[0];
     pat.length = 4.0;

@@ -20,6 +20,7 @@ fn project(dev: &Device) -> Project {
         pan: 0.0,
         mute: false,
         mixer: InsertIx::MASTER,
+        arp: None,
     });
     p.mixer.inserts[0].effects.clear();
     p

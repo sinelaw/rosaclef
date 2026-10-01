@@ -511,7 +511,7 @@ impl Host {
                 rosaclef_core::schema::schema_text().into_bytes(),
             ),
             ("GET", "/api/catalog") => Response::json(
-                json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": []}),
+                json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": [], "arp": rosaclef_core::arp::catalog()}),
             ),
             ("GET", "/api/plugins") => Response::json(json!({"plugins": []})),
             ("GET", "/api/plugins/params") => {

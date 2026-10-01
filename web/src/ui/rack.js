@@ -2,7 +2,7 @@
 
 import { drag, getJson } from "#platform";
 import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, showDock, deviceSpec, invalidate, hint } from "../store.js";
-import { getParam, setParam, getOption, setOption, presetDevice, PALETTE } from "../model.js";
+import { getParam, setParam, getOption, setOption, presetDevice, PALETTE, copyArp } from "../model.js";
 import { preview } from "../audio.js";
 import { knobAt, paramKnobAt, select, button, iconButton, led, textInput, glyph } from "./widgets.js";
 import { shownValue, retargetLanes } from "../automation.js";
@@ -310,6 +310,127 @@ function presetPicker(b, dev) {
   b.close();
 }
 
+// Arpeggio rates (beats) as note values.
+const ARP_RATES = [1, 0.5, 1 / 3, 0.25, 1 / 6, 0.125, 1 / 12, 0.0625, 0.03125];
+const ARP_RATE_NAMES = ["1/4", "1/8", "1/8 triplet", "1/16", "1/16 triplet", "1/32", "1/32 triplet", "1/64", "1/128"];
+const ARP_DIRECTION_NAMES = [
+  ["up", "Up"],
+  ["down", "Down"],
+  ["updown", "Up & down"],
+  ["downup", "Down & up"],
+  ["random", "Random"],
+];
+const ARP_GATES = [0.25, 0.5, 0.75, 1, 1.5];
+
+/** A select over numbers; a value that is none of them is offered as itself. */
+/** function numberSelect(b: Builder, key: String, label: String, value: Number, values: Number[], names: String[], unit: String, tip: String, onSet: (Number) => Undefined) => Undefined */
+function numberSelect(b, key, label, value, values, names, unit, tip, onSet) {
+  const vs = values.slice();
+  const ns = names.slice();
+  let at = vs.findIndex((v) => Math.abs(v - value) < 1e-6);
+  if (at < 0) {
+    vs.push(value);
+    ns.push(`${Math.round(value * 1000) / 1000}${unit}`);
+    at = vs.length - 1;
+  }
+  b.open("div", key, "option");
+  b.leaf("label", "l", "", label);
+  const keys = vs.map((v, i) => String(i));
+  select(b, "sel", "", String(at), keys, ns, tip, (k) => onSet(vs[Math.round(Number(k))]));
+  b.close();
+}
+
+/** The channel's arpeggiator: off, or its chord, range, rate, direction, gate and mode. */
+/** function arpControls(b: Builder, ch: Channel) => Undefined */
+function arpControls(b, ch) {
+  const a = ch.arp;
+  const cat = state.catalog.arp;
+  b.open("div", "arp", "param-group arp");
+  b.open("div", "head", "arp-head");
+  b.leaf("div", "t", "param-group-title", "Arpeggio");
+  button(b, "on", a.on ? "small gold" : "small", a.on ? "On" : "Off", "Play every note of this channel as a run of notes (the notes stay as written)", () => {
+    commit(() => {
+      a.on = !a.on;
+    });
+  });
+  b.close();
+  if (a.on) {
+    b.open("div", "opts", "options");
+    b.open("div", "chord", "option");
+    b.leaf("label", "l", "", "Chord");
+    select(b, "sel", "", a.chord, cat.chords, cat.chords, "Notes the run cycles through above each held note (octave = the note itself)", (v) => {
+      commit(() => {
+        a.chord = v;
+      });
+    });
+    b.close();
+    /** const octaves: Number[] */
+    const octaves = [];
+    for (let i = 1; i <= cat.octavesMax; i++) octaves.push(i);
+    numberSelect(
+      b,
+      "octaves",
+      "Octaves",
+      Number(a.octaves),
+      octaves,
+      octaves.map((o) => String(o)),
+      "",
+      "Octaves the run spans",
+      (v) => {
+        commit(() => {
+          a.octaves = Math.round(v);
+        });
+      }
+    );
+    numberSelect(b, "rate", "Rate", a.rate, ARP_RATES, ARP_RATE_NAMES, " beats", "Time from one note of the run to the next", (v) => {
+      commit(() => {
+        a.rate = v;
+      });
+    });
+    b.open("div", "dir", "option");
+    b.leaf("label", "l", "", "Direction");
+    select(
+      b,
+      "sel",
+      "",
+      a.direction,
+      ARP_DIRECTION_NAMES.map((d) => d[0]),
+      ARP_DIRECTION_NAMES.map((d) => d[1]),
+      "Order of the notes in the run",
+      (v) => {
+        commit(() => {
+          a.direction = v;
+        });
+      }
+    );
+    b.close();
+    numberSelect(b, "gate", "Gate", a.gate, ARP_GATES, ["25%", "50%", "75%", "100%", "150%"], "×", "Length of each note as a share of the rate", (v) => {
+      commit(() => {
+        a.gate = v;
+      });
+    });
+    b.open("div", "mode", "option");
+    b.leaf("label", "l", "", "Chords");
+    select(
+      b,
+      "sel",
+      "",
+      a.mode,
+      ["free", "sort"],
+      ["Each note", "Take turns"],
+      "Notes struck together: each runs its own arpeggio, or they take turns as one",
+      (v) => {
+        commit(() => {
+          a.mode = v;
+        });
+      }
+    );
+    b.close();
+    b.close();
+  }
+  b.close();
+}
+
 /** function inspector(b: Builder) => Undefined */
 function inspector(b) {
   const ch = currentChannel();
@@ -354,6 +475,7 @@ function inspector(b) {
 
   presetPicker(b, ch.instrument);
   if (spec) deviceControls(b, ch.instrument, spec, `channel/${ch.id}/`);
+  arpControls(b, ch);
 
   b.open("div", "actions", "rack-add");
   button(b, "roll", "small", "Piano roll", "Edit this channel's notes (F7)", () => {
@@ -390,6 +512,7 @@ function duplicateChannel(ch) {
       pan: ch.pan,
       mute: false,
       mixer: ch.mixer,
+      arp: copyArp(ch.arp),
     });
   });
   selectChannel(id);

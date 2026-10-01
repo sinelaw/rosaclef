@@ -5,7 +5,7 @@
 // frame rebuilds all descriptions and reconciles them (see ui/tree.js).
 
 import { debounce, nowIso } from "#platform";
-import { decodeProject, emptyProject, projectJson, cloneProject, describeChange } from "./model.js";
+import { decodeProject, emptyProject, projectJson, cloneProject, describeChange, defaultArpCatalog } from "./model.js";
 import { insertIx, insertIndex, trackIx, noteIndex, clipIndex } from "#brands";
 
 export const state = {
@@ -14,7 +14,7 @@ export const state = {
   /** Counts changes to the project (edits, undo, remote versions): views cache what they derive from it by this. */
   edits: 0,
   loaded: false,
-  catalog /*: Catalog */: { devices: [], plugins: [], presets: [] },
+  catalog /*: Catalog */: { devices: [], plugins: [], presets: [], arp: defaultArpCatalog() },
   agents /*: AgentPreset[] */: [],
   samples /*: String[] */: [],
   folder: "",

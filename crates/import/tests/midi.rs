@@ -316,6 +316,7 @@ fn merges_into_an_existing_project() {
         pan: 0.0,
         mute: false,
         mixer: rosaclef_core::InsertIx(1),
+        arp: None,
     });
     let tracks0 = base.playlist.tracks.len();
     let inserts0 = base.mixer.inserts.len();
@@ -490,6 +491,7 @@ fn merging_keeps_channel_lanes_and_the_song_tempo() {
         pan: 0.0,
         mute: false,
         mixer: rosaclef_core::InsertIx(1),
+        arp: None,
     });
     let warnings = rosaclef_import::merge_into(&mut base, im.project);
     let issues = validate::validate(&base);

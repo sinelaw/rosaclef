@@ -28,7 +28,8 @@
 //! | automation tracks (`type="5"`, `"6"`) | lanes for tempo, track volume / pan, FX channel and master volume |
 //! | FX mixer channels | mixer inserts (name, volume, mute, effects) |
 //! | track effects | prepended to the track's FX channel when it is the only user, else a new insert |
-//! | arpeggiator, chord stacking | written out as notes |
+//! | arpeggiator | the channel's `arp` (the notes stay as written) |
+//! | chord stacking | written out as notes |
 //! | TripleOscillator | `synth` (Aurum) |
 //! | Kicker | `drum` kick |
 //! | AudioFileProcessor | `sampler` (Vault); DrumSynth `.ds` patches become `drum` voices |
@@ -49,8 +50,8 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use rosaclef_core::automation::AutomationTarget;
 use rosaclef_core::{
-    AutomationLane, AutomationPoint, Channel, Clip, Device, Insert, InsertIx, Note, Pattern,
-    Project, Track, TrackIx,
+    Arpeggio, AutomationLane, AutomationPoint, Channel, Clip, Device, Insert, InsertIx, Note,
+    Pattern, Project, Track, TrackIx,
 };
 use roxmltree::{Document, Node, ParsingOptions};
 use std::collections::{HashMap, HashSet};
@@ -390,68 +391,6 @@ fn drumsynth_kind(path: &str) -> Option<&'static str> {
     )
 }
 
-/// Write out LMMS's arpeggiator: each note becomes a run of notes `step`
-/// apart, cycling through the offsets, for as long as the note is held.
-/// In sort mode, notes struck together take turns, lowest first.
-fn arpeggiate(arp: &Arp, notes: Vec<Note>) -> Vec<Note> {
-    let n = arp.offsets.len().max(1);
-    let round = |x: f64| (x * 1_000_000.0).round() / 1_000_000.0;
-    let mut out = vec![];
-    for note in &notes {
-        let (turn, group) = if arp.sort {
-            let mut together: Vec<i32> = notes
-                .iter()
-                .filter(|o| o.start == note.start)
-                .map(|o| o.pitch)
-                .collect();
-            together.sort();
-            let turn = together.iter().position(|p| *p == note.pitch).unwrap_or(0);
-            (turn, together.len())
-        } else {
-            (0, 1)
-        };
-        let end = note.start + note.length;
-        let steps = (note.length / arp.step - 1e-9).ceil().max(1.0) as usize;
-        for k in 0..steps {
-            if (k % (n * group)) / n != turn {
-                continue;
-            }
-            let up_down = |k: usize| {
-                if n < 2 {
-                    0
-                } else {
-                    let m = k % (2 * n - 2);
-                    if m >= n {
-                        2 * n - 2 - m
-                    } else {
-                        m
-                    }
-                }
-            };
-            let idx = match arp.direction {
-                1 => n - 1 - k % n,
-                2 => up_down(k),
-                3 => n - 1 - up_down(k),
-                // Random: a fixed hash, so imports are reproducible.
-                4 => ((k as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 33) as usize % n,
-                _ => k % n,
-            };
-            let start = note.start + k as f64 * arp.step;
-            let length = (arp.step * arp.gate).min(end - start);
-            if length <= 1e-6 {
-                continue;
-            }
-            out.push(Note {
-                pitch: note.pitch + arp.offsets.get(idx).copied().unwrap_or(0),
-                start: round(start),
-                length: round(length),
-                ..note.clone()
-            });
-        }
-    }
-    out
-}
-
 /// Atelier decay and gain that match LMMS's factory DrumSynth patches of
 /// a kind (medians over the 345 tr606/tr808/tr909/... patches whose
 /// kind the file name tells, rendered by LMMS 1.2.2 and Rosaclef).
@@ -558,25 +497,8 @@ struct ChannelInfo {
     mode: PitchMode,
     /// Whether the project's master pitch applies (`usemasterpitch`).
     master_pitch: bool,
-    /// The track's arpeggiator, when enabled.
-    arp: Option<Arp>,
     /// Chord stacking: semitone offsets each note is expanded into.
     chord: Vec<i32>,
-}
-
-/// LMMS's arpeggiator, written out as notes.
-#[derive(Clone, Debug)]
-struct Arp {
-    /// Offsets cycled through: the chord over the arpeggio's octave range.
-    offsets: Vec<i32>,
-    /// Time between arpeggio notes, in beats.
-    step: f64,
-    /// Arpeggio note length as a fraction of `step`.
-    gate: f64,
-    /// 0 up, 1 down, 2 up and down, 3 down and up, 4 random.
-    direction: i32,
-    /// Sort mode: notes struck together take turns.
-    sort: bool,
 }
 
 /// LMMS chords (the chord creator and arpeggiator table), by index.
@@ -1128,6 +1050,7 @@ impl<'o> Importer<'o> {
             pan: clamp(num_or(it, "pan", 0.0) / 100.0, -1.0, 1.0),
             mute: flag(track, "muted"),
             mixer,
+            arp,
         });
         Some(ChannelInfo {
             id,
@@ -1135,7 +1058,6 @@ impl<'o> Importer<'o> {
             transpose,
             mode,
             master_pitch: num_or(it, "usemasterpitch", 1.0) != 0.0,
-            arp,
             chord,
         })
     }
@@ -1153,13 +1075,30 @@ impl<'o> Importer<'o> {
         }
     }
 
-    fn arpeggio(&mut self, a: Node, track: &str) -> Arp {
-        let chord = self.chord(num_or(a, "arp", 0.0), track);
-        let octaves = num_or(a, "arprange", 1.0).round().clamp(1.0, 9.0) as i32;
+    /// The channel arpeggiator that plays like LMMS's (the same chord
+    /// table, in order; times converted at the song tempo).
+    fn arpeggio(&mut self, a: Node, track: &str) -> Arpeggio {
+        let index = num_or(a, "arp", 0.0).max(0.0) as usize;
+        let chord = match rosaclef_core::arp::CHORDS
+            .get(index)
+            .filter(|_| index < CHORDS.len())
+        {
+            Some(c) => c.0.to_string(),
+            None => {
+                self.warn.add(format!(
+                    "track \"{track}\": LMMS chord #{index} is not supported; the arpeggio runs in octaves"
+                ));
+                "octave".to_string()
+            }
+        };
         // `arptime` is in milliseconds (a tempo-synced knob saves its
         // current value too).
         let ms = num_or(a, "arptime", 200.0);
-        let step = (ms / 1000.0 * self.project.transport.bpm / 60.0).max(0.01);
+        let rate = clamp(
+            ms / 1000.0 * self.project.transport.bpm / 60.0,
+            rosaclef_core::arp::RATE_MIN,
+            rosaclef_core::arp::RATE_MAX,
+        );
         for (k, what) in [
             ("arpskip", "skip"),
             ("arpmiss", "miss"),
@@ -1171,14 +1110,31 @@ impl<'o> Importer<'o> {
                 ));
             }
         }
-        Arp {
-            offsets: (0..octaves)
-                .flat_map(|o| chord.iter().map(move |k| k + 12 * o))
-                .collect(),
-            step,
-            gate: clamp(num_or(a, "arpgate", 100.0) / 100.0, 0.01, 2.0),
-            direction: num_or(a, "arpdir", 0.0) as i32,
-            sort: num_or(a, "arpmode", 0.0) as i32 == 1,
+        let direction = match num_or(a, "arpdir", 0.0) as i32 {
+            1 => "down",
+            2 => "updown",
+            3 => "downup",
+            4 => "random",
+            _ => "up",
+        };
+        Arpeggio {
+            chord,
+            octaves: num_or(a, "arprange", 1.0)
+                .round()
+                .clamp(1.0, rosaclef_core::arp::OCTAVES_MAX as f64) as u32,
+            rate,
+            direction: direction.into(),
+            gate: clamp(
+                num_or(a, "arpgate", 100.0) / 100.0,
+                rosaclef_core::arp::GATE_MIN,
+                rosaclef_core::arp::GATE_MAX,
+            ),
+            mode: if num_or(a, "arpmode", 0.0) as i32 == 1 {
+                "sort"
+            } else {
+                "free"
+            }
+            .into(),
         }
     }
 
@@ -1649,7 +1605,8 @@ impl<'o> Importer<'o> {
     }
 
     /// Notes of an LMMS pattern, in beats relative to the pattern start,
-    /// with the track's chord stacking or arpeggio written out.
+    /// with the track's chord stacking written out (its arpeggio is the
+    /// channel's, played by the engine).
     fn notes(&mut self, pattern: Node, ch: &ChannelInfo, track: &str) -> Vec<Note> {
         let mut out = vec![];
         for n in children(pattern, &["note"]) {
@@ -1672,9 +1629,7 @@ impl<'o> Importer<'o> {
                 velocity: clamp(vol / 100.0, 0.0, 1.0),
             });
         }
-        if let Some(arp) = &ch.arp {
-            out = arpeggiate(arp, out);
-        } else if ch.chord.len() > 1 {
+        if ch.chord.len() > 1 {
             out = out
                 .into_iter()
                 .flat_map(|n| {

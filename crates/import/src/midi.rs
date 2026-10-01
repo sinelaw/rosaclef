@@ -1189,6 +1189,7 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
             pan,
             mute: false,
             mixer,
+            arp: None,
         });
         let tix = TrackIx(project.playlist.tracks.len() as u32);
         project.playlist.tracks.push(Track {
@@ -1354,6 +1355,7 @@ mod tests {
                 pan: 0.0,
                 mute: false,
                 mixer: InsertIx::MASTER,
+                arp: None,
             });
             ensure_valid(&p).unwrap();
         }
