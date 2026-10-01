@@ -74,9 +74,9 @@ export function copyArp(a) {
 }
 
 /** A channel's `arp` from the project JSON (absent = off). */
-/** function decodeArp(a: Any) => Arp */
+/** function decodeArp<T>(a: T) => Arp */
 function decodeArp(a) {
-  if (a === undefined || a === null) return noArp();
+  if (!a) return noArp();
   return {
     on: true,
     chord: String(a.chord ?? "octave"),
