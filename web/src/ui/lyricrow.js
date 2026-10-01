@@ -69,7 +69,7 @@ export function lyricRow(b, s, index, ch, reveal) {
     else cell(b, s, index, n, k);
   }
   b.close();
-  if (channelSings(p, index, ch.id)) verseChips(b, index, ch.id, verse);
+  verseChips(b, index, ch.id, verse);
   b.close();
 }
 
@@ -166,11 +166,18 @@ function keepCell(index, channel, verse, k, typed) {
   commit(() => writeSyllable(p, at, typed));
 }
 
-/** The verses to show (1, 2, …) and "+" to write another. */
+/** The verses to show (1, 2, …) and "+" to write another, once the channel sings. */
 /** function verseChips(b: Builder, index: Int, channel: String, verse: Int) => Undefined */
 function verseChips(b, index, channel, verse) {
-  const count = verseCount(state.project, index);
+  // Always there: a container coming and going would re-append the cells (and blur the one typed in).
   b.open("div", "verses", "lyr-verses");
+  if (channelSings(state.project, index, channel)) verseButtons(b, index, channel, verse);
+  b.close();
+}
+
+/** function verseButtons(b: Builder, index: Int, channel: String, verse: Int) => Undefined */
+function verseButtons(b, index, channel, verse) {
+  const count = verseCount(state.project, index);
   for (let v = 1; v <= count; v++) {
     b.leaf("button", `v${v}`, v === verse ? "lyr-verse on" : "lyr-verse", String(v));
     b.attr("title", `Show and type verse ${v}`);
@@ -182,7 +189,6 @@ function verseChips(b, index, channel, verse) {
   b.leaf("button", "add", "lyr-verse add", "+");
   b.attr("title", `Write verse ${count + 1}`);
   b.on("click", (e) => addVerse(index, channel, count + 1));
-  b.close();
 }
 
 /** Start a new, empty verse in this pattern's line for the channel, and show it. */

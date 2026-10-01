@@ -473,6 +473,9 @@
   padding: 0 0 0 6px;
   background: linear-gradient(90deg, transparent, #0f0d12 6px);
 }
+.lyr-verses:empty {
+  display: none;
+}
 .lyr-verse {
   min-width: 19px;
   height: 18px;
