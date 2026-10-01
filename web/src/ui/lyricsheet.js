@@ -29,12 +29,13 @@ function closeSheet() {
   invalidate();
 }
 
-/** Keep the text as the verse. */
+/** Keep the text as the verse (text that does not parse is not kept: the project would be invalid). */
 /** function applySheet(index: Int) => Undefined */
 function applySheet(index) {
+  const text = sheet.draft.trim();
+  if (parseLyrics(text).error >= 0) return undefined;
   const pat = state.project.patterns[index];
   const li = lineIndex(pat, sheet.channel);
-  const text = sheet.draft.trim();
   if (li >= 0 ? verseOf(pat.lyrics[li], String(sheet.verse)) !== text : text !== "") {
     commit(() => setVerse(lineFor(pat, sheet.channel), String(sheet.verse), text));
   }
@@ -126,7 +127,10 @@ function sheetBody(b, index) {
   b.close();
   b.open("div", "acts", "lyr-sheet-acts");
   button(b, "cancel", "small ghost", "Cancel", "Close without changing the words (Esc)", () => closeSheet());
-  button(b, "apply", "small gold", "Apply", "Keep these words for the verse (Ctrl+Enter)", () => applySheet(index));
+  button(b, "apply", "small gold", "Apply", v.error ? "Fix the words first: they do not read as lyrics" : "Keep these words for the verse (Ctrl+Enter)", () =>
+    applySheet(index)
+  );
+  b.prop("disabled", v.error ? "true" : "false");
   b.close();
   b.close();
 }
