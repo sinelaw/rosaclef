@@ -46,13 +46,15 @@ pub struct Lyric {
     pub line: LineRef,
 }
 
-/// A lyric line (`patterns[pattern].lyrics[index]`), the verse sung and the
-/// note's beat in that pattern (where fixed timing is anchored).
+/// A lyric line (`patterns[pattern].lyrics[index]`), the verse sung, which
+/// of the verse's tokens this is, and the note's beat in that pattern (where
+/// fixed timing is anchored).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LineRef {
     pub pattern: usize,
     pub index: usize,
     pub verse: u32,
+    pub token: usize,
     pub at: f64,
 }
 
@@ -197,13 +199,14 @@ fn bind(out: &mut [Sounding], pattern: usize, index: usize, line: &Lyrics, verse
     let free = out
         .iter_mut()
         .filter(|n| n.channel == line.channel && n.lyric.is_none());
-    for (n, token) in free.zip(tokens) {
+    for (k, (n, token)) in free.zip(tokens).enumerate() {
         n.lyric = Some(Lyric {
             token,
             line: LineRef {
                 pattern,
                 index,
                 verse: sung,
+                token: k,
                 at: n.start,
             },
         });

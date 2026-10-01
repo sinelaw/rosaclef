@@ -14,8 +14,8 @@ import { drumKit } from "./model.js";
 /** Nesting deeper than this is cut (validation reports cycles). */
 const MAX_DEPTH = 16;
 
-/** The syllable a note sings: the token, and the line it comes from (`patterns[pattern].lyrics[line]`, the verse sung, the note's beat in that pattern). */
-/** type Sung = { token: LyricToken, pattern: Int, line: Int, verse: Int, at: Number } */
+/** The syllable a note sings: the token, and where it is written (`patterns[pattern].lyrics[line]`, the verse sung, the token's index in it, the note's beat in that pattern). */
+/** type Sung = { token: LyricToken, pattern: Int, line: Int, verse: Int, index: Int, at: Number } */
 /** A note as it sounds in a pattern (its beats); `pattern`/`note` say where it is written. */
 /** type Sounding = { channel: String, pitch: Number, start: Number, length: Number, velocity: Number, pattern: Int, note: Int, sung: Sung | Undefined } */
 
@@ -108,7 +108,7 @@ function bind(out, pattern, line, l, verse) {
   for (const n of out) {
     if (k >= tokens.length) break;
     if (n.channel !== l.channel || n.sung !== undefined) continue;
-    n.sung = { token: tokens[k], pattern: pattern, line: line, verse: v.verse, at: n.start };
+    n.sung = { token: tokens[k], pattern: pattern, line: line, verse: v.verse, index: k, at: n.start };
     k = k + 1;
   }
 }
