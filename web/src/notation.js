@@ -399,29 +399,58 @@ export function passesAt(repeats, beat) {
 
 /** Where a pattern plays in the scope: score-time windows and the origin of pattern beat 0. */
 /** type Occurrence = { origin: Number, from: Number, to: Number } */
+/** An occurrence of `patterns[pattern]`. */
+/** type Played = { pattern: Int, origin: Number, from: Number, to: Number } */
 
+/** Where a pattern plays in the scope: itself, or inside the patterns that use it. */
 /** function occurrences(p: Project, scope: Scope, patternId: String) => Occurrence[] */
 export function occurrences(p, scope, patternId) {
   /** const out: Occurrence[] */
   const out = [];
-  const pat = p.patterns.find((x) => x.id === patternId);
-  if (!pat || pat.length <= 0) return out;
+  for (const o of played(p, scope)) within(p, o, patternId, 0, out);
+  return out;
+}
+
+/** The patterns the scope plays itself: the scope's pattern, or each repetition of each clip. */
+/** function played(p: Project, scope: Scope) => Played[] */
+function played(p, scope) {
+  /** const out: Played[] */
+  const out = [];
   if (scope.kind === "pattern") {
-    if (scope.pattern === patternId) out.push({ origin: 0, from: 0, to: pat.length });
+    const i = p.patterns.findIndex((x) => x.id === scope.pattern);
+    if (i >= 0 && p.patterns[i].length > 0) out.push({ pattern: i, origin: 0, from: 0, to: p.patterns[i].length });
     return out;
   }
   const hidden = p.score.hiddenTracks.map(trackIndex);
   for (const c of p.playlist.clips) {
-    if (c.pattern !== patternId) continue;
+    const i = p.patterns.findIndex((x) => x.id === c.pattern);
+    if (i < 0 || p.patterns[i].length <= 0) continue;
     const tr = trackIndex(c.track);
     if (scope.kind === "track" ? tr !== scope.track : hidden.includes(tr)) continue;
-    const L = pat.length;
+    const L = p.patterns[i].length;
     for (let j = Math.floor(c.offset / L); j * L < c.offset + c.length; j++) {
       const origin = c.start - c.offset + j * L;
-      out.push({ origin: origin, from: Math.max(c.start, origin), to: Math.min(c.start + c.length, origin + L) });
+      out.push({ pattern: i, origin: origin, from: Math.max(c.start, origin), to: Math.min(c.start + c.length, origin + L) });
     }
   }
   return out;
+}
+
+/** Add where `id` plays within an occurrence of a pattern: the pattern itself, or through its uses (nested, as deep as expand.js goes). */
+/** function within(p: Project, o: Played, id: String, depth: Int, out: Occurrence[]) => Undefined */
+function within(p, o, id, depth, out) {
+  const pat = p.patterns[o.pattern];
+  if (pat.id === id) out.push({ origin: o.origin, from: o.from, to: o.to });
+  if (depth >= 16) return undefined;
+  for (const u of pat.uses) {
+    const j = p.patterns.findIndex((x) => x.id === u.pattern);
+    if (j < 0) continue;
+    const at = o.origin + u.start;
+    const end = at + (u.to >= 0 ? u.to : p.patterns[j].length) - u.from;
+    const lo = Math.max(o.from, at);
+    const hi = Math.min(o.to, end);
+    if (hi > lo) within(p, { pattern: j, origin: at - u.from, from: lo, to: hi }, id, depth + 1, out);
+  }
 }
 
 // ------------------------------------------------------------------ measures

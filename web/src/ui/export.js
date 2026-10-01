@@ -105,7 +105,7 @@ export function exportButton(b, mixdown) {
 
 /** function item(b: Builder, key: String, label: String, extension: String, tip: String, onClick: () => Undefined) => Undefined */
 function item(b, key, label, extension, tip, onClick) {
-  b.open("button", key, "auto-menu-item");
+  b.open("button", key, "ctx-menu-item");
   b.attr("title", tip);
   b.on("click", (e) => {
     onClick();
@@ -157,23 +157,23 @@ export function exportMenu(b) {
 
 /** function exportMenuBody(b: Builder) => Undefined */
 function exportMenuBody(b) {
-  b.leaf("div", "backdrop", "auto-backdrop", "");
+  b.leaf("div", "backdrop", "ctx-backdrop", "");
   b.on("pointerdown", (e) => {
     e.preventDefault();
     closeExport();
   });
-  b.open("div", "menu", "auto-menu");
+  b.open("div", "menu", "ctx-menu");
   b.style("left", `min(${ex.x}px, calc(100vw - 270px))`);
   b.style("top", `min(${ex.y + 10}px, calc(100vh - 480px))`);
-  b.leaf("div", "t", "auto-menu-title", "Export");
-  b.leaf("div", "s", "auto-menu-sub", ofPattern() ? `pattern ${state.pattern}, verse ${ex.verse}` : "the whole song");
+  b.leaf("div", "t", "ctx-menu-title", "Export");
+  b.leaf("div", "s", "ctx-menu-sub", ofPattern() ? `pattern ${state.pattern}, verse ${ex.verse}` : "the whole song");
   scopeRow(b);
   if (!ofPattern())
     item(b, "wav", "Mixdown", ".wav", "Render the song offline to a 24-bit WAV (saved in renders/, and downloaded)", () => {
       closeExport();
       ex.mixdown();
     });
-  if (ex.formats.length === 0) b.leaf("div", "loading", "auto-menu-note", "Loading the formats…");
+  if (ex.formats.length === 0) b.leaf("div", "loading", "ctx-menu-note", "Loading the formats…");
   for (const f of ex.formats) item(b, f.id, f.label, `.${f.extension}`, f.description, () => exportAs(f));
   b.close();
 }

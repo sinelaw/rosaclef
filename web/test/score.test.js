@@ -324,6 +324,16 @@ function clip(start, length, verse) {
   );
   p.playlist.clips.push(clip(8, 8, 0));
   check("so does the song's", gather(p, SONG).notes.length === 5 && gather(p, SONG).notes[4].start === 13);
+  p.score.marks.push({ start: 1, end: 2, color: "#c97b84", label: "", pattern: "m", channels: [] });
+  check(
+    "a passage colored in a used pattern is colored where it is used",
+    buildScore(p, PAT, 12)
+      .marks.map((m) => `${m.start}-${m.end}`)
+      .join(" ") === "2-3 5-6" &&
+      buildScore(p, SONG, 12)
+        .marks.map((m) => `${m.start}-${m.end}`)
+        .join(" ") === "10-11 13-14"
+  );
 }
 
 {

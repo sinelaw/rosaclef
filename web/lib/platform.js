@@ -337,6 +337,7 @@ function normalizeMsg(m) {
     loopLength: m.loopLength || 0,
     meters: m.meters ? Array.from(m.meters) : [],
     missing: m.missing || [],
+    renders: m.renders || [],
     presets: m.presets || [],
     message: m.message || "",
     sampleRate: m.sampleRate || 0,
