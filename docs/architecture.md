@@ -26,6 +26,8 @@
 | `rosaclef-engine` | native + wasm | sequencer, instruments, effects, mixer, offline render; `PluginHost` / `ExternalProcessor` traits for plugins |
 | `rosaclef-wasm` | browser AudioWorklet | C-ABI wrapper around the engine (no JS glue) |
 | `rosaclef-import` | native + wasm | LMMS and MIDI importers |
+| `rosaclef-phonetics` | native + wasm | lyrics to IPA phonemes, syllable by syllable; phoneme alphabets |
+| `rosaclef-vocal` | native + wasm | the song performed as sung lines; singing, karaoke and notation exports; phrases to render |
 | `rosaclef-fs` | native + wasm | the `Fs` trait: `DiskFs`, and `MemFs` (lazily loaded blobs, a change journal for the host to persist) |
 | `rosaclef-studio` | native + wasm | the server's portable logic on `Fs`: project folders, library, file manager, zip archives, agent guides, symphonia decoding, offline render |
 | `rosaclef-clap` | native | CLAP plugin host implementing the engine's plugin traits |
@@ -148,6 +150,43 @@
   streams and writes the file. For a PDF as on screen, `pageSvg` draws each
   page as SVG on the paper of `ink.js` and through its filter;
   `downloadImagePdf` turns each into a JPEG and writes a page per image.
+
+### Reuse, lyrics and the voice
+
+- **Uses** (`patterns[].uses`) play other patterns, or ranges of them, by
+  reference. `rosaclef_core::expand` resolves them into *sounding notes*
+  (each remembering the written note it comes from) and binds **lyrics**:
+  a pattern's lyric line gives its tokens, in time order, to the notes on
+  its channel that its uses did not already give words; notes a use moves
+  to another channel leave their words behind. The engine, validation, the
+  exporters and `rosaclef summary --expand` read this; `web/src/expand.js`
+  mirrors it for the piano roll and the score.
+- **Verses**: `lyrics/notation.rs` parses a verse's text (shared test cases
+  with `web/src/lyrics.js`). The verse a pattern sings comes from a use, else
+  the clip, else the pass of its repeat (`form::Span::pass`); a line without
+  that verse sings its first.
+- **Phonetics** (`rosaclef-phonetics`): words read whole (an English
+  dictionary searched in place, spelling rules, Spanish and Japanese by rule)
+  and shared out over the written syllables, in IPA; ARPAbet and X-SAMPA for
+  engines that want them.
+- **The voice** (`instruments/voice/`): the engine compiles each pattern's
+  syllables per verse (with phonemes), and a note-on carries its syllable.
+  The formant voice plans each syllable (onset consonants, the held vowel, a
+  diphthong's glide and the coda at the note-off) and steers a glottal
+  source through five cascaded formant resonators plus band-passed noise.
+- **Rendered phrases**: a voice with engine `render` plays phrases a singing
+  engine rendered. `rosaclef_core::phrase` cuts a channel's notes into
+  phrases at rests and names each by what it sings, so a render
+  (`renders/voice/<voice>/<key>.wav`, starting 0.3 s before the first note)
+  is reused wherever the pattern plays. The engine cues a phrase ahead of
+  its note and lists what it would play (`wanted_renders`); hosts load what
+  exists. The server's `voices.rs` writes each missing phrase as a small song
+  in the voice's input format (`rosaclef_vocal::phrase`) and runs the command
+  the user configured in `~/.config/rosaclef/voices.json` — never one from
+  the project — and the file watcher picks the WAV up.
+- **Exports** (`rosaclef-vocal`): `line.rs` performs the song (clips looped,
+  repeats unrolled, each pass's verse) in beats and seconds with syllables
+  and phonemes; each format is a pure function of that.
 
 ### The UI library (`web/src/ui/tree.js`)
 

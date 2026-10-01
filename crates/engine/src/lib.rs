@@ -1107,16 +1107,21 @@ impl Engine {
                 });
             };
 
+            // A rendered phrase starting at `t` (its audio runs ahead of its
+            // first note, maybe from the loop before).
+            let cue = |cue: &patterns::Cue, t: f64, channels: &mut Vec<ChannelRt>| {
+                if t >= b0 && t < b1 {
+                    let off = frame + (((t - b0) / bpf) as usize).min(seg - 1);
+                    channels[cue.channel].inst.cue(off, cue.phrase);
+                }
+            };
+
             let shift = self.swing * (1.0 / 12.0);
             match &self.mode {
                 PlayMode::Pattern(id) => {
                     if let Some(p) = self.patterns.iter().find(|p| &p.id == id) {
-                        for cue in p.cues(1) {
-                            let t = cue.beat.rem_euclid(p.length);
-                            if t >= b0 && t < b1 {
-                                let off = frame + (((t - b0) / bpf) as usize).min(seg - 1);
-                                self.channels[cue.channel].inst.cue(off, cue.phrase);
-                            }
+                        for c in p.cues(1) {
+                            cue(c, c.beat.rem_euclid(p.length), &mut self.channels);
                         }
                         for note in &p.notes {
                             let t = note.start_at(shift);
@@ -1150,15 +1155,9 @@ impl Engine {
                             let k1 = ((hi - base) / p.length).floor() as i64;
                             for k in k0.max(0)..=k1 + 1 {
                                 let origin = base + k as f64 * p.length;
-                                // A phrase's audio starts ahead of its first
-                                // note, maybe in the loop before.
-                                for cue in p.cues(verse) {
-                                    let t = origin + cue.beat;
-                                    let note = origin + cue.note;
-                                    let inside = note >= clip.start && note < clip.end;
-                                    if inside && t >= b0 && t < b1 {
-                                        let off = frame + (((t - b0) / bpf) as usize).min(seg - 1);
-                                        self.channels[cue.channel].inst.cue(off, cue.phrase);
+                                for c in p.cues(verse) {
+                                    if (clip.start..clip.end).contains(&(origin + c.note)) {
+                                        cue(c, origin + c.beat, &mut self.channels);
                                     }
                                 }
                                 if k > k1 {
