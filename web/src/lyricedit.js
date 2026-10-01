@@ -112,17 +112,31 @@ export function typedToken(typed) {
 /** function writeSyllable(p: Project, at: WordsAt, typed: String) => Undefined */
 export function writeSyllable(p, at, typed) {
   const line = at.line >= 0 ? p.patterns[at.pattern].lyrics[at.line] : lineFor(p.patterns[at.pattern], at.channel);
-  const tokens = parseLyrics(verseOf(line, at.key)).tokens;
+  const text = verseOf(line, at.key);
+  const tokens = parseLyrics(text).tokens;
   const t = typedToken(typed);
   if (at.index < tokens.length) {
     const old = tokens[at.index];
     if (t === undefined && at.index === tokens.length - 1) tokens.pop();
     else tokens[at.index] = replaced(old, t === undefined ? hold() : t);
   } else if (t !== undefined) {
+    // A verse that ends mid-word ("Hel-") goes on into what is added.
+    const last = tokens.length > 0 ? tokens[tokens.length - 1] : undefined;
+    if (last !== undefined && last.kind === "syllable" && endsMidWord(text)) last.pos = last.pos === "single" ? "begin" : "middle";
     while (tokens.length < at.index) tokens.push(hold());
     tokens.push(t);
   }
   setVerse(line, at.key, writeLyrics(tokens));
+}
+
+/** Whether a verse's text ends with a hyphen that splits a word (not an escaped one). */
+/** function endsMidWord(text: String) => Boolean */
+function endsMidWord(text) {
+  const chars = Array.from(text.trimEnd());
+  if (chars.length === 0 || chars[chars.length - 1] !== "-") return false;
+  let escapes = 0;
+  while (escapes + 2 <= chars.length && chars[chars.length - 2 - escapes] === "\\") escapes = escapes + 1;
+  return escapes % 2 === 0;
 }
 
 /** A new token in an old one's place: it keeps the line break, and the pronunciation while the syllable reads the same. */

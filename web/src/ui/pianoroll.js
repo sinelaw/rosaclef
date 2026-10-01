@@ -15,6 +15,8 @@ import { followButton } from "./playlist.js";
 import { dockScore } from "./score.js";
 import { openDock } from "./panes.js";
 import { useLayer, useMenu, referSelection } from "./usebox.js";
+import { lyricLabel, lyricRow } from "./lyricrow.js";
+import { lyricSheet } from "./lyricsheet.js";
 import { expandPattern } from "../expand.js";
 import { noteIx, noteIndex } from "#brands";
 
@@ -592,11 +594,23 @@ export function pianoRoll(b) {
   rulerView(b, g, pat);
   keysView(b, g, ch);
   gridView(b, g, pat, ch);
+  const index = state.project.patterns.indexOf(pat);
+  lyricLabel(b, index, ch);
+  lyricRow(b, { zoom: g.zoom, left: view.scrollLeft, width: view.width }, index, ch, revealBeat);
   b.leaf("div", "vl", "vel-label", "Velocity");
   velocityView(b, g, pat, ch);
+  lyricSheet(b, index);
   b.close();
-  useMenu(b, state.project.patterns.indexOf(pat));
+  useMenu(b, index);
   b.close();
+}
+
+/** Scroll the grid so a beat is in view. */
+/** function revealBeat(beat: Number) => Undefined */
+function revealBeat(beat) {
+  const x = beat * view.zoom;
+  if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.85) view.scrollLeft = Math.max(0, x - view.width * 0.15);
+  invalidate();
 }
 
 /** function pianoTools(b: Builder) => Undefined */

@@ -140,6 +140,12 @@ function type(p, index, verse, k, text) {
   check("the line's notes are those its uses left without words", lineNotes(p, 0, "lead", 1).length === 4);
   v.lyrics[0].verses[0].value = "a [b";
   check("a verse that does not parse is not edited by note", type(p, 0, 1, 0, "x") !== "" && verseOf(v.lyrics[0], "1") === "a [b");
+  v.lyrics = [];
+  type(p, 0, 1, 0, "won-");
+  type(p, 0, 1, 1, "der");
+  type(p, 0, 1, 2, "a\\-b-");
+  type(p, 0, 1, 3, "c");
+  check("a word typed on past the end of the verse stays one word", verseOf(v.lyrics[0], "1") === "won-der a\\\\\\-b-c");
 }
 
 if (failures > 0) {
