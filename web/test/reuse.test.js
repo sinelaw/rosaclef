@@ -3,7 +3,7 @@
 import { project, pat, use, words, line } from "./fixtures.js";
 import { expandPattern } from "../src/expand.js";
 import { useBoxes, makeUnique, makeReference, removeUse } from "../src/reuse.js";
-import { wordsAt, writeSyllable, lineNotes, verseOf } from "../src/lyricedit.js";
+import { wordsAt, writeSyllable, lineNotes, verseOf, lyricsVerdict } from "../src/lyricedit.js";
 
 let failures = 0;
 /** function check(name: String, ok: Boolean) => Undefined */
@@ -146,6 +146,15 @@ function type(p, index, verse, k, text) {
   type(p, 0, 1, 2, "a\\-b-");
   type(p, 0, 1, 3, "c");
   check("a word typed on past the end of the verse stays one word", verseOf(v.lyrics[0], "1") === "won-der a\\\\\\-b-c");
+}
+
+{
+  const bad = lyricsVerdict("Hel-lo [world", 3);
+  check("words that stop parsing say where", bad.error && bad.text.startsWith("At character 8") && bad.at === "[" && bad.before === "Hel-lo ");
+  check(
+    "words count their syllables against the notes",
+    lyricsVerdict("Hel-lo _", 3).fits && lyricsVerdict("a b", 3).text === "2 syllables for 3 notes — 1 note without words"
+  );
 }
 
 if (failures > 0) {

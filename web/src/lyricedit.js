@@ -146,6 +146,34 @@ function replaced(old, t) {
   return { kind: t.kind, text: t.text, pos: t.pos, phonemes: same ? old.phonemes : [], brk: old.brk };
 }
 
+// ------------------------------------------------------------------ how words fit
+
+/** How words read for the notes they are for. `fits`: one syllable per note; `error`: the
+ * text does not parse — `text` says why and where, `before`/`at`/`after` show the spot. */
+/** type Verdict = { fits: Boolean, error: Boolean, text: String, before: String, at: String, after: String } */
+
+/** How lyric text reads for `notes` notes: where it stops parsing, or its syllables against the notes. */
+/** function lyricsVerdict(text: String, notes: Int) => Verdict */
+export function lyricsVerdict(text, notes) {
+  const r = parseLyrics(text);
+  if (r.error >= 0) {
+    const chars = Array.from(text);
+    return {
+      fits: false,
+      error: true,
+      text: `At character ${r.error + 1}: ${r.message}`,
+      before: chars.slice(Math.max(0, r.error - 16), r.error).join(""),
+      at: chars[r.error] ?? "",
+      after: chars.slice(r.error + 1, r.error + 16).join(""),
+    };
+  }
+  const n = r.tokens.length;
+  const fit =
+    n === notes ? "one for every note" : n > notes ? `${n - notes} more than there are notes` : `${notes - n} note${notes - n === 1 ? "" : "s"} without words`;
+  const count = `${n} syllable${n === 1 ? "" : "s"} for ${notes} note${notes === 1 ? "" : "s"}`;
+  return { fits: n === notes, error: false, text: `${count} — ${fit}`, before: "", at: "", after: "" };
+}
+
 // ------------------------------------------------------------------ keeping words
 
 /** A word a note sang before an edit: where the note was (channel, beat, pitch) and its token. */

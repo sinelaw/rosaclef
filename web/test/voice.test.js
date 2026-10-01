@@ -16,6 +16,7 @@ import {
   cropTake,
   takeStart,
 } from "../src/voice.js";
+import { takeLyrics, wordsError } from "../src/ui/voicewords.js";
 
 let failures = 0;
 /** function check(name: String, ok: Boolean) => Undefined */
@@ -324,6 +325,12 @@ check(
   sungCut.notes.length === 2 && near(sungCut.notes[0].start, 0.07) && near(sungCut.notes[1].start, 0.55) && near(sungCut.notes[1].end, 1.04)
 );
 check("an uncropped take is the take", cropTake(take, 0, 3) === take);
+
+// Words sung with a take become its pattern's lyric line.
+const sungLine = takeLyrics("lead", "  Hel-lo world _ ");
+check("words become verse 1 of the take's line", sungLine.length === 1 && sungLine[0].channel === "lead" && sungLine[0].verses[0].value === "Hel-lo world _");
+check("no words, no line", takeLyrics("lead", "  ").length === 0);
+check("words that do not read as lyrics are refused", wordsError("a [b") !== "" && wordsError("a b") === "");
 
 if (failures > 0) throw new Error(`${failures} test(s) failed`);
 console.log("all voice-to-notes tests passed");

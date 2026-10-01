@@ -5,7 +5,7 @@
 
 import { state, commit, invalidate } from "../store.js";
 import { parseLyrics } from "../lyrics.js";
-import { lineIndex, lineFor, lineNotes, setVerse, verseOf } from "../lyricedit.js";
+import { lineIndex, lineFor, lineNotes, setVerse, verseOf, lyricsVerdict } from "../lyricedit.js";
 import { button } from "./widgets.js";
 
 /** Whether the sheet is open, for which pattern (id), channel and verse, and the text as typed. */
@@ -42,35 +42,10 @@ function applySheet(index) {
   closeSheet();
 }
 
-/** How the text reads: where it stops parsing, or its syllables against the notes it is for. */
-/** `fits`: one syllable per note; `error`: the text does not parse (`before`/`at`/`after`: around where). */
-/** type Verdict = { fits: Boolean, error: Boolean, text: String, before: String, at: String, after: String } */
-
+/** How the draft reads against the notes of its line. */
 /** function verdict(index: Int) => Verdict */
 function verdict(index) {
-  const r = parseLyrics(sheet.draft);
-  if (r.error >= 0) {
-    const chars = Array.from(sheet.draft);
-    return {
-      fits: false,
-      error: true,
-      text: `At character ${r.error + 1}: ${r.message}`,
-      before: chars.slice(Math.max(0, r.error - 16), r.error).join(""),
-      at: chars[r.error] ?? "",
-      after: chars.slice(r.error + 1, r.error + 16).join(""),
-    };
-  }
-  const notes = lineNotes(state.project, index, sheet.channel, sheet.verse).length;
-  const n = r.tokens.length;
-  const fit = n === notes ? "one for every note" : n > notes ? `${n - notes} more than there are notes` : `${notes - n} notes without words`;
-  return {
-    fits: n === notes,
-    error: false,
-    text: `${n} syllable${n === 1 ? "" : "s"} for ${notes} note${notes === 1 ? "" : "s"} — ${fit}`,
-    before: "",
-    at: "",
-    after: "",
-  };
+  return lyricsVerdict(sheet.draft, lineNotes(state.project, index, sheet.channel, sheet.verse).length);
 }
 
 /** The sheet over the piano roll, when it is open on patterns[index]. */
