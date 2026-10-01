@@ -23,7 +23,7 @@ import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, textWidth, pape
 import { state, commit, begin, changed, invalidate, hint, setFocus, reportContext, currentPattern } from "../store.js";
 import { PALETTE } from "../model.js";
 import { buildScore, TPQ, KEYS, keyLabel, keyAlter, spell, spelledName, stepPitch, drumAt, kindDrum, channelKind, bottomStep } from "../notation.js";
-import { engrave, timeX, xTick, GLOSS } from "../engrave.js";
+import { engrave, timeX, xTick, GLOSS, SHEEN } from "../engrave.js";
 import { scorePdf } from "../pdf.js";
 import { preview, seek } from "../audio.js";
 import { select, iconButton, glyph, textInput } from "./widgets.js";
@@ -810,7 +810,8 @@ function inkFilter(b, id, wet) {
     fe(b, "feGaussianBlur", "soft", ["in", "SourceGraphic", "stdDeviation", "0.045", "result", "soft"]);
     b.open("feComponentTransfer", "spread", "");
     b.attr("in", "soft");
-    fe(b, "feFuncA", "a", ["type", "linear", "slope", "2.2", "intercept", "-0.32"]);
+    // A smooth curve, not a threshold: the edge keeps its antialiasing.
+    fe(b, "feFuncA", "a", ["type", "gamma", "amplitude", "1", "exponent", "0.62", "offset", "0"]);
     b.close();
     b.close();
     b.close();
@@ -836,7 +837,7 @@ function inkFilter(b, id, wet) {
   b.open("feComponentTransfer", "spread", "");
   b.attr("in", "soft");
   b.attr("result", "spread");
-  fe(b, "feFuncA", "a", ["type", "linear", "slope", "1.7", "intercept", "-0.12"]);
+  fe(b, "feFuncA", "a", ["type", "gamma", "amplitude", "1", "exponent", "0.7", "offset", "0"]);
   b.close();
   fe(b, "feMorphology", "core", ["in", "spread", "operator", "erode", "radius", "0.055", "result", "core"]);
   fe(b, "feComposite", "rim", ["in", "spread", "in2", "core", "operator", "out", "result", "rim"]);
@@ -901,11 +902,18 @@ function systemView(b, v, c, geo, i, y, sel) {
     }
   }
   // The engraving itself, through the ink filter.
+  // Staff lines are hairlines: drawn plainly, so they stay smooth and even.
+  for (let k = 0; k < s.inks.length; k++) {
+    const ink = s.inks[k];
+    if (ink.color !== "staff" || ink.d === "") continue;
+    b.leaf("path", `p${k}`, "staff", "");
+    b.attr("d", ink.d);
+  }
   b.open("g", "ink", "inked");
   b.attr("filter", `url(#score-ink-${v.id})`);
   for (let k = 0; k < s.inks.length; k++) {
     const ink = s.inks[k];
-    if (ink.color === GLOSS) continue;
+    if (ink.color === GLOSS || ink.color === SHEEN || ink.color === "staff") continue;
     const named = ink.color === "" || ink.color === "staff";
     const cls = ink.color === "staff" ? "staff" : "ink";
     if (ink.d !== "") {
@@ -961,11 +969,14 @@ function systemView(b, v, c, geo, i, y, sel) {
     b.attr("x", xs.join(" "));
     b.attr("y", ys.join(" "));
   }
-  // The gloss of the wet ink, over the music (and the selection).
-  for (let k = 0; k < s.inks.length; k++) {
-    if (s.inks[k].color !== GLOSS || v.ink !== "wet") continue;
-    b.leaf("path", "gloss", "gloss", "");
-    b.attr("d", s.inks[k].d);
+  // The gloss of the wet ink, over the music (and the selection): the soft sheen, then the glints.
+  if (v.ink === "wet") {
+    for (const run of [SHEEN, GLOSS]) {
+      const ink = s.inks.find((x) => x.color === run);
+      if (!ink) continue;
+      b.leaf("path", run, run, "");
+      b.attr("d", ink.d);
+    }
   }
   // Where Write would put a note.
   const g = v.ghost;

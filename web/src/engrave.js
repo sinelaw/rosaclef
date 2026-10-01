@@ -43,6 +43,8 @@ const STEM_LEN = 3.5;
 const SYSTEM_GAP = 2.5;
 /** The run holding the glints of the wet ink (drawn in light over the music, not in ink). */
 export const GLOSS = "gloss";
+/** The broad, faint sheen around the glints. */
+export const SHEEN = "sheen";
 /** The SMuFL stem anchor: stems meet a notehead this far from its middle. */
 const STEM_Y = 0.168;
 
@@ -97,17 +99,20 @@ function glyph(p, g, x, y, color) {
 }
 
 /** The gloss of a wet drop of ink: a small ellipse (centre, radii, tilt in degrees) where the light catches it. */
-/** function glint(p: Inker, cx: Number, cy: Number, rx: Number, ry: Number, deg: Number) => Undefined */
-function glint(p, cx, cy, rx, ry, deg) {
-  p.prims.push({ kind: 4, color: GLOSS, nums: [cx, cy, rx, ry, deg], ch: "" });
+/** function glint(p: Inker, run: String, cx: Number, cy: Number, rx: Number, ry: Number, deg: Number) => Undefined */
+function glint(p, run, cx, cy, rx, ry, deg) {
+  p.prims.push({ kind: 4, color: run, nums: [cx, cy, rx, ry, deg], ch: "" });
 }
 
-/** Where the light catches a notehead (upper left; on the rim of a hollow one). */
+/** Where the light catches a notehead: a broad soft sheen over the upper left of a
+ * filled one with a small highlight at its heart; on a hollow one, the highlight on its rim. */
 /** function headGlint(p: Inker, gl: Glyph, x: Number, y: Number) => Undefined */
 function headGlint(p, gl, x, y) {
-  if (gl.c === G.noteheadBlack.c) glint(p, x + 0.37, y - 0.21, 0.2, 0.075, -22);
-  else if (gl.c === G.noteheadHalf.c) glint(p, x + 0.3, y - 0.31, 0.15, 0.05, -25);
-  else if (gl.c === G.noteheadWhole.c) glint(p, x + 0.45, y - 0.36, 0.18, 0.05, -12);
+  if (gl.c === G.noteheadBlack.c) {
+    glint(p, SHEEN, x + 0.45, y - 0.14, 0.34, 0.15, -22);
+    glint(p, GLOSS, x + 0.37, y - 0.23, 0.1, 0.045, -22);
+  } else if (gl.c === G.noteheadHalf.c) glint(p, GLOSS, x + 0.3, y - 0.32, 0.1, 0.035, -25);
+  else if (gl.c === G.noteheadWhole.c) glint(p, GLOSS, x + 0.45, y - 0.37, 0.12, 0.035, -12);
 }
 
 /** A tie or slur: a crescent between two points bulging by `h` (negative: up). */
@@ -1098,7 +1103,7 @@ function drawChord(sc, st, si, g, ev, cx, tip, p, hb) {
       done.push(dy);
       for (let d = 0; d < ev.dots; d++) {
         glyph(p, G.augmentationDot, dx + d * 0.5, dy, color);
-        glint(p, dx + d * 0.5 + 0.15, dy - 0.07, 0.075, 0.04, -30);
+        glint(p, GLOSS, dx + d * 0.5 + 0.14, dy - 0.07, 0.04, 0.028, -30);
       }
     }
   }

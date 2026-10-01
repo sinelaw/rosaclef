@@ -173,6 +173,11 @@
   font-family: "Bravura";
   font-size: 4px;
 }
+.score-sys {
+  /* Outlines placed exactly (no hinting to the pixel grid): smooth curves at any size. */
+  text-rendering: geometricPrecision;
+  shape-rendering: geometricPrecision;
+}
 .score-sys .sname {
   font: italic 500 1.55px var(--serif);
   fill: var(--ink);
@@ -199,11 +204,18 @@
   stroke-width: 0.1;
   stroke-dasharray: 0.5 0.3;
 }
-.score-sys .gloss {
-  /* Light caught by the still-wet drops of ink. */
+.score-sys .sheen {
+  /* The light over a still-wet drop of ink: broad and faint… */
   fill: var(--gloss);
-  /* In the system's units (staff spaces), like everything in it. */
-  filter: blur(0.03px);
+  opacity: 0.16;
+  /* (in the system's units, staff spaces, like everything in it) */
+  filter: blur(0.09px);
+}
+.score-sys .gloss {
+  /* …with a small, soft highlight at its heart. */
+  fill: var(--gloss);
+  opacity: 0.62;
+  filter: blur(0.025px);
 }
 .score-sys .sel {
   fill: var(--sel);
