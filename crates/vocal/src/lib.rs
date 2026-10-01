@@ -7,6 +7,7 @@
 //! karaoke (UltraStar, LRC, TTML), song generators (tagged lyrics, timed
 //! words) and speech (SSML).
 
+pub mod align;
 pub mod formats;
 pub mod line;
 pub mod phrase;

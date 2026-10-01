@@ -42,6 +42,20 @@ pub fn rule(phonemes: &[String], earliest: f64, vowel: f64, end: f64) -> Vec<f64
     out
 }
 
+/// The start of each phoneme of a syllable whose first phoneme starts at
+/// `start` and which ends at `end` (an aligned word, without its phones):
+/// onset consonants of [`CONSONANT`] seconds from `start` (together at
+/// most half the syllable), then as [`rule`].
+pub fn from_start(phonemes: &[String], start: f64, end: f64) -> Vec<f64> {
+    let Some(first) = phonemes.iter().position(|p| ipa::is_vowel(p)) else {
+        return even(phonemes.len(), start, end);
+    };
+    let step = CONSONANT.min((end - start).max(0.0) * 0.5 / first.max(1) as f64);
+    let vowel = start + step * first as f64;
+    // The earliest start that leaves each onset exactly `step`.
+    rule(phonemes, vowel - step * (first + 1) as f64, vowel, end)
+}
+
 /// `n` starts spread evenly over `[from, to)`.
 fn even(n: usize, from: f64, to: f64) -> Vec<f64> {
     let step = (to - from).max(0.0) / n.max(1) as f64;
@@ -74,5 +88,15 @@ mod tests {
         let t = rounded(rule(&ph("s t a"), 0.9, 1.0, 1.2));
         assert_eq!(t, [0.933, 0.967, 1.0]);
         assert_eq!(rounded(rule(&ph("m m"), 0.0, 1.0, 1.5)), [1.0, 1.25]);
+    }
+
+    #[test]
+    fn from_a_start() {
+        let t = rounded(from_start(&ph("f ɹ ɛ n d"), 1.0, 2.0));
+        assert_eq!(t, [1.0, 1.08, 1.16, 1.84, 1.92]);
+        assert_eq!(
+            rounded(from_start(&ph("s t a"), 1.0, 1.2)),
+            [1.0, 1.05, 1.1]
+        );
     }
 }
