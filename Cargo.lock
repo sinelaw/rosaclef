@@ -1400,6 +1400,7 @@ dependencies = [
  "rosaclef-fs",
  "rosaclef-import",
  "rosaclef-studio",
+ "rosaclef-vocal",
  "serde",
  "serde_json",
  "tokio",
@@ -1470,6 +1471,7 @@ dependencies = [
  "rosaclef-fs",
  "rosaclef-import",
  "rosaclef-studio",
+ "rosaclef-vocal",
  "serde",
  "serde_json",
 ]
@@ -1491,6 +1493,7 @@ dependencies = [
  "rosaclef-engine",
  "rosaclef-fs",
  "rosaclef-import",
+ "rosaclef-vocal",
  "serde",
  "serde_json",
  "symphonia",

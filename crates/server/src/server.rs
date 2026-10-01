@@ -184,6 +184,8 @@ pub async fn run(cfg: Config) -> Result<()> {
         )
         .route("/api/peaks", get(get_peaks))
         .route("/api/transcribe", get(get_transcription))
+        .route("/api/export", get(get_export))
+        .route("/api/export/formats", get(get_export_formats))
         .route("/api/render", post(render))
         .route("/api/agents", get(get_agents))
         .route("/api/info", get(get_info))
@@ -845,6 +847,40 @@ async fn get_transcription(
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct ExportQuery {
+    format: String,
+    pattern: Option<String>,
+    verse: Option<u32>,
+}
+
+/// `GET /api/export?format=…[&pattern=…&verse=…]`: the song (or a pattern
+/// singing a verse) as MIDI, MusicXML, a singing project or a lyric file.
+async fn get_export(State(app): State<Shared>, Query(q): Query<ExportQuery>) -> Response {
+    let project = app.project();
+    let pattern = q.pattern.filter(|p| !p.is_empty());
+    let verse = q.verse.unwrap_or(1);
+    match rosaclef_studio::export::export(&project, &q.format, pattern.as_deref(), verse) {
+        Ok(file) => (
+            [
+                (header::CONTENT_TYPE, file.mime.to_string()),
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{}\"", file.name),
+                ),
+            ],
+            file.bytes,
+        )
+            .into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, format!("{e:#}")).into_response(),
+    }
+}
+
+/// `GET /api/export/formats`: what `/api/export` can write.
+async fn get_export_formats() -> impl IntoResponse {
+    Json(rosaclef_studio::export::formats())
 }
 
 #[derive(Deserialize)]

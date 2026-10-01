@@ -4,7 +4,8 @@
 //!   quarter of its beat, a quarter note is 4 file beats. Note times come
 //!   from seconds, so tempo changes are flattened, not lost.
 //! - `#GAP`: milliseconds from the start of the audio to the first note
-//!   (file beat 0). `#AUDIO` names the mixdown (`rosaclef render`).
+//!   (file beat 0). `#AUDIO` names the mixdown as `rosaclef render` saves
+//!   it (`my-song.wav`).
 //! - Notes: `: beat length pitch text` (`R` for rap lines, `F` for spoken
 //!   ones); pitch 0 is C4. A word's last note ends its text with a space;
 //!   held notes sing `~`; breaths are left out.
@@ -12,7 +13,7 @@
 
 use super::{lead, monophonic, paragraphs};
 use crate::line::{Performed, Song};
-use rosaclef_core::format::format_f64;
+use rosaclef_core::format::{format_f64, slug};
 use rosaclef_core::lyrics::Sung;
 use rosaclef_core::LyricMode;
 
@@ -49,7 +50,7 @@ fn header(song: &Song, gap: f64) -> String {
         "#VERSION:1.1.0\n#TITLE:{}\n#ARTIST:{}\n#AUDIO:{}.wav\n#BPM:{}\n#GAP:{}\n",
         song.title,
         song.author,
-        song.title,
+        slug(&song.title),
         format_f64(song.bpm),
         (gap * 1000.0).round()
     )
@@ -118,7 +119,7 @@ mod tests {
                 "#VERSION:1.1.0",
                 "#TITLE:Song",
                 "#ARTIST:Ann",
-                "#AUDIO:Song.wav",
+                "#AUDIO:song.wav",
                 "#BPM:120",
                 "#GAP:0"
             ]

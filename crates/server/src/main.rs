@@ -4,6 +4,7 @@ mod folder;
 mod library;
 mod server;
 mod terminal;
+mod vocal;
 
 #[cfg(feature = "device-audio")]
 mod device;
@@ -114,6 +115,11 @@ enum Command {
     ImportLmms(ImportArgs),
     /// Import a Standard MIDI File (.mid) as a new project in the library.
     ImportMidi(ImportArgs),
+    /// Write the song (or a pattern) as MIDI with lyrics, MusicXML, a singing
+    /// synthesizer project or a lyric file (--list shows the formats).
+    Export(vocal::ExportArgs),
+    /// Fix a lyric line's phoneme timing from an aligned recording.
+    Align(vocal::AlignArgs),
 }
 
 #[derive(clap::Args)]
@@ -357,6 +363,8 @@ fn main() -> Result<()> {
                 rosaclef_import::midi::import(bytes, &opts)
             })
         }
+        Command::Export(a) => vocal::export_cli(a),
+        Command::Align(a) => vocal::align_cli(a),
     }
 }
 
