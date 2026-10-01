@@ -74,6 +74,43 @@ pub struct Project {
     /// and colored passages. It changes nothing that plays.
     #[serde(default, skip_serializing_if = "Score::is_empty")]
     pub score: Score,
+    /// Repeated passages of the arrangement, as repeat signs in a score: the
+    /// song plays them `times` times, with endings for some passes. See
+    /// [`crate::form`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repeats: Vec<Repeat>,
+}
+
+/// A repeated passage of the arrangement (`|: … :|`), in song beats.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Repeat {
+    /// Where the passage starts (the start repeat sign).
+    pub start: f64,
+    /// Where it ends (the end repeat sign); playing returns to `start` here.
+    pub end: f64,
+    /// How many times it plays in all (2 = once more).
+    #[serde(default = "default_times")]
+    pub times: u32,
+    /// Endings (voltas) played only on some passes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub endings: Vec<Ending>,
+}
+
+/// An ending of a repeat ("1.", "2."): music played only on the listed passes.
+/// An ending inside the passage is skipped on the other passes; the last
+/// pass's ending usually follows the end repeat sign.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Ending {
+    pub start: f64,
+    pub end: f64,
+    /// The passes (counted from 1) that play it.
+    pub passes: Vec<u32>,
+}
+
+fn default_times() -> u32 {
+    2
 }
 
 /// Sheet-music settings (the studio's Score view). Notes stay in the
@@ -204,6 +241,11 @@ pub struct Transport {
     /// until the next; bars before the first one have `beats_per_bar` beats.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub meters: Vec<Meter>,
+    /// Semitones every pitched instrument is shifted by when it plays
+    /// (-12..=12; to match a singer's range). The notes stay as written;
+    /// drums and audio clips are not shifted.
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub transpose: i32,
 }
 
 /// A time-signature change. A bar lasts `4 × numerator / denominator` beats
@@ -441,6 +483,9 @@ fn is_true(b: &bool) -> bool {
 fn is_false(b: &bool) -> bool {
     !*b
 }
+fn is_zero_i32(x: &i32) -> bool {
+    *x == 0
+}
 fn is_zero(x: &f64) -> bool {
     *x == 0.0
 }
@@ -468,6 +513,7 @@ impl Project {
                 beats_per_bar: 4,
                 swing: 0.0,
                 meters: vec![],
+                transpose: 0,
             },
             channels: vec![],
             patterns: vec![Pattern {
@@ -489,6 +535,7 @@ impl Project {
             mixer: Mixer { inserts },
             automation: vec![],
             score: Score::default(),
+            repeats: vec![],
         }
     }
 

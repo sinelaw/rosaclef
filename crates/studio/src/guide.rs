@@ -160,7 +160,7 @@ Velocities, volumes and most mix values are 0..1 (volumes are linear gain, 1.0 =
   "$schema": "./project.schema.json",
   "format": "rosaclef/1",
   "meta": { "title": "Velvet Hour", "author": "", "description": "" },
-  "transport": { "bpm": 118, "beatsPerBar": 4, "swing": 0.12 },   // swing: 0 straight .. 1 triplet (16ths)
+  "transport": { "bpm": 118, "beatsPerBar": 4, "swing": 0.12 },   // swing: 0 straight .. 1 triplet (16ths); optional "transpose": -12..12 semitones
   "channels": [                                     // the channel rack: one instrument each
     { "id": "kick", "name": "Kick", "color": "#d4af37",
       "instrument": { "type": "drum", "params": { "tone": 0.35 }, "options": { "kind": "kick" } },
@@ -260,6 +260,30 @@ Examples:
 { "id": "fade-out", "name": "Fade out", "target": "insert/0/volume",
   "points": [ { "beat": 224, "value": 1 }, { "beat": 256, "value": 0, "curve": -0.4 } ] }
 ```
+
+### Repeats (`repeats`)
+
+The playlist is the written score; `repeats` (top level, optional) are its repeat signs. The
+song plays a passage again — `times` times in all — before going on, and **endings** (voltas,
+"1." and "2.") play only on some passes. Playing, renders and the Score view all follow them.
+
+```jsonc
+"repeats": [
+  // Bars 9–16 twice; bar 16 is the 1st ending, bar 17 (after the repeat) the 2nd.
+  { "start": 32, "end": 64, "times": 2,
+    "endings": [ { "start": 60, "end": 64, "passes": [1] },
+                 { "start": 64, "end": 68, "passes": [2] } ] },
+  // A four-bar vamp played four times.
+  { "start": 96, "end": 112, "times": 4 }
+]
+```
+
+- `start` / `end` are song beats (put them on bar lines); playing jumps from `end` back to
+  `start` until the last pass, which goes on past `end`.
+- An ending inside the passage is skipped on the passes it does not list; the last pass's
+  ending is written right after `end`. Repeats must not overlap.
+- Automation, audio clips and the metronome follow the written position, so they repeat too.
+- To "play the chorus twice" or "loop this four times", add a repeat instead of copying clips.
 
 ### Sheet music (`score`)
 

@@ -71,6 +71,7 @@ export function decodeProject(raw) {
       bpm: Number(t.bpm),
       beatsPerBar: Number(t.beatsPerBar ?? 4),
       swing: Number(t.swing ?? 0),
+      transpose: Math.round(Number(t.transpose ?? 0)),
       meters: (t.meters ?? []).map((m) => ({ bar: Number(m.bar), numerator: Number(m.numerator), denominator: Number(m.denominator) })),
     },
     channels: (raw.channels ?? []).map((c) => ({
@@ -128,6 +129,12 @@ export function decodeProject(raw) {
       points: (l.points ?? []).map((pt) => ({ beat: Number(pt.beat), value: Number(pt.value), curve: Number(pt.curve ?? 0) })),
     })),
     score: decodeScore(raw.score),
+    repeats: (raw.repeats ?? []).map((r) => ({
+      start: Number(r.start),
+      end: Number(r.end),
+      times: Math.round(Number(r.times ?? 2)),
+      endings: (r.endings ?? []).map((e) => ({ start: Number(e.start), end: Number(e.end), passes: (e.passes ?? []).map((k) => Math.round(Number(k))) })),
+    })),
   };
 }
 
@@ -216,6 +223,7 @@ export function encodeProject(p) {
   o.format = p.format;
   o.meta = p.meta;
   o.transport = { bpm: p.transport.bpm, beatsPerBar: p.transport.beatsPerBar, swing: p.transport.swing };
+  if (p.transport.transpose !== 0) o.transport.transpose = p.transport.transpose;
   if (p.transport.meters.length > 0) o.transport.meters = p.transport.meters;
   o.channels = p.channels.map((c) => ({
     id: c.id,
@@ -254,6 +262,7 @@ export function encodeProject(p) {
   if (p.automation.length > 0) o.automation = p.automation.map(encodeLane);
   const sc = encodeScore(p.score);
   if (Object.keys(sc).length > 0) o.score = sc;
+  if (p.repeats.length > 0) o.repeats = p.repeats.map(encodeRepeat);
   return o;
 }
 
@@ -266,6 +275,16 @@ function encodeScore(s) {
   if (s.hiddenTracks.length > 0) o.hiddenTracks = s.hiddenTracks.map(trackIndex);
   if (s.clefs.length > 0) o.clefs = encodeStrs(s.clefs);
   if (s.marks.length > 0) o.marks = s.marks.map(encodeMark);
+  return o;
+}
+
+/** function encodeRepeat<R>(r: Repeat) => R */
+function encodeRepeat(r) {
+  const o = JSON.parse("{}");
+  o.start = round6(r.start);
+  o.end = round6(r.end);
+  o.times = r.times;
+  if (r.endings.length > 0) o.endings = r.endings.map((e) => ({ start: round6(e.start), end: round6(e.end), passes: e.passes }));
   return o;
 }
 
@@ -500,13 +519,14 @@ export function emptyProject() {
   return {
     format: "rosaclef/1",
     meta: { title: "Untitled", author: "", description: "" },
-    transport: { bpm: 120, beatsPerBar: 4, swing: 0, meters: [] },
+    transport: { bpm: 120, beatsPerBar: 4, swing: 0, transpose: 0, meters: [] },
     channels: [],
     patterns: [],
     playlist: { tracks: [], clips: [] },
     mixer: { inserts: [{ name: "Master", volume: 1, pan: 0, mute: false, solo: false, effects: [] }] },
     automation: [],
     score: emptyScore(),
+    repeats: [],
   };
 }
 
@@ -550,6 +570,7 @@ export function describeChange(a, b) {
   if (a.meta.title !== b.meta.title) out.push(`title → "${b.meta.title}"`);
   if (a.transport.bpm !== b.transport.bpm) out.push(`tempo ${fmtNum(a.transport.bpm)} → ${fmtNum(b.transport.bpm)} BPM`);
   if (a.transport.swing !== b.transport.swing) out.push(`swing → ${Math.round(b.transport.swing * 100)}%`);
+  if (a.transport.transpose !== b.transport.transpose) out.push(`transpose → ${semitonesText(b.transport.transpose)}`);
 
   for (const c of b.channels) {
     const old = a.channels.find((x) => x.id === c.id);
@@ -636,7 +657,28 @@ export function describeChange(a, b) {
   }
   for (const l of a.automation) if (!b.automation.some((x) => x.id === l.id)) out.push(`removed automation lane "${l.id}"`);
   scoreDiff(a.score, b.score, out);
+  repeatsDiff(a.repeats, b.repeats, out);
   return out.slice(0, 8);
+}
+
+/** function repeatText(r: Repeat) => String */
+function repeatText(r) {
+  const ends = r.endings.length > 0 ? ` with ${plural(r.endings.length, "ending")}` : "";
+  return `beats ${fmtNum(r.start)}–${fmtNum(r.end)} ×${r.times}${ends}`;
+}
+
+/** function repeatsDiff(a: Repeat[], b: Repeat[], out: String[]) => Undefined */
+function repeatsDiff(a, b, out) {
+  const ka = a.map((r) => JSON.stringify(r));
+  const kb = b.map((r) => JSON.stringify(r));
+  for (let i = 0; i < b.length; i++) {
+    if (ka.includes(kb[i])) continue;
+    const old = a.find((r) => Math.abs(r.start - b[i].start) < 1e-6);
+    out.push(old ? `repeat at beat ${fmtNum(b[i].start)} → ${repeatText(b[i])}` : `added a repeat: ${repeatText(b[i])}`);
+  }
+  for (const r of a) {
+    if (!b.some((x) => Math.abs(x.start - r.start) < 1e-6)) out.push(`removed the repeat at beat ${fmtNum(r.start)}`);
+  }
 }
 
 /** function scoreDiff(a: ScoreSettings, b: ScoreSettings, out: String[]) => Undefined */
@@ -699,4 +741,10 @@ function laneDiff(a, b, out) {
 /** function encodeClipKey(c: Clip) => String */
 function encodeClipKey(c) {
   return `${c.pattern}|${c.sample}|${trackIndex(c.track)}|${c.start}|${c.length}|${c.offset}`;
+}
+
+/** Semitones as shown: "+2", "−3", "0". */
+/** function semitonesText(n: Int) => String */
+export function semitonesText(n) {
+  return n > 0 ? `+${n}` : n < 0 ? `−${-n}` : "0";
 }

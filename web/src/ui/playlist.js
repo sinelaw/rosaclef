@@ -7,6 +7,7 @@
 import { drag, getJson, promptBox, pressOrTap } from "#platform";
 import { state, commit, begin, changed, invalidate, selectPattern, selectChannel, showDock, currentPattern, hint, reportContext } from "../store.js";
 import { snapTo, snapDown, songLength, barAt, barLines, meterChangeAt } from "../model.js";
+import { passesText } from "../notation.js";
 import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
 import { dragSample } from "./browser.js";
@@ -373,6 +374,23 @@ export function playlist(b) {
     if (g.zoom * bl.length < 40 && bl.bar % 2 === 1 && meter === "") continue;
     b.leaf("div", `m${bl.bar}`, "ruler-mark", meter === "" ? String(bl.bar + 1) : `${bl.bar + 1} · ${meter}`);
     b.style("left", `${bl.start * g.zoom}px`);
+  }
+  // Repeats: a band from the start sign to the end sign, its endings beneath.
+  for (let i = 0; i < p.repeats.length; i++) {
+    const r = p.repeats[i];
+    b.open("div", `r${i}`, "ruler-repeat");
+    b.style("left", `${r.start * g.zoom}px`);
+    b.style("width", `${Math.max(2, (r.end - r.start) * g.zoom)}px`);
+    b.attr("title", `Repeat: plays ${r.times} times${r.endings.length > 0 ? ", with endings" : ""}`);
+    b.leaf("span", "t", "ruler-repeat-times", `×${r.times}`);
+    b.close();
+    for (let k = 0; k < r.endings.length; k++) {
+      const e = r.endings[k];
+      b.leaf("div", `r${i}e${k}`, "ruler-ending", passesText(e.passes));
+      b.style("left", `${e.start * g.zoom}px`);
+      b.style("width", `${Math.max(2, (e.end - e.start) * g.zoom)}px`);
+      b.attr("title", `Ending: plays on pass${e.passes.length > 1 ? "es" : ""} ${e.passes.join(", ")}`);
+    }
   }
   if (state.mode === "song") {
     b.leaf("div", "ph", "playhead", "");

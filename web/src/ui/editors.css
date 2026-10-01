@@ -42,6 +42,41 @@
 .ruler-mark.beat {
   border-left-color: rgba(212, 175, 55, 0.08);
 }
+/* A repeat: double bars at both ends, like the signs in a score; how many
+ * times it plays at its top right, its endings' brackets along the bottom. */
+.ruler-repeat {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 3px double var(--gold);
+  border-right: 3px double var(--gold);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0), rgba(212, 175, 55, 0.14));
+  pointer-events: none;
+}
+.ruler-repeat-times {
+  position: absolute;
+  right: 4px;
+  top: 6px;
+  font: italic 700 12px/1 var(--serif);
+  color: var(--gold-hi);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+/* An ending (volta): a bracket with its passes. */
+.ruler-ending {
+  position: absolute;
+  bottom: 0;
+  height: 8px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--rose);
+  border-left: 1px solid var(--rose);
+  padding-right: 4px;
+  text-align: right;
+  font: 600 9px/8px var(--serif);
+  color: var(--rose);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
 .corner {
   background: #141117;
   border-bottom: 1px solid var(--line-2);

@@ -49,6 +49,24 @@ await page.reload();
 await hasText(page, "101.00");
 ok("edits survive a reload");
 
+// The master transpose, beside the tempo: saved with the song.
+const transposed = (pg, t) => pg.waitForFunction((v) => document.querySelector(".lcd.transpose .lcd-value")?.textContent.startsWith(v), t);
+await page.click(".lcd.transpose button[aria-label$='higher']");
+await transposed(page, "+1");
+await page.click(".lcd.transpose button[aria-label$='higher']");
+await transposed(page, "+2");
+// Another tab shows it once it is saved.
+const third = await ctx.newPage();
+await third.goto(base);
+await transposed(third, "+2");
+await third.close();
+await page.reload();
+await page.waitForSelector(".lcd.transpose.shifted");
+await transposed(page, "+2");
+await page.dblclick(".lcd.transpose .lcd-label");
+await transposed(page, "0");
+ok("the song transposes by semitones, and stays transposed");
+
 await page.keyboard.press("Control+o");
 await page.waitForSelector(".pm-card");
 await page.click("text=New project");

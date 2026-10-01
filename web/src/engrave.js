@@ -27,7 +27,7 @@
 // to hit-test notes and to map time to x.
 
 import { G } from "./smufl.js";
-import { NO_ACC, bottomStep, TPQ } from "./notation.js";
+import { NO_ACC, bottomStep, TPQ, passesText } from "./notation.js";
 
 // Bravura's engraving defaults, in staff spaces.
 const STAFF_LINE = 0.13;
@@ -392,7 +392,8 @@ function spring(ticks) {
 
 /** One column of a measure: its tick, spring and rod to the next, left extent. */
 /** type Col = { tick: Int, spring: Number, rod: Number, left: Number } */
-/** type MCols = { cols: Col[], lead: Number, meterW: Number } */
+/** `startRep`: a start repeat sign opens the measure; `endRep`: the passes of the repeat its end sign closes (0: none). */
+/** type MCols = { cols: Col[], lead: Number, meterW: Number, startRep: Boolean, endRep: Int } */
 
 /** Columns of every measure, over all staves. */
 /** function measureCols(sc: Score, geos: EvGeo[][]) => MCols[] */
@@ -443,7 +444,17 @@ function measureCols(sc, geos) {
       cols[0].rod = 11;
     }
     const meterW = ms.meter && m > 0 ? timeSigWidth(ms) + 1.2 : 0;
-    out.push({ cols: cols, lead: 1.1 + cols[0].left, meterW: meterW });
+    // Repeat signs: thick and thin bars with two dots, room made for them.
+    const t0 = ms.start;
+    const t1 = ms.start + ms.length;
+    let startRep = false;
+    let endRep = 0;
+    for (const r of sc.repeats) {
+      if (Math.abs(Math.round(r.start * TPQ) - t0) <= 1) startRep = true;
+      if (Math.abs(Math.round(r.end * TPQ) - t1) <= 1) endRep = r.times;
+    }
+    if (endRep > 0) cols[cols.length - 1].rod = cols[cols.length - 1].rod + 1.4;
+    out.push({ cols: cols, lead: 1.1 + cols[0].left + (startRep ? 1.9 : 0), meterW: meterW, startRep: startRep, endRep: endRep });
   }
   return out;
 }
@@ -630,6 +641,9 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
   const meterAt = [];
   /** const times: TimePt[] */
   const times = [];
+  /** Where each measure's lead begins (after a time signature in the middle of the system). */
+  /** const leadX: Number[] */
+  const leadX = [];
   let x = hdr;
   for (let m = a; m < b; m++) {
     const mc = mcs[m];
@@ -639,6 +653,7 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
       meterAt.push({ x: x + 0.7, m: m });
       x = x + mc.meterW;
     }
+    leadX.push(x);
     x = x + mc.lead;
     for (const c of mc.cols) {
       colX.push({ tick: c.tick, x: x });
@@ -673,7 +688,7 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
     const p = painter();
     /** const hb: HeadBox[] */
     const hb = [];
-    drawStaff(sc, st, si, geos[si], firstEv[si], a, b, p, hb, colAt, bars, meterAt, mcs, indent, hdr, x1, last && b === sc.measures.length);
+    drawStaff(sc, st, si, geos[si], firstEv[si], a, b, p, hb, colAt, bars, leadX, meterAt, mcs, indent, hdr, x1, last && b === sc.measures.length);
     painters.push(p);
     heads.push(hb);
   }
@@ -681,7 +696,32 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
   // ---- stack the staves: at least 6 spaces apart (5 within a grand staff), more if their ink needs it
   /** const rowsY: Number[] */
   const rowsY = [];
-  let yy = Math.max(4.5, -painters[0].top + 1.6);
+  // Endings (voltas) in this system: brackets above the top staff.
+  /** const voltas: { x0: Number, x1: Number, open: Boolean, close: Boolean, text: String }[] */
+  const voltas = [];
+  for (const r of sc.repeats) {
+    for (const e of r.endings) {
+      const t0 = Math.round(e.start * TPQ);
+      const t1 = Math.round(e.end * TPQ);
+      if (t1 <= startTick || t0 >= endTick) continue;
+      let vx0 = hdr - 0.4;
+      let vx1 = x1;
+      for (let m = a; m < b; m++) {
+        const ms = sc.measures[m];
+        if (Math.abs(ms.start - t0) <= 1) vx0 = (m === a ? hdr : bars[m - a - 1]) + 0.3;
+        if (Math.abs(ms.start + ms.length - t1) <= 1) vx1 = bars[m - a] - 0.5;
+      }
+      voltas.push({
+        x0: vx0,
+        x1: vx1,
+        open: t0 >= startTick,
+        // An ending that closes at the end repeat sign has a hook there; the last one stays open.
+        close: t1 <= endTick && Math.abs(e.end - r.end) < 1e-6,
+        text: t0 >= startTick ? passesText(e.passes) : "",
+      });
+    }
+  }
+  let yy = Math.max(4.5, -painters[0].top + 1.6) + (voltas.length > 0 ? 2.6 : 0);
   for (let k = 0; k < shown.length; k++) {
     if (k > 0) {
       const prev = painters[k - 1];
@@ -758,6 +798,21 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
   }
   emit(runs, sysP.prims, 0);
   if (!first) labels.push({ x: indent + 0.1, y: top - 2.3, text: String(sc.measures[a].number), cls: "mnum", anchor: "start", color: "" });
+  // Repeats played more than twice say how often over the end sign.
+  for (let m = a; m < b; m++) {
+    if (mcs[m].endRep > 2) labels.push({ x: bars[m - a] - 0.2, y: top - 1.1, text: `×${mcs[m].endRep}`, cls: "reptimes", anchor: "end", color: "" });
+  }
+  // Voltas: a line over the top staff (above its ink), a hook down where the ending starts
+  // (and where it closes at the repeat sign), the passes it plays.
+  const vy = top + Math.min(-2.6, painters[0].top - 1.4);
+  for (const v of voltas) {
+    const vp = painter();
+    rect(vp, v.x0, vy, Math.max(0.5, v.x1 - v.x0), 0.12, "");
+    if (v.open) rect(vp, v.x0, vy, 0.12, 1.8, "");
+    if (v.close) rect(vp, v.x1 - 0.12, vy, 0.12, 1.8, "");
+    emit(runs, vp.prims, 0);
+    if (v.text !== "") labels.push({ x: v.x0 + 0.45, y: vy + 1.45, text: v.text, cls: "volta", anchor: "start", color: "" });
+  }
 
   // ---- colored passages
   /** const bands: Band[] */
@@ -833,8 +888,8 @@ export function xTick(times, x) {
 
 // ------------------------------------------------------------------ a staff
 
-/** function drawStaff(sc: Score, st: Staff, si: Int, geo: EvGeo[], firstEv: Int[], a: Int, b: Int, p: Inker, hb: HeadBox[], colAt: (Int) => Number, bars: Number[], meterAt: { x: Number, m: Int }[], mcs: MCols[], indent: Number, hdr: Number, x1: Number, final: Boolean) => Undefined */
-function drawStaff(sc, st, si, geo, firstEv, a, b, p, hb, colAt, bars, meterAt, mcs, indent, hdr, x1, final) {
+/** function drawStaff(sc: Score, st: Staff, si: Int, geo: EvGeo[], firstEv: Int[], a: Int, b: Int, p: Inker, hb: HeadBox[], colAt: (Int) => Number, bars: Number[], leadX: Number[], meterAt: { x: Number, m: Int }[], mcs: MCols[], indent: Number, hdr: Number, x1: Number, final: Boolean) => Undefined */
+function drawStaff(sc, st, si, geo, firstEv, a, b, p, hb, colAt, bars, leadX, meterAt, mcs, indent, hdr, x1, final) {
   // Lines.
   for (let l = 0; l < 5; l++) rect(p, indent, l - STAFF_LINE / 2, x1 - indent, STAFF_LINE, "staff");
 
@@ -868,13 +923,37 @@ function drawStaff(sc, st, si, geo, firstEv, a, b, p, hb, colAt, bars, meterAt, 
     drawDigits(p, ms.den, mt.x + w / 2, 3, "");
   }
 
-  // Bar lines (the last one of the piece: thin + thick).
+  // Bar lines (the last one of the piece: thin + thick). Repeat signs: an end
+  // sign (dots, thin, thick) closes a measure; a start sign (thick, thin, dots)
+  // opens one — sharing the thick bar when one repeat ends where the next begins.
   for (let i = 0; i < bars.length; i++) {
     const bx = bars[i];
-    if (final && i === bars.length - 1) {
+    const m = a + i;
+    const end = mcs[m].endRep > 0;
+    const next = m + 1 < b && mcs[m + 1].startRep && !meterAt.some((mt) => mt.m === m + 1);
+    if (end || next) {
+      rect(p, bx - THICK, 0, THICK, 4, "");
+      if (end) {
+        const tx = bx - THICK - 0.4 - THIN;
+        rect(p, tx, 0, THIN, 4, "");
+        repeatDots(p, tx - 0.35 - G.repeatDot.x1);
+      }
+      if (next) {
+        rect(p, bx + 0.4, 0, THIN, 4, "");
+        repeatDots(p, bx + 0.4 + THIN + 0.35);
+      }
+    } else if (final && i === bars.length - 1) {
       rect(p, bx - THICK, 0, THICK, 4, "");
       rect(p, bx - THICK - 0.4 - THIN, 0, THIN, 4, "");
     } else rect(p, bx - THIN, 0, THIN, 4, "");
+  }
+  // A start sign at the system's start or after a time signature: its own thick bar.
+  for (let m = a; m < b; m++) {
+    if (!mcs[m].startRep || (m !== a && !meterAt.some((mt) => mt.m === m))) continue;
+    const sx = leadX[m - a] + 0.1;
+    rect(p, sx, 0, THICK, 4, "");
+    rect(p, sx + THICK + 0.4, 0, THIN, 4, "");
+    repeatDots(p, sx + THICK + 0.4 + THIN + 0.35);
   }
 
   // Events of the measures in this system.
@@ -985,6 +1064,13 @@ function drawTuplets(st, geo, evs, i0, i1, p, colAt, tips) {
     }
     k = j;
   }
+}
+
+/** The two dots of a repeat sign, in the middle spaces, from `x`. */
+/** function repeatDots(p: Inker, x: Number) => Undefined */
+function repeatDots(p, x) {
+  glyph(p, G.repeatDot, x, 1.5, "");
+  glyph(p, G.repeatDot, x, 2.5, "");
 }
 
 /** Ties curve away from the stem; in a chord, the upper half up and the lower half down. */

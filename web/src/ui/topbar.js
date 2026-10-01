@@ -2,7 +2,7 @@
 
 import { drag, fmt, sendJson, download } from "#platform";
 import { state, begin, changed, commit, undo, redo, hint } from "../store.js";
-import { barBeat } from "../model.js";
+import { barBeat, semitonesText } from "../model.js";
 import { togglePlay, stop, record, setMode, setOutput, toggleMetronome } from "../audio.js";
 import { iconButton, button, knobAt, meter } from "./widgets.js";
 import { isAutomated, shownValue, openMenu } from "../automation.js";
@@ -42,6 +42,69 @@ function exportSong() {
       toast("Export failed", String(e), "error");
       return false;
     });
+}
+
+/** Set the master transpose (semitones, -12..12). */
+/** function setTranspose(n: Int) => Undefined */
+function setTranspose(n) {
+  const v = Math.max(-12, Math.min(12, n));
+  if (v !== state.project.transport.transpose)
+    commit(() => {
+      state.project.transport.transpose = v;
+    });
+}
+
+const TRANSPOSE_TIP =
+  "Transpose — shift every pitched instrument up or down by semitones, to suit a voice (drums and audio clips stay). Drag up/down, scroll or use the arrows; double-click: back to 0";
+
+/** The master transpose, beside the tempo: what is written stays, what plays is shifted. */
+/** function transposeLcd(b: Builder) => Undefined */
+function transposeLcd(b) {
+  const t = state.project.transport.transpose;
+  b.open("div", "transpose", t !== 0 ? "lcd transpose shifted" : "lcd transpose");
+  b.attr("title", TRANSPOSE_TIP);
+  b.on("pointerenter", (e) => hint(TRANSPOSE_TIP));
+  b.on("pointerdown", (e) => {
+    if (e.button !== 0) return undefined;
+    e.preventDefault();
+    begin();
+    const y0 = e.clientY;
+    const t0 = state.project.transport.transpose;
+    drag(
+      e,
+      (m) => {
+        const v = Math.max(-12, Math.min(12, t0 + Math.round((y0 - m.clientY) / 14)));
+        if (v !== state.project.transport.transpose) {
+          state.project.transport.transpose = v;
+          changed(true);
+        }
+      },
+      (u) => undefined
+    );
+  });
+  b.on("wheel", (e) => {
+    e.preventDefault();
+    setTranspose(state.project.transport.transpose + (e.deltaY < 0 ? 1 : -1));
+  });
+  b.on("dblclick", (e) => setTranspose(0));
+  b.leaf("span", "label", "lcd-label", "Transpose");
+  b.open("span", "row", "transpose-row");
+  b.leaf("button", "down", "transpose-step", "‹");
+  b.attr("title", "A semitone lower");
+  b.attr("aria-label", "Transpose a semitone lower");
+  b.on("pointerdown", (e) => e.stopPropagation());
+  b.on("click", (e) => setTranspose(state.project.transport.transpose - 1));
+  b.open("span", "value", "lcd-value");
+  b.text(semitonesText(t));
+  b.leaf("small", "unit", "", "st");
+  b.close();
+  b.leaf("button", "up", "transpose-step", "›");
+  b.attr("title", "A semitone higher");
+  b.attr("aria-label", "Transpose a semitone higher");
+  b.on("pointerdown", (e) => e.stopPropagation());
+  b.on("click", (e) => setTranspose(state.project.transport.transpose + 1));
+  b.close();
+  b.close();
 }
 
 /** function topbar(b: Builder) => Undefined */
@@ -115,6 +178,8 @@ export function topbar(b) {
   lcd(b, "bpm", "Tempo", fmt(shownValue("tempo", p.transport.bpm), 2), "BPM");
   if (isAutomated("tempo")) b.leaf("i", "auto", "auto-dot", "");
   b.close();
+
+  transposeLcd(b);
 
   const swing = shownValue("swing", p.transport.swing);
   b.open("div", "swing", "lcd static");

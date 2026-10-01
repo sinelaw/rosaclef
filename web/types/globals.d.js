@@ -40,14 +40,19 @@
 /** type Mixer = { inserts: Insert[] } */
 /** type Meta = { title: String, author: String, description: String } */
 /** type Meter = { bar: Number, numerator: Number, denominator: Number } */
-/** type Transport = { bpm: Number, beatsPerBar: Number, swing: Number, meters: Meter[] } */
+/** `transpose`: semitones the pitched instruments sound away from the written notes (-12..12). */
+/** type Transport = { bpm: Number, beatsPerBar: Number, swing: Number, transpose: Int, meters: Meter[] } */
 /** type AutomationPoint = { beat: Number, value: Number, curve: Number } */
 /** type AutomationLane = { id: String, name: String, target: String, color: String, mute: Boolean, points: AutomationPoint[] } */
 /** A colored passage of the score: song beats, or beats of `pattern` when set; `channels` empty = every staff. */
 /** type ScoreMark = { start: Number, end: Number, color: String, label: String, pattern: String, channels: String[] } */
 /** Sheet-music settings (project.score): key ("" = auto), hidden channels and tracks, clef per channel, colored passages. */
 /** type ScoreSettings = { key: String, hidden: String[], hiddenTracks: TrackIx[], clefs: KS[], marks: ScoreMark[] } */
-/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings } */
+/** An ending of a repeat (a volta): song beats, played only on `passes` (from 1). */
+/** type Ending = { start: Number, end: Number, passes: Int[] } */
+/** A repeated passage of the arrangement: song beats, played `times` times in all. */
+/** type Repeat = { start: Number, end: Number, times: Int, endings: Ending[] } */
+/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[] } */
 
 /** type Issue = { severity: String, path: String, message: String } */
 

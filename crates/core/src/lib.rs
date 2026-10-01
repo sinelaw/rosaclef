@@ -4,6 +4,7 @@
 pub mod automation;
 pub mod catalog;
 pub mod context;
+pub mod form;
 pub mod format;
 pub mod gm;
 pub mod model;
@@ -76,7 +77,7 @@ pub fn summary(p: &Project) -> String {
             per.join(" ")
         );
     }
-    let secs = automation::TempoMap::new(p).seconds_at(p.song_length());
+    let secs = form::performance_seconds(p, &automation::TempoMap::new(p));
     let _ = writeln!(
         s,
         "\nPlaylist: {} tracks, {} clips, song length {} beats ({}:{:04.1})",

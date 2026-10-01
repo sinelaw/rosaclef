@@ -44,7 +44,8 @@ export const TPQ = 48;
 /** A colored passage resolved to score time (beats); `channels` empty = every staff. */
 /** type MarkSpan = { start: Number, end: Number, color: String, label: String, channels: String[], mark: Int } */
 
-/** type Score = { staves: Staff[], measures: Measure[], fifths: Int, minor: Boolean, keyName: String, notes: SrcNote[], marks: MarkSpan[], bpm: Number, end: Int, empty: Boolean } */
+/** `repeats`: the song's repeats (beats), drawn as repeat signs and endings (none for a pattern). */
+/** type Score = { repeats: Repeat[], staves: Staff[], measures: Measure[], fifths: Int, minor: Boolean, keyName: String, notes: SrcNote[], marks: MarkSpan[], bpm: Number, end: Int, empty: Boolean } */
 
 /** No accidental to draw. */
 export const NO_ACC = 9;
@@ -746,8 +747,8 @@ function markBeams(evs, ms, next) {
 
 /** Bars where every staff rests (two or more in a row, in one meter) become one
  * multi-measure rest. Returns the new measures and renumbers the events. */
-/** function multiRests(staves: Staff[], ms: Measure[]) => Measure[] */
-function multiRests(staves, ms) {
+/** function multiRests(staves: Staff[], ms: Measure[], breaks: Int[]) => Measure[] */
+function multiRests(staves, ms, breaks) {
   /** const empty: Boolean[] */
   const empty = ms.map((_) => true);
   for (const st of staves) for (const ev of st.events) if (!ev.whole) empty[ev.measure] = false;
@@ -758,7 +759,8 @@ function multiRests(staves, ms) {
   let i = 0;
   while (i < ms.length) {
     let j = i + 1;
-    if (empty[i]) while (j < ms.length && empty[j] && !ms[j].meter && ms[j].length === ms[i].length) j = j + 1;
+    // Rests join up to a meter change, a repeat sign or an ending.
+    if (empty[i]) while (j < ms.length && empty[j] && !ms[j].meter && ms[j].length === ms[i].length && !breaks.includes(ms[j].start)) j = j + 1;
     const m = ms[i];
     if (j - i >= 2)
       out.push({ start: m.start, length: m.length * (j - i), num: m.num, den: m.den, beat: m.beat, meter: m.meter, number: m.number, count: j - i });
@@ -873,6 +875,12 @@ export function buildScore(p, scope, grid) {
 
   let endBeat = g.length;
   for (const n of notes) endBeat = Math.max(endBeat, n.end);
+  if (scope.kind !== "pattern") {
+    for (const r of p.repeats) {
+      endBeat = Math.max(endBeat, r.end);
+      for (const e of r.endings) endBeat = Math.max(endBeat, e.end);
+    }
+  }
   const endTick = Math.max(1, Math.ceil(endBeat * TPQ - 1e-6));
   // A pattern's bars start at its beat 0 whatever the song's meters say there.
   const ms = measuresFor(p.transport, endTick);
@@ -903,9 +911,21 @@ export function buildScore(p, scope, grid) {
     }
   }
 
+  const repeats = scope.kind === "pattern" ? [] : p.repeats;
+  /** const breaks: Int[] */
+  const breaks = [];
+  for (const r of repeats) {
+    breaks.push(Math.round(r.start * TPQ));
+    breaks.push(Math.round(r.end * TPQ));
+    for (const e of r.endings) {
+      breaks.push(Math.round(e.start * TPQ));
+      breaks.push(Math.round(e.end * TPQ));
+    }
+  }
   return {
+    repeats: repeats,
     staves: staves,
-    measures: staves.length > 0 ? multiRests(staves, ms) : ms,
+    measures: staves.length > 0 ? multiRests(staves, ms, breaks) : ms,
     fifths: fifths,
     minor: minor,
     keyName: keyName,
@@ -915,4 +935,21 @@ export function buildScore(p, scope, grid) {
     end: endTick,
     empty: staves.length === 0,
   };
+}
+
+/** Endings' passes as written over them: "1.", "1.–2.", "1., 3.". */
+/** function passesText(passes: Int[]) => String */
+export function passesText(passes) {
+  const ks = passes.slice();
+  ks.sort((x, y) => x - y);
+  /** const out: String[] */
+  const out = [];
+  let i = 0;
+  while (i < ks.length) {
+    let j = i;
+    while (j + 1 < ks.length && ks[j + 1] === ks[j] + 1) j = j + 1;
+    out.push(j > i ? `${ks[i]}.–${ks[j]}.` : `${ks[i]}.`);
+    i = j + 1;
+  }
+  return out.join(", ");
 }
