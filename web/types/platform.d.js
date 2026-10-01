@@ -46,6 +46,9 @@ export const pickFiles;
 /** const download: (String, String) => Undefined */
 export const download;
 
+/** Device pixels a CSS pixel (it follows the browser's zoom). */
+/** const pixelRatio: () => Number */
+export const pixelRatio;
 /** Write PDF objects (the catalog first, the document info last) to a file and download it. */
 /** const downloadPdf: (String, PdfObj[]) => Promise<Boolean> */
 export const downloadPdf;

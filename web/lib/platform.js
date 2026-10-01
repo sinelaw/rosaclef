@@ -73,6 +73,11 @@ export const now = () => performance.now();
 
 // ------------------------------------------------------------------ canvas
 
+/** Device pixels a CSS pixel (2 on most phones and Retina screens; it follows the browser's zoom). */
+export function pixelRatio() {
+  return window.devicePixelRatio || 1;
+}
+
 /** Size a canvas for the device pixel ratio and return its 2D context. */
 export function canvas2d(canvas, width, height) {
   const dpr = window.devicePixelRatio || 1;

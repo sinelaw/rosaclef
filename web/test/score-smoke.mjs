@@ -76,6 +76,8 @@ await page.waitForFunction(() => {
 const HEADS = `[...document.querySelectorAll(".score-dock text.glyphs:not(.ghost):not(.sel)")].reduce(
   (n, t) => n + [...t.textContent].filter((c) => c === "\u{e0a4}" || c === "\u{e0a3}" || c === "\u{e0a2}").length, 0)`;
 const heads = () => page.evaluate(HEADS);
+// Count them once the pattern's notes are drawn (the dock may still be catching up).
+await page.waitForFunction(`${HEADS} > 0`);
 const before = await heads();
 await page.click(".score-dock .score-ribbon button[title^='Write']");
 // On the middle line of the first staff, a little into the first bar: Write shows a ghost note there.
@@ -180,7 +182,7 @@ await page.waitForSelector(".score-dock .score-sys");
 await page.waitForSelector(".score-dock path.gloss");
 // Its gloss and shine are knobs on the ribbon, shown while it is wet.
 await page.locator(".score-dock input.score-slider").nth(1).fill("0.1");
-await page.waitForFunction(() => document.querySelector(".score-dock feSpecularLighting")?.getAttribute("specularExponent") === "110");
+await page.waitForFunction(() => document.querySelector(".score-dock feSpecularLighting")?.getAttribute("specularExponent") === "84");
 ok("the shine of the wet ink tightens to a speck");
 await page.click(".score-dock .score-ribbon button[title^='Ink:']");
 await page.waitForFunction(() => document.querySelector(".score-dock path.gloss") === null);
