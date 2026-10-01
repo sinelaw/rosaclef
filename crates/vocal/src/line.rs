@@ -260,7 +260,14 @@ fn with_phonemes(p: &Project, index: usize, verse: u32) -> Vec<Voiced> {
     notes.into_iter().zip(phonemes).collect()
 }
 
-fn performed(p: &Project, n: &Sounding, phonemes: &[String], start: Time, end: Time) -> Performed {
+/// A sounding note performed from `start` to `end`, with what it sings.
+pub(crate) fn performed(
+    p: &Project,
+    n: &Sounding,
+    phonemes: &[String],
+    start: Time,
+    end: Time,
+) -> Performed {
     let pitched = p
         .channel(&n.channel)
         .is_none_or(|c| c.instrument.is_pitched());

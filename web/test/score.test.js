@@ -449,6 +449,13 @@ check("PDF strings escape and spell out", pdfString("A (b) ♭ é Œ") === "(A \
     "US Letter pages",
     letter.some((o) => o.head.includes("612 792"))
   );
+  const words = song([[60, 0, 1]], 4);
+  sing(words.patterns[0], ["Hel-"]);
+  const sungPdf = scorePdf(buildScore(words, PAT, 12), { title: "x", subtitle: "", author: "", bpm: 0 }, "a4", false, measure);
+  check(
+    "the PDF sets the words in Times Roman",
+    sungPdf.some((o) => o.stream.includes("/F1 1.6 Tf") && o.stream.includes("(Hel) Tj"))
+  );
   // As on screen: each page as SVG, on paper and through the ink filter.
   const lay = pdfLayout(sc, "a4", false);
   check("the pages as on screen are the PDF's pages", lay.pages.length === pages.length);
@@ -465,13 +472,6 @@ check("PDF strings escape and spell out", pdfString("A (b) ♭ é Œ") === "(A \
   check("its text is escaped", wet.includes("Étude &amp; co"));
   const dry = pageSvg(lay, 1, { title: "x", subtitle: "", author: "", bpm: 0 }, { wet: false, gloss: 1, shine: 0.75 }, 1);
   check("dry ink has no glints", dry.includes("feDisplacementMap") && !dry.includes('filter="url(#gloss)"'));
-  const words = song([[60, 0, 1]], 4);
-  sing(words.patterns[0], ["Hel-"]);
-  const sungPdf = scorePdf(buildScore(words, PAT, 12), { title: "x", subtitle: "", author: "", bpm: 0 }, "a4", false, measure);
-  check(
-    "the PDF sets the words in Times Roman",
-    sungPdf.some((o) => o.stream.includes("/F1 1.6 Tf") && o.stream.includes("(Hel) Tj"))
-  );
 }
 
 if (failures > 0) {

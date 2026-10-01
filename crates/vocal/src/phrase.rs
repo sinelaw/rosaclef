@@ -3,7 +3,7 @@
 //! take: the phrase's notes alone, timed from [`LEAD`] seconds before its
 //! first note, so the engine's audio lines up with the render's path.
 
-use crate::line::{Performed, Song, Syllable, Time};
+use crate::line::{self, Performed, Song, Time};
 use rosaclef_core::expand::{self, Sounding};
 use rosaclef_core::phrase::{self, Phrase, LEAD};
 use rosaclef_core::Project;
@@ -64,25 +64,7 @@ fn phrase_song(p: &Project, notes: &[Sounding], phonemes: &[Vec<String>], ph: &P
         .iter()
         .map(|&i| {
             let n = &notes[i];
-            Performed {
-                channel: n.channel.clone(),
-                pitch: (n.pitch + p.transport.transpose).clamp(0, 127),
-                start: time(n.start),
-                end: time(n.start + n.length),
-                velocity: n.velocity,
-                syllable: n.lyric.as_ref().map(|l| {
-                    let line = l.line.lyrics(p);
-                    Syllable {
-                        token: l.token.clone(),
-                        phonemes: phonemes[i].clone(),
-                        lang: line.language().to_string(),
-                        mode: line.mode,
-                        timing: line.timing_at(l.line.verse, l.line.at).cloned(),
-                        section: p.patterns[l.line.pattern].name.clone(),
-                        verse: l.line.verse,
-                    }
-                }),
-            }
+            line::performed(p, n, &phonemes[i], time(n.start), time(n.start + n.length))
         })
         .collect();
     Song::from_notes(p, performed)

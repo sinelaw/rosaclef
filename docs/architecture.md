@@ -25,7 +25,9 @@
 | `rosaclef-core` | native + wasm | model, device catalog (single source of truth for params), validation with JSON paths, schema, compact formatter |
 | `rosaclef-engine` | native + wasm | sequencer, instruments, effects, mixer, offline render; `PluginHost` / `ExternalProcessor` traits for plugins |
 | `rosaclef-wasm` | browser AudioWorklet | C-ABI wrapper around the engine (no JS glue) |
-| `rosaclef-import` | native + wasm | LMMS and MIDI importers |
+| `rosaclef-import` | native + wasm | LMMS and MIDI importers (MIDI and karaoke lyrics) |
+| `rosaclef-phonetics` | native + wasm | lyrics to IPA phonemes per syllable (CMUdict subset, spelling rules), ARPAbet / X-SAMPA |
+| `rosaclef-vocal` | native + wasm | the song performed as sung lines; its exports (MIDI, MusicXML, OpenUtau, Synthesizer V, DiffSinger, UltraStar, LRC, TTML, timed words, tagged lyrics, SSML); timing from aligned recordings; the phrases rendering voices need |
 | `rosaclef-fs` | native + wasm | the `Fs` trait: `DiskFs`, and `MemFs` (lazily loaded blobs, a change journal for the host to persist) |
 | `rosaclef-studio` | native + wasm | the server's portable logic on `Fs`: project folders, library, file manager, zip archives, agent guides, symphonia decoding, offline render |
 | `rosaclef-clap` | native | CLAP plugin host implementing the engine's plugin traits |
@@ -130,8 +132,11 @@
   itself draws the glyphs), caches the engraving by `state.edits`, and maps
   edits back to pattern notes. `project.score` (`Score` in
   `crates/core/src/model.rs`) holds the key, hidden channels and tracks,
-  clefs and colored passages. An SVG filter gives the engraving the look of
-  ink on paper (wicked edges, rounded bleed, a pooled rim).
+  clefs and colored passages. The page is laid out to fit the view at the
+  music's size; the zoom only magnifies it. `web/src/ink.js` holds the look
+  of ink and paper: the SVG filter the engraving is drawn through (wet ink lit
+  as a raised, glossy surface; dry ink with wicked edges and a pooled rim) and
+  the paper's textures (tiles of noise).
 - Repeats (`project.repeats`: start/end beats, `times`, `endings` with the
   passes that play them) are the song's form. `crates/core/src/form.rs`
   unrolls them into the performance order (spans of written beats); the
@@ -142,9 +147,57 @@
   (spreading the systems of full pages) and writes PDF objects: the glyphs as
   forms drawn from Bravura's outlines (no embedded font), text in the
   standard Times faces. `downloadPdf` in `web/lib/platform.js` compresses the
-  streams and writes the file.
+  streams and writes the file. For a PDF as on screen, `pageSvg` draws each
+  page as SVG on the paper of `ink.js` and through its filter;
+  `downloadImagePdf` turns each into a JPEG and writes a page per image.
 
-### Uses and lyrics
+### Reuse, lyrics and the voice
+
+- **Uses** (`patterns[].uses`) play other patterns, or ranges of them, by
+  reference. `rosaclef_core::expand` resolves them into *sounding notes*
+  (each remembering the written note it comes from) and binds **lyrics**:
+  a pattern's lyric line gives its tokens, in time order, to the notes on
+  its channel that its uses did not already give words; notes a use moves
+  to another channel leave their words behind. The engine, validation, the
+  exporters and `rosaclef summary --expand` read this; `web/src/expand.js`
+  mirrors it for the piano roll and the score.
+- **Verses**: `lyrics/notation.rs` parses a verse's text (shared test cases
+  with `web/src/lyrics.js`). The verse a pattern sings comes from a use, else
+  the clip, else the pass of its repeat (`form::Span::pass`); a line without
+  that verse sings its first.
+- **Phonetics** (`rosaclef-phonetics`): words read whole (an English
+  dictionary searched in place, spelling rules, Spanish and Japanese by rule)
+  and shared out over the written syllables, in IPA; ARPAbet and X-SAMPA for
+  engines that want them.
+- **The voice** (`instruments/voice/`): the engine compiles each pattern's
+  syllables per verse (with phonemes), and a note-on carries its syllable.
+  The formant voice plans each syllable (onset consonants, the held vowel, a
+  diphthong's glide and the coda at the note-off) and steers a glottal
+  source through five cascaded formant resonators plus band-passed noise.
+- **Rendered phrases**: a voice with engine `render` plays phrases a singing
+  engine rendered. `rosaclef_core::phrase` cuts a channel's notes into
+  phrases at rests and names each by what it sings, so a render
+  (`renders/voice/<voice>/<key>.wav`, starting 0.3 s before the first note)
+  is reused wherever the pattern plays. The engine cues a phrase ahead of
+  its note and lists what it would play (`wanted_renders`); hosts load what
+  exists. The server's `voices.rs` writes each missing phrase as a small song
+  in the voice's input format (`rosaclef_vocal::phrase`) and runs the command
+  the user configured in `~/.config/rosaclef/voices.json` — never one from
+  the project — and the file watcher picks the WAV up.
+- **Exports**: lyrics are stored as meaning (syllables, word ends, holds, breaths,
+  breaks); `crates/core/src/expand.rs` binds them to the sounding notes and
+  `rosaclef_vocal::line` performs the song: every note in playing order,
+  timed in beats and seconds, with its syllable and phonemes. Each exporter
+  in `crates/vocal/src/formats/` is a pure function of that `Song` and
+  spells the facts with its format's markers; `FORMATS` is the one table
+  the CLI (`rosaclef export`), the HTTP API (`/api/export`, via
+  `rosaclef_studio::export`, on the server and in `rosaclef-local`) and the
+  Export menu (`web/src/ui/export.js`) list.
+- **Alignment**: `rosaclef_vocal::align` reads TextGrid and WhisperX alignments and turns
+  them into a lyric line's `timing` (phoneme offsets in seconds from each
+  note's start); `rosaclef align` writes it.
+
+### Editing uses and lyrics in the studio
 
 - `crates/core/src/expand.rs` resolves a pattern's `uses` and binds its lyric
   lines to its notes; `web/src/expand.js` mirrors it (`expandPattern`:
@@ -164,8 +217,8 @@
 - The score gathers each note's words per verse line (`Word` in
   `notation.js`: stacked verses in a pattern, the clip's or the repeat
   pass's verse in the song), puts the syllables under their events
-  (`Staff.lyrics`), and `web/src/underlay.js` engraves them, drawing with the
-  ink primitives of `web/src/ink.js`; the spacing makes room for them as for
+  (`Staff.lyrics`), and `web/src/underlay.js` engraves them with the
+  primitives of `web/src/paint.js`; the spacing makes room for them as for
   accidentals.
 
 ### The UI library (`web/src/ui/tree.js`)

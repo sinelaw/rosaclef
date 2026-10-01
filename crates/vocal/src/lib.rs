@@ -6,7 +6,8 @@
 //! engines (Synthesizer V, OpenUtau, DiffSinger), notation (MusicXML, MIDI),
 //! karaoke (UltraStar, LRC, TTML), song generators (tagged lyrics, timed
 //! words) and speech (SSML). [`align`] turns what a forced aligner found in
-//! a sung take into a lyric line's phoneme timing.
+//! a sung take into a lyric line's phoneme timing. [`phrase`] lists the
+//! phrases a project's rendering voices need, each as a small song.
 
 pub mod align;
 pub mod formats;
