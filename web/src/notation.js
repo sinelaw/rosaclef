@@ -27,7 +27,8 @@ export const TPQ = 48;
 
 /** A note, chord or rest. `start` (ticks, score time) and `dur` (ticks); `base` is the
  * undotted written value; `whole` is a whole-measure rest; `beam` groups beamed notes (-1: none). */
-/** type NEv = { start: Int, dur: Int, base: Int, dots: Int, rest: Boolean, whole: Boolean, heads: Head[], beam: Int, measure: Int } */
+/** `tuplet`: the start tick of the triplet beat it is in (-1: none); its `dur` is real time, `base` the written value. */
+/** type NEv = { start: Int, dur: Int, base: Int, dots: Int, rest: Boolean, whole: Boolean, heads: Head[], beam: Int, measure: Int, tuplet: Int } */
 
 /** A part before it is split into staves: one channel, or the synthesized drums together. */
 /** type Part = { channels: Channel[], idx: Int[], kit: String, clef: String, name: String, color: String } */
@@ -36,8 +37,9 @@ export const TPQ = 48;
  * staves of one channel (`part` 0 and 1) that share a `group`. */
 /** type Staff = { channel: String, channels: String[], name: String, color: String, clef: String, drum: Boolean, part: Int, group: Int, events: NEv[] } */
 
-/** A measure: start and length in ticks, its meter, the beat (ticks) and whether the time signature shows. */
-/** type Measure = { start: Int, length: Int, num: Int, den: Int, beat: Int, meter: Boolean } */
+/** A measure: start and length in ticks, its meter, the beat (ticks) and whether the time signature
+ * shows; `number` is its bar number, and `count` > 1 makes it a multi-measure rest of that many bars. */
+/** type Measure = { start: Int, length: Int, num: Int, den: Int, beat: Int, meter: Boolean, number: Int, count: Int } */
 
 /** A colored passage resolved to score time (beats); `channels` empty = every staff. */
 /** type MarkSpan = { start: Number, end: Number, color: String, label: String, channels: String[], mark: Int } */
@@ -131,8 +133,9 @@ export function spell(pitch, fifths) {
   for (let q = -15; q <= 19; q++) {
     if ((((q * 7) % 12) + 12) % 12 !== pc) continue;
     const d = Math.abs(q - center);
-    // Ties (the tritone away from the key) go to sharps in sharp keys and C.
-    if (d < bestD || (d === bestD && (fifths >= 0 ? q > best : q < best))) {
+    // Ties: the plainer spelling (B♮ over C♭ in C minor), then sharps in sharp keys and C.
+    const plain = Math.abs(Math.floor((q + 1) / 7)) - Math.abs(Math.floor((best + 1) / 7));
+    if (d < bestD || (d === bestD && (plain < 0 || (plain === 0 && (fifths >= 0 ? q > best : q < best))))) {
       best = q;
       bestD = d;
     }
@@ -358,7 +361,7 @@ function measuresFor(t, endTick) {
     const stop = i + 1 < map.length ? Math.round(map[i + 1].beat * TPQ) : Infinity;
     let at = Math.round(s.beat * TPQ);
     while (at < stop && (at < endTick || out.length === 0) && out.length < 4096) {
-      out.push({ start: at, length: len, num: num, den: den, beat: beatTicks(num, den), meter: label !== s.label });
+      out.push({ start: at, length: len, num: num, den: den, beat: beatTicks(num, den), meter: label !== s.label, number: out.length + 1, count: 1 });
       label = s.label;
       at = at + len;
     }
@@ -471,15 +474,76 @@ export function autoClef(pitches) {
 
 /** Chords of one staff from its source notes (indexes into `notes`): onsets
  * quantized to `grid` ticks, each chord lasting to its longest note or the next onset. */
-/** function chordsOf(notes: SrcNote[], idx: Int[], grid: Int, drum: Boolean) => Chord[] */
-function chordsOf(notes, idx, grid, drum) {
+// ------------------------------------------------------------------ triplets
+
+/** The quarter-note beat (of a simple meter) that holds a tick, or -1. */
+/** function beatOf(ms: Measure[], t: Number) => Int */
+function beatOf(ms, t) {
+  const m = ms[measureAt(ms, Math.max(0, Math.floor(t)))];
+  if (m.beat !== TPQ || t >= m.start + m.length) return -1;
+  return m.start + Math.floor((t - m.start) / TPQ) * TPQ;
+}
+
+/** Beats written as triplets: where the onsets and ends of the notes inside
+ * fall much closer to thirds of the beat than to the grid. */
+/** function tripletBeats(notes: SrcNote[], idx: Int[], ms: Measure[], grid: Int) => Int[] */
+function tripletBeats(notes, idx, ms, grid) {
+  /** const beats: Int[] */
+  const beats = [];
+  /** const straight: Number[] */
+  const straight = [];
+  /** const thirds: Number[] */
+  const thirds = [];
+  /** const seen: Int[] */
+  const seen = [];
+  for (const i of idx) {
+    for (const at of [notes[i].start, notes[i].end]) {
+      const t = at * TPQ;
+      const b = beatOf(ms, t);
+      if (b < 0) continue;
+      const r = t - b;
+      // On the beat itself both readings agree.
+      if (r < 2 || r > TPQ - 2) continue;
+      let k = beats.indexOf(b);
+      if (k < 0) {
+        beats.push(b);
+        straight.push(0);
+        thirds.push(0);
+        seen.push(0);
+        k = beats.length - 1;
+      }
+      straight[k] = straight[k] + Math.abs(r - Math.round(r / grid) * grid);
+      thirds[k] = thirds[k] + Math.abs(r - Math.round(r / 16) * 16);
+      seen[k] = seen[k] + 1;
+    }
+  }
+  /** const out: Int[] */
+  const out = [];
+  for (let k = 0; k < beats.length; k++) {
+    if (thirds[k] < straight[k] * 0.5 && thirds[k] / seen[k] < 2.5) out.push(beats[k]);
+  }
+  return out;
+}
+
+/** Round a time (beats) to ticks: to thirds of the beat in a triplet beat, else to the grid. */
+/** function quantizeAt(t: Number, ms: Measure[], trip: Int[], grid: Int) => Int */
+function quantizeAt(t, ms, trip, grid) {
+  const x = t * TPQ;
+  const b = beatOf(ms, x);
+  if (b >= 0 && trip.includes(b)) return b + Math.round((x - b) / 16) * 16;
+  // Right after a triplet beat, the beat's end is the nearest grid point anyway.
+  return Math.max(0, Math.round(x / grid) * grid);
+}
+
+/** function chordsOf(notes: SrcNote[], idx: Int[], grid: Int, drum: Boolean, ms: Measure[], trip: Int[]) => Chord[] */
+function chordsOf(notes, idx, grid, drum, ms, trip) {
   /** const qs: { i: Int, s: Int, e: Int }[] */
   const qs = [];
   for (const i of idx) {
     const n = notes[i];
-    const s = Math.max(0, Math.round((n.start * TPQ) / grid) * grid);
-    let e = Math.round((n.end * TPQ) / grid) * grid;
-    if (e <= s) e = s + grid;
+    const s = quantizeAt(n.start, ms, trip, grid);
+    let e = quantizeAt(n.end, ms, trip, grid);
+    if (e <= s) e = s + (trip.includes(beatOf(ms, s)) ? 16 : grid);
     qs.push({ i: i, s: s, e: e });
   }
   qs.sort((a, b) => a.s - b.s || notes[a.i].pitch - notes[b.i].pitch);
@@ -528,8 +592,27 @@ function copyHeads(hs, tieIn, tieOut) {
 }
 
 /** Lay a staff's chords into measures: rests between, split at bar lines and into written values. */
-/** function eventsOf(chords: Chord[], heads: Head[][], ms: Measure[]) => NEv[] */
-function eventsOf(chords, heads, ms) {
+/** Written values for [a, b) inside a triplet beat starting at `bs`: thirds of the
+ * beat are eighths, two thirds a quarter (under a 3); the whole beat is a plain quarter. */
+/** function tripletPieces(bs: Int, a: Int, b: Int) => Piece[] */
+function tripletPieces(bs, a, b) {
+  /** const out: Piece[] */
+  const out = [];
+  if (a === bs && b === bs + TPQ) {
+    out.push({ s: a, d: TPQ, base: TPQ, dots: 0 });
+    return out;
+  }
+  let t = a;
+  while (t < b) {
+    const d = b - t >= 32 ? 32 : b - t >= 16 ? 16 : b - t;
+    out.push({ s: t, d: d, base: d >= 32 ? 48 : d >= 16 ? 24 : 12, dots: 0 });
+    t = t + d;
+  }
+  return out;
+}
+
+/** function eventsOf(chords: Chord[], heads: Head[][], ms: Measure[], trip: Int[]) => NEv[] */
+function eventsOf(chords, heads, ms, trip) {
   /** const out: NEv[] */
   const out = [];
   /** function put(s: Int, e: Int, hs: Head[], rest: Boolean) => Undefined */
@@ -539,18 +622,24 @@ function eventsOf(chords, heads, ms) {
     while (t < e) {
       const mi = measureAt(ms, t);
       const m = ms[mi];
-      const mEnd = Math.min(e, m.start + m.length);
+      let mEnd = Math.min(e, m.start + m.length);
       if (rest && t === m.start && mEnd === m.start + m.length) {
-        out.push({ start: t, dur: m.length, base: 192, dots: 0, rest: true, whole: true, heads: [], beam: -1, measure: mi });
+        out.push({ start: t, dur: m.length, base: 192, dots: 0, rest: true, whole: true, heads: [], beam: -1, measure: mi, tuplet: -1 });
         t = mEnd;
         continue;
       }
-      const ps = pieces(m, t - m.start, mEnd - m.start, rest);
+      // Triplet beats are written on their own; the stretch before one stops at it.
+      const b = beatOf(ms, t);
+      const inTrip = b >= 0 && trip.includes(b);
+      if (inTrip) mEnd = Math.min(mEnd, b + TPQ);
+      else for (const tb of trip) if (tb > t && tb < mEnd) mEnd = tb;
+      const ps = inTrip ? tripletPieces(b, t, mEnd) : pieces(m, t - m.start, mEnd - m.start, rest);
       for (let k = 0; k < ps.length; k++) {
         const pc = ps[k];
-        const last = m.start + pc.s + pc.d >= e;
+        const at = inTrip ? pc.s : m.start + pc.s;
+        const last = at + pc.d >= e;
         out.push({
-          start: m.start + pc.s,
+          start: at,
           dur: pc.d,
           base: pc.base,
           dots: pc.dots,
@@ -559,6 +648,7 @@ function eventsOf(chords, heads, ms) {
           heads: rest ? [] : copyHeads(hs, !first, !last),
           beam: -1,
           measure: mi,
+          tuplet: inTrip && pc.d < TPQ ? b : -1,
         });
         first = false;
       }
@@ -651,6 +741,52 @@ function markBeams(evs, ms, next) {
     }
   }
   return id;
+}
+
+// ------------------------------------------------------------------ multi-measure rests
+
+/** Bars where every staff rests (two or more in a row, in one meter) become one
+ * multi-measure rest. Returns the new measures and renumbers the events. */
+/** function multiRests(staves: Staff[], ms: Measure[]) => Measure[] */
+function multiRests(staves, ms) {
+  /** const empty: Boolean[] */
+  const empty = ms.map((_) => true);
+  for (const st of staves) for (const ev of st.events) if (!ev.whole) empty[ev.measure] = false;
+  /** const out: Measure[] */
+  const out = [];
+  /** const map: Int[] */
+  const map = [];
+  let i = 0;
+  while (i < ms.length) {
+    let j = i + 1;
+    if (empty[i]) while (j < ms.length && empty[j] && !ms[j].meter && ms[j].length === ms[i].length) j = j + 1;
+    const m = ms[i];
+    if (j - i >= 2)
+      out.push({ start: m.start, length: m.length * (j - i), num: m.num, den: m.den, beat: m.beat, meter: m.meter, number: m.number, count: j - i });
+    else {
+      j = i + 1;
+      out.push(m);
+    }
+    for (let k = i; k < j; k++) map.push(out.length - 1);
+    i = j;
+  }
+  if (out.length === ms.length) return ms;
+  for (const st of staves) {
+    /** const evs: NEv[] */
+    const evs = [];
+    for (const ev of st.events) {
+      const to = map[ev.measure];
+      if (out[to].count > 1) {
+        if (out[to].start !== ev.start) continue;
+        evs.push({ start: ev.start, dur: out[to].length, base: 192, dots: 0, rest: true, whole: true, heads: [], beam: -1, measure: to, tuplet: -1 });
+      } else {
+        ev.measure = to;
+        evs.push(ev);
+      }
+    }
+    st.events = evs;
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ marks
@@ -758,9 +894,10 @@ export function buildScore(p, scope, grid) {
         if (clefs.length === 1 || (part === 0 ? notes[i].pitch >= SPLIT : notes[i].pitch < SPLIT)) idx.push(i);
       }
       idx.sort((a, b) => a - b);
-      const chords = chordsOf(notes, idx, grid, drum);
+      const trip = grid <= 12 ? tripletBeats(notes, idx, ms, grid) : [];
+      const chords = chordsOf(notes, idx, grid, drum, ms, trip);
       const heads = chords.map((ch) => headsOf(p, notes, ch, fifths, kit));
-      const evs = eventsOf(chords, heads, ms);
+      const evs = eventsOf(chords, heads, ms, trip);
       if (!drum) markAccidentals(evs, fifths);
       beamId = markBeams(evs, ms, beamId);
       staves.push({ channel: ids[0], channels: ids, name: pt.name, color: pt.color, clef: clefs[part], drum: drum, part: part, group: group, events: evs });
@@ -769,7 +906,7 @@ export function buildScore(p, scope, grid) {
 
   return {
     staves: staves,
-    measures: ms,
+    measures: staves.length > 0 ? multiRests(staves, ms) : ms,
     fifths: fifths,
     minor: minor,
     keyName: keyName,

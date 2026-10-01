@@ -46,6 +46,7 @@ check(
   spelledName(61, 0) === "C♯4" && spelledName(63, 0) === "E♭4" && spelledName(66, 0) === "F♯4" && spelledName(68, 0) === "G♯4" && spelledName(70, 0) === "B♭4"
 );
 check("E♭ major spells A♭, not G♯", spelledName(68, -3) === "A♭4");
+check("C minor spells its leading tone B♮, not C♭", spelledName(71, -3) === "B4");
 check("E major spells D♯, not E♭", spelledName(63, 4) === "D♯4");
 check("middle C is step 35, B3 step 34", spell(60, 0).step === 35 && spell(59, 0).step === 34);
 check("B♯3 in C♯ major is a B", spell(60, 7).step === 34 && spell(60, 7).alter === 1);
@@ -57,7 +58,7 @@ check("steps turn back into pitches", stepPitch(35, 0) === 60 && stepPitch(37, -
 
 // ------------------------------------------------------------------ rhythm
 
-const m44 = { start: 0, length: 192, num: 4, den: 4, beat: 48, meter: true };
+const m44 = { start: 0, length: 192, num: 4, den: 4, beat: 48, meter: true, number: 1, count: 1 };
 /** function vals(ps: Piece[]) => String */
 function vals(ps) {
   return ps.map((p) => `${p.d}`).join(",");
@@ -68,7 +69,7 @@ check("a dotted quarter on the beat stays dotted", vals(pieces(m44, 0, 72, false
 check("an offbeat quarter is tied across the beat", vals(pieces(m44, 24, 72, false)) === "24,24");
 check("sixteenth–eighth–sixteenth keeps the eighth", vals(pieces(m44, 0, 12, false)) === "12" && vals(pieces(m44, 12, 36, false)) === "24");
 check("a rest of three beats from the downbeat is a half and a quarter", vals(pieces(m44, 0, 144, true)) === "96,48");
-const m68 = { start: 0, length: 144, num: 6, den: 8, beat: 72, meter: true };
+const m68 = { start: 0, length: 144, num: 6, den: 8, beat: 72, meter: true, number: 1, count: 1 };
 check("6/8: a dotted quarter beat, and a dotted half bar", vals(pieces(m68, 0, 72, false)) === "72" && vals(pieces(m68, 0, 144, false)) === "144");
 
 // ------------------------------------------------------------------ building
@@ -132,6 +133,13 @@ check("6/8: a dotted quarter beat, and a dotted half bar", vals(pieces(m68, 0, 7
   );
   p.score.hidden.push("lead");
   check("a hidden channel has no staff", buildScore(p, PAT, 12).empty);
+}
+
+{
+  const p = song([[60, 0, 4]], 20);
+  const sc = buildScore(p, PAT, 12);
+  check("bars where everything rests join into one multi-measure rest", sc.measures.length === 2 && sc.measures[1].count === 4 && sc.measures[1].number === 2);
+  check("the multi-measure rest is one rest", sc.staves[0].events.length === 2 && sc.staves[0].events[1].whole && sc.staves[0].events[1].dur === 4 * 192);
 }
 
 check("General MIDI drums sit where drummers read them", gmDrum(36).step === 38 && gmDrum(38).step === 42 && gmDrum(42).head === "x");

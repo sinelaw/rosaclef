@@ -12,6 +12,8 @@ import { isBlackKey, noteName, snapTo, snapDown, barAt, barLines } from "../mode
 import { preview, noteOn, noteOff, seek } from "../audio.js";
 import { select, iconButton } from "./widgets.js";
 import { followButton } from "./playlist.js";
+import { dockScore } from "./score.js";
+import { openDock } from "./panes.js";
 import { noteIx, noteIndex } from "#brands";
 
 const view = {
@@ -602,6 +604,10 @@ export function pianoTools(b) {
   iconButton(b, "select", view.tool === "select" ? "small on" : "small", "select", "Select tool (Shift+E)", () => {
     view.tool = "select";
     invalidate();
+  });
+  iconButton(b, "asScore", "small", "score", "Read this pattern as sheet music (F10)", () => {
+    dockScore.scope = "current";
+    openDock("score");
   });
   b.leaf("span", "sl", "label", "Snap");
   select(b, "snap", "", String(state.snap), ["0", "0.125", "0.25", "0.5", "1", "4"], ["Off", "1/32", "1/16", "1/8", "Beat", "Bar"], "Grid snap", (v) => {

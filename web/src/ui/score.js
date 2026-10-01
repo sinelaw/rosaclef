@@ -583,7 +583,10 @@ function onPaperMove(e, v, c, geo) {
 
 /** function barOf(sc: Score, tick: Number) => Int */
 function barOf(sc, tick) {
-  for (let i = sc.measures.length - 1; i >= 0; i--) if (sc.measures[i].start <= tick) return i + 1;
+  for (let i = sc.measures.length - 1; i >= 0; i--) {
+    const m = sc.measures[i];
+    if (m.start <= tick) return m.number + Math.min(m.count - 1, Math.floor((tick - m.start) / (m.length / m.count)));
+  }
   return 1;
 }
 
@@ -1085,7 +1088,7 @@ function setZoom(v, z) {
 /** function scoreView(b: Builder, v: ScoreView) => Undefined */
 export function scoreView(b, v) {
   const sc = scopeOf(v);
-  b.open("div", `score-${v.id}`, `score${v.night ? " night" : ""}${v.side ? " with-side" : ""}`);
+  b.open("div", `score-${v.id}`, `score score-${v.id}${v.night ? " night" : ""}${v.side ? " with-side" : ""}`);
   b.on("pointerdown", (e) => setFocus("score"));
   const geo = pageGeo(v, sc);
   const c = cached(v, sc, geo);
@@ -1136,6 +1139,7 @@ export function scoreTools(b, v) {
     names.push("—");
   }
   select(b, "scope", "score-scope", v.scope, ids, names, "What to show: the song, one playlist track or one pattern", (val) => setScope(v, val));
+  if (v.id === "dock" && v.scope === "current") iconButton(b, "roll", "small", "piano", "Back to the piano roll (F7)", () => revealDock("piano"));
 }
 
 /** The ribbon over the paper: tools, note values, key, grid, zoom, paper or night, sidebar. */

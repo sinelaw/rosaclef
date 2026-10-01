@@ -408,6 +408,11 @@ function measureCols(sc, geos) {
       const rod = k + 1 < order.length ? right + nextLeft + 0.3 : Math.max(right + 1.1, order.length === 1 ? 7 : 0);
       cols.push({ tick: order[k], spring: spring(next - order[k]), rod: rod, left: at >= 0 ? lefts[m][at] : 0 });
     }
+    // A multi-measure rest gets a fixed, generous width.
+    if (ms.count > 1) {
+      cols[0].spring = 11;
+      cols[0].rod = 11;
+    }
     const meterW = ms.meter && m > 0 ? timeSigWidth(ms) + 1.2 : 0;
     out.push({ cols: cols, lead: 1.1 + cols[0].left, meterW: meterW });
   }
@@ -721,7 +726,7 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
     glyph(sysP, G.bracketBottom, bx, bottom + 0.5, "");
   }
   emit(runs, sysP.prims, 0);
-  if (!first) labels.push({ x: indent + 0.1, y: top - 2.3, text: String(a + 1), cls: "mnum", anchor: "start", color: "" });
+  if (!first) labels.push({ x: indent + 0.1, y: top - 2.3, text: String(sc.measures[a].number), cls: "mnum", anchor: "start", color: "" });
 
   // ---- colored passages
   /** const bands: Band[] */
@@ -872,10 +877,10 @@ function drawStaff(sc, st, si, geo, firstEv, a, b, p, hb, colAt, bars, meterAt, 
     const ev = evs[i];
     const cx = colAt(ev.start);
     if (ev.rest) {
-      drawRest(p, ev, cx, mcs[ev.measure], bars[ev.measure - a], colAt);
+      drawRest(p, ev, cx, mcs[ev.measure], bars[ev.measure - a], sc.measures[ev.measure].count);
       continue;
     }
-    drawChord(sc, st, si, geo[i], ev, cx, tips[i], p, hb);
+    tips[i] = drawChord(sc, st, si, geo[i], ev, cx, tips[i], p, hb);
     // Ties to the next event (or off the end of the system).
     for (let h = 0; h < ev.heads.length; h++) {
       const head = ev.heads[h];
@@ -897,6 +902,58 @@ function drawStaff(sc, st, si, geo, firstEv, a, b, p, hb, colAt, bars, meterAt, 
       }
     }
   }
+  drawTuplets(st, geo, evs, i0, i1, p, colAt, tips);
+}
+
+/** Triplets: a 3 over (or under) the beam of a beamed group, else in a bracket. */
+/** function drawTuplets(st: Staff, geo: EvGeo[], evs: NEv[], i0: Int, i1: Int, p: Painter, colAt: (Int) => Number, tips: Number[]) => Undefined */
+function drawTuplets(st, geo, evs, i0, i1, p, colAt, tips) {
+  let k = i0;
+  while (k < i1) {
+    const id = evs[k].tuplet;
+    if (id < 0) {
+      k = k + 1;
+      continue;
+    }
+    let j = k;
+    while (j < i1 && evs[j].tuplet === id) j = j + 1;
+    // Which side: the stems' side of the notes (above when they point up).
+    let up = 0;
+    let beam = evs[k].beam;
+    for (let i = k; i < j; i++) {
+      if (!evs[i].rest) up = up + (geo[i].up ? 1 : -1);
+      if (evs[i].beam !== beam || evs[i].rest) beam = -1;
+    }
+    const above = st.drum || up >= 0;
+    const x0 = colAt(evs[k].start);
+    const last = evs[j - 1];
+    const x1 = colAt(last.start) + (last.heads.length > 0 ? headGlyph(last, last.heads[0]).x1 : 1.1);
+    const g = G.tuplet3;
+    const cx = (x0 + x1) / 2;
+    // The farthest ink of the group on that side.
+    let edge = above ? 0 : 4;
+    for (let i = k; i < j; i++) {
+      const ev = evs[i];
+      for (const y of geo[i].ys) edge = above ? Math.min(edge, y - 0.8) : Math.max(edge, y + 0.8);
+      if (!ev.rest && ev.base < 192 && geo[i].up === above) edge = above ? Math.min(edge, tips[i]) : Math.max(edge, tips[i]);
+    }
+    if (beam >= 0 && j - k >= 2) {
+      // On the beam's side, a 3 alone.
+      const y = above ? edge - 0.55 : edge + 0.55 + (g.bottom - g.top);
+      glyph(p, g, cx - (g.x1 - g.x0) / 2, y, "");
+    } else {
+      const y = above ? edge - 1.1 : edge + 1.1;
+      const half = (g.x1 - g.x0) / 2 + 0.3;
+      const hook = above ? 0.55 : -0.55;
+      const t = 0.1;
+      rect(p, x0 - 0.2, y - t / 2, cx - half - (x0 - 0.2), t, "");
+      rect(p, cx + half, y - t / 2, x1 + 0.2 - (cx + half), t, "");
+      rect(p, x0 - 0.2, Math.min(y, y + hook), t, Math.abs(hook), "");
+      rect(p, x1 + 0.2 - t, Math.min(y, y + hook), t, Math.abs(hook), "");
+      glyph(p, g, cx - (g.x1 - g.x0) / 2, y + (g.bottom - g.top) / 2 - 0.05, "");
+    }
+    k = j;
+  }
 }
 
 /** Ties curve away from the stem; in a chord, the upper half up and the lower half down. */
@@ -906,8 +963,18 @@ function tieDir(ev, g, h) {
   return h >= ev.heads.length / 2 ? -1 : 1;
 }
 
-/** function drawRest(p: Painter, ev: NEv, cx: Number, mc: MCols, bar: Number, colAt: (Int) => Number) => Undefined */
-function drawRest(p, ev, cx, mc, bar, colAt) {
+/** function drawRest(p: Painter, ev: NEv, cx: Number, mc: MCols, bar: Number, count: Int) => Undefined */
+function drawRest(p, ev, cx, mc, bar, count) {
+  if (ev.whole && count > 1) {
+    // The H-bar, with its count above the staff.
+    const left = cx - mc.cols[0].left + 0.6;
+    const right = bar - 1.4;
+    rect(p, left, 1.55, right - left, 0.9, "");
+    rect(p, left, 1, THIN, 2, "");
+    rect(p, right - THIN, 1, THIN, 2, "");
+    drawDigits(p, count, (left + right) / 2, -1.6, "");
+    return undefined;
+  }
   if (ev.whole) {
     const g = G.restWhole;
     const left = cx - mc.cols[0].left;
@@ -920,10 +987,11 @@ function drawRest(p, ev, cx, mc, bar, colAt) {
   if (ev.dots > 0) glyph(p, G.augmentationDot, cx + g.x1 + 0.3, 1.5, "");
 }
 
-/** function drawChord(sc: Score, st: Staff, si: Int, g: EvGeo, ev: NEv, cx: Number, tip: Number, p: Painter, hb: HeadBox[]) => Undefined */
+/** Draw a note or chord; returns where its stem ends (its outer head without one). */
+/** function drawChord(sc: Score, st: Staff, si: Int, g: EvGeo, ev: NEv, cx: Number, tip: Number, p: Painter, hb: HeadBox[]) => Number */
 function drawChord(sc, st, si, g, ev, cx, tip, p, hb) {
   const n = ev.heads.length;
-  if (n === 0) return undefined;
+  if (n === 0) return 2;
   const color = noteColor(sc, ev.heads[0].src);
   const hw = headGlyph(ev, ev.heads[0]).x1;
   const up = g.up;
@@ -1004,7 +1072,7 @@ function drawChord(sc, st, si, g, ev, cx, tip, p, hb) {
       for (let d = 0; d < ev.dots; d++) glyph(p, G.augmentationDot, dx + d * 0.5, dy, color);
     }
   }
-  if (!stemmed) return undefined;
+  if (!stemmed) return up ? hi : lo;
   // Stem and flag.
   const sx = up ? cx + hw - STEM : cx;
   const beamed = ev.beam >= 0;
@@ -1013,11 +1081,12 @@ function drawChord(sc, st, si, g, ev, cx, tip, p, hb) {
     const end = beamed ? tip : Math.min(hi - STEM_LEN - (lv >= 2 ? (lv - 1) * 0.5 : 0), 2);
     rect(p, sx, end, STEM, lo - STEM_Y - end, color);
     if (!beamed && lv > 0) glyph(p, flagGlyph(ev.base, true), sx, end, color);
-  } else {
-    const end = beamed ? tip : Math.max(lo + STEM_LEN + (lv >= 2 ? (lv - 1) * 0.5 : 0), 2);
-    rect(p, sx, hi + STEM_Y, STEM, end - hi - STEM_Y, color);
-    if (!beamed && lv > 0) glyph(p, flagGlyph(ev.base, false), sx, end, color);
+    return end;
   }
+  const end = beamed ? tip : Math.max(lo + STEM_LEN + (lv >= 2 ? (lv - 1) * 0.5 : 0), 2);
+  rect(p, sx, hi + STEM_Y, STEM, end - hi - STEM_Y, color);
+  if (!beamed && lv > 0) glyph(p, flagGlyph(ev.base, false), sx, end, color);
+  return end;
 }
 
 /** Beam a group of events [k, j): a line over the stems, sloped with the

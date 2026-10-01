@@ -1,0 +1,104 @@
+// End-to-end smoke test of the Score view in a real browser, against the
+// browser-only studio (docs/static.md). Not part of `npm test`: it needs
+// Playwright and a served build.
+//
+//   tools/build-static.sh && python3 -m http.server -d dist 8765 &
+//   node web/test/score-smoke.mjs http://localhost:8765/
+//
+// Set CHROMIUM to use a specific browser binary.
+
+import { chromium } from "playwright";
+
+const base = process.argv[2] || "http://localhost:8765/";
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
+const ctx = await browser.newContext({ viewport: { width: 1500, height: 950 } });
+const page = await ctx.newPage();
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e)));
+const ok = (s) => console.log("ok  ", s);
+const count = (sel) => page.locator(sel).count();
+
+await page.goto(base);
+await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+
+// The whole song beside the playlist.
+await page.click("button.tab:has-text('Score')");
+await page.waitForSelector(".score-top .score-sys", { timeout: 20000 });
+await page.waitForFunction(() => document.fonts.check("16px Bravura"), null, { timeout: 20000 });
+const systems = await count(".score-top .score-sys");
+if (systems < 2) throw new Error(`expected several systems, saw ${systems}`);
+ok(`the song is engraved (${systems} systems in view, Bravura loaded)`);
+const title = await page.textContent(".score-top .score-title");
+if (!title || title.trim() === "") throw new Error("no title");
+ok(`the page is titled "${title}"`);
+
+// The pattern of the piano roll, in the dock (F10); write a note into it.
+await page.keyboard.press("Control+Alt+KeyP");
+await page.keyboard.press("F10");
+await page.waitForSelector(".score-dock .score-sys");
+const heads = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll(".score-dock text.glyphs:not(.ghost):not(.sel)")].reduce(
+      (n, t) => n + [...t.textContent].filter((c) => c === "\u{e0a4}" || c === "\u{e0a3}" || c === "\u{e0a2}").length,
+      0
+    )
+  );
+const before = await heads();
+await page.click(".score-dock .score-ribbon button[title^='Write']");
+const sys = await page.locator(".score-dock .score-sys").first().boundingBox();
+// On the first staff, a little into the first bar.
+const rowY = sys.y + sys.height * 0.5;
+await page.mouse.move(sys.x + sys.width * 0.42, rowY);
+await page.mouse.click(sys.x + sys.width * 0.42, rowY);
+await page.waitForTimeout(400);
+const after = await heads();
+if (after <= before) throw new Error(`writing a note added no notehead (${before} → ${after})`);
+ok(`Write adds a note (${before} → ${after} noteheads)`);
+await page.keyboard.press("Control+z");
+await page.waitForTimeout(400);
+if ((await heads()) !== before) throw new Error("undo did not remove the note");
+ok("Ctrl+Z takes it back");
+
+// Color a passage: drag across the music, pick a color.
+await page.click(".score-dock .score-ribbon button[title^='Select']");
+const s0 = await page.locator(".score-dock .score-sys").first().boundingBox();
+await page.mouse.move(s0.x + s0.width * 0.3, s0.y + s0.height * 0.45);
+await page.mouse.down();
+await page.mouse.move(s0.x + s0.width * 0.5, s0.y + s0.height * 0.5, { steps: 6 });
+await page.mouse.move(s0.x + s0.width * 0.7, s0.y + s0.height * 0.55, { steps: 6 });
+await page.mouse.up();
+await page.waitForSelector(".score-dock .score-rangebar");
+await page.click(".score-dock .score-rangebar .score-swatch >> nth=1");
+await page.waitForSelector(".score-dock .score-band");
+await page.waitForSelector(".score-dock .score-mark");
+ok("dragging across the music colors a passage, listed under Colors");
+await page.keyboard.press("Control+z");
+await page.waitForTimeout(400);
+if ((await count(".score-dock .score-band")) !== 0) throw new Error("undo did not remove the color");
+ok("Ctrl+Z removes the color");
+
+// Hide a part.
+const parts = await count(".score-dock .score-part");
+if (parts < 1) throw new Error("no parts listed");
+await page.click(".score-dock .score-part .score-eye >> nth=0");
+await page.waitForSelector(".score-dock .score-empty");
+ok("hiding the only part leaves an empty page");
+await page.keyboard.press("Control+z");
+await page.waitForSelector(".score-dock .score-sys");
+
+// Night ink, and the phone layout.
+await page.click(".score-dock .score-ribbon button[title^='Night']");
+await page.waitForSelector(".score-dock.night");
+ok("night ink");
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForSelector(".navbar");
+await page.click(".nav-item[aria-label=Score]");
+await page.waitForSelector(".score-dock .score-sys");
+ok("the phone layout shows the score from its navigation bar");
+
+await browser.close();
+if (errors.length > 0) {
+  console.error("page errors:", errors);
+  process.exit(1);
+}
+console.log("all score checks passed");
