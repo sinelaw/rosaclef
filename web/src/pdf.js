@@ -1,14 +1,19 @@
 // Sheet music as a PDF: the score engraved again for a printed page (A4 or
 // US Letter), paginated, and written as PDF objects.
 //
-// Everything is vector. The music glyphs are drawn from Bravura's outlines
+// Two kinds. The plain one is all vector: the music glyphs are drawn from Bravura's outlines
 // (`d` in smufl.js), each defined once as a form and placed wherever it
 // appears, so no font is embedded and every viewer shows the same shapes.
 // Text uses the PDF standard Times faces. The platform layer compresses
 // the streams and writes the file (downloadPdf in web/lib/platform.js).
+//
+// The other is drawn as on screen: each page as SVG (pageSvg), on textured
+// paper and through the ink filter (ink.js), which the platform layer turns
+// into an image per page (downloadImagePdf).
 
 import { G, GLYPHS } from "./smufl.js";
 import { engrave, GLOSS, SHEEN } from "./engrave.js";
+import { inkFilter, markup, glintOpacity, PAPER } from "./ink.js";
 
 /** What heads the first page. `bpm` 0: no tempo mark. */
 /** type PdfInfo = { title: String, subtitle: String, author: String, bpm: Number } */
@@ -167,9 +172,12 @@ function rgb(hex, scale) {
 /** A system placed on a page: its index and the y (points from the page top) of its top. */
 /** type OnPage = { sys: Int, top: Number } */
 
-/** Lay a score out on pages and write the PDF objects (catalog first, document info last). */
-/** function scorePdf(sc: Score, info: PdfInfo, paper: String, hideEmpty: Boolean, m: Measurer) => PdfObj[] */
-export function scorePdf(sc, info, paper, hideEmpty, m) {
+/** A score laid out on pages: their size (points), margins, the staff space, the engraving, and its systems page by page. */
+/** type PdfLayout = { w: Number, h: Number, left: Number, top: Number, bottom: Number, sp: Number, page: Page, pages: OnPage[][] } */
+
+/** Engrave a score for a printed page (A4 or US Letter) and share its systems out among pages. */
+/** function pdfLayout(sc: Score, paper: String, hideEmpty: Boolean) => PdfLayout */
+export function pdfLayout(sc, paper, hideEmpty) {
   const W = paper === "letter" ? 612 : 595.28;
   const H = paper === "letter" ? 792 : 841.89;
   const left = 17 * MM;
@@ -206,6 +214,72 @@ export function scorePdf(sc, info, paper, hideEmpty, m) {
     const extra = Math.min(spare / (list.length - 1), 6 * sp);
     for (let k = 1; k < list.length; k++) list[k].top = list[k].top + extra * k;
   }
+  return { w: W, h: H, left: left, top: top, bottom: bottom, sp: sp, page: page, pages: pages };
+}
+
+/** A line of text on a page: its face, size, baseline (points from the top left), anchor and color (r g b, 0..1). */
+/** type PageText = { face: String, size: Number, x: Number, y: Number, text: String, anchor: String, color: String } */
+
+const SOFT = "0.35 0.31 0.26";
+/** The quarter note of the tempo mark, in points per staff space of its glyph. */
+const MET = 2.6;
+
+/** The words around the music on page `p`: the title block on the first, a page number on the others. */
+/** function pageTexts(lay: PdfLayout, p: Int, info: PdfInfo) => PageText[] */
+function pageTexts(lay, p, info) {
+  const W = lay.w;
+  const H = lay.h;
+  /** const out: PageText[] */
+  const out = [];
+  if (p > 0) {
+    out.push({ face: "Times-Roman", size: 9, x: W / 2, y: H - lay.bottom * 0.5, text: String(p + 1), anchor: "middle", color: SOFT });
+    return out;
+  }
+  out.push({ face: "Times-Bold", size: 21, x: W / 2, y: lay.top + 8 * MM, text: info.title, anchor: "middle", color: INK });
+  if (info.subtitle !== "") out.push({ face: "Times-Italic", size: 10.5, x: W / 2, y: lay.top + 14 * MM, text: info.subtitle, anchor: "middle", color: SOFT });
+  const row = lay.top + 22 * MM;
+  if (info.bpm > 0)
+    out.push({
+      face: "Times-Bold",
+      size: 10,
+      x: lay.left + G.metNoteQuarterUp.x1 * MET + 2,
+      y: row,
+      text: `= ${Math.round(info.bpm)}`,
+      anchor: "start",
+      color: INK,
+    });
+  if (info.author !== "") out.push({ face: "Times-Italic", size: 10, x: W - lay.left, y: row, text: info.author, anchor: "end", color: SOFT });
+  out.push({ face: "Times-Italic", size: 7, x: W / 2, y: H - lay.bottom * 0.45, text: "Engraved with Rosaclef", anchor: "middle", color: "0.55 0.5 0.44" });
+  return out;
+}
+
+/** Face and size of a label in a system (staff spaces). */
+/** function labelFace(cls: String) => String */
+function labelFace(cls) {
+  return cls === "volta" ? "Times-Bold" : cls === "reptimes" ? "Times-BoldItalic" : "Times-Italic";
+}
+
+/** function labelSize(cls: String) => Number */
+function labelSize(cls) {
+  return cls === "mnum" ? 1.25 : cls === "sname short" ? 1.3 : cls === "volta" ? 1.45 : 1.55;
+}
+
+/** The color of a run of ink: plain, the staff's, or a passage's (deepened, as printed). */
+/** function inkRgb(color: String) => String */
+function inkRgb(color) {
+  return color === "" ? INK : color === "staff" ? STAFF : rgb(color, 0.68);
+}
+
+/** Lay a score out on pages and write the PDF objects (catalog first, document info last). */
+/** function scorePdf(sc: Score, info: PdfInfo, paper: String, hideEmpty: Boolean, m: Measurer) => PdfObj[] */
+export function scorePdf(sc, info, paper, hideEmpty, m) {
+  const lay = pdfLayout(sc, paper, hideEmpty);
+  const W = lay.w;
+  const H = lay.h;
+  const left = lay.left;
+  const sp = lay.sp;
+  const page = lay.page;
+  const pages = lay.pages;
 
   // Objects: 1 catalog, 2 pages, 3–6 fonts, 7 the bands' transparency, then glyph forms, resources, page contents, info.
   /** const objs: PdfObj[] */
@@ -242,19 +316,10 @@ export function scorePdf(sc, info, paper, hideEmpty, m) {
   for (let p = 0; p < pages.length; p++) {
     /** const ops: String[] */
     const ops = [];
-    if (p === 0) {
-      ops.push(textAt(m, "Times-Bold", 21, W / 2, H - top - 8 * MM, info.title, "middle", INK));
-      if (info.subtitle !== "") ops.push(textAt(m, "Times-Italic", 10.5, W / 2, H - top - 14 * MM, info.subtitle, "middle", "0.35 0.31 0.26"));
-      const row = H - top - 22 * MM;
-      if (info.bpm > 0) {
-        // A quarter note (scaled to the text) and the tempo.
-        const s = 2.6;
-        ops.push(`${INK} rg q ${n(s)} 0 0 ${n(-s)} ${n(left)} ${n(row)} cm ${glyphName(G.metNoteQuarterUp.c)} Do Q`);
-        ops.push(textAt(m, "Times-Bold", 10, left + G.metNoteQuarterUp.x1 * s + 2, row, `= ${Math.round(info.bpm)}`, "start", INK));
-      }
-      if (info.author !== "") ops.push(textAt(m, "Times-Italic", 10, W - left, row, info.author, "end", "0.35 0.31 0.26"));
-      ops.push(textAt(m, "Times-Italic", 7, W / 2, bottom * 0.45, "Engraved with Rosaclef", "middle", "0.55 0.5 0.44"));
-    } else ops.push(textAt(m, "Times-Roman", 9, W / 2, bottom * 0.5, String(p + 1), "middle", "0.35 0.31 0.26"));
+    for (const t of pageTexts(lay, p, info)) ops.push(textAt(m, t.face, t.size, t.x, H - t.y, t.text, t.anchor, t.color));
+    // The tempo's quarter note, scaled to its text.
+    if (p === 0 && info.bpm > 0)
+      ops.push(`${INK} rg q ${n(MET)} 0 0 ${n(-MET)} ${n(left)} ${n(H - lay.top - 22 * MM)} cm ${glyphName(G.metNoteQuarterUp.c)} Do Q`);
 
     for (const pl of pages[p]) {
       const s = page.systems[pl.sys];
@@ -264,7 +329,7 @@ export function scorePdf(sc, info, paper, hideEmpty, m) {
       for (const ink of s.inks) {
         // The wet ink's gloss is for the screen; print is dry.
         if (ink.color === GLOSS || ink.color === SHEEN) continue;
-        const color = ink.color === "" ? INK : ink.color === "staff" ? STAFF : rgb(ink.color, 0.68);
+        const color = inkRgb(ink.color);
         if (ink.d !== "") ops.push(`${color} rg\n${pathOps(ink.d)}\nf`);
         if (ink.text === "") continue;
         const xs = ink.xs.split(" ");
@@ -278,12 +343,12 @@ export function scorePdf(sc, info, paper, hideEmpty, m) {
       }
       for (const br of s.braces) ops.push(`${INK} rg q ${n(br.s)} 0 0 ${n(br.s)} ${n(br.x)} ${n(br.y)} cm ${glyphName(G.brace.c)} Do Q`);
       for (const l of s.labels) {
-        const face = l.cls === "volta" ? "Times-Bold" : l.cls === "reptimes" ? "Times-BoldItalic" : "Times-Italic";
-        const size = l.cls === "mnum" ? 1.25 : l.cls === "sname short" ? 1.3 : l.cls === "volta" ? 1.45 : 1.55;
+        const face = labelFace(l.cls);
+        const size = labelSize(l.cls);
         const w = m(face, shown(l.text)) * size;
         const x0 = l.anchor === "end" ? l.x - w : l.anchor === "middle" ? l.x - w / 2 : l.x;
         // Text is drawn upright again inside the flipped system.
-        ops.push(`${l.cls === "mnum" ? "0.35 0.31 0.26" : INK} rg BT ${fontRef(face)} ${n(size)} Tf 1 0 0 -1 ${n(x0)} ${n(l.y)} Tm ${pdfString(l.text)} Tj ET`);
+        ops.push(`${l.cls === "mnum" ? SOFT : INK} rg BT ${fontRef(face)} ${n(size)} Tf 1 0 0 -1 ${n(x0)} ${n(l.y)} Tm ${pdfString(l.text)} Tj ET`);
       }
       for (const b of s.bands) {
         if (b.label === "" || !b.first) continue;
@@ -299,4 +364,143 @@ export function scorePdf(sc, info, paper, hideEmpty, m) {
   objs[1] = { head: `<< /Type /Pages /Kids [${kids.join(" ")}] /Count ${kids.length} >>`, stream: "" };
   objs.push({ head: `<< /Title ${pdfString(info.title)} /Creator (Rosaclef Studio) /Producer (Rosaclef) >>`, stream: "" });
   return objs;
+}
+
+// ------------------------------------------------------------------ as on screen
+
+/** The look of a page drawn as on screen: wet or dry ink, and the wet ink's knobs (see ink.js). */
+/** type PageLook = { wet: Boolean, gloss: Number, shine: Number } */
+
+/** "r g b" (0..1) as a CSS color. */
+/** function css(c: String) => String */
+function css(c) {
+  const v = c.split(" ").map((x) => Math.round(Number(x) * 255));
+  return `rgb(${v[0]},${v[1]},${v[2]})`;
+}
+
+/** Text as XML character data. */
+/** function esc(s: String) => String */
+function esc(s) {
+  return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+const SERIF = "'Times New Roman', 'Liberation Serif', Tinos, Times, serif";
+
+/** SVG text attributes for a standard face. */
+/** function faceAttrs(face: String, size: Number) => String */
+function faceAttrs(face, size) {
+  const italic = face.includes("Italic") ? ` font-style="italic"` : "";
+  const bold = face.includes("Bold") ? ` font-weight="bold"` : "";
+  return `font-family="${SERIF}" font-size="${n(size)}"${italic}${bold}`;
+}
+
+/**
+ * Page `p` as an SVG document of `w`·`scale` by `h`·`scale` pixels (its units
+ * are points): the paper with its textures and toned edges, and the music
+ * drawn as on screen — through the ink filter, with the wet ink's glints.
+ */
+/** function pageSvg(lay: PdfLayout, p: Int, info: PdfInfo, look: PageLook, scale: Number) => String */
+export function pageSvg(lay, p, info, look, scale) {
+  const W = lay.w;
+  const H = lay.h;
+  const sp = lay.sp;
+  /** const used: Int[] */
+  const used = [];
+  /** A placed glyph, defined once below. */
+  /** function use(ch: String, x: String, y: String) => String */
+  function use(ch, x, y) {
+    const i = GLYPHS.findIndex((g) => g.c === ch);
+    if (i < 0) return "";
+    if (!used.includes(i)) used.push(i);
+    return `<use href="#G${i}" x="${x}" y="${y}"/>`;
+  }
+  /** const body: String[] */
+  const body = [];
+  for (const t of pageTexts(lay, p, info)) {
+    body.push(`<text x="${n(t.x)}" y="${n(t.y)}" text-anchor="${t.anchor}" fill="${css(t.color)}" ${faceAttrs(t.face, t.size)}>${esc(t.text)}</text>`);
+  }
+  if (p === 0 && info.bpm > 0) {
+    body.push(`<g transform="translate(${n(lay.left)} ${n(lay.top + 22 * MM)}) scale(${MET})" fill="${css(INK)}">${use(G.metNoteQuarterUp.c, "0", "0")}</g>`);
+  }
+  for (const pl of lay.pages[p]) {
+    const s = lay.page.systems[pl.sys];
+    // System coordinates are staff spaces, y down, like the page's.
+    body.push(`<g transform="translate(${n(lay.left)} ${n(pl.top)}) scale(${n(sp)})">`);
+    for (const b of s.bands)
+      body.push(`<rect x="${n(b.x)}" y="${n(b.y)}" width="${n(b.w)}" height="${n(b.h)}" rx="0.8" fill="${css(rgb(b.color, 1))}" fill-opacity="0.16"/>`);
+    // Staff lines are hairlines: drawn plainly, as on screen.
+    for (const ink of s.inks) if (ink.color === "staff" && ink.d !== "") body.push(`<path d="${ink.d}" fill="${css(STAFF)}"/>`);
+    body.push(`<g filter="url(#ink)">`);
+    for (const ink of s.inks) {
+      if (ink.color === GLOSS || ink.color === SHEEN || ink.color === "staff") continue;
+      const fill = css(inkRgb(ink.color));
+      if (ink.d !== "") body.push(`<path d="${ink.d}" fill="${fill}"/>`);
+      if (ink.text === "") continue;
+      const xs = ink.xs.split(" ");
+      const ys = ink.ys.split(" ");
+      const chars = ink.text.split("");
+      body.push(`<g fill="${fill}">`);
+      for (let k = 0; k < chars.length && k < xs.length; k++) body.push(use(chars[k], xs[k], ys[k]));
+      body.push("</g>");
+    }
+    for (const br of s.braces)
+      body.push(`<g transform="translate(${n(br.x)} ${n(br.y)}) scale(${n(br.s)})" fill="${css(INK)}">${use(G.brace.c, "0", "0")}</g>`);
+    for (const l of s.labels) {
+      const color = l.cls === "mnum" ? SOFT : INK;
+      body.push(
+        `<text x="${n(l.x)}" y="${n(l.y)}" text-anchor="${l.anchor}" fill="${css(color)}" ${faceAttrs(labelFace(l.cls), labelSize(l.cls))}>${esc(l.text)}</text>`
+      );
+    }
+    for (const b of s.bands) {
+      if (b.label === "" || !b.first) continue;
+      body.push(
+        `<text x="${n(b.x + 0.5)}" y="${n(b.y - 0.45)}" fill="${css(rgb(b.color, 0.68))}" ${faceAttrs("Times-BoldItalic", 1.35)}>${esc(b.label)}</text>`
+      );
+    }
+    body.push("</g>");
+    // The wet ink's glints, in light over the music.
+    if (look.wet) {
+      for (const run of [SHEEN, GLOSS]) {
+        const ink = s.inks.find((x) => x.color === run);
+        if (ink) body.push(`<path d="${ink.d}" fill="#fffcf2" fill-opacity="${n(0.9 * glintOpacity(run, look.gloss, look.shine))}" filter="url(#${run})"/>`);
+      }
+    }
+    body.push("</g>");
+  }
+
+  // The paper: its tiles scaled with the music, as they are on screen at 100% (a staff space of 7 pixels).
+  const k = sp / 7;
+  /** function tile(id: String, t: Tile) => String */
+  function tile(id, t) {
+    const size = n(t.size * k);
+    return `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${size}" height="${size}"><image href="${t.url}" width="${size}" height="${size}"/></pattern>`;
+  }
+  const defs = [
+    markup(inkFilter("ink", look.wet, false, look.gloss, look.shine)),
+    `<filter id="sheen"><feGaussianBlur stdDeviation="0.09"/></filter>`,
+    `<filter id="gloss"><feGaussianBlur stdDeviation="0.025"/></filter>`,
+    `<filter id="edge" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="${n(3 * sp)}"/></filter>`,
+    tile("tooth", PAPER.tooth),
+    tile("mottle", PAPER.mottle),
+    tile("grain", PAPER.grain),
+  ];
+  for (const i of used) defs.push(`<path id="G${i}" d="${GLYPHS[i].d}"/>`);
+  const paper = [
+    `<rect width="${n(W)}" height="${n(H)}" fill="${PAPER.color}"/>`,
+    `<rect width="${n(W)}" height="${n(H)}" fill="url(#tooth)"/>`,
+    `<rect width="${n(W)}" height="${n(H)}" fill="url(#mottle)"/>`,
+    `<rect width="${n(W)}" height="${n(H)}" fill="url(#grain)"/>`,
+    // Edges warmed a little, as paper tones with age.
+    `<rect width="${n(W)}" height="${n(H)}" fill="none" stroke="rgb(150,106,38)" stroke-opacity="0.22" stroke-width="${n(6 * sp)}" filter="url(#edge)"/>`,
+  ];
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(W * scale)}" height="${Math.round(H * scale)}" viewBox="0 0 ${n(W)} ${n(H)}">` +
+    `<defs>${defs.join("")}</defs>${paper.join("")}${body.join("")}</svg>`
+  );
+}
+
+/** The document info of a PDF titled `title`. */
+/** function pdfInfo(title: String) => String */
+export function pdfInfo(title) {
+  return `<< /Title ${pdfString(title)} /Creator (Rosaclef Studio) /Producer (Rosaclef) >>`;
 }

@@ -108,24 +108,64 @@ await page.keyboard.press("Control+z");
 await page.waitForFunction(() => document.querySelectorAll(".score-dock .score-band").length === 0);
 ok("Ctrl+Z removes the color");
 
+// Zoom magnifies the page as it is laid out; the size lays it out again.
+const layout = () => page.evaluate(() => document.querySelector(".score-dock .score-sys").getAttribute("viewBox"));
+const widthOf = () => page.evaluate(() => document.querySelector(".score-dock .score-paper").getBoundingClientRect().width);
+const laid = await layout();
+const w100 = await widthOf();
+await page.click(".score-dock .score-ribbon button[title^='Zoom in']");
+await page.click(".score-dock .score-ribbon button[title^='Zoom in']");
+await page.waitForFunction((w) => document.querySelector(".score-dock .score-paper").getBoundingClientRect().width > w * 1.15, w100);
+if ((await layout()) !== laid) throw new Error("zooming laid the page out again");
+ok(`zoom magnifies the page (${await page.textContent(".score-dock .score-zoom")}), bars stay where they are`);
+// Zoomed in, the hand drags the page about.
+await page.click(".score-dock .score-ribbon button[title^='Hand']");
+const view = await page.locator(".score-dock .score-scroll").boundingBox();
+const scrolled = () => page.evaluate(() => document.querySelector(".score-dock .score-scroll").scrollLeft);
+const left0 = await scrolled();
+await page.mouse.move(view.x + view.width * 0.6, view.y + view.height * 0.5);
+await page.mouse.down();
+await page.mouse.move(view.x + view.width * 0.3, view.y + view.height * 0.5, { steps: 8 });
+await page.mouse.up();
+await page.waitForFunction((l) => document.querySelector(".score-dock .score-scroll").scrollLeft > l + 50, left0);
+ok("the hand drags the page about");
+await page.click(".score-dock .score-ribbon button[title^='Select']");
+await page.dblclick(".score-dock .score-zoom");
+await page.waitForFunction(() => document.querySelector(".score-dock .score-zoom").textContent === "100%");
+await page.click(".score-dock .score-ribbon button[title^='Larger music']");
+await page.waitForFunction((v) => document.querySelector(".score-dock .score-sys").getAttribute("viewBox") !== v, laid);
+await page.click(".score-dock .score-ribbon button[title^='Smaller music']");
+await page.waitForFunction((v) => document.querySelector(".score-dock .score-sys").getAttribute("viewBox") === v, laid);
+ok("the music's size lays the page out again");
+
+/** The bytes of a download. */
+const read = (dl) =>
+  new Promise((resolve, reject) => {
+    dl.createReadStream()
+      .then((stream) => {
+        const chunks = [];
+        stream.on("data", (c) => chunks.push(c));
+        stream.on("end", () => resolve(Buffer.concat(chunks)));
+        stream.on("error", reject);
+      })
+      .catch(reject);
+  });
+
 // Download it as a PDF.
-const [pdf] = await Promise.all([page.waitForEvent("download"), page.click(".score-dock .score-ribbon button[title^='Download as PDF']")]);
-const bytes = await new Promise((resolve, reject) => {
-  pdf
-    .createReadStream()
-    .then((stream) => {
-      const chunks = [];
-      stream.on("data", (c) => chunks.push(c));
-      stream.on("end", () => resolve(Buffer.concat(chunks)));
-      stream.on("error", reject);
-    })
-    .catch(reject);
-});
+await page.click(".score-dock .score-ribbon button[title^='Download as PDF']");
+const [pdf] = await Promise.all([page.waitForEvent("download"), page.click(".score-dock .score-pdfitem:has-text('Vector')")]);
+const bytes = await read(pdf);
 const text = bytes.toString("latin1");
 if (!text.startsWith("%PDF-") || !text.trimEnd().endsWith("%%EOF") || !text.includes("/Type /Page ")) throw new Error("the download is not a PDF");
 if (!/^[\x20-\x7e]+\.pdf$/.test(pdf.suggestedFilename()) || pdf.suggestedFilename() === "download.pdf")
   throw new Error(`the PDF is not named after the score: ${pdf.suggestedFilename()}`);
 ok(`the score downloads as ${pdf.suggestedFilename()} (${Math.round(bytes.length / 1024)} kB)`);
+// Or as on screen: an image a page.
+await page.click(".score-dock .score-ribbon button[title^='Download as PDF']");
+const [shown] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click(".score-dock .score-pdfitem:has-text('As on screen')")]);
+const img = (await read(shown)).toString("latin1");
+if (!img.startsWith("%PDF-") || !img.includes("/Subtype /Image") || !img.includes("/DCTDecode")) throw new Error("the PDF as on screen holds no page images");
+ok(`or as on screen, an image a page (${Math.round(img.length / 1024)} kB)`);
 
 // Hide a part.
 const parts = await count(".score-dock .score-part");
@@ -138,8 +178,13 @@ await page.waitForSelector(".score-dock .score-sys");
 
 // One ink at a time: wet (glossy notes) by default, or dry (faded, no gloss).
 await page.waitForSelector(".score-dock path.gloss");
+// Its gloss and shine are knobs on the ribbon, shown while it is wet.
+await page.locator(".score-dock input.score-slider").nth(1).fill("0.1");
+await page.waitForFunction(() => document.querySelector(".score-dock feSpecularLighting")?.getAttribute("specularExponent") === "110");
+ok("the shine of the wet ink tightens to a speck");
 await page.click(".score-dock .score-ribbon button[title^='Ink:']");
 await page.waitForFunction(() => document.querySelector(".score-dock path.gloss") === null);
+if ((await count(".score-dock input.score-slider")) !== 0) throw new Error("the wet ink's knobs show on dry ink");
 ok("the ink is wet and glossy, or dry and faded");
 
 // Night ink, and the phone layout.

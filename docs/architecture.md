@@ -130,8 +130,11 @@
   itself draws the glyphs), caches the engraving by `state.edits`, and maps
   edits back to pattern notes. `project.score` (`Score` in
   `crates/core/src/model.rs`) holds the key, hidden channels and tracks,
-  clefs and colored passages. An SVG filter gives the engraving the look of
-  ink on paper (wicked edges, rounded bleed, a pooled rim).
+  clefs and colored passages. The page is laid out to fit the view at the
+  music's size; the zoom only magnifies it. `web/src/ink.js` holds the look
+  of ink and paper: the SVG filter the engraving is drawn through (wet ink lit
+  as a raised, glossy surface; dry ink with wicked edges and a pooled rim) and
+  the paper's textures (tiles of noise).
 - Repeats (`project.repeats`: start/end beats, `times`, `endings` with the
   passes that play them) are the song's form. `crates/core/src/form.rs`
   unrolls them into the performance order (spans of written beats); the
@@ -142,7 +145,9 @@
   (spreading the systems of full pages) and writes PDF objects: the glyphs as
   forms drawn from Bravura's outlines (no embedded font), text in the
   standard Times faces. `downloadPdf` in `web/lib/platform.js` compresses the
-  streams and writes the file.
+  streams and writes the file. For a PDF as on screen, `pageSvg` draws each
+  page as SVG on the paper of `ink.js` and through its filter;
+  `downloadImagePdf` turns each into a JPEG and writes a page per image.
 
 ### The UI library (`web/src/ui/tree.js`)
 

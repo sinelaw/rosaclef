@@ -130,8 +130,13 @@ pattern, picked from its menu.
   the whole piece at once and justified, and staves are spaced by their ink.
 - **Parts**: show or hide instruments, leave playlist tracks out, pick a clef,
   hide staves that rest (as in orchestral scores); paper or night ink.
+- **On paper**: textured paper under a desk lamp, and wet, glossy ink
+  (its **Gloss** and **Shine** are knobs) or dry, faded ink. **Size** sets how
+  large the music is (fewer bars on a line); **Zoom** magnifies the page as it
+  is, and the hand (or the middle button, or a drag beside the page) moves it about.
 - **PDF**: download what the view shows as vector pages ready to print (A4,
-  or US Letter in the US and Canada), paginated with a title page heading.
+  or US Letter in the US and Canada), paginated with a title page heading —
+  or as on screen, on textured paper in the view's ink, an image a page.
 - **Repeats**: drag across some bars and press **Repeat** to put repeat
   signs around them; set how many times they play (×2, ×3…) and make bars
   **endings** ("1.", "2.", "1.–2.") that play on chosen passes only. The

@@ -641,7 +641,11 @@ export async function downloadPdf(name, objs) {
     const o = objs[i];
     offsets.push(at);
     let chunk;
-    if (o.stream !== "") {
+    if (o.bin) {
+      // Bytes already encoded (an image): written as they are.
+      const dict = o.head.replace(/>>\s*$/, `/Length ${o.bin.byteLength} >>`);
+      chunk = [enc.encode(`${i + 1} 0 obj\n${dict}\nstream\n`), o.bin, enc.encode("\nendstream\nendobj\n")];
+    } else if (o.stream !== "") {
       const data = await deflate(o.stream);
       const dict = o.head.replace(/>>\s*$/, `/Length ${data.byteLength} /Filter /FlateDecode >>`);
       chunk = [enc.encode(`${i + 1} 0 obj\n${dict}\nstream\n`), data, enc.encode("\nendstream\nendobj\n")];
@@ -661,6 +665,59 @@ export async function downloadPdf(name, objs) {
 }
 
 let measureCtx = null;
+/** An SVG document drawn into a canvas of `pw` by `ph` pixels, as JPEG bytes. */
+async function svgJpeg(svg, pw, ph) {
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = pw;
+    canvas.height = ph;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, pw, ph);
+    ctx.drawImage(img, 0, 0, pw, ph);
+    const blob = await new Promise((done) => canvas.toBlob(done, "image/jpeg", 0.9));
+    if (!blob) throw new Error("the page could not be drawn");
+    return new Uint8Array(await blob.arrayBuffer());
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** A PDF of pages drawn as images: each SVG (`w` by `h` points, drawn at `scale` pixels a point)
+ * becomes a JPEG filling its page. `info` is the document info dictionary. */
+export async function downloadImagePdf(name, info, svgs, w, h, scale) {
+  const pw = Math.round(w * scale);
+  const ph = Math.round(h * scale);
+  const objs = [
+    { head: "<< /Type /Catalog /Pages 2 0 R >>", stream: "" },
+    { head: "", stream: "" },
+  ];
+  const kids = [];
+  for (const svg of svgs) {
+    const jpeg = await svgJpeg(svg, pw, ph);
+    objs.push({
+      head: `<< /Type /XObject /Subtype /Image /Width ${pw} /Height ${ph} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode >>`,
+      stream: "",
+      bin: jpeg,
+    });
+    const image = objs.length;
+    objs.push({ head: "<< >>", stream: `q ${w} 0 0 ${h} 0 0 cm /Im Do Q` });
+    const contents = objs.length;
+    objs.push({
+      head: `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /XObject << /Im ${image} 0 R >> >> /Contents ${contents} 0 R >>`,
+      stream: "",
+    });
+    kids.push(`${objs.length} 0 R`);
+  }
+  objs[1] = { head: `<< /Type /Pages /Kids [${kids.join(" ")}] /Count ${kids.length} >>`, stream: "" };
+  objs.push({ head: info, stream: "" });
+  return downloadPdf(name, objs);
+}
+
 export function textWidth(face, text) {
   if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
   const style = face.includes("Italic") ? "italic " : "";
@@ -707,6 +764,7 @@ export function domBackend(rootId) {
     "feDistantLight",
     "feMerge",
     "feMergeNode",
+    "feOffset",
   ]);
   return {
     root: () => 0,

@@ -20,6 +20,7 @@ export function blankEvent() {
     button: 0,
     buttons: 0,
     pointerId: 0,
+    pointerType: "mouse",
     deltaX: 0,
     deltaY: 0,
     key: "",
