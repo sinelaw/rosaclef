@@ -755,6 +755,12 @@ fn check_device(v: &mut V, path: &str, d: &Device, category: Category) {
     if d.kind == "sampler" && !d.option("sample").is_empty() {
         check_relative_path(v, &format!("{path}.options.sample"), d.option("sample"));
     }
+    if d.kind == "voice" && !d.option("voice").is_empty() && !valid_id(d.option("voice")) {
+        v.err(
+            format!("{path}.options.voice"),
+            "voice names use 1-64 characters from [A-Za-z0-9_.-]",
+        );
+    }
     if d.kind == "plugin" && d.option("path").is_empty() {
         v.err(
             format!("{path}.options.path"),

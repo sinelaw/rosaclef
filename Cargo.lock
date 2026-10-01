@@ -1442,6 +1442,8 @@ version = "0.1.0"
 dependencies = [
  "lewton",
  "rosaclef-core",
+ "rosaclef-phonetics",
+ "serde_json",
 ]
 
 [[package]]

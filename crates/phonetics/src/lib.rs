@@ -133,6 +133,22 @@ pub fn pronounce_notes(project: &Project, notes: &[&Sounding]) -> Vec<Vec<String
     out
 }
 
+/// The phonemes of each note's syllable for a pattern's sounding notes (any
+/// channels, in order), each channel's words read whole.
+pub fn pronounce_all(project: &Project, notes: &[Sounding]) -> Vec<Vec<String>> {
+    let mut out = vec![vec![]; notes.len()];
+    for c in &project.channels {
+        let at: Vec<usize> = (0..notes.len())
+            .filter(|&i| notes[i].channel == c.id)
+            .collect();
+        let refs: Vec<&Sounding> = at.iter().map(|&i| &notes[i]).collect();
+        for (k, ph) in pronounce_notes(project, &refs).into_iter().enumerate() {
+            out[at[k]] = ph;
+        }
+    }
+    out
+}
+
 fn same_line(a: LineRef, b: LineRef) -> bool {
     a.pattern == b.pattern && a.index == b.index && a.verse == b.verse
 }

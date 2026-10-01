@@ -7,5 +7,6 @@
 //! (tagged lyrics, timed words) and speech (SSML).
 
 pub mod line;
+pub mod phrase;
 
 pub use line::{Line, Performed, Song, Syllable, Time};

@@ -1,10 +1,11 @@
 //! Patterns compiled for the sequencer: their sounding notes (uses resolved,
-//! see [`rosaclef_core::expand`]) and, per verse, the syllable each note
-//! sings.
+//! see [`rosaclef_core::expand`]) and, per verse, what each note sings and
+//! when rendered phrases start.
 
-use crate::instruments::{LyricId, Sung};
+use crate::instruments::{LyricId, Lyrics, PhraseId, PhraseNote, Sung};
 use rosaclef_core::arp;
 use rosaclef_core::expand::{self, Sounding};
+use rosaclef_core::phrase::{self, LEAD};
 use rosaclef_core::Project;
 
 #[derive(Clone, Copy)]
@@ -32,47 +33,87 @@ impl CNote {
     }
 }
 
+/// A rendered phrase starting: its audio begins at `beat` (pattern beats,
+/// before its first note, maybe before the pattern's start).
+#[derive(Clone, Copy)]
+pub(crate) struct Cue {
+    pub beat: f64,
+    /// The phrase's first note.
+    pub note: f64,
+    pub channel: usize,
+    pub phrase: PhraseId,
+}
+
+/// What a pattern's notes sing in one verse.
+struct Verse {
+    /// The syllable of each sounding note.
+    lyrics: Vec<Option<LyricId>>,
+    cues: Vec<Cue>,
+}
+
 pub(crate) struct CPattern {
     pub id: String,
     pub length: f64,
     pub notes: Vec<CNote>,
-    /// Per verse (from 1; the last entry is any later verse), the syllable
-    /// of each sounding note. Empty without lyrics.
-    verses: Vec<Vec<Option<LyricId>>>,
+    /// Per verse from 1 (the last entry is any later verse). Empty when
+    /// nothing sings.
+    verses: Vec<Verse>,
 }
 
 impl CPattern {
+    fn verse(&self, verse: u32) -> Option<&Verse> {
+        let n = self.verses.len();
+        (n > 0).then(|| &self.verses[(verse.max(1) as usize).min(n) - 1])
+    }
+
     /// The syllable a note sings in `verse`.
     #[inline]
     pub fn lyric(&self, note: &CNote, verse: u32) -> Option<LyricId> {
-        let n = self.verses.len();
-        if n == 0 {
-            return None;
-        }
-        let v = (verse.max(1) as usize).min(n) - 1;
-        self.verses[v].get(note.index as usize).copied().flatten()
+        self.verse(verse)?
+            .lyrics
+            .get(note.index as usize)
+            .copied()
+            .flatten()
+    }
+
+    /// The rendered phrases that start in `verse`.
+    pub fn cues(&self, verse: u32) -> &[Cue] {
+        self.verse(verse).map_or(&[], |v| &v.cues)
     }
 }
 
-/// Every pattern, and the table of syllables their notes refer to.
-pub(crate) fn compile(project: &Project) -> (Vec<CPattern>, Vec<Sung>) {
-    let mut table = vec![];
+/// Every pattern, and the syllables and phrases their notes refer to.
+pub(crate) fn compile(project: &Project) -> (Vec<CPattern>, Lyrics) {
+    let mut table = Lyrics::default();
     let patterns = (0..project.patterns.len())
         .map(|i| compile_one(project, i, &mut table))
         .collect();
     (patterns, table)
 }
 
-fn compile_one(project: &Project, index: usize, table: &mut Vec<Sung>) -> CPattern {
+fn compile_one(project: &Project, index: usize, table: &mut Lyrics) -> CPattern {
     let p = &project.patterns[index];
     let sounding = expand::pattern(project, index, 1);
     let notes = played(project, &sounding);
-    let sung = sounding.iter().any(|n| n.lyric.is_some());
-    let verses = if sung {
+    let renders = renderers(project);
+    let sings = sounding.iter().any(|n| {
+        n.lyric.is_some()
+            || renders
+                .iter()
+                .any(|(c, _)| project.channels[*c].id == n.channel)
+    });
+    let verses = if sings {
         // One more than the verses written: the verse every later one sings.
         let count = expand::verse_count(project, index) + 1;
         (1..=count)
-            .map(|v| syllables(project, &expand::pattern(project, index, v), table))
+            .map(|v| {
+                verse(
+                    project,
+                    &expand::pattern(project, index, v),
+                    &renders,
+                    table,
+                )
+            })
             .collect()
     } else {
         vec![]
@@ -142,19 +183,67 @@ fn note(project: &Project, channel: usize, n: arp::Held, velocity: f64, index: u
     }
 }
 
-/// The syllable of each sounding note, added to the table.
-fn syllables(project: &Project, notes: &[Sounding], table: &mut Vec<Sung>) -> Vec<Option<LyricId>> {
-    notes
+/// The channels whose voice renders phrases, with the voice's name.
+fn renderers(project: &Project) -> Vec<(usize, String)> {
+    project
+        .channels
         .iter()
-        .map(|n| {
-            let lyric = n.lyric.as_ref()?;
-            let line = lyric.line.lyrics(project);
-            table.push(Sung {
-                token: lyric.token.clone(),
-                lang: line.language().to_string(),
-                mode: line.mode,
-            });
-            Some((table.len() - 1) as LyricId)
-        })
+        .enumerate()
+        .filter(|(_, c)| c.instrument.kind == "voice" && c.instrument.option("engine") == "render")
+        .filter(|(_, c)| !c.instrument.option("voice").is_empty())
+        .map(|(i, c)| (i, c.instrument.option("voice").to_string()))
         .collect()
+}
+
+/// What a verse's sounding notes sing, added to the table.
+fn verse(
+    project: &Project,
+    notes: &[Sounding],
+    renders: &[(usize, String)],
+    table: &mut Lyrics,
+) -> Verse {
+    let mut in_phrase: Vec<Option<PhraseNote>> = vec![None; notes.len()];
+    let mut cues = vec![];
+    let beat_secs = 60.0 / project.transport.bpm.max(1.0);
+    for (channel, voice) in renders {
+        let id = &project.channels[*channel].id;
+        for ph in phrase::phrases(project, notes, id, voice) {
+            let pid = table.phrases.len() as PhraseId;
+            table.phrases.push(phrase::path(voice, &ph.key));
+            for &i in &ph.notes {
+                let at = LEAD + (notes[i].start - ph.start) * beat_secs;
+                in_phrase[i] = Some(PhraseNote {
+                    id: pid,
+                    at: at as f32,
+                });
+            }
+            cues.push(Cue {
+                beat: ph.start - LEAD / beat_secs,
+                note: ph.start,
+                channel: *channel,
+                phrase: pid,
+            });
+        }
+    }
+    let phonemes = rosaclef_phonetics::pronounce_all(project, notes);
+    let lyrics = notes
+        .iter()
+        .zip(phonemes)
+        .zip(in_phrase)
+        .map(|((n, phonemes), phrase)| {
+            if n.lyric.is_none() && phrase.is_none() {
+                return None;
+            }
+            let line = n.lyric.as_ref().map(|l| l.line.lyrics(project));
+            table.sung.push(Sung {
+                token: n.lyric.as_ref().map(|l| l.token.clone()),
+                lang: line.map_or("en", |l| l.language()).to_string(),
+                mode: line.map(|l| l.mode).unwrap_or_default(),
+                phonemes,
+                phrase,
+            });
+            Some((table.sung.len() - 1) as LyricId)
+        })
+        .collect();
+    Verse { lyrics, cues }
 }

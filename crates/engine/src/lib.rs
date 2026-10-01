@@ -20,7 +20,7 @@ pub mod soundfont;
 use automation::CLane;
 use dsp::{hermite, pan_gains, Ramp};
 use effects::Effect;
-use instruments::{Instrument, NoteEvent, NoteKind, Sung};
+use instruments::{Instrument, Lyrics, NoteEvent, NoteKind};
 use patterns::{CNote, CPattern};
 use rosaclef_core::automation::TempoMap;
 use rosaclef_core::form::{self, Span};
@@ -253,8 +253,8 @@ pub struct Engine {
     channels: Vec<ChannelRt>,
     inserts: Vec<InsertRt>,
     patterns: Vec<CPattern>,
-    /// The syllables the patterns' notes sing.
-    lyrics: Arc<[Sung]>,
+    /// What the patterns' notes sing, and the rendered phrases.
+    lyrics: Arc<Lyrics>,
     clips: Vec<CClip>,
     song_length: f64,
     /// The order the song plays in (its repeats taken): spans of written time.
@@ -312,7 +312,7 @@ impl Engine {
             channels: vec![],
             inserts: vec![],
             patterns: vec![],
-            lyrics: Arc::from(vec![]),
+            lyrics: Arc::new(Lyrics::default()),
             clips: vec![],
             song_length: 0.0,
             form: vec![],
@@ -480,9 +480,10 @@ impl Engine {
         // the syllables their notes sing.
         let (patterns, lyrics) = patterns::compile(&project);
         self.patterns = patterns;
-        self.lyrics = Arc::from(lyrics);
+        self.lyrics = Arc::new(lyrics);
         for ch in &mut self.channels {
             ch.inst.set_lyrics(&self.lyrics);
+            ch.inst.set_samples(&self.samples);
         }
 
         // Clips.
@@ -591,6 +592,16 @@ impl Engine {
         for c in &self.project.playlist.clips {
             add(&c.sample);
         }
+        out
+    }
+
+    /// Rendered phrases the project's voices would play (see
+    /// [`rosaclef_core::phrase`]): load the ones that exist; the voice sings
+    /// the others itself until they do.
+    pub fn wanted_renders(&self) -> Vec<String> {
+        let mut out = self.lyrics.phrases.clone();
+        out.sort();
+        out.dedup();
         out
     }
 
@@ -1100,6 +1111,13 @@ impl Engine {
             match &self.mode {
                 PlayMode::Pattern(id) => {
                     if let Some(p) = self.patterns.iter().find(|p| &p.id == id) {
+                        for cue in p.cues(1) {
+                            let t = cue.beat.rem_euclid(p.length);
+                            if t >= b0 && t < b1 {
+                                let off = frame + (((t - b0) / bpf) as usize).min(seg - 1);
+                                self.channels[cue.channel].inst.cue(off, cue.phrase);
+                            }
+                        }
                         for note in &p.notes {
                             let t = note.start_at(shift);
                             if t >= b0 && t < b1 {
@@ -1130,8 +1148,22 @@ impl Engine {
                             let hi = b1.min(clip.end);
                             let k0 = ((lo - base) / p.length).floor() as i64;
                             let k1 = ((hi - base) / p.length).floor() as i64;
-                            for k in k0.max(0)..=k1 {
+                            for k in k0.max(0)..=k1 + 1 {
                                 let origin = base + k as f64 * p.length;
+                                // A phrase's audio starts ahead of its first
+                                // note, maybe in the loop before.
+                                for cue in p.cues(verse) {
+                                    let t = origin + cue.beat;
+                                    let note = origin + cue.note;
+                                    let inside = note >= clip.start && note < clip.end;
+                                    if inside && t >= b0 && t < b1 {
+                                        let off = frame + (((t - b0) / bpf) as usize).min(seg - 1);
+                                        self.channels[cue.channel].inst.cue(off, cue.phrase);
+                                    }
+                                }
+                                if k > k1 {
+                                    continue;
+                                }
                                 for note in &p.notes {
                                     let start = note.start_at(shift);
                                     let t = origin + start;

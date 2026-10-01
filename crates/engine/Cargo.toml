@@ -7,4 +7,8 @@ license.workspace = true
 
 [dependencies]
 rosaclef-core.workspace = true
+rosaclef-phonetics.workspace = true
 lewton = "0.10"
+
+[dev-dependencies]
+serde_json.workspace = true

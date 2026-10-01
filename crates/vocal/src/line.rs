@@ -82,6 +82,11 @@ impl Song {
         Some(Song::new(p, notes))
     }
 
+    /// A song of these notes (sorted by start), with the project's facts.
+    pub fn from_notes(p: &Project, notes: Vec<Performed>) -> Song {
+        Song::new(p, notes)
+    }
+
     fn new(p: &Project, notes: Vec<Performed>) -> Song {
         Song {
             title: p.meta.title.clone(),
@@ -246,19 +251,7 @@ type Voiced = (Sounding, Vec<String>);
 /// A pattern's sounding notes for a verse, each with its phonemes.
 fn with_phonemes(p: &Project, index: usize, verse: u32) -> Vec<Voiced> {
     let notes = expand::pattern(p, index, verse);
-    let mut phonemes = vec![vec![]; notes.len()];
-    for c in &p.channels {
-        let at: Vec<usize> = (0..notes.len())
-            .filter(|&i| notes[i].channel == c.id)
-            .collect();
-        let refs: Vec<&Sounding> = at.iter().map(|&i| &notes[i]).collect();
-        for (k, ph) in rosaclef_phonetics::pronounce_notes(p, &refs)
-            .into_iter()
-            .enumerate()
-        {
-            phonemes[at[k]] = ph;
-        }
-    }
+    let phonemes = rosaclef_phonetics::pronounce_all(p, &notes);
     notes.into_iter().zip(phonemes).collect()
 }
 

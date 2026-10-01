@@ -11,6 +11,7 @@ pub mod format;
 pub mod gm;
 pub mod lyrics;
 pub mod model;
+pub mod phrase;
 pub mod presets;
 pub mod schema;
 pub mod validate;

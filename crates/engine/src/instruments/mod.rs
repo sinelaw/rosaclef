@@ -12,6 +12,7 @@ mod sextant;
 mod soundfont;
 mod synth;
 mod tessera;
+mod voice;
 
 pub use comete::Comete;
 pub use cuivre::Cuivre;
@@ -25,6 +26,7 @@ pub use sextant::Sextant;
 pub use soundfont::SoundFontInst;
 pub use synth::Synth;
 pub use tessera::Tessera;
+pub use voice::Voice;
 
 use crate::samples::SampleBank;
 use crate::Ctx;
@@ -54,16 +56,41 @@ pub struct NoteEvent {
     pub lyric: Option<LyricId>,
 }
 
-/// Index of a syllable in the table handed to [`Instrument::set_lyrics`].
+/// Index of a syllable in [`Lyrics::sung`].
 pub type LyricId = u32;
 
-/// A syllable for a singing instrument: the lyric token, its language and
-/// how it is voiced.
+/// Index of a rendered phrase in [`Lyrics::phrases`].
+pub type PhraseId = u32;
+
+/// What singing instruments need to know about the song's words (see
+/// [`Instrument::set_lyrics`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Lyrics {
+    /// The syllables note-ons refer to.
+    pub sung: Vec<Sung>,
+    /// Where each rendered phrase's audio is (a sample path).
+    pub phrases: Vec<String>,
+}
+
+/// What a note sings, for a singing instrument.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sung {
-    pub token: Token,
+    /// The lyric token; `None` for a note without words.
+    pub token: Option<Token>,
     pub lang: String,
     pub mode: LyricMode,
+    /// IPA; empty for holds, breaths and notes without words.
+    pub phonemes: Vec<String>,
+    /// The rendered phrase the note belongs to, if its voice renders.
+    pub phrase: Option<PhraseNote>,
+}
+
+/// A note's place in a rendered phrase.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PhraseNote {
+    pub id: PhraseId,
+    /// Seconds from the start of the phrase's audio to the note's start.
+    pub at: f32,
 }
 
 pub trait Instrument: Send {
@@ -75,8 +102,12 @@ pub trait Instrument: Send {
     fn render(&mut self, left: &mut [f32], right: &mut [f32]);
     /// Resolve sample references (samplers only).
     fn set_samples(&mut self, _bank: &SampleBank) {}
-    /// The syllables note-ons refer to (singing instruments only).
-    fn set_lyrics(&mut self, _lyrics: &Arc<[Sung]>) {}
+    /// The syllables note-ons refer to and the rendered phrases (singing
+    /// instruments only).
+    fn set_lyrics(&mut self, _lyrics: &Arc<Lyrics>) {}
+    /// A rendered phrase is about to start: its audio begins at `offset` in
+    /// the next block, ahead of its first note (singing instruments only).
+    fn cue(&mut self, _offset: usize, _phrase: PhraseId) {}
     /// Render a block with sample-accurate events. `events` are sorted by offset.
     fn process(&mut self, events: &[NoteEvent], left: &mut [f32], right: &mut [f32]) {
         let n = left.len();
@@ -137,6 +168,7 @@ pub fn create(dev: &Device, ctx: &Ctx) -> Option<Box<dyn Instrument>> {
         "dedale" => Box::new(Dedale::new(ctx.sr)),
         "comete" => Box::new(Comete::new(ctx.sr)),
         "soundfont" => Box::new(SoundFontInst::new(ctx.sr)),
+        "voice" => Box::new(Voice::new(ctx.sr)),
         _ => return None,
     };
     inst.set_device(dev, ctx);
