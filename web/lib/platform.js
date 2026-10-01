@@ -630,7 +630,33 @@ export function debounce(ms, fn) {
 export function domBackend(rootId) {
   const nodes = [document.getElementById(rootId)];
   const texts = [];
-  const SVG = new Set(["svg", "path", "circle", "g", "line", "rect", "polyline", "defs", "linearGradient", "radialGradient", "stop", "text"]);
+  const SVG = new Set([
+    "svg",
+    "path",
+    "circle",
+    "g",
+    "line",
+    "rect",
+    "polyline",
+    "defs",
+    "linearGradient",
+    "radialGradient",
+    "stop",
+    "text",
+    "filter",
+    "feTurbulence",
+    "feDisplacementMap",
+    "feGaussianBlur",
+    "feComponentTransfer",
+    "feFuncA",
+    "feMorphology",
+    "feComposite",
+    "feColorMatrix",
+    "feSpecularLighting",
+    "feDistantLight",
+    "feMerge",
+    "feMergeNode",
+  ]);
   return {
     root: () => 0,
     create: (type) => {

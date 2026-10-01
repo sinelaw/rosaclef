@@ -667,6 +667,8 @@ function paperView(b, v, c, geo, sc) {
   }
   b.close();
 
+  inkFilter(b, `score-ink-${v.id}`);
+
   // Systems in view (and a screen around).
   const lo = v.scrollTop - v.height;
   const hiY = v.scrollTop + v.height * 2;
@@ -703,6 +705,70 @@ function titleBlock(b, v, score, geo, sc) {
   b.leaf("span", "v", "", ` = ${fmt(p.transport.bpm, 0)}`);
   b.close();
   b.leaf("span", "author", "score-author", sc.kind === "song" ? p.meta.author : "");
+  b.close();
+  b.close();
+}
+
+/** One filter primitive: its tag, key and attributes as name, value pairs. */
+/** function fe(b: Builder, type: String, key: String, attrs: String[]) => Undefined */
+function fe(b, type, key, attrs) {
+  b.leaf(type, key, "", "");
+  for (let i = 0; i + 1 < attrs.length; i = i + 2) b.attr(attrs[i], attrs[i + 1]);
+}
+
+/**
+ * Ink on paper, as an SVG filter over the engraving (units are staff spaces):
+ *  1. wicking — the edges are nudged a hair by paper-grain noise;
+ *  2. spread — a little blur sharpened again swells and rounds the corners,
+ *     as ink bleeds into the fibres;
+ *  3. pooling — the outline is drawn full while the inside is a touch
+ *     translucent and mottled, the darker rim a drop of ink leaves as it dries.
+ * Colors pass through, so colored passages stay colored.
+ */
+/** function inkFilter(b: Builder, id: String) => Undefined */
+function inkFilter(b, id) {
+  b.open("svg", "defs", "score-defs");
+  b.attr("width", "0");
+  b.attr("height", "0");
+  b.attr("aria-hidden", "true");
+  b.open("defs", "d", "");
+  b.open("filter", "ink", "");
+  b.attr("id", id);
+  b.attr("x", "-2%");
+  b.attr("y", "-10%");
+  b.attr("width", "104%");
+  b.attr("height", "120%");
+  b.attr("color-interpolation-filters", "sRGB");
+  fe(b, "feTurbulence", "grain", ["type", "fractalNoise", "baseFrequency", "2.4", "numOctaves", "1", "seed", "11", "result", "grain"]);
+  fe(b, "feDisplacementMap", "wick", [
+    "in",
+    "SourceGraphic",
+    "in2",
+    "grain",
+    "scale",
+    "0.07",
+    "xChannelSelector",
+    "R",
+    "yChannelSelector",
+    "G",
+    "result",
+    "wick",
+  ]);
+  fe(b, "feGaussianBlur", "soft", ["in", "wick", "stdDeviation", "0.035", "result", "soft"]);
+  b.open("feComponentTransfer", "spread", "");
+  b.attr("in", "soft");
+  b.attr("result", "spread");
+  fe(b, "feFuncA", "a", ["type", "linear", "slope", "1.7", "intercept", "-0.12"]);
+  b.close();
+  fe(b, "feMorphology", "core", ["in", "spread", "operator", "erode", "radius", "0.055", "result", "core"]);
+  fe(b, "feComposite", "rim", ["in", "spread", "in2", "core", "operator", "out", "result", "rim"]);
+  fe(b, "feColorMatrix", "mottle", ["in", "grain", "type", "matrix", "values", "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.3 0 0 0 0.78", "result", "mottle"]);
+  fe(b, "feComposite", "body", ["in", "spread", "in2", "mottle", "operator", "in", "result", "body"]);
+  b.open("feMerge", "merge", "");
+  fe(b, "feMergeNode", "m0", ["in", "body"]);
+  fe(b, "feMergeNode", "m1", ["in", "rim"]);
+  b.close();
+  b.close();
   b.close();
   b.close();
 }
@@ -756,6 +822,9 @@ function systemView(b, v, c, geo, i, y, sel) {
       }
     }
   }
+  // The engraving itself, through the ink filter.
+  b.open("g", "ink", "inked");
+  b.attr("filter", `url(#score-ink-${v.id})`);
   for (let k = 0; k < s.inks.length; k++) {
     const ink = s.inks[k];
     const named = ink.color === "" || ink.color === "staff";
@@ -784,6 +853,7 @@ function systemView(b, v, c, geo, i, y, sel) {
     b.attr("y", fmt(l.y, 2));
     b.attr("text-anchor", l.anchor);
   }
+  b.close();
   for (let k = 0; k < s.bands.length; k++) {
     const bd = s.bands[k];
     if (bd.label === "" || !bd.first) continue;

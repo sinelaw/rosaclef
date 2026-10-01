@@ -150,7 +150,15 @@
   position: absolute;
   overflow: visible;
   pointer-events: none;
+  /* Each system on its own layer: the ink filter is drawn once, not on every scroll. */
+  will-change: transform;
 }
+.score-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
 .score-sys .ink {
   fill: var(--ink);
 }
