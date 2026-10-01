@@ -47,7 +47,8 @@ const STEM_Y = 0.168;
 /** type Prim = { kind: Int, color: String, nums: Number[], ch: String } */
 /** type Ink = { color: String, d: String, text: String, xs: String, ys: String } */
 /** type Label = { x: Number, y: Number, text: String, cls: String, anchor: String, color: String } */
-/** type Brace = { x: Number, y: Number, h: Number } */
+/** A brace: its glyph's origin (bottom left) and its scale (one staff high is 1). */
+/** type Brace = { x: Number, y: Number, s: Number } */
 /** type Band = { x: Number, y: Number, w: Number, h: Number, color: String, label: String, mark: Int, first: Boolean } */
 /** A notehead on the page (system coordinates): what a click on it edits. */
 /** type HeadBox = { x: Number, y: Number, w: Number, src: Int, staff: Int, glyph: String } */
@@ -461,7 +462,7 @@ function indentFor(sc, first) {
   }
   const groups = sc.staves.filter((st) => st.part === 0).length;
   const brace = sc.staves.some((st) => st.part === 1);
-  return w + (w > 0 ? 1.4 : 0) + (groups > 1 || brace ? 1.6 : 0.4);
+  return w + (w > 0 ? 1.4 : 0) + (brace ? 2.1 : groups > 1 ? 1.6 : 0.4);
 }
 
 /** Choose the systems: measures [from, to) for each, minimizing how much they stretch or squeeze. */
@@ -698,7 +699,9 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
     const next = k + 1 < shown.length ? sc.staves[shown[k + 1]] : undefined;
     if (next !== undefined && next.group === st.group) {
       const h = rowsY[k + 1] + 4 - rowsY[k];
-      braces.push({ x: indent - 1.25, y: rowsY[k] + h, h: h });
+      // Bravura's brace is one staff high: it scales as a whole, so it thickens as it grows.
+      const bs = h / 4;
+      braces.push({ x: indent - 0.35 - G.brace.x1 * bs, y: rowsY[k] + h, s: bs });
       for (let i = 0; i < bars.length; i++) {
         const bx = bars[i];
         if (i === bars.length - 1 && last && b === sc.measures.length) continue;

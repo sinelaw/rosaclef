@@ -559,8 +559,11 @@ function chordsOf(notes, idx, grid, drum, ms, trip) {
   }
   for (let k = 0; k < out.length; k++) {
     const next = k + 1 < out.length ? out[k + 1].start : FAR;
-    // Drum hits ring until the next one, within a beat.
-    if (drum) out[k].end = Math.min(next, out[k].start + Math.max(TPQ, out[k].end - out[k].start));
+    // Drum hits ring until the next one, at most a beat and never over a bar line.
+    if (drum) {
+      const m = ms[measureAt(ms, out[k].start)];
+      out[k].end = Math.min(Math.min(next, out[k].start + Math.max(TPQ, out[k].end - out[k].start)), m.start + m.length);
+    }
     out[k].end = Math.min(out[k].end, next);
   }
   return out;

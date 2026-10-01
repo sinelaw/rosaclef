@@ -775,7 +775,7 @@ function systemView(b, v, c, geo, i, y, sel) {
   for (let k = 0; k < s.braces.length; k++) {
     const br = s.braces[k];
     b.leaf("text", `br${k}`, "glyphs ink", "\u{e000}");
-    b.attr("transform", `translate(${fmt(br.x, 2)} ${fmt(br.y, 2)}) scale(1 ${fmt(br.h / 4, 3)})`);
+    b.attr("transform", `translate(${fmt(br.x, 2)} ${fmt(br.y, 2)}) scale(${fmt(br.s, 3)})`);
   }
   for (let k = 0; k < s.labels.length; k++) {
     const l = s.labels[k];
