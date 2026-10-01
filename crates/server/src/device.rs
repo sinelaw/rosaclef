@@ -381,6 +381,7 @@ fn finish_recording(app: &Arc<App>) {
         offset: 0.0,
         gain: 1.0,
         mixer: InsertIx::MASTER,
+        verse: None,
     });
     app.apply_edit(project);
     app.send_all(json!({"t": "recorded", "path": rel}));

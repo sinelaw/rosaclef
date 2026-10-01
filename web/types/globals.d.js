@@ -35,9 +35,18 @@
 /** type Arp = { on: Boolean, chord: String, octaves: Int, rate: Number, direction: String, gate: Number, mode: String } */
 /** type Channel = { id: String, name: String, color: String, instrument: Device, volume: Number, pan: Number, mute: Boolean, mixer: InsertIx, arp: Arp } */
 /** type Note = { channel: String, pitch: Number, start: Number, length: Number, velocity: Number } */
-/** type Pattern = { id: String, name: String, color: String, length: Number, notes: Note[] } */
+/** Another pattern played inside a pattern by reference (crates/core/src/model.rs `Use`). `to` < 0: to the used pattern's end; `verse` 0: the verse the pattern sings. */
+/** type Use = { pattern: String, start: Number, from: Number, to: Number, transpose: Int, channel: String, velocity: Number, verse: Int } */
+/** A phoneme (IPA) and its start in seconds from the note's start. */
+/** type TimedPhoneme = { p: String, offset: Number } */
+/** Fixed phoneme timing of the syllable on the note at beat `at`. */
+/** type SyllableTiming = { verse: Int, at: Number, phonemes: TimedPhoneme[] } */
+/** Words for one vocal channel of a pattern: `verses` maps verse numbers (as strings) to text in the lyric notation (web/src/lyrics.js). */
+/** type Lyrics = { channel: String, lang: String, mode: String, verses: KS[], timing: SyllableTiming[] } */
+/** type Pattern = { id: String, name: String, color: String, length: Number, notes: Note[], uses: Use[], lyrics: Lyrics[] } */
 /** type Track = { name: String, mute: Boolean } */
-/** type Clip = { pattern: String, sample: String, track: TrackIx, start: Number, length: Number, offset: Number, gain: Number, mixer: InsertIx } */
+/** `verse`: the verse a pattern clip sings (0: the pass of the repeat it plays in). */
+/** type Clip = { pattern: String, sample: String, track: TrackIx, start: Number, length: Number, offset: Number, gain: Number, mixer: InsertIx, verse: Int } */
 /** type Playlist = { tracks: Track[], clips: Clip[] } */
 /** type Insert = { name: String, volume: Number, pan: Number, mute: Boolean, solo: Boolean, effects: Device[] } */
 /** type Mixer = { inserts: Insert[] } */

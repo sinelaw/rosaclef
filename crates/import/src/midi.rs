@@ -1249,6 +1249,8 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                         color: ccolor.clone(),
                         length,
                         notes: ns,
+                        uses: vec![],
+                        lyrics: vec![],
                     });
                     seen.insert(key, pid.clone());
                     pid
@@ -1278,6 +1280,7 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                 offset: 0.0,
                 gain: 1.0,
                 mixer: InsertIx::MASTER,
+                verse: None,
             });
         }
     }

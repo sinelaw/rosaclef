@@ -11,7 +11,7 @@
 // Time is in ticks: 48 to the quarter note (a 32nd is 6, a triplet eighth 16).
 
 import { trackIndex } from "#brands";
-import { meterMap, optionValue } from "./model.js";
+import { meterMap, optionValue, drumKit } from "./model.js";
 import { detectKey } from "./voice.js";
 
 export const TPQ = 48;
@@ -240,14 +240,6 @@ export function drumAt(step) {
 export function channelKind(p, id) {
   const c = p.channels.find((x) => x.id === id);
   return c ? optionValue(c.instrument, "kind") : "";
-}
-
-/** "gm" (a General MIDI kit), "synth" (synthesized drums) or "" (pitched). */
-/** function drumKit(c: Channel) => String */
-export function drumKit(c) {
-  if (c.instrument.type === "drum") return "synth";
-  if (c.instrument.type === "soundfont" && optionValue(c.instrument, "program").toLowerCase().includes("kit")) return "gm";
-  return "";
 }
 
 // ------------------------------------------------------------------ gather

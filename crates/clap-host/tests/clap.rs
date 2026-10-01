@@ -142,6 +142,7 @@ fn instrument_plays_notes() {
                 key: 69,
                 velocity: 1.0,
             },
+            lyric: None,
         }],
         &mut l,
         &mut r,
@@ -174,6 +175,7 @@ fn instrument_plays_notes() {
         &[NoteEvent {
             offset: 0,
             kind: NoteKind::AllOff,
+            lyric: None,
         }],
         &mut l,
         &mut r,
@@ -199,6 +201,7 @@ fn load_params_are_applied() {
                 key: 60,
                 velocity: 1.0,
             },
+            lyric: None,
         }],
         &mut l,
         &mut r,
@@ -272,6 +275,7 @@ fn engine_renders_plugin_instrument() {
         offset: 0.0,
         gain: 1.0,
         mixer: rosaclef_core::InsertIx::MASTER,
+        verse: None,
     });
     let mut engine = Engine::new(48000.0);
     engine.set_plugin_host(Arc::new(ClapHost::new()));

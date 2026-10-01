@@ -68,6 +68,7 @@ fn blips(beats: f64) -> Project {
         offset: 0.0,
         gain: 1.0,
         mixer: InsertIx::MASTER,
+        verse: None,
     });
     p
 }
@@ -113,6 +114,7 @@ fn pad(beats: f64) -> Project {
         offset: 0.0,
         gain: 1.0,
         mixer: InsertIx::MASTER,
+        verse: None,
     });
     p
 }

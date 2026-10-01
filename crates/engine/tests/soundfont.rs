@@ -57,12 +57,14 @@ fn play(
             ev.push(NoteEvent {
                 offset: 0,
                 kind: NoteKind::On { key, velocity: vel },
+                lyric: None,
             });
         }
         if off >= pos && off < pos + m {
             ev.push(NoteEvent {
                 offset: off - pos,
                 kind: NoteKind::Off { key },
+                lyric: None,
             });
         }
         inst.process(&ev, &mut l[pos..pos + m], &mut r[pos..pos + m]);

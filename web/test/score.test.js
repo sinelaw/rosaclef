@@ -34,6 +34,8 @@ function song(notes, length) {
     color: "#d4af37",
     length: length,
     notes: notes.map((n) => ({ channel: "lead", pitch: n[0], start: n[1], length: n[2], velocity: 0.8 })),
+    uses: [],
+    lyrics: [],
   });
   p.playlist.tracks.push({ name: "Track 1", mute: false });
   return p;
@@ -169,8 +171,8 @@ check("General MIDI drums sit where drummers read them", gmDrum(36).step === 38 
 {
   const p = song([[60, 0, 1]], 4);
   p.playlist.tracks.push({ name: "Track 2", mute: false });
-  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(0), start: 4, length: 8, offset: 0, gain: 1, mixer: insertIx(0) });
-  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(1), start: 16, length: 2, offset: 0, gain: 1, mixer: insertIx(0) });
+  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(0), start: 4, length: 8, offset: 0, gain: 1, mixer: insertIx(0), verse: 0 });
+  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(1), start: 16, length: 2, offset: 0, gain: 1, mixer: insertIx(0), verse: 0 });
   const g = gather(p, { kind: "song", track: 0, pattern: "" });
   check("a clip loops its pattern", g.notes.length === 3 && g.notes[0].start === 4 && g.notes[1].start === 8 && g.notes[1].origin === 8);
   check(
@@ -218,7 +220,7 @@ check("endings name their passes", passesText([1]) === "1." && passesText([2, 1]
   const notes = [];
   for (let i = 0; i < 4; i++) notes.push([60 + i, i, 1]);
   const p = song(notes, 24);
-  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(0), start: 0, length: 24, offset: 0, gain: 1, mixer: insertIx(0) });
+  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(0), start: 0, length: 24, offset: 0, gain: 1, mixer: insertIx(0), verse: 0 });
   p.repeats.push({
     start: 4,
     end: 12,

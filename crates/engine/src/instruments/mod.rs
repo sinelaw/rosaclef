@@ -28,7 +28,9 @@ pub use tessera::Tessera;
 
 use crate::samples::SampleBank;
 use crate::Ctx;
-use rosaclef_core::Device;
+use rosaclef_core::lyrics::Token;
+use rosaclef_core::{Device, LyricMode};
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum NoteKind {
@@ -48,6 +50,20 @@ pub struct NoteEvent {
     /// Frame offset inside the current block.
     pub offset: usize,
     pub kind: NoteKind,
+    /// A note-on's syllable (see [`Instrument::set_lyrics`]).
+    pub lyric: Option<LyricId>,
+}
+
+/// Index of a syllable in the table handed to [`Instrument::set_lyrics`].
+pub type LyricId = u32;
+
+/// A syllable for a singing instrument: the lyric token, its language and
+/// how it is voiced.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Sung {
+    pub token: Token,
+    pub lang: String,
+    pub mode: LyricMode,
 }
 
 pub trait Instrument: Send {
@@ -59,6 +75,8 @@ pub trait Instrument: Send {
     fn render(&mut self, left: &mut [f32], right: &mut [f32]);
     /// Resolve sample references (samplers only).
     fn set_samples(&mut self, _bank: &SampleBank) {}
+    /// The syllables note-ons refer to (singing instruments only).
+    fn set_lyrics(&mut self, _lyrics: &Arc<[Sung]>) {}
     /// Render a block with sample-accurate events. `events` are sorted by offset.
     fn process(&mut self, events: &[NoteEvent], left: &mut [f32], right: &mut [f32]) {
         let n = left.len();

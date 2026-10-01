@@ -95,6 +95,7 @@ fn play_with(inst: &mut dyn Instrument, events: &[(f32, NoteKind)], total: f32) 
             block_events.push(NoteEvent {
                 offset: evs[next].0.saturating_sub(pos),
                 kind: evs[next].1,
+                lyric: None,
             });
             next += 1;
         }
@@ -775,6 +776,7 @@ fn realtime_factor(dev: &Device, keys: &[u8], seconds: f32) -> f64 {
                 key: k,
                 velocity: 0.8,
             },
+            lyric: None,
         })
         .collect();
     let frames = secs(seconds);

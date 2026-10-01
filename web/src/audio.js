@@ -346,6 +346,7 @@ export function stopRecording() {
         offset: 0,
         gain: 1,
         mixer: insertIx(0),
+        verse: 0,
       });
     });
     toast("Recording placed on the playlist", path, "info");

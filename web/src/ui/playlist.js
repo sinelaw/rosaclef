@@ -215,6 +215,7 @@ function onLaneDown(e, g) {
             offset: c.offset,
             gain: c.gain,
             mixer: c.mixer,
+            verse: c.verse,
           });
         }
       });
@@ -247,7 +248,17 @@ function onLaneDown(e, g) {
   if (!pat) return undefined;
   const start = snapDown(x / g.zoom, snap);
   begin();
-  p.playlist.clips.push({ pattern: pat.id, sample: "", track: trackIx(track), start: start, length: pat.length, offset: 0, gain: 1, mixer: insertIx(0) });
+  p.playlist.clips.push({
+    pattern: pat.id,
+    sample: "",
+    track: trackIx(track),
+    start: start,
+    length: pat.length,
+    offset: 0,
+    gain: 1,
+    mixer: insertIx(0),
+    verse: 0,
+  });
   const idx = p.playlist.clips.length - 1;
   state.clipSelection = [clipIx(idx)];
   changed(true);
@@ -282,6 +293,7 @@ function dropSample(path, x, y, g) {
           offset: 0,
           gain: 1,
           mixer: insertIx(0),
+          verse: 0,
         });
       });
       return true;

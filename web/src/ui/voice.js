@@ -459,6 +459,8 @@ function previewJson(r) {
     notes: r.notes.map((n) => {
       return { channel: laneValue(lanes, n.lane), pitch: n.pitch, start: n.start, length: n.length, velocity: n.velocity };
     }),
+    uses: [],
+    lyrics: [],
   });
   return projectJson(p);
 }
@@ -569,11 +571,13 @@ export function addToSong() {
       notes: r.notes.map((n) => {
         return { channel: laneValue(lanes, n.lane), pitch: n.pitch, start: n.start, length: n.length, velocity: Math.round(n.velocity * 1000) / 1000 };
       }),
+      uses: [],
+      lyrics: [],
     });
     start = voice.at >= 0 ? voice.at : snapDown(state.position, bpb);
     const length = r.length * voice.repeat;
     const track = freeTrack(start, start + length, base);
-    p.playlist.clips.push({ pattern: id, sample: "", track: track, start: start, length: length, offset: 0, gain: 1, mixer: insertIx(0) });
+    p.playlist.clips.push({ pattern: id, sample: "", track: track, start: start, length: length, offset: 0, gain: 1, mixer: insertIx(0), verse: 0 });
   });
   selectPattern(id);
   const bar = Math.floor(start / bpb) + 1;

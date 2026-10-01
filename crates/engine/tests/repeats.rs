@@ -63,6 +63,7 @@ fn song() -> Project {
         offset: 0.0,
         gain: 1.0,
         mixer: InsertIx(0),
+        verse: None,
     });
     p
 }

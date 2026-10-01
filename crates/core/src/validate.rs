@@ -10,6 +10,9 @@ use crate::model::{Device, Project, FORMAT, SCORE_CLEFS, SCORE_KEYS};
 use serde::Serialize;
 use std::collections::HashSet;
 
+mod lyrics;
+mod reuse;
+
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
@@ -387,6 +390,8 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     check_automation(&mut v, p);
     check_score(&mut v, p);
     check_repeats(&mut v, p);
+    reuse::check(&mut v, p);
+    lyrics::check(&mut v, p);
     v.issues
 }
 
