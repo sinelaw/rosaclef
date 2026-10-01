@@ -1,7 +1,10 @@
 # Voice: lyrics, singing and speech (research and design)
 
-Status: implemented. §8 says what was built and where it differs from this
-plan.
+Status: in progress. Implemented: reuse by reference (§2), lyrics with verses
+(§3.1–3.3), their editing in the studio (the piano roll's use boxes and
+lyric row, clip verses, words for a sung take in the Voice tab), lyrics in
+the score and its PDF, and G2P (`crates/phonetics`). Not yet: the Voice
+device, the other exports and imports, and phoneme timing.
 
 The goal is a **Voice** feature that sings or speaks words in time with the
 track. The lyrics, how they are split into syllables, which notes they fall on,
@@ -397,63 +400,20 @@ Each step is useful on its own.
    folder.
 6. **Alignment import.** TextGrid and WhisperX; lyrics from the Voice tab.
 
-## 7. Decisions on the open questions
+## 7. Open questions
 
-- **Verse keys are numbers only.** A section's name comes from its pattern's
-  name ("Verse", "Chorus"), which tagged-lyrics exports use.
-- **Lyrics live only in patterns.** A word split across two patterns is
-  written as two words; uses already let a line span reused material.
-- **IPA is canonical.** Pronunciations in the text (`word[w ɜ d]`) and stored
-  timing are IPA; exporters convert (ARPAbet for English singers, X-SAMPA,
-  romaji).
-- **The dictionary is bundled.** 20 000 frequent words plus their
-  contractions (about 460 kB, `tools/gen_dict.py`) ship in the engine, so the
-  voice sings in the browser build with no download; other words go through
-  spelling rules.
-
-## 8. What was built
-
-| step | where |
-|---|---|
-| uses, lyrics, verses, validation, schema | `crates/core`: `expand.rs`, `lyrics/`, `validate/`, `form.rs` (each span knows its pass) |
-| the mirror in the studio | `web/src/expand.js`, `web/src/lyrics.js` (tested against the same notation cases) |
-| piano roll, score, playlist, Voice tab | `web/src/ui/` |
-| pronunciation | `crates/phonetics`: English dictionary + rules, Spanish, Japanese kana/romaji; ARPAbet, X-SAMPA |
-| the song as sung lines, exports, alignment | `crates/vocal`: `line.rs`, `formats/`, `align/` |
-| MIDI and karaoke lyric import | `crates/import/src/karaoke.rs` |
-| the formant voice | `crates/engine/src/instruments/voice/` |
-| rendered phrases | `crates/core/src/phrase.rs`, `crates/vocal/src/phrase.rs`, the voice's `render.rs`, `crates/server/src/voices.rs` |
-| commands and API | `rosaclef export`, `rosaclef align`, `rosaclef summary --expand`, `GET /api/export` |
-
-Where it differs from the plan:
-
-- **Engines are commands, not linked libraries.** Instead of ONNX Runtime in
-  the server, a voice is any program the user sets up in
-  `~/.config/rosaclef/voices.json`: it reads one of the export formats for a
-  phrase and writes a WAV. DiffSinger's own inference script, Piper, a cloud
-  TTS wrapper or a song generator all fit without adding a heavy native
-  dependency, and no model ever ships with Rosaclef. Commands come only from
-  the user's settings, never from a project, so opening a shared project
-  runs nothing. The browser build plays renders made elsewhere but cannot run
-  engines.
-- **"External" is a voice without a command.** The studio writes each
-  phrase's input file next to where its render goes; singing it in another
-  program and saving `<key>.wav` there is the round trip.
-- **Phrase audio starts 0.3 s before the first note.** The engine cues it
-  ahead of the note so consonants land before the beat; when the cue is
-  missed (playback started mid-phrase) it starts at the note, in place.
-
-Known limits:
-
-- Renders follow the project tempo, not tempo automation.
-- Exports ignore swing, MusicXML quantizes to sixteenths (no triplets) and
-  assumes one meter, and MIDI export writes the first tempo only.
-- Formats with one voice (karaoke, timed text, speech, DiffSinger) write the
-  first channel that sings.
-- The OpenUtau and Synthesizer V files follow the formats as documented but
-  have not been opened in those programs.
-- Other languages than English, Spanish and Japanese are read with English
-  spelling rules.
+- **Verse numbering.** Should verse keys be numbers only, or also names
+  (`"chorus"`) as MusicXML's `name` allows?
+- **Where lyrics live.** Should lyrics live only in patterns, or also as
+  song-level lines for lyrics that cross pattern boundaries? In the latter
+  case, a song-level line would match syllables to the notes of whatever
+  patterns play on the channel during its time span.
+- **Canonical phoneme alphabet.** IPA everywhere, with mapping tables, or the
+  native alphabet of the chosen engine with an `alphabet` tag? IPA is cleaner.
+  Most English singers type ARPAbet.
+- **Bundled data.** Is a bundled CMUdict (about 3.5 MB, much less compressed
+  as a subset) acceptable in the static build, or should it load on demand
+  like the soundfont pieces?
 
 ## Sources
 

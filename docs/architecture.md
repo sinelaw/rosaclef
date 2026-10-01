@@ -25,9 +25,7 @@
 | `rosaclef-core` | native + wasm | model, device catalog (single source of truth for params), validation with JSON paths, schema, compact formatter |
 | `rosaclef-engine` | native + wasm | sequencer, instruments, effects, mixer, offline render; `PluginHost` / `ExternalProcessor` traits for plugins |
 | `rosaclef-wasm` | browser AudioWorklet | C-ABI wrapper around the engine (no JS glue) |
-| `rosaclef-import` | native + wasm | LMMS and MIDI importers (MIDI and karaoke lyrics) |
-| `rosaclef-phonetics` | native + wasm | lyrics to IPA phonemes per syllable (CMUdict subset, spelling rules), ARPAbet / X-SAMPA |
-| `rosaclef-vocal` | native + wasm | the song performed as sung lines; its exports (MIDI, MusicXML, OpenUtau, Synthesizer V, DiffSinger, UltraStar, LRC, TTML, timed words, tagged lyrics, SSML); timing from aligned recordings |
+| `rosaclef-import` | native + wasm | LMMS and MIDI importers |
 | `rosaclef-fs` | native + wasm | the `Fs` trait: `DiskFs`, and `MemFs` (lazily loaded blobs, a change journal for the host to persist) |
 | `rosaclef-studio` | native + wasm | the server's portable logic on `Fs`: project folders, library, file manager, zip archives, agent guides, symphonia decoding, offline render |
 | `rosaclef-clap` | native | CLAP plugin host implementing the engine's plugin traits |
@@ -146,20 +144,29 @@
   standard Times faces. `downloadPdf` in `web/lib/platform.js` compresses the
   streams and writes the file.
 
-### Lyrics and singing
+### Uses and lyrics
 
-- Lyrics are stored as meaning (syllables, word ends, holds, breaths,
-  breaks); `crates/core/src/expand.rs` binds them to the sounding notes and
-  `rosaclef_vocal::line` performs the song: every note in playing order,
-  timed in beats and seconds, with its syllable and phonemes. Each exporter
-  in `crates/vocal/src/formats/` is a pure function of that `Song` and
-  spells the facts with its format's markers; `FORMATS` is the one table
-  the CLI (`rosaclef export`), the HTTP API (`/api/export`, via
-  `rosaclef_studio::export`, on the server and in `rosaclef-local`) and the
-  Export menu (`web/src/ui/export.js`) list.
-- `rosaclef_vocal::align` reads TextGrid and WhisperX alignments and turns
-  them into a lyric line's `timing` (phoneme offsets in seconds from each
-  note's start); `rosaclef align` writes it.
+- `crates/core/src/expand.rs` resolves a pattern's `uses` and binds its lyric
+  lines to its notes; `web/src/expand.js` mirrors it (`expandPattern`:
+  sounding notes that remember where they are written and the token they
+  sing), and `web/src/lyrics.js` reads and writes the lyric notation
+  (`parseLyrics`, `writeLyrics`), tested against cases shared with Rust.
+- Edits go through the notes, never through the text directly:
+  `web/src/lyricedit.js` finds where a note's syllable is written (its line,
+  verse and token, or the next free place in the pattern's own line) and
+  rewrites that verse token by token; `keepWords` rewrites the lines after
+  an edit that moves notes between patterns, so each note keeps its words.
+  `web/src/reuse.js` holds the use edits (Make unique, Make reference).
+- The piano roll draws uses (`ui/usebox.js`, with the shared context menu
+  `ui/menu.js`) and the lyric row (`ui/lyricrow.js`, `ui/lyricsheet.js`);
+  the playlist sets a clip's verse (`ui/clipverse.js`); the Voice tab sends
+  a take's words along (`ui/voicewords.js`).
+- The score gathers each note's words per verse line (`Word` in
+  `notation.js`: stacked verses in a pattern, the clip's or the repeat
+  pass's verse in the song), puts the syllables under their events
+  (`Staff.lyrics`), and `web/src/underlay.js` engraves them, drawing with the
+  ink primitives of `web/src/ink.js`; the spacing makes room for them as for
+  accidentals.
 
 ### The UI library (`web/src/ui/tree.js`)
 
