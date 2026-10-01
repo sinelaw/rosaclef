@@ -367,6 +367,14 @@ Words live in the pattern whose notes sing them, one line per vocal channel, wit
   so keep a sung channel monophonic.
 - Fixed phoneme timing (from aligning a recording) is kept in `timing`; leave it alone unless asked.
 
+**Exports.** `rosaclef export --format ID [--pattern ID --verse N] [--out FILE]` writes the song
+(or one pattern) as `midi` (lyric events), `musicxml`, `ustx` (OpenUtau), `svp` (Synthesizer V),
+`ds` (DiffSinger), `ultrastar`, `lrc`, `ttml`, `jam` (timed words), `tagged` (`[Verse]` /
+`[Chorus]` text for song generators) or `ssml`; `rosaclef export --list` describes them and
+`--out -` prints the file. Name patterns after song sections ("Verse", "Chorus") so tagged lyrics
+are labeled. `rosaclef align --pattern ID --channel ID --at SECONDS take.TextGrid` (or WhisperX
+`.json`) fills `timing` from a recording a forced aligner has read.
+
 ## Musical craft
 
 - Think like a producer: groove (velocity variation, swing), voice-leading in chords,

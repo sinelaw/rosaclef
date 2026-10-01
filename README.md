@@ -71,7 +71,9 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef render [DIR] [--pattern ID] [--out FILE] [--bits 16\|24\|32]` | offline mixdown to WAV |
 | `rosaclef note --channel ID --pitch 60 --out samples/x.wav` | synthesize a note into a sample |
 | `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
-| `rosaclef import-midi FILE.mid [--name N] [--library LIB] [--synth]` | import a Standard MIDI File as a new project: tempo and time signature changes, sustain pedal, program changes, volume/pan automation; played on the sampled General MIDI instruments (`--synth`: on Rosaclef's synthesizers) |
+| `rosaclef import-midi FILE.mid [--name N] [--library LIB] [--synth]` | import a Standard MIDI File as a new project: tempo and time signature changes, sustain pedal, program changes, volume/pan automation, lyrics (`FF 05` events or karaoke text); played on the sampled General MIDI instruments (`--synth`: on Rosaclef's synthesizers) |
+| `rosaclef export [DIR] --format ID [--pattern ID --verse N] [--out FILE]` | the song (or one pattern) as MIDI with lyrics, MusicXML, a singing-synthesizer project or a lyric file (`--list` shows the formats, `--out -` prints the file) |
+| `rosaclef align [DIR] --pattern ID --channel ID [--verse N] --at SECONDS FILE` | a lyric line's phoneme timing from a forced aligner's TextGrid or WhisperX JSON |
 | `rosaclef fmt`, `schema`, `catalog`, `guide` | formatting, JSON schema, device catalog, agent guides |
 
 ## Voice to notes
@@ -153,6 +155,40 @@ pattern, picked from its menu.
 The settings live in `project.json` under `score`, so the agent can set the
 key, hide parts or color a chorus too.
 
+## Lyrics and singing
+
+Words live in the pattern whose notes sing them: a `lyrics` line per vocal
+channel, with verses, in a small notation (`Hel-lo dark-ness _ / my old
+friend`; see `AGENTS.md`). From that one copy Rosaclef writes the files that
+singers, karaoke players and song generators read — from the **Export**
+menu, `rosaclef export` or `GET /api/export?format=…`:
+
+| `--format` | file | for |
+|---|---|---|
+| `midi` | MIDI with lyrics | every channel; an `FF 05` lyric event before each sung note |
+| `musicxml` | MusicXML 4.0 | notation programs; Sinsy/NNSVS, VoiSona, Synthesizer V, ACE Studio |
+| `ustx` | OpenUtau project | DiffSinger, ENUNU and UTAU voicebanks |
+| `svp` | Synthesizer V project | |
+| `ds` | DiffSinger segments | phonemes with durations, and notes |
+| `ultrastar` | UltraStar song | UltraStar Deluxe, Vocaluxe, Performous |
+| `lrc`, `ttml` | lyrics with word times | karaoke players, music apps, DiffRhythm |
+| `jam` | timed words (JSON) | JAM and other song generators |
+| `tagged` | `[Verse]` / `[Chorus]` text | ACE-Step, YuE, Suno |
+| `ssml` | speech markup | text to speech, with IPA pronunciations and word marks |
+
+- The song is written as it plays (repeats unrolled, each pass singing its
+  verse); `--pattern ID --verse N` writes one pattern.
+- `rosaclef import-midi` reads lyrics back: `FF 05` lyric events or karaoke
+  (`.kar`) text become lyric lines on the sung channel's patterns.
+- `rosaclef align --pattern ID --channel ID --at SECONDS take.TextGrid`
+  turns what a forced aligner found in a sung take (Montreal Forced Aligner
+  or SOFA TextGrids, WhisperX JSON) into the line's fixed phoneme timing,
+  which DiffSinger exports use.
+
+The formats live in `crates/vocal`, pronunciations (IPA, from a CMUdict
+subset and spelling rules) in `crates/phonetics`; the research behind them is
+in [`docs/voice-and-lyrics.md`](docs/voice-and-lyrics.md).
+
 ## Sampled instruments
 
 **Orchestre** (`"type": "soundfont"`) plays sampled instruments: the 128
@@ -198,7 +234,9 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 | `crates/core` | project model, device catalog, validation, JSON Schema, formatter |
 | `crates/engine` | portable DSP engine: sequencer, synths (Aurum subtractive, Lumière FM, Atelier drums, Vault sampler), effects, mixer, offline render |
 | `crates/wasm` | the engine compiled to WebAssembly (C ABI for the AudioWorklet) |
-| `crates/import` | importers: LMMS projects (.mmp/.mmpz) and Standard MIDI Files |
+| `crates/import` | importers: LMMS projects (.mmp/.mmpz) and Standard MIDI Files (with lyrics) |
+| `crates/phonetics` | pronunciation: lyrics to IPA phonemes, syllable by syllable; ARPAbet and X-SAMPA |
+| `crates/vocal` | the song performed as sung lines, its exports (MIDI, MusicXML, singing and lyric formats) and alignment import |
 | `crates/fs` | the file system the studio works on: the disk, or an in-memory tree the browser persists |
 | `crates/studio` | the server's portable logic: project folders, library, file manager, zip archives, agent guides, audio decoding, rendering |
 | `crates/local` | the server's API and sockets in the browser (WebAssembly, for the static build) + the Rosaclef shell |
