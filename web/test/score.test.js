@@ -1,7 +1,7 @@
 // Tests for the sheet-music logic (notation.js, engrave.js), run with:
 // node web/test/score.test.js (also type-checked by inty via web/check.sh).
 import { emptyProject } from "../src/model.js";
-import { spell, spelledName, keyAlter, stepPitch, pieces, buildScore, gather, autoClef, gmDrum, TPQ, NO_ACC } from "../src/notation.js";
+import { spell, spelledName, keyAlter, stepPitch, pieces, buildScore, gather, autoClef, gmDrum, TPQ, NO_ACC, passesText } from "../src/notation.js";
 import { engrave, timeX, xTick } from "../src/engrave.js";
 import { scorePdf, pathOps, pdfString } from "../src/pdf.js";
 import { trackIx, insertIx } from "#brands";
@@ -189,6 +189,44 @@ check("General MIDI drums sit where drummers read them", gmDrum(36).step === 38 
   check("every note gets a notehead to click", heads === 64);
   const s0 = page.systems[0];
   check("time maps to x and back", Math.abs(xTick(s0.times, timeX(s0.times, 2 * TPQ)) - 2 * TPQ) < 1e-6 && timeX(s0.times, TPQ) < timeX(s0.times, 2 * TPQ));
+}
+
+// ------------------------------------------------------------------ repeats
+
+check("endings name their passes", passesText([1]) === "1." && passesText([2, 1]) === "1.–2." && passesText([1, 3]) === "1., 3.");
+{
+  /** const notes: Number[][] */
+  const notes = [];
+  for (let i = 0; i < 4; i++) notes.push([60 + i, i, 1]);
+  const p = song(notes, 24);
+  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(0), start: 0, length: 24, offset: 0, gain: 1, mixer: insertIx(0) });
+  p.repeats.push({
+    start: 4,
+    end: 12,
+    times: 3,
+    endings: [
+      { start: 8, end: 12, passes: [1, 2] },
+      { start: 12, end: 16, passes: [3] },
+    ],
+  });
+  const SONG = { kind: "song", track: 0, pattern: "" };
+  const sc = buildScore(p, SONG, 12);
+  check("the song's repeats come into its score", sc.repeats.length === 1);
+  check("resting bars join up only between repeat signs and endings", sc.measures.map((m) => m.count).join(",") === "1,1,1,1,2");
+  check("a pattern's score has no repeats", buildScore(p, PAT, 12).repeats.length === 0);
+  const page = engrave(sc, { width: 200, hideEmpty: false });
+  /** const texts: String[] */
+  const texts = [];
+  for (const s of page.systems) for (const l of s.labels) texts.push(`${l.cls}:${l.text}`);
+  check("a repeat played three times says so", texts.includes("reptimes:×3"));
+  check("endings are bracketed with their passes", texts.includes("volta:1.–2.") && texts.includes("volta:3."));
+  p.repeats[0].times = 2;
+  p.repeats[0].endings = [];
+  const twice = engrave(buildScore(p, SONG, 12), { width: 200, hideEmpty: false });
+  check(
+    "a plain repeat (twice) has no count and no brackets",
+    twice.systems.every((s) => s.labels.every((l) => l.cls !== "reptimes" && l.cls !== "volta"))
+  );
 }
 
 // ------------------------------------------------------------------ PDF

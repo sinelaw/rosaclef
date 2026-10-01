@@ -21,6 +21,7 @@ use dsp::{hermite, pan_gains, Ramp};
 use effects::Effect;
 use instruments::{Instrument, NoteEvent, NoteKind};
 use rosaclef_core::automation::TempoMap;
+use rosaclef_core::form::{self, Span};
 use rosaclef_core::{Device, InsertIx, Project};
 use samples::{PresetKey, SampleBank, SampleData, SampleRef};
 use std::sync::Arc;
@@ -33,6 +34,19 @@ pub const AUTOMATION_BLOCK: usize = 64;
 
 /// Devices whose settings depend on the tempo (they are reconfigured when
 /// tempo automation moves the tempo).
+/// Whether an instrument plays its notes at their pitch (the master
+/// transpose shifts it): not the drum machine, nor a soundfont drum kit.
+fn pitched(dev: &Device) -> bool {
+    match dev.kind.as_str() {
+        "drum" => false,
+        "soundfont" => {
+            rosaclef_core::gm::lookup(dev.option("program")).map(|(bank, _)| bank)
+                != Some(rosaclef_core::gm::DRUM_BANK)
+        }
+        _ => true,
+    }
+}
+
 fn tempo_synced(kind: &str) -> bool {
     matches!(kind, "delay" | "comete" | "dedale")
 }
@@ -156,6 +170,9 @@ struct ChannelRt {
     buf_l: Vec<f32>,
     buf_r: Vec<f32>,
     peak: f32,
+    /// Semitones its notes sound away from their written pitch (the master
+    /// transpose for a pitched instrument, 0 for drums).
+    shift: i32,
 }
 
 impl ChannelRt {
@@ -276,6 +293,12 @@ pub struct Engine {
     patterns: Vec<CPattern>,
     clips: Vec<CClip>,
     song_length: f64,
+    /// The order the song plays in (its repeats taken): spans of written time.
+    form: Vec<Span>,
+    /// The span of `form` playing now.
+    form_at: usize,
+    /// Live keys down: channel, the key pressed, the key sounding.
+    held: Vec<(ChannelHandle, u8, u8)>,
     swing: f64,
     /// Compiled automation lanes (song mode).
     lanes: Vec<CLane>,
@@ -327,6 +350,9 @@ impl Engine {
             patterns: vec![],
             clips: vec![],
             song_length: 0.0,
+            form: vec![],
+            form_at: 0,
+            held: vec![],
             swing: 0.0,
             lanes: vec![],
             auto_applied: false,
@@ -411,6 +437,7 @@ impl Engine {
                         buf_l: vec![0.0; MAX_BLOCK],
                         buf_r: vec![0.0; MAX_BLOCK],
                         peak: 0.0,
+                        shift: 0,
                     }
                 }
             };
@@ -422,6 +449,11 @@ impl Engine {
             rt.mute = ch.mute;
             rt.update_gains();
             rt.mixer = clamp_insert(ch.mixer, &project);
+            rt.shift = if pitched(&ch.instrument) {
+                project.transport.transpose.clamp(-12, 12)
+            } else {
+                0
+            };
             self.channels.push(rt);
         }
 
@@ -492,9 +524,15 @@ impl Engine {
                         let sixteenth = n.start * 4.0;
                         let on_grid = (sixteenth - sixteenth.round()).abs() < 1e-6;
                         let swung = on_grid && (sixteenth.round() as i64) % 2 == 1;
+                        let shift = project.transport.transpose.clamp(-12, 12);
+                        let shift = if pitched(&project.channels[channel].instrument) {
+                            shift
+                        } else {
+                            0
+                        };
                         Some(CNote {
                             channel,
-                            key: n.pitch.clamp(0, 127) as u8,
+                            key: (n.pitch + shift).clamp(0, 127) as u8,
                             start: n.start,
                             swung,
                             length: n.length.max(1e-4),
@@ -538,7 +576,12 @@ impl Engine {
             })
             .filter(|c| c.pattern.is_some() || !c.sample_path.is_empty())
             .collect();
-        self.song_length = project.song_length();
+        self.song_length = form::written_end(&project);
+        self.form = form::performance(&project);
+        // Keep playing where we are, in the span that holds the position now.
+        if self.form_at >= self.form.len() || !self.in_span(self.form_at, self.position) {
+            self.form_at = self.span_at(self.position);
+        }
 
         // Drop note-offs for channels that no longer exist.
         let handles: Vec<ChannelHandle> = self.channels.iter().map(|c| c.handle).collect();
@@ -709,6 +752,7 @@ impl Engine {
         self.pre = 0.0;
         self.auto_hold = false;
         self.position = 0.0;
+        self.form_at = 0;
         self.release_all();
         self.restore_automation();
     }
@@ -729,9 +773,35 @@ impl Engine {
         if mode != self.mode {
             self.mode = mode;
             self.position = 0.0;
+            self.form_at = 0;
             self.release_all();
             self.restore_automation();
         }
+    }
+
+    /// Whether span `i` of the form holds written beat `beat`.
+    fn in_span(&self, i: usize, beat: f64) -> bool {
+        self.form
+            .get(i)
+            .is_some_and(|s| beat >= s.start - 1e-9 && beat < s.end)
+    }
+
+    /// The first span of the form that holds `beat` (the first one after it, else 0).
+    fn span_at(&self, beat: f64) -> usize {
+        if let Some(i) = (0..self.form.len()).find(|&i| self.in_span(i, beat)) {
+            return i;
+        }
+        (0..self.form.len())
+            .find(|&i| self.form[i].start > beat)
+            .unwrap_or(0)
+    }
+
+    /// Seconds the song plays for, its repeats taken, following tempo automation.
+    pub fn performance_seconds(&self) -> f64 {
+        self.form
+            .iter()
+            .map(|s| self.tempo_map.seconds_at(s.end) - self.tempo_map.seconds_at(s.start))
+            .sum()
     }
 
     /// Seconds from the start of the song to `beat`, following tempo automation.
@@ -756,12 +826,15 @@ impl Engine {
 
     pub fn seek(&mut self, beat: f64) {
         self.position = beat.max(0.0);
+        // A written beat that plays more than once: the first time it does.
+        self.form_at = self.span_at(self.position);
         self.pre = 0.0;
         self.release_all();
     }
 
     fn release_all(&mut self) {
         self.pending.clear();
+        self.held.clear();
         for ch in &mut self.channels {
             ch.events.push(NoteEvent {
                 offset: 0,
@@ -770,21 +843,37 @@ impl Engine {
         }
     }
 
-    /// Live note input (UI keyboard, piano roll preview, MIDI).
+    /// Live note input (UI keyboard, piano roll preview, MIDI), shifted by
+    /// the master transpose like the sequenced notes.
     pub fn note_on(&mut self, channel: &str, key: u8, velocity: f32) {
         if let Some(ch) = self.channels.iter_mut().find(|c| c.id == channel) {
+            let sounding = (key as i32 + ch.shift).clamp(0, 127) as u8;
+            // The key releases what it started, even if the transpose changes meanwhile.
+            self.held.retain(|h| !(h.0 == ch.handle && h.1 == key));
+            self.held.push((ch.handle, key, sounding));
             ch.events.push(NoteEvent {
                 offset: 0,
-                kind: NoteKind::On { key, velocity },
+                kind: NoteKind::On {
+                    key: sounding,
+                    velocity,
+                },
             });
         }
     }
 
     pub fn note_off(&mut self, channel: &str, key: u8) {
         if let Some(ch) = self.channels.iter_mut().find(|c| c.id == channel) {
+            let sounding = match self
+                .held
+                .iter()
+                .position(|h| h.0 == ch.handle && h.1 == key)
+            {
+                Some(i) => self.held.swap_remove(i).2,
+                None => (key as i32 + ch.shift).clamp(0, 127) as u8,
+            };
             ch.events.push(NoteEvent {
                 offset: 0,
-                kind: NoteKind::Off { key },
+                kind: NoteKind::Off { key: sounding },
             });
         }
     }
@@ -978,19 +1067,48 @@ impl Engine {
             }
             return;
         }
+        let song = matches!(self.mode, PlayMode::Song) && !self.form.is_empty();
         let mut frame = from;
         while frame < n {
-            if wraps && self.position >= loop_len {
-                self.position = 0.0;
+            // Where the written music stops running straight on: the end of the
+            // song or pattern, or (song) the end of the form's current span —
+            // a repeat sign, or an ending this pass skips.
+            let limit = if song {
+                self.form[self.form_at].end
+            } else {
+                loop_len
+            };
+            if wraps && self.position >= limit - 1e-9 {
+                if song {
+                    self.form_at += 1;
+                    if self.form_at >= self.form.len() {
+                        self.form_at = 0;
+                    }
+                    self.position = self.form[self.form_at].start;
+                } else {
+                    self.position = 0.0;
+                }
+                continue;
             }
+            let limit = if song {
+                self.form[self.form_at].end
+            } else {
+                loop_len
+            };
             let to_end = if wraps {
-                ((loop_len - self.position) / bpf).ceil().max(1.0) as usize
+                ((limit - self.position) / bpf).ceil().max(1.0) as usize
             } else {
                 n - frame
             };
             let seg = (n - frame).min(to_end);
             let b0 = self.position;
-            let b1 = b0 + seg as f64 * bpf;
+            // A chunk that reaches the limit stops exactly on it, so nothing
+            // written at the limit (a skipped ending's first note) sounds early.
+            let b1 = if wraps && seg == to_end {
+                (b0 + seg as f64 * bpf).min(limit)
+            } else {
+                b0 + seg as f64 * bpf
+            };
             let c0 = self.clock;
             let c1 = c0 + seg as f64 * bpf;
             if self.metronome {

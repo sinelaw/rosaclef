@@ -113,6 +113,7 @@ pub fn schema() -> Value {
                     "bpm": num(20.0, 999.0, "Tempo in beats per minute."),
                     "beatsPerBar": {"type": "integer", "minimum": 1, "maximum": 32, "default": 4},
                     "swing": num(0.0, 1.0, "16th-note swing: 0 straight, 1 full triplet feel."),
+                    "transpose": {"type": "integer", "minimum": -12, "maximum": 12, "default": 0, "description": "Semitones every pitched instrument is shifted by when it plays (to match a singer's range). Notes stay as written; drums and audio clips are not shifted."},
                     "meters": {
                         "type": "array",
                         "description": "Time-signature changes, sorted by bar. Each holds from its bar until the next; bars before the first have beatsPerBar beats. A bar lasts 4 × numerator / denominator beats.",
@@ -165,6 +166,11 @@ pub fn schema() -> Value {
                 "type": "array",
                 "description": "Automation lanes: breakpoint curves that drive one value each (tempo, a mix control or a device parameter) over song time. Applied while the song plays in song mode and in renders.",
                 "items": {"$ref": "#/$defs/automationLane"}
+            },
+            "repeats": {
+                "type": "array",
+                "description": "Repeated passages of the arrangement, as repeat signs in a score: the song plays from start to end `times` times in all, then goes on. Endings (voltas) play only on the listed passes; the last pass's ending usually follows the end. Times are song beats, usually on bar lines.",
+                "items": {"$ref": "#/$defs/repeat"}
             },
             "score": {
                 "type": "object",
@@ -283,6 +289,28 @@ pub fn schema() -> Value {
                         "description": "Breakpoints sorted by beat. Before the first point the lane holds its first value, after the last point its last value. Two points on the same beat make a step.",
                         "items": {"$ref": "#/$defs/automationPoint"}
                     }
+                }
+            },
+            "repeat": {
+                "type": "object",
+                "required": ["start", "end"],
+                "additionalProperties": false,
+                "properties": {
+                    "start": {"type": "number", "minimum": 0, "description": "Start repeat sign, in song beats."},
+                    "end": {"type": "number", "description": "End repeat sign, in song beats: playing returns to start here."},
+                    "times": {"type": "integer", "minimum": 1, "maximum": 99, "default": 2, "description": "How many times the passage plays in all."},
+                    "endings": {"type": "array", "items": {"$ref": "#/$defs/ending"}}
+                }
+            },
+            "ending": {
+                "type": "object",
+                "required": ["start", "end", "passes"],
+                "additionalProperties": false,
+                "description": "A volta: music played only on some passes. Inside the repeat it is skipped on the other passes; after the end sign (directly) it is where the listed passes go on.",
+                "properties": {
+                    "start": {"type": "number", "minimum": 0},
+                    "end": {"type": "number"},
+                    "passes": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}, "description": "Passes that play it, counted from 1."}
                 }
             },
             "scoreMark": {

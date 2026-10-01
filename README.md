@@ -132,6 +132,11 @@ pattern, picked from its menu.
   hide staves that rest (as in orchestral scores); paper or night ink.
 - **PDF**: download what the view shows as vector pages ready to print (A4,
   or US Letter in the US and Canada), paginated with a title page heading.
+- **Repeats**: drag across some bars and press **Repeat** to put repeat
+  signs around them; set how many times they play (×2, ×3…) and make bars
+  **endings** ("1.", "2.", "1.–2.") that play on chosen passes only. The
+  song plays them — the playhead jumps back at the end sign, skips the
+  endings that are not this pass's — and the playlist's ruler shows them.
 - **Colors**: drag across the music to color a passage (on some staves or
   all) and label it; a passage colored in a pattern is colored wherever the
   pattern plays.
@@ -176,7 +181,9 @@ Times are in beats, pitches are MIDI numbers, instruments and effects are
 **Automation** lanes (`"automation": [{ "target": "channel/pad/cutoff", "points": [...] }]`)
 drive the tempo, swing, channel and insert volume/pan or any device parameter over the song;
 right-click a knob, fader or the tempo display to create one, and edit its curve under the
-playlist tracks.
+playlist tracks. **Transpose** (beside the tempo; `transport.transpose`, −12…12) shifts
+every pitched instrument by semitones to suit a singer: the notes stay as written, drums
+and audio clips are not shifted.
 See [`docs/architecture.md`](docs/architecture.md) for the design.
 
 ## Repository

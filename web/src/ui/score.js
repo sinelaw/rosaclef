@@ -21,8 +21,22 @@
 
 import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, textWidth, paperSize } from "#platform";
 import { state, commit, begin, changed, invalidate, hint, setFocus, reportContext, currentPattern } from "../store.js";
-import { PALETTE } from "../model.js";
-import { buildScore, TPQ, KEYS, keyLabel, keyAlter, spell, spelledName, stepPitch, drumAt, kindDrum, channelKind, bottomStep } from "../notation.js";
+import { PALETTE, semitonesText } from "../model.js";
+import {
+  buildScore,
+  TPQ,
+  KEYS,
+  keyLabel,
+  keyAlter,
+  spell,
+  spelledName,
+  stepPitch,
+  drumAt,
+  kindDrum,
+  channelKind,
+  bottomStep,
+  passesText,
+} from "../notation.js";
 import { engrave, timeX, xTick, GLOSS, SHEEN } from "../engrave.js";
 import { scorePdf } from "../pdf.js";
 import { preview, seek } from "../audio.js";
@@ -459,6 +473,81 @@ function clearRange(v, sc) {
   v.range.on = false;
 }
 
+// ------------------------------------------------------------------ repeats
+
+/** The bars the chosen passage touches, in beats: [start, end). */
+/** function rangeBars(sc: Score, r: Range) => Number[] */
+function rangeBars(sc, r) {
+  const t0 = Math.min(r.t0, r.t1);
+  const t1 = Math.max(r.t0, r.t1);
+  let a = t0;
+  let z = t1;
+  for (const m of sc.measures) {
+    const bar = m.length / m.count;
+    for (let k = 0; k < m.count; k++) {
+      const s = m.start + k * bar;
+      if (s <= t0 && t0 < s + bar) a = s;
+      if (s < t1 && t1 <= s + bar) z = s + bar;
+    }
+  }
+  return [Math.round((a / TPQ) * 1e4) / 1e4, Math.round((z / TPQ) * 1e4) / 1e4];
+}
+
+/** Where a repeat stops, with the endings that follow it. */
+/** function repeatEnd(r: Repeat) => Number */
+function repeatEnd(r) {
+  let end = r.end;
+  for (const e of r.endings) if (e.start >= r.end - 1e-9) end = Math.max(end, e.end);
+  return end;
+}
+
+/** Repeat the chosen bars (twice), replacing the repeats they overlap. */
+/** function repeatRange(v: ScoreView, sc: Score) => Undefined */
+function repeatRange(v, sc) {
+  const ab = rangeBars(sc, v.range);
+  const a = ab[0];
+  const z = ab[1];
+  commit(() => {
+    const keep = state.project.repeats.filter((r) => r.start >= z || repeatEnd(r) <= a);
+    keep.push({ start: a, end: z, times: 2, endings: [] });
+    keep.sort((x, y) => x.start - y.start);
+    state.project.repeats = keep;
+  });
+  v.range.on = false;
+}
+
+/** Make the chosen bars an ending of the repeat they close (or follow):
+ * inside it, the passes before the last; right after it, the last pass. */
+/** function endingRange(v: ScoreView, sc: Score) => Undefined */
+function endingRange(v, sc) {
+  const ab = rangeBars(sc, v.range);
+  const a = ab[0];
+  const z = ab[1];
+  const r = state.project.repeats.find((x) => a > x.start + 1e-9 && a <= repeatEnd(x) + 1e-9);
+  if (r === undefined) {
+    toast("No repeat here", "An ending goes at the end of a repeat, or right after it: repeat some bars first.", "warn");
+    return undefined;
+  }
+  const others = r.endings.filter((e) => e.end <= a + 1e-9 || e.start >= z - 1e-9);
+  /** const free: Int[] */
+  const free = [];
+  for (let k = 1; k <= r.times; k++) if (!others.some((e) => e.passes.includes(k))) free.push(k);
+  const inside = a < r.end - 1e-9;
+  let passes = inside ? free.filter((k) => k < r.times) : free.includes(r.times) ? [r.times] : free;
+  if (passes.length === 0) passes = free.slice(0, 1);
+  if (passes.length === 0) {
+    toast("No pass left", "Every pass of this repeat already has its ending.", "warn");
+    return undefined;
+  }
+  const at = state.project.repeats.indexOf(r);
+  commit(() => {
+    const rr = state.project.repeats[at];
+    rr.endings = others.concat([{ start: a, end: inside ? Math.min(z, rr.end) : z, passes: passes }]);
+    rr.endings.sort((x, y) => x.start - y.start);
+  });
+  v.range.on = false;
+}
+
 // ------------------------------------------------------------------ pointer
 
 /** function onPaperDown(e: Ev, v: ScoreView, c: Cached, geo: PageGeo) => Undefined */
@@ -700,6 +789,9 @@ function subtitle(score, sc) {
   if (sc.kind === "pattern") sub.push(`pattern · ${p.patterns.find((x) => x.id === sc.pattern) ? fmt(score.end / TPQ, 0) : "0"} beats`);
   if (sc.kind === "track") sub.push("one track of the song");
   if (!score.empty) sub.push(keyLabel(score.keyName));
+  // The master transpose shifts what plays, not what is written.
+  const t = p.transport.transpose;
+  if (t !== 0) sub.push(`sounds ${semitonesText(t)} semitone${Math.abs(t) === 1 ? "" : "s"}`);
   return sub.join(" · ");
 }
 
@@ -1145,6 +1237,8 @@ function sideView(b, v, c, sc, geo) {
     }
   }
 
+  if (sc.kind !== "pattern") repeatsSide(b, v, c, geo);
+
   // Colored passages.
   b.leaf("div", "h3", "score-side-h", "Colors");
   b.open("div", "marks", "score-list");
@@ -1197,6 +1291,101 @@ function sideView(b, v, c, sc, geo) {
   b.close();
 }
 
+/** Scroll to the system that holds a beat. */
+/** function showBeat(v: ScoreView, c: Cached, geo: PageGeo, beat: Number) => Undefined */
+function showBeat(v, c, geo, beat) {
+  for (const s of c.page.systems) {
+    if (beat * TPQ >= s.start && beat * TPQ < s.end) {
+      v.scrollTop = Math.max(0, sysY(geo, s) - 30);
+      invalidate();
+    }
+  }
+}
+
+/** The song's repeats: how many times each plays, and which passes take which ending. */
+/** function repeatsSide(b: Builder, v: ScoreView, c: Cached, geo: PageGeo) => Undefined */
+function repeatsSide(b, v, c, geo) {
+  const reps = state.project.repeats;
+  b.leaf("div", "hr", "score-side-h", "Repeats");
+  b.open("div", "repeats", "score-list");
+  if (reps.length === 0) b.leaf("div", "none", "score-none", "Drag across some bars, then Repeat.");
+  for (let i = 0; i < reps.length; i++) {
+    const r = reps[i];
+    const bar0 = barOf(c.score, r.start * TPQ);
+    const bar1 = barOf(c.score, r.end * TPQ - 1);
+    b.open("div", `r${i}`, "score-mark score-rep");
+    b.leaf("span", "sign", "score-rep-sign", "\u{e040}");
+    b.leaf("button", "go", "score-mark-where score-rep-where", bar0 === bar1 ? `bar ${bar0}` : `bars ${bar0}–${bar1}`);
+    b.attr("title", "Click to show");
+    b.on("click", (e) => showBeat(v, c, geo, r.start));
+    b.open("span", "times", "score-rep-times");
+    iconButton(b, "less", "small ghost", "minus", "Play it one time less", () => {
+      if (r.times > 2)
+        commit(() => {
+          const rr = state.project.repeats[i];
+          rr.times = rr.times - 1;
+          for (const e of rr.endings) e.passes = e.passes.filter((k) => k <= rr.times);
+          rr.endings = rr.endings.filter((e) => e.passes.length > 0);
+        });
+    });
+    b.leaf("span", "n", "score-rep-n", `×${r.times}`);
+    b.attr("title", `Plays ${r.times} times`);
+    iconButton(b, "more", "small ghost", "plus", "Play it one more time", () => {
+      if (r.times < 99)
+        commit(() => {
+          const rr = state.project.repeats[i];
+          // The ending after the repeat stays the last pass's.
+          for (const e of rr.endings) if (e.start >= rr.end - 1e-9) e.passes = e.passes.map((k) => (k === rr.times ? k + 1 : k));
+          rr.times = rr.times + 1;
+        });
+    });
+    b.close();
+    iconButton(b, "x", "small ghost", "close", "Remove this repeat (and its endings)", () => {
+      commit(() => {
+        state.project.repeats = state.project.repeats.filter((x) => x !== r);
+      });
+    });
+    b.close();
+    for (let j = 0; j < r.endings.length; j++) {
+      const en = r.endings[j];
+      const e0 = barOf(c.score, en.start * TPQ);
+      const e1 = barOf(c.score, en.end * TPQ - 1);
+      b.open("div", `r${i}e${j}`, "score-mark score-ending");
+      b.leaf("span", "text", "score-ending-text", passesText(en.passes));
+      b.leaf("button", "go", "score-mark-where", e0 === e1 ? `bar ${e0}` : `bars ${e0}–${e1}`);
+      b.attr("title", "Click to show");
+      b.on("click", (e) => showBeat(v, c, geo, en.start));
+      b.open("span", "passes", "score-passes");
+      for (let k = 1; k <= r.times; k++) {
+        const on = en.passes.includes(k);
+        b.leaf("button", `p${k}`, on ? "score-pass on" : "score-pass", `${k}`);
+        b.attr("title", on ? `Pass ${k} plays this ending — click to skip it` : `Play this ending on pass ${k}`);
+        b.attr("aria-pressed", on ? "true" : "false");
+        b.on("click", (e) => {
+          if (on && en.passes.length === 1) return undefined;
+          commit(() => {
+            const ee = state.project.repeats[i].endings[j];
+            if (on) ee.passes = ee.passes.filter((x) => x !== k);
+            else {
+              ee.passes.push(k);
+              ee.passes.sort((x, y) => x - y);
+            }
+          });
+        });
+      }
+      b.close();
+      iconButton(b, "x", "small ghost", "close", "Remove this ending", () => {
+        commit(() => {
+          const rr = state.project.repeats[i];
+          rr.endings = rr.endings.filter((x) => x !== en);
+        });
+      });
+      b.close();
+    }
+  }
+  b.close();
+}
+
 /** The bar over a chosen passage: colors to paint it with. */
 /** function rangeBar(b: Builder, v: ScoreView, c: Cached) => Undefined */
 function rangeBar(b, v, c) {
@@ -1222,6 +1411,14 @@ function rangeBar(b, v, c) {
   b.leaf("button", "clear", "btn small ghost", "Clear colors");
   b.attr("title", "Remove the colors that touch this passage");
   b.on("click", (e) => clearRange(v, c.score));
+  if (scopeOf(v).kind !== "pattern") {
+    b.leaf("button", "repeat", "btn small ghost", "Repeat");
+    b.attr("title", "Repeat these bars (play them twice; set how many times under Repeats)");
+    b.on("click", (e) => repeatRange(v, c.score));
+    b.leaf("button", "ending", "btn small ghost", "Ending");
+    b.attr("title", "Make these bars an ending: inside a repeat they play on the passes before the last; right after it, on the last");
+    b.on("click", (e) => endingRange(v, c.score));
+  }
   iconButton(b, "x", "small ghost", "close", "Cancel (Escape)", () => {
     v.range.on = false;
     invalidate();

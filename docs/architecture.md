@@ -132,6 +132,12 @@
   `crates/core/src/model.rs`) holds the key, hidden channels and tracks,
   clefs and colored passages. An SVG filter gives the engraving the look of
   ink on paper (wicked edges, rounded bleed, a pooled rim).
+- Repeats (`project.repeats`: start/end beats, `times`, `endings` with the
+  passes that play them) are the song's form. `crates/core/src/form.rs`
+  unrolls them into the performance order (spans of written beats); the
+  engine plays span by span, jumping at each span's end, and the song's
+  length in seconds follows the unrolled form. The score draws the repeat
+  signs, "×3" counts and volta brackets; the playlist's ruler shows them too.
 - `web/src/pdf.js` engraves the score again for a printed page, paginates it
   (spreading the systems of full pages) and writes PDF objects: the glyphs as
   forms drawn from Bravura's outlines (no embedded font), text in the

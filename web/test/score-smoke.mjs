@@ -32,6 +32,37 @@ const title = await page.textContent(".score-top .score-title");
 if (!title || title.trim() === "") throw new Error("no title");
 ok(`the page is titled "${title}"`);
 
+// Repeats: drag across bars of the song, repeat them, play them three times, give them endings.
+/** Drag across the first system, from a fraction of its width to another. */
+async function dragAcross(f0, f1) {
+  const s = await page.locator(".score-top .score-sys").first().boundingBox();
+  await page.mouse.move(s.x + s.width * f0, s.y + s.height * 0.4);
+  await page.mouse.down();
+  await page.mouse.move(s.x + s.width * ((f0 + f1) / 2), s.y + s.height * 0.45, { steps: 6 });
+  await page.mouse.move(s.x + s.width * f1, s.y + s.height * 0.5, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForSelector(".score-top .score-rangebar");
+}
+await dragAcross(0.3, 0.75);
+await page.click(".score-top .score-rangebar button:has-text('Repeat')");
+await page.waitForSelector(".score-top .score-rep");
+await page.click(".score-top .score-rep button[title^='Play it one more']");
+await page.waitForSelector(".score-top text.reptimes");
+ok(`a passage repeats, ${await page.textContent(".score-top text.reptimes")}`);
+await dragAcross(0.8, 0.88);
+await page.click(".score-top .score-rangebar button:has-text('Ending')");
+await page.waitForSelector(".score-top text.volta");
+ok(`its last bar becomes the ending of passes ${await page.textContent(".score-top text.volta")}`);
+await page.click("button.tab:has-text('Playlist')");
+await page.waitForSelector(".ruler-repeat .ruler-repeat-times");
+await page.waitForSelector(".ruler-ending");
+ok("the playlist's ruler shows the repeat and its ending");
+await page.click("button.tab:has-text('Score')");
+await page.waitForSelector(".score-top .score-rep");
+for (let i = 0; i < 3; i++) await page.keyboard.press("Control+z");
+await page.waitForFunction(() => document.querySelector(".score-top .score-rep") === null && document.querySelector(".score-top text.volta") === null);
+ok("Ctrl+Z takes the repeat back");
+
 // The pattern of the piano roll, in the dock (F10); write a note into it.
 await page.keyboard.press("Control+Alt+KeyP");
 await page.keyboard.press("F10");

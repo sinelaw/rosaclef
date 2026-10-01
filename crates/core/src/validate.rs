@@ -161,6 +161,12 @@ pub fn validate(p: &Project) -> Vec<Issue> {
         v.err("transport.beatsPerBar", "must be between 1 and 32");
     }
     v.range("transport.swing", p.transport.swing, 0.0, 1.0);
+    if !(-12..=12).contains(&p.transport.transpose) {
+        v.err(
+            "transport.transpose",
+            "must be between -12 and 12 semitones",
+        );
+    }
     let mut prev_bar = 0u32;
     for (i, m) in p.transport.meters.iter().enumerate() {
         let path = format!("transport.meters[{i}]");
@@ -377,7 +383,90 @@ pub fn validate(p: &Project) -> Vec<Issue> {
 
     check_automation(&mut v, p);
     check_score(&mut v, p);
+    check_repeats(&mut v, p);
     v.issues
+}
+
+fn check_repeats(v: &mut V, p: &Project) {
+    let mut spans: Vec<(f64, f64, usize)> = vec![];
+    for (i, r) in p.repeats.iter().enumerate() {
+        let path = format!("repeats[{i}]");
+        if !(r.start >= 0.0 && r.start.is_finite()) {
+            v.err(format!("{path}.start"), "start must be >= 0");
+        }
+        if !(r.end > r.start && r.end.is_finite()) {
+            v.err(format!("{path}.end"), "end must come after start");
+        }
+        if !(1..=99).contains(&r.times) {
+            v.err(
+                format!("{path}.times"),
+                "times must be 1 to 99 (2 = play it twice)",
+            );
+        }
+        let mut end = r.end;
+        let mut prev: Option<(f64, f64)> = None;
+        let mut endings: Vec<(usize, &crate::model::Ending)> =
+            r.endings.iter().enumerate().collect();
+        endings.sort_by(|a, b| a.1.start.total_cmp(&b.1.start));
+        for (j, e) in endings {
+            let ep = format!("{path}.endings[{j}]");
+            if !(e.end > e.start && e.start.is_finite() && e.end.is_finite()) {
+                v.err(format!("{ep}.end"), "end must come after start");
+                continue;
+            }
+            if e.start < r.start {
+                v.err(
+                    format!("{ep}.start"),
+                    "an ending starts inside its repeat or right after it",
+                );
+            }
+            if e.start > end + 1e-9 {
+                v.err(
+                    format!("{ep}.start"),
+                    format!("an ending after the repeat must follow it directly (at beat {end})"),
+                );
+            }
+            if let Some((_, pe)) = prev {
+                if e.start < pe - 1e-9 {
+                    v.err(format!("{ep}.start"), "endings must not overlap");
+                }
+            }
+            if e.passes.is_empty() {
+                v.err(
+                    format!("{ep}.passes"),
+                    "list the passes that play this ending (e.g. [1])",
+                );
+            }
+            for &k in &e.passes {
+                if k < 1 || k > r.times {
+                    v.err(
+                        format!("{ep}.passes"),
+                        format!(
+                            "pass {k} does not exist (the repeat plays {} times)",
+                            r.times
+                        ),
+                    );
+                }
+            }
+            if e.start >= r.end - 1e-9 {
+                end = end.max(e.end);
+            }
+            prev = Some((e.start, e.end));
+        }
+        spans.push((r.start, end, i));
+    }
+    spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for w in spans.windows(2) {
+        if w[1].0 < w[0].1 - 1e-9 {
+            v.err(
+                format!("repeats[{}].start", w[1].2),
+                format!(
+                    "repeats must not overlap (repeats[{}] runs to beat {})",
+                    w[0].2, w[0].1
+                ),
+            );
+        }
+    }
 }
 
 fn check_score(v: &mut V, p: &Project) {

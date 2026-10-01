@@ -52,8 +52,8 @@ pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
     let seconds = match scope {
         RenderScope::Song => {
             engine.set_mode(PlayMode::Song);
-            // Follows tempo automation.
-            engine.song_seconds(engine.project().song_length())
+            // Follows tempo automation, and plays the repeats.
+            engine.performance_seconds()
         }
         RenderScope::Pattern { id, loops } => {
             engine.set_mode(PlayMode::Pattern(id.clone()));

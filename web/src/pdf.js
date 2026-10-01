@@ -278,8 +278,8 @@ export function scorePdf(sc, info, paper, hideEmpty, m) {
       }
       for (const br of s.braces) ops.push(`${INK} rg q ${n(br.s)} 0 0 ${n(br.s)} ${n(br.x)} ${n(br.y)} cm ${glyphName(G.brace.c)} Do Q`);
       for (const l of s.labels) {
-        const face = "Times-Italic";
-        const size = l.cls === "mnum" ? 1.25 : l.cls === "sname short" ? 1.3 : 1.55;
+        const face = l.cls === "volta" ? "Times-Bold" : l.cls === "reptimes" ? "Times-BoldItalic" : "Times-Italic";
+        const size = l.cls === "mnum" ? 1.25 : l.cls === "sname short" ? 1.3 : l.cls === "volta" ? 1.45 : 1.55;
         const w = m(face, shown(l.text)) * size;
         const x0 = l.anchor === "end" ? l.x - w : l.anchor === "middle" ? l.x - w / 2 : l.x;
         // Text is drawn upright again inside the flipped system.

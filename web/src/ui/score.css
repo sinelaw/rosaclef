@@ -187,6 +187,14 @@
   font-size: 1.3px;
   fill: var(--ink-soft);
 }
+.score-sys .volta {
+  font: 700 1.45px var(--serif);
+  fill: var(--ink);
+}
+.score-sys .reptimes {
+  font: italic 700 1.55px var(--serif);
+  fill: var(--ink);
+}
 .score-sys .mnum {
   font: italic 600 1.25px var(--serif);
   fill: var(--ink-soft);
@@ -513,4 +521,62 @@
 }
 .score-ribbon .label {
   margin-left: 6px;
+}
+
+/* Repeats in the sidebar: the bars, how many times, and each ending's passes. */
+.score-rep-sign {
+  width: 16px;
+  height: 18px;
+  text-align: center;
+  font: 18px/1 "Bravura";
+  transform: translateY(0.2em);
+  color: var(--gold-mid);
+}
+.score-rep-where {
+  flex: 1;
+  text-align: left;
+}
+.score-rep-times {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+.score-rep-n {
+  min-width: 26px;
+  text-align: center;
+  font: italic 700 14px/1 var(--serif);
+  color: var(--champagne);
+}
+.score-ending {
+  margin-left: 18px;
+  border-left: 1px solid rgba(212, 175, 55, 0.25);
+  border-top-left-radius: 0;
+}
+.score-ending-text {
+  min-width: 34px;
+  font: 700 13px/1 var(--serif);
+  color: var(--champagne);
+}
+.score-passes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.score-pass {
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 11px/1 var(--mono);
+  cursor: pointer;
+}
+.score-pass:hover {
+  color: var(--gold-hi);
+}
+.score-pass.on {
+  background: rgba(212, 175, 55, 0.18);
+  border-color: var(--gold-mid);
+  color: var(--champagne);
 }
