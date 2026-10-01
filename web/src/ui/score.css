@@ -8,7 +8,8 @@
 
 .score {
   --paper: #fbf7ec;
-  --paper-2: #f3ecdb;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.36 0 0 0 0 0.2 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  --gloss: rgba(255, 252, 242, 0.9);
   --ink: #1b1712;
   --staff: rgba(27, 23, 18, 0.82);
   --ink-soft: #6b5f4d;
@@ -23,7 +24,8 @@
 }
 .score.night {
   --paper: #15121a;
-  --paper-2: #1d1923;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.83 0 0 0 0 0.69 0 0 0 0 0.22 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  --gloss: rgba(255, 246, 220, 0.75);
   --ink: #ecdcb4;
   --staff: rgba(212, 175, 55, 0.55);
   --ink-soft: #a39271;
@@ -60,7 +62,10 @@
 .score-paper {
   position: absolute;
   border-radius: 3px;
-  background: radial-gradient(140% 60% at 50% 0%, rgba(255, 255, 255, 0.55), transparent 60%), linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+  /* One color all the way down (a score can be very tall), with a fine grain that repeats. */
+  background-color: var(--paper);
+  background-image: var(--grain);
+  background-size: 180px 180px;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.6) inset,
     0 0 0 1px rgba(120, 96, 52, 0.18),
@@ -77,7 +82,6 @@
   pointer-events: none;
 }
 .score.night .score-paper {
-  background: radial-gradient(140% 60% at 50% 0%, rgba(212, 175, 55, 0.07), transparent 60%), linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
   box-shadow:
     0 0 0 1px rgba(212, 175, 55, 0.22),
     0 18px 50px rgba(0, 0, 0, 0.7);
@@ -194,6 +198,12 @@
   stroke: var(--range-line);
   stroke-width: 0.1;
   stroke-dasharray: 0.5 0.3;
+}
+.score-sys .gloss {
+  /* Light caught by the still-wet drops of ink. */
+  fill: var(--gloss);
+  /* In the system's units (staff spaces), like everything in it. */
+  filter: blur(0.03px);
 }
 .score-sys .sel {
   fill: var(--sel);

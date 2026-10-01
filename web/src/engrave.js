@@ -41,6 +41,8 @@ const THICK = 0.5;
 const STEM_LEN = 3.5;
 /** Space between systems. */
 const SYSTEM_GAP = 2.5;
+/** The run holding the glints of the wet ink (drawn in light over the music, not in ink). */
+export const GLOSS = "gloss";
 /** The SMuFL stem anchor: stems meet a notehead this far from its middle. */
 const STEM_Y = 0.168;
 
@@ -94,6 +96,20 @@ function glyph(p, g, x, y, color) {
   extend(p, y + g.top, y + g.bottom);
 }
 
+/** The gloss of a wet drop of ink: a small ellipse (centre, radii, tilt in degrees) where the light catches it. */
+/** function glint(p: Inker, cx: Number, cy: Number, rx: Number, ry: Number, deg: Number) => Undefined */
+function glint(p, cx, cy, rx, ry, deg) {
+  p.prims.push({ kind: 4, color: GLOSS, nums: [cx, cy, rx, ry, deg], ch: "" });
+}
+
+/** Where the light catches a notehead (upper left; on the rim of a hollow one). */
+/** function headGlint(p: Inker, gl: Glyph, x: Number, y: Number) => Undefined */
+function headGlint(p, gl, x, y) {
+  if (gl.c === G.noteheadBlack.c) glint(p, x + 0.37, y - 0.21, 0.2, 0.075, -22);
+  else if (gl.c === G.noteheadHalf.c) glint(p, x + 0.3, y - 0.31, 0.15, 0.05, -25);
+  else if (gl.c === G.noteheadWhole.c) glint(p, x + 0.45, y - 0.36, 0.18, 0.05, -12);
+}
+
 /** A tie or slur: a crescent between two points bulging by `h` (negative: up). */
 /** function tie(p: Inker, x0: Number, x1: Number, y: Number, h: Number, color: String) => Undefined */
 function tie(p, x0, x1, y, h, color) {
@@ -134,6 +150,13 @@ function emit(runs, prims, dy) {
       r.text.push(pr.ch);
       r.xs.push(num(n[0]));
       r.ys.push(num(n[1] + dy));
+    } else if (pr.kind === 4) {
+      // An ellipse: two arcs between the ends of its tilted long axis.
+      const a = (n[4] * Math.PI) / 180;
+      const ex = n[2] * Math.cos(a);
+      const ey = n[2] * Math.sin(a);
+      const arc = `A${num(n[2])} ${num(n[3])} ${num(n[4])} 1 0`;
+      r.d.push(`M${num(n[0] - ex)} ${num(n[1] - ey + dy)}${arc} ${num(n[0] + ex)} ${num(n[1] + ey + dy)}${arc} ${num(n[0] - ex)} ${num(n[1] - ey + dy)}Z`);
     } else if (pr.kind === 0) {
       let s = `M${num(n[0])} ${num(n[1] + dy)}`;
       for (let i = 2; i + 1 < n.length; i = i + 2) s = `${s}L${num(n[i])} ${num(n[i + 1] + dy)}`;
@@ -1042,6 +1065,7 @@ function drawChord(sc, st, si, g, ev, cx, tip, p, hb) {
     const gl = headGlyph(ev, h);
     const c = noteColor(sc, h.src);
     glyph(p, gl, hx[i], g.ys[i], c);
+    headGlint(p, gl, hx[i], g.ys[i]);
     hb.push({ x: hx[i], y: g.ys[i], w: gl.x1, src: h.src, staff: si, glyph: gl.c });
   }
   // Accidentals, in zig-zag columns left of the heads.
@@ -1072,7 +1096,10 @@ function drawChord(sc, st, si, g, ev, cx, tip, p, hb) {
       const dy = Math.abs(y - Math.round(y)) < 0.01 ? y - 0.5 : y;
       if (done.includes(dy)) continue;
       done.push(dy);
-      for (let d = 0; d < ev.dots; d++) glyph(p, G.augmentationDot, dx + d * 0.5, dy, color);
+      for (let d = 0; d < ev.dots; d++) {
+        glyph(p, G.augmentationDot, dx + d * 0.5, dy, color);
+        glint(p, dx + d * 0.5 + 0.15, dy - 0.07, 0.075, 0.04, -30);
+      }
     }
   }
   if (!stemmed) return up ? hi : lo;

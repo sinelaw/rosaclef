@@ -23,7 +23,7 @@ import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, textWidth, pape
 import { state, commit, begin, changed, invalidate, hint, setFocus, reportContext, currentPattern } from "../store.js";
 import { PALETTE } from "../model.js";
 import { buildScore, TPQ, KEYS, keyLabel, keyAlter, spell, spelledName, stepPitch, drumAt, kindDrum, channelKind, bottomStep } from "../notation.js";
-import { engrave, timeX, xTick } from "../engrave.js";
+import { engrave, timeX, xTick, GLOSS } from "../engrave.js";
 import { scorePdf } from "../pdf.js";
 import { preview, seek } from "../audio.js";
 import { select, iconButton, glyph, textInput } from "./widgets.js";
@@ -40,7 +40,7 @@ import { trackIx, trackIndex, noteIx, noteIndex } from "#brands";
 /** type Ghost = { sys: Int, row: Int, step: Int, tick: Number, x: Number } */
 /** The engraved score of the last flush, and what it was built from. */
 /** type Cached = { key: String, score: Score, page: Page } */
-/** type ScoreView = { id: String, scope: String, zoom: Number, width: Number, height: Number, scrollTop: Number, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, cache: Cached[] } */
+/** type ScoreView = { id: String, scope: String, zoom: Number, width: Number, height: Number, scrollTop: Number, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, ink: String, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, cache: Cached[] } */
 
 /** function newView(id: String, scope: String) => ScoreView */
 function newView(id, scope) {
@@ -56,6 +56,7 @@ function newView(id, scope) {
     dot: false,
     grid: 12,
     night: false,
+    ink: "wet",
     side: true,
     condense: true,
     range: { on: false, t0: 0, t1: 0, s0: 0, s1: 0 },
@@ -76,6 +77,7 @@ export function loadScorePrefs() {
     const z = Number(loadPref(`${PREF}${v.id}.zoom`));
     if (z >= 4 && z <= 16) v.zoom = z;
     v.night = loadPref(`${PREF}${v.id}.night`) === "1";
+    if (loadPref(`${PREF}${v.id}.ink`) === "dry") v.ink = "dry";
     if (loadPref(`${PREF}${v.id}.side`) === "0") v.side = false;
     const sc = loadPref(`${PREF}${v.id}.scope`);
     if (sc !== "") v.scope = sc;
@@ -86,6 +88,7 @@ export function loadScorePrefs() {
 function savePrefs(v) {
   savePref(`${PREF}${v.id}.zoom`, String(v.zoom));
   savePref(`${PREF}${v.id}.night`, v.night ? "1" : "0");
+  savePref(`${PREF}${v.id}.ink`, v.ink);
   savePref(`${PREF}${v.id}.side`, v.side ? "1" : "0");
   savePref(`${PREF}${v.id}.scope`, v.scope);
 }
@@ -670,7 +673,7 @@ function paperView(b, v, c, geo, sc) {
   }
   b.close();
 
-  inkFilter(b, `score-ink-${v.id}`);
+  inkFilter(b, `score-ink-${v.id}`, v.ink === "wet");
 
   // Systems in view (and a screen around).
   const lo = v.scrollTop - v.height;
@@ -779,16 +782,18 @@ function fe(b, type, key, attrs) {
 }
 
 /**
- * Ink on paper, as an SVG filter over the engraving (units are staff spaces):
- *  1. wicking — the edges are nudged a hair by paper-grain noise;
- *  2. spread — a little blur sharpened again swells and rounds the corners,
- *     as ink bleeds into the fibres;
- *  3. pooling — the outline is drawn full while the inside is a touch
- *     translucent and mottled, the darker rim a drop of ink leaves as it dries.
+ * Ink on paper, as an SVG filter over the engraving (units are staff spaces).
+ * Two inks, one at a time:
+ *  - wet: fresh and glossy — deep, solid ink whose edges swell and round a
+ *    little as it bleeds (a blur sharpened again); the noteheads and dots
+ *    catch the light (their glints are drawn over the music, see `GLOSS`);
+ *  - dry: faded — paper grain nudges the edges a hair (wicking), the ink
+ *    spreads, and the outline is drawn full over a slightly translucent,
+ *    mottled body: the darker rim a drop of ink leaves as it dries.
  * Colors pass through, so colored passages stay colored.
  */
-/** function inkFilter(b: Builder, id: String) => Undefined */
-function inkFilter(b, id) {
+/** function inkFilter(b: Builder, id: String, wet: Boolean) => Undefined */
+function inkFilter(b, id, wet) {
   b.open("svg", "defs", "score-defs");
   b.attr("width", "0");
   b.attr("height", "0");
@@ -801,6 +806,17 @@ function inkFilter(b, id) {
   b.attr("width", "104%");
   b.attr("height", "120%");
   b.attr("color-interpolation-filters", "sRGB");
+  if (wet) {
+    fe(b, "feGaussianBlur", "soft", ["in", "SourceGraphic", "stdDeviation", "0.045", "result", "soft"]);
+    b.open("feComponentTransfer", "spread", "");
+    b.attr("in", "soft");
+    fe(b, "feFuncA", "a", ["type", "linear", "slope", "2.2", "intercept", "-0.32"]);
+    b.close();
+    b.close();
+    b.close();
+    b.close();
+    return undefined;
+  }
   fe(b, "feTurbulence", "grain", ["type", "fractalNoise", "baseFrequency", "2.4", "numOctaves", "1", "seed", "11", "result", "grain"]);
   fe(b, "feDisplacementMap", "wick", [
     "in",
@@ -889,6 +905,7 @@ function systemView(b, v, c, geo, i, y, sel) {
   b.attr("filter", `url(#score-ink-${v.id})`);
   for (let k = 0; k < s.inks.length; k++) {
     const ink = s.inks[k];
+    if (ink.color === GLOSS) continue;
     const named = ink.color === "" || ink.color === "staff";
     const cls = ink.color === "staff" ? "staff" : "ink";
     if (ink.d !== "") {
@@ -943,6 +960,12 @@ function systemView(b, v, c, geo, i, y, sel) {
     b.leaf("text", "sel", "glyphs sel", chars);
     b.attr("x", xs.join(" "));
     b.attr("y", ys.join(" "));
+  }
+  // The gloss of the wet ink, over the music (and the selection).
+  for (let k = 0; k < s.inks.length; k++) {
+    if (s.inks[k].color !== GLOSS || v.ink !== "wet") continue;
+    b.leaf("path", "gloss", "gloss", "");
+    b.attr("d", s.inks[k].d);
   }
   // Where Write would put a note.
   const g = v.ghost;
@@ -1349,6 +1372,18 @@ function ribbon(b, v) {
   });
   glyph(b, "moon");
   b.close();
+  iconButton(
+    b,
+    "ink",
+    v.ink === "wet" ? "small on" : "small",
+    "drop",
+    v.ink === "wet" ? "Ink: wet and glossy — click for dry, faded ink" : "Ink: dry and faded — click for wet, glossy ink",
+    () => {
+      v.ink = v.ink === "wet" ? "dry" : "wet";
+      savePrefs(v);
+      invalidate();
+    }
+  );
   iconButton(b, "pdf", "small", "export", "Download as PDF — vector pages, ready to print", () => exportPdf(v));
   iconButton(b, "side", v.side ? "small on" : "small", "sidebar", "Parts, tracks and colors", () => {
     v.side = !v.side;

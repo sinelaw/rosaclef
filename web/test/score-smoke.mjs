@@ -105,6 +105,12 @@ ok("hiding the only part leaves an empty page");
 await page.keyboard.press("Control+z");
 await page.waitForSelector(".score-dock .score-sys");
 
+// One ink at a time: wet (glossy notes) by default, or dry (faded, no gloss).
+await page.waitForSelector(".score-dock path.gloss");
+await page.click(".score-dock .score-ribbon button[title^='Ink:']");
+await page.waitForFunction(() => document.querySelector(".score-dock path.gloss") === null);
+ok("the ink is wet and glossy, or dry and faded");
+
 // Night ink, and the phone layout.
 await page.click(".score-dock .score-ribbon button[title^='Night']");
 await page.waitForSelector(".score-dock.night");

@@ -8,7 +8,7 @@
 // the streams and writes the file (downloadPdf in web/lib/platform.js).
 
 import { G, GLYPHS } from "./smufl.js";
-import { engrave } from "./engrave.js";
+import { engrave, GLOSS } from "./engrave.js";
 
 /** What heads the first page. `bpm` 0: no tempo mark. */
 /** type PdfInfo = { title: String, subtitle: String, author: String, bpm: Number } */
@@ -262,6 +262,8 @@ export function scorePdf(sc, info, paper, hideEmpty, m) {
       ops.push(`q ${n(sp)} 0 0 ${n(-sp)} ${n(left)} ${n(H - pl.top)} cm`);
       for (const b of s.bands) ops.push(`q /GSb gs ${rgb(b.color, 1)} rg ${n(b.x)} ${n(b.y)} ${n(b.w)} ${n(b.h)} re f Q`);
       for (const ink of s.inks) {
+        // The wet ink's gloss is for the screen; print is dry.
+        if (ink.color === GLOSS) continue;
         const color = ink.color === "" ? INK : ink.color === "staff" ? STAFF : rgb(ink.color, 0.68);
         if (ink.d !== "") ops.push(`${color} rg\n${pathOps(ink.d)}\nf`);
         if (ink.text === "") continue;
