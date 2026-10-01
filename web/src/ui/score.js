@@ -762,7 +762,7 @@ function paperView(b, v, c, geo, sc) {
   }
   b.close();
 
-  inkFilter(b, `score-ink-${v.id}`, v.ink === "wet");
+  inkFilter(b, `score-ink-${v.id}`, v.ink === "wet", v.night);
 
   // Systems in view (and a screen around).
   const lo = v.scrollTop - v.height;
@@ -877,15 +877,17 @@ function fe(b, type, key, attrs) {
  * Ink on paper, as an SVG filter over the engraving (units are staff spaces).
  * Two inks, one at a time:
  *  - wet: fresh and glossy — deep, solid ink whose edges swell and round a
- *    little as it bleeds (a blur sharpened again); the noteheads and dots
- *    catch the light (their glints are drawn over the music, see `GLOSS`);
+ *    little as it bleeds (a blur sharpened again), standing up off the paper:
+ *    lit as a surface, every stroke shines along its rim and broad marks like
+ *    noteheads bulge into domes, over a faint shadow on the paper; the
+ *    noteheads and dots also catch a crisp glint (drawn over the music, see `GLOSS`);
  *  - dry: faded — paper grain nudges the edges a hair (wicking), the ink
  *    spreads, and the outline is drawn full over a slightly translucent,
  *    mottled body: the darker rim a drop of ink leaves as it dries.
  * Colors pass through, so colored passages stay colored.
  */
-/** function inkFilter(b: Builder, id: String, wet: Boolean) => Undefined */
-function inkFilter(b, id, wet) {
+/** function inkFilter(b: Builder, id: String, wet: Boolean, night: Boolean) => Undefined */
+function inkFilter(b, id, wet, night) {
   b.open("svg", "defs", "score-defs");
   b.attr("width", "0");
   b.attr("height", "0");
@@ -899,11 +901,48 @@ function inkFilter(b, id, wet) {
   b.attr("height", "120%");
   b.attr("color-interpolation-filters", "sRGB");
   if (wet) {
+    // The ink itself: swollen a little, its edges rounded.
     fe(b, "feGaussianBlur", "soft", ["in", "SourceGraphic", "stdDeviation", "0.045", "result", "soft"]);
     b.open("feComponentTransfer", "spread", "");
     b.attr("in", "soft");
+    b.attr("result", "spread");
     // A smooth curve, not a threshold: the edge keeps its antialiasing.
     fe(b, "feFuncA", "a", ["type", "gamma", "amplitude", "1", "exponent", "0.62", "offset", "0"]);
+    b.close();
+    // Its height: a fresh line of ink stands up off the paper. Thin strokes get
+    // a rounded ridge (the fine blur), broad marks a dome (the wide one).
+    fe(b, "feGaussianBlur", "ridge", ["in", "SourceAlpha", "stdDeviation", "0.07", "result", "ridge"]);
+    fe(b, "feGaussianBlur", "dome", ["in", "SourceAlpha", "stdDeviation", "0.2", "result", "dome"]);
+    fe(b, "feComposite", "height", ["in", "ridge", "in2", "dome", "operator", "arithmetic", "k2", "0.55", "k3", "0.45", "result", "height"]);
+    // The light of a window on the upper left, mirrored where the surface turns
+    // toward it: a bright rim along the strokes, a highlight on the domes.
+    b.open("feSpecularLighting", "light", "");
+    b.attr("in", "height");
+    b.attr("result", "light");
+    b.attr("surfaceScale", "0.3");
+    b.attr("specularConstant", night ? "1.1" : "1.5");
+    b.attr("specularExponent", "45");
+    b.attr("lighting-color", night ? "#fff3d6" : "#fffdf6");
+    fe(b, "feDistantLight", "sun", ["azimuth", "235", "elevation", "34"]);
+    b.close();
+    fe(b, "feComposite", "glint", ["in", "light", "in2", "spread", "operator", "in", "result", "glint"]);
+    // The drop's shadow, cast down and to the right on the paper.
+    fe(b, "feGaussianBlur", "fall", ["in", "SourceAlpha", "stdDeviation", "0.06", "result", "fall"]);
+    fe(b, "feOffset", "drop", ["in", "fall", "dx", "0.035", "dy", "0.08", "result", "drop"]);
+    fe(b, "feColorMatrix", "shade", [
+      "in",
+      "drop",
+      "type",
+      "matrix",
+      "values",
+      night ? "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.5 0" : "0 0 0 0 0.16  0 0 0 0 0.12  0 0 0 0 0.06  0 0 0 0.24 0",
+      "result",
+      "shade",
+    ]);
+    b.open("feMerge", "merge", "");
+    fe(b, "feMergeNode", "m0", ["in", "shade"]);
+    fe(b, "feMergeNode", "m1", ["in", "spread"]);
+    fe(b, "feMergeNode", "m2", ["in", "glint"]);
     b.close();
     b.close();
     b.close();

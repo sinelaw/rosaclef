@@ -707,6 +707,7 @@ export function domBackend(rootId) {
     "feDistantLight",
     "feMerge",
     "feMergeNode",
+    "feOffset",
   ]);
   return {
     root: () => 0,
