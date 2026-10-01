@@ -598,6 +598,8 @@ function paperView(b, v, c, geo, sc) {
   const score = c.score;
   const total = geo.top * 2 + paperH(geo, page);
   b.open("div", "scroll", `score-scroll${v.tool === "write" ? " writing" : ""}`);
+  // The width the page is laid out for: it matches the element once the layout has caught up with a resize.
+  b.attr("data-width", String(Math.round(v.width)));
   b.on("scroll", (e) => {
     v.scrollTop = e.scrollTop;
     invalidate();

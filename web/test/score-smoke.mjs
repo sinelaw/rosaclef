@@ -36,27 +36,28 @@ ok(`the page is titled "${title}"`);
 await page.keyboard.press("Control+Alt+KeyP");
 await page.keyboard.press("F10");
 await page.waitForSelector(".score-dock .score-sys");
-const heads = () =>
-  page.evaluate(() =>
-    [...document.querySelectorAll(".score-dock text.glyphs:not(.ghost):not(.sel)")].reduce(
-      (n, t) => n + [...t.textContent].filter((c) => c === "\u{e0a4}" || c === "\u{e0a3}" || c === "\u{e0a2}").length,
-      0
-    )
-  );
+// The page is laid out for the dock's real width (it lays out again when it learns it).
+await page.waitForFunction(() => {
+  const el = document.querySelector(".score-dock .score-scroll");
+  return el !== null && Number(el.dataset.width) === Math.round(el.getBoundingClientRect().width);
+});
+// Noteheads drawn in the dock's score (not the Write ghost or the selection drawn over a note).
+const HEADS = `[...document.querySelectorAll(".score-dock text.glyphs:not(.ghost):not(.sel)")].reduce(
+  (n, t) => n + [...t.textContent].filter((c) => c === "\u{e0a4}" || c === "\u{e0a3}" || c === "\u{e0a2}").length, 0)`;
+const heads = () => page.evaluate(HEADS);
 const before = await heads();
 await page.click(".score-dock .score-ribbon button[title^='Write']");
-const sys = await page.locator(".score-dock .score-sys").first().boundingBox();
-// On the first staff, a little into the first bar.
-const rowY = sys.y + sys.height * 0.5;
-await page.mouse.move(sys.x + sys.width * 0.42, rowY);
-await page.mouse.click(sys.x + sys.width * 0.42, rowY);
-await page.waitForTimeout(400);
+// On the middle line of the first staff, a little into the first bar: Write shows a ghost note there.
+const lines = await page.locator(".score-dock .score-sys").first().locator("path.staff").boundingBox();
+const at = { x: lines.x + lines.width * 0.42, y: lines.y + lines.height / 2 };
+await page.mouse.move(at.x, at.y);
+await page.waitForSelector(".score-dock text.ghost");
+await page.mouse.click(at.x, at.y);
+await page.waitForFunction(`${HEADS} > ${before}`);
 const after = await heads();
-if (after <= before) throw new Error(`writing a note added no notehead (${before} → ${after})`);
 ok(`Write adds a note (${before} → ${after} noteheads)`);
 await page.keyboard.press("Control+z");
-await page.waitForTimeout(400);
-if ((await heads()) !== before) throw new Error("undo did not remove the note");
+await page.waitForFunction(`${HEADS} === ${before}`);
 ok("Ctrl+Z takes it back");
 
 // Color a passage: drag across the music, pick a color.
@@ -73,8 +74,7 @@ await page.waitForSelector(".score-dock .score-band");
 await page.waitForSelector(".score-dock .score-mark");
 ok("dragging across the music colors a passage, listed under Colors");
 await page.keyboard.press("Control+z");
-await page.waitForTimeout(400);
-if ((await count(".score-dock .score-band")) !== 0) throw new Error("undo did not remove the color");
+await page.waitForFunction(() => document.querySelectorAll(".score-dock .score-band").length === 0);
 ok("Ctrl+Z removes the color");
 
 // Hide a part.
