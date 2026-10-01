@@ -29,6 +29,7 @@
 import { G } from "./smufl.js";
 import { NO_ACC, bottomStep, TPQ, passesText } from "./notation.js";
 import { GLOSS, SHEEN, painter, rect, quad, glyph, glint, tie, emit, inks } from "./paint.js";
+import { lyricExtents, drawLyrics } from "./underlay.js";
 
 // Bravura's engraving defaults, in staff spaces.
 const STAFF_LINE = 0.13;
@@ -267,6 +268,11 @@ function staffGeo(st) {
     if (cols > 0) left = left + cols * 1.12 + 0.15;
     g.left = left;
     g.right = right;
+  }
+  // Room for the words under the notes, as for their accidentals.
+  for (const x of lyricExtents(st)) {
+    out[x.ev].left = Math.max(out[x.ev].left, x.left);
+    out[x.ev].right = Math.max(out[x.ev].right, x.right);
   }
   return out;
 }
@@ -572,14 +578,21 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
   const painters = [];
   /** const heads: HeadBox[][] */
   const heads = [];
+  /** Text in each staff's coordinates (its lyrics). */
+  /** const staffLabels: Label[][] */
+  const staffLabels = [];
   for (const si of shown) {
     const st = sc.staves[si];
     const p = painter();
     /** const hb: HeadBox[] */
     const hb = [];
     drawStaff(sc, st, si, geos[si], firstEv[si], a, b, p, hb, colAt, bars, leadX, meterAt, mcs, indent, hdr, x1, last && b === sc.measures.length);
+    /** const lb: Label[] */
+    const lb = [];
+    drawLyrics(p, lb, st, a, b, colAt, hdr, x1);
     painters.push(p);
     heads.push(hb);
+    staffLabels.push(lb);
   }
 
   // ---- stack the staves: at least 6 spaces apart (5 within a grand staff), more if their ink needs it
@@ -636,6 +649,7 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
   for (let k = 0; k < shown.length; k++) {
     emit(runs, painters[k].prims, rowsY[k]);
     for (const h of heads[k]) allHeads.push({ x: h.x, y: h.y + rowsY[k], w: h.w, src: h.src, staff: h.staff, glyph: h.glyph });
+    for (const l of staffLabels[k]) labels.push({ x: l.x, y: l.y + rowsY[k], text: l.text, cls: l.cls, anchor: l.anchor, color: l.color });
     const st = sc.staves[shown[k]];
     rows.push({ staff: shown[k], y: rowsY[k], clef: st.clef, drum: st.drum });
   }

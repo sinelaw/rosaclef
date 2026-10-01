@@ -142,6 +142,25 @@ function shown(s) {
 
 const FONTS = ["Times-Roman", "Times-Italic", "Times-Bold", "Times-BoldItalic"];
 
+/** The face a score label is set in (as score.css sets it on screen). */
+/** function labelFace(cls: String) => String */
+function labelFace(cls) {
+  if (cls === "volta" || cls === "lyric num") return "Times-Bold";
+  if (cls === "reptimes") return "Times-BoldItalic";
+  if (cls === "lyric") return "Times-Roman";
+  return "Times-Italic";
+}
+
+/** The size of a score label, in staff spaces. */
+/** function labelSize(cls: String) => Number */
+function labelSize(cls) {
+  if (cls === "mnum") return 1.25;
+  if (cls === "sname short") return 1.3;
+  if (cls === "volta") return 1.45;
+  if (cls === "lyric" || cls === "lyric num") return 1.6;
+  return 1.55;
+}
+
 /** function fontRef(face: String) => String */
 function fontRef(face) {
   return `/F${Math.max(0, FONTS.indexOf(face)) + 1}`;
@@ -252,17 +271,6 @@ function pageTexts(lay, p, info) {
   if (info.author !== "") out.push({ face: "Times-Italic", size: 10, x: W - lay.left, y: row, text: info.author, anchor: "end", color: SOFT });
   out.push({ face: "Times-Italic", size: 7, x: W / 2, y: H - lay.bottom * 0.45, text: "Engraved with Rosaclef", anchor: "middle", color: "0.55 0.5 0.44" });
   return out;
-}
-
-/** Face and size of a label in a system (staff spaces). */
-/** function labelFace(cls: String) => String */
-function labelFace(cls) {
-  return cls === "volta" ? "Times-Bold" : cls === "reptimes" ? "Times-BoldItalic" : "Times-Italic";
-}
-
-/** function labelSize(cls: String) => Number */
-function labelSize(cls) {
-  return cls === "mnum" ? 1.25 : cls === "sname short" ? 1.3 : cls === "volta" ? 1.45 : 1.55;
 }
 
 /** The color of a run of ink: plain, the staff's, or a passage's (deepened, as printed). */
