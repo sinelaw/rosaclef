@@ -9,6 +9,7 @@
 //! or skipped. Neither importer touches the file system except to look for
 //! referenced samples; the caller creates the folder and copies the files.
 
+mod karaoke;
 pub mod lmms;
 pub mod midi;
 

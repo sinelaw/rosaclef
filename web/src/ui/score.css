@@ -224,6 +224,13 @@
   font: italic 700 1.55px var(--serif);
   fill: var(--ink);
 }
+.score-sys .lyric {
+  font: 500 1.6px var(--serif);
+  fill: var(--ink);
+}
+.score-sys .lyric.num {
+  font-weight: 600;
+}
 .score-sys .mnum {
   font: italic 600 1.25px var(--serif);
   fill: var(--ink-soft);

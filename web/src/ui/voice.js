@@ -35,6 +35,7 @@ import {
 import { button, iconButton, select, glyph, clamp01 } from "./widgets.js";
 import { pushChannel } from "./browser.js";
 import { toast } from "./toast.js";
+import { wordsField, wordsError, takeLyrics } from "./voicewords.js";
 import { insertIx, trackIx, trackIndex } from "#brands";
 
 /** Longest take (s): the analysis stays quick. */
@@ -68,6 +69,8 @@ export const voice = {
   kinds /*: String[] */: [],
   /** "auto" (the selected channel if melodic, else a new one), "new" or a channel id. */
   melodyChannel: "auto",
+  /** Words for a sung take: its pattern's lyric line (verse 1). */
+  lyrics: "",
   /** Per drum: a channel id, "" = the first matching Atelier channel (or a new one). */
   drumChannels /*: KS[] */: [
     { key: "kick", value: "" },
@@ -459,6 +462,8 @@ function previewJson(r) {
     notes: r.notes.map((n) => {
       return { channel: laneValue(lanes, n.lane), pitch: n.pitch, start: n.start, length: n.length, velocity: n.velocity };
     }),
+    uses: [],
+    lyrics: [],
   });
   return projectJson(p);
 }
@@ -543,6 +548,12 @@ export function addToSong() {
   }
   const p = state.project;
   const drums = voice.take.mode === "drums";
+  const words = drums ? "" : voice.lyrics;
+  const wrong = wordsError(words);
+  if (wrong !== "") {
+    toast("These words do not read as lyrics", `${wrong}. Fix them under Lyrics, or clear them.`, "error");
+    return undefined;
+  }
   const bpb = p.transport.beatsPerBar;
   let id = "";
   let name = "";
@@ -569,17 +580,19 @@ export function addToSong() {
       notes: r.notes.map((n) => {
         return { channel: laneValue(lanes, n.lane), pitch: n.pitch, start: n.start, length: n.length, velocity: Math.round(n.velocity * 1000) / 1000 };
       }),
+      uses: [],
+      lyrics: takeLyrics(laneValue(lanes, "melody"), words),
     });
     start = voice.at >= 0 ? voice.at : snapDown(state.position, bpb);
     const length = r.length * voice.repeat;
     const track = freeTrack(start, start + length, base);
-    p.playlist.clips.push({ pattern: id, sample: "", track: track, start: start, length: length, offset: 0, gain: 1, mixer: insertIx(0) });
+    p.playlist.clips.push({ pattern: id, sample: "", track: track, start: start, length: length, offset: 0, gain: 1, mixer: insertIx(0), verse: 0 });
   });
   selectPattern(id);
   const bar = Math.floor(start / bpb) + 1;
   toast(
     `Added ${name}`,
-    `${r.notes.length} ${drums ? "hits" : "notes"} on the playlist at bar ${bar}${voice.repeat > 1 ? `, looped ×${voice.repeat}` : ""}. Ctrl+Z undoes it.`,
+    `${r.notes.length} ${drums ? "hits" : "notes"}${words.trim() !== "" ? " and their words" : ""} on the playlist at bar ${bar}${voice.repeat > 1 ? `, looped ×${voice.repeat}` : ""}. Ctrl+Z undoes it.`,
     "info"
   );
 }
@@ -1353,6 +1366,11 @@ function addStep(b, r, ready) {
   stepHead(b, "3", "Add to song", "A new pattern and a clip on the playlist");
   b.close();
   b.leaf("div", "sum", "voice-summary", summary(r));
+  if (voice.mode === "melody")
+    wordsField(b, voice.lyrics, r.notes.length, (text) => {
+      voice.lyrics = text;
+      invalidate();
+    });
   targetView(b, r);
   button(
     b,

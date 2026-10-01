@@ -37,7 +37,8 @@ import {
   bottomStep,
   passesText,
 } from "../notation.js";
-import { engrave, timeX, xTick, GLOSS, SHEEN } from "../engrave.js";
+import { engrave, timeX, xTick } from "../engrave.js";
+import { GLOSS, SHEEN } from "../paint.js";
 import { inkFilter, glintOpacity, PAPER, LACQUER, GLOSS_DEFAULT, GLOSS_MAX, SHINE_DEFAULT } from "../ink.js";
 import { scorePdf, pdfLayout, pageSvg, pdfInfo } from "../pdf.js";
 import { preview, seek } from "../audio.js";
@@ -303,6 +304,13 @@ function isSelected(sc, src) {
   return n.pattern === state.pattern && state.selection.some((s) => noteIndex(s) === n.index);
 }
 
+/** A note a pattern played by reference brings in is edited in that pattern. */
+/** function usedHint(n: SrcNote) => String */
+function usedHint(n) {
+  const pat = state.project.patterns.find((x) => x.id === n.pattern);
+  return `Played by reference from “${pat ? pat.name : n.pattern}” — edit it there`;
+}
+
 /** Select a score note: it becomes the piano roll's pattern, channel and selection. */
 /** function selectNote(sc: Score, src: Int, add: Boolean) => Undefined */
 function selectNote(sc, src, add) {
@@ -404,6 +412,10 @@ function writeNote(v, sc, s) {
 function grabNote(e, v, sc, s, hi, y0) {
   const h = s.heads[hi];
   const n0 = sc.notes[h.src];
+  if (n0.used) {
+    hint(usedHint(n0));
+    return undefined;
+  }
   if (e.button === 2) {
     const pat = state.project.patterns.find((x) => x.id === n0.pattern);
     if (pat && n0.index < pat.notes.length) {
@@ -688,7 +700,9 @@ function onPaperMove(e, v, c, geo) {
   if (v.tool === "select") {
     if (hi >= 0) {
       const n = c.score.notes[s.heads[hi].src];
-      hint(`${spelledName(n.pitch, c.score.fifths)} · ${n.channel} — drag to move, double-click for the piano roll, right-click to delete`);
+      hint(
+        n.used ? usedHint(n) : `${spelledName(n.pitch, c.score.fifths)} · ${n.channel} — drag to move, double-click for the piano roll, right-click to delete`
+      );
     } else hint("Click to move the playhead · drag across the music to color a passage · Write (Shift+P) adds notes");
     return undefined;
   }

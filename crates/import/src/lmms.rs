@@ -1754,6 +1754,8 @@ impl<'o> Importer<'o> {
                         color: color.clone(),
                         length,
                         notes,
+                        uses: vec![],
+                        lyrics: vec![],
                     });
                     self.dedupe.insert(key, id.clone());
                     id
@@ -1768,6 +1770,7 @@ impl<'o> Importer<'o> {
                 offset: 0.0,
                 gain: 1.0,
                 mixer: InsertIx::MASTER,
+                verse: None,
             });
         }
     }
@@ -1837,6 +1840,8 @@ impl<'o> Importer<'o> {
                     color: color(self.project.patterns.len() + 3),
                     length: bars * self.bar_beats,
                     notes: ns,
+                    uses: vec![],
+                    lyrics: vec![],
                 });
                 Some(id)
             })
@@ -1866,6 +1871,7 @@ impl<'o> Importer<'o> {
                     offset: 0.0,
                     gain: 1.0,
                     mixer: InsertIx::MASTER,
+                    verse: None,
                 });
             }
         }
@@ -1918,6 +1924,7 @@ impl<'o> Importer<'o> {
                 offset,
                 gain: clamp(vol / 100.0, 0.0, 4.0),
                 mixer,
+                verse: None,
             });
         }
     }

@@ -10,6 +10,9 @@ use crate::model::{Device, Project, FORMAT, SCORE_CLEFS, SCORE_KEYS};
 use serde::Serialize;
 use std::collections::HashSet;
 
+mod lyrics;
+mod reuse;
+
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
@@ -387,6 +390,8 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     check_automation(&mut v, p);
     check_score(&mut v, p);
     check_repeats(&mut v, p);
+    reuse::check(&mut v, p);
+    lyrics::check(&mut v, p);
     v.issues
 }
 
@@ -749,6 +754,12 @@ fn check_device(v: &mut V, path: &str, d: &Device, category: Category) {
     }
     if d.kind == "sampler" && !d.option("sample").is_empty() {
         check_relative_path(v, &format!("{path}.options.sample"), d.option("sample"));
+    }
+    if d.kind == "voice" && !d.option("voice").is_empty() && !valid_id(d.option("voice")) {
+        v.err(
+            format!("{path}.options.voice"),
+            "voice names use 1-64 characters from [A-Za-z0-9_.-]",
+        );
     }
     if d.kind == "plugin" && d.option("path").is_empty() {
         v.err(

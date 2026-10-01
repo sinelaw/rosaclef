@@ -28,7 +28,14 @@
 //!   `bars_per_pattern` bars (restarting at each meter change); identical
 //!   blocks share one pattern, and runs of the same block become one looping
 //!   clip on the channel's own track. Each channel gets its own mixer insert.
+//! - Lyrics: `FF 05` lyric events, or a karaoke file's `FF 01` texts
+//!   ([`crate::karaoke`]), go to the notes of the track's first channel
+//!   that start with them (a track of lyrics alone gives them to the
+//!   channel whose notes start on most of them), and each pattern of that
+//!   channel gets a lyric line (verse 1) in the lyric notation. Blocks with
+//!   other words are other patterns.
 
+use crate::karaoke::{self, Syllable};
 use crate::{
     beats, clamp, color, ensure_valid, has_instrument, pad_tracks, set_option, set_param, Ids,
     Imported, Warnings, MAX_INSERTS,
@@ -36,8 +43,8 @@ use crate::{
 use anyhow::{bail, Result};
 use rosaclef_core::presets;
 use rosaclef_core::{
-    AutomationLane, AutomationPoint, Channel, Clip, Device, Insert, InsertIx, Meter, Note, Pattern,
-    Project, Track, TrackIx, Transport,
+    AutomationLane, AutomationPoint, Channel, Clip, Device, Insert, InsertIx, LyricMode, Lyrics,
+    Meter, Note, Pattern, Project, Track, TrackIx, Transport,
 };
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
@@ -116,6 +123,10 @@ pub enum Event {
     },
     TrackName(String),
     InstrumentName(String),
+    /// A text event (`FF 01`), as bytes: karaoke files carry lyrics in them.
+    Text(Vec<u8>),
+    /// A lyric (`FF 05`), as bytes; the encoding is decided for the file.
+    Lyric(Vec<u8>),
     Other,
 }
 
@@ -329,6 +340,8 @@ fn parse_track(data: &[u8]) -> (Vec<(u64, Event)>, Option<String>) {
                     let d = r.bytes(n)?;
                     let text = || String::from_utf8_lossy(d).trim().to_string();
                     let ev = match kind {
+                        0x01 => Event::Text(d.to_vec()),
+                        0x05 => Event::Lyric(d.to_vec()),
                         0x03 => Event::TrackName(text()),
                         0x04 => Event::InstrumentName(text()),
                         0x2f => break,
@@ -596,6 +609,7 @@ struct RawNote {
     start: u64,
     end: u64,
     velocity: u8,
+    lyric: Option<Syllable>,
 }
 
 /// Rosaclef channel gain for MIDI volume (CC 7) and expression (CC 11):
@@ -989,6 +1003,7 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                 start,
                 end,
                 velocity,
+                lyric: None,
             });
         }
         track_names.push(name);
@@ -1024,6 +1039,9 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
     if notes.is_empty() {
         warn.add("the file contains no notes");
     }
+    let tolerance = (ticks_per_beat / 16.0).round() as u64;
+    let found = karaoke::lyrics(&smf.tracks);
+    attach_lyrics(&mut notes, &order, found, tolerance, &mut warn);
 
     // Build channels, patterns, tracks, inserts and automation.
     let mut project = Project::empty(&opts.title);
@@ -1198,20 +1216,28 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
         });
 
         // Cut into blocks of whole bars and dedupe identical blocks.
-        let mut blocks: BTreeMap<usize, Vec<Note>> = BTreeMap::new();
+        let mut blocks: BTreeMap<usize, Vec<(Note, Option<&Syllable>)>> = BTreeMap::new();
         for rn in raw {
             let start = to_beats(rn.start);
             let length = to_beats(rn.end.saturating_sub(rn.start)).max(1.0 / 64.0);
             let k = starts.partition_point(|b| *b <= start + 1e-9).max(1) - 1;
             let rel = ((start - starts[k]) * 1_000_000.0).round() / 1_000_000.0;
-            blocks.entry(k).or_default().push(Note {
+            let note = Note {
                 channel: id.clone(),
                 pitch: rn.pitch.clamp(0, 127),
                 start: rel.max(0.0),
                 length,
                 velocity: clamp(rn.velocity as f64 / 127.0, 0.0, 1.0),
-            });
+            };
+            blocks.entry(k).or_default().push((note, rn.lyric.as_ref()));
         }
+        let blocks: Vec<(usize, Vec<Note>, Vec<Lyrics>)> = blocks
+            .into_iter()
+            .map(|(k, sung)| {
+                let (ns, lyrics) = sung_block(&id, sung);
+                (k, ns, lyrics)
+            })
+            .collect();
         let block_len = |k: usize| {
             let end = starts.get(k + 1).copied().unwrap_or(starts[k] + 4.0);
             ((end - starts[k]) * 1_000_000.0).round() / 1_000_000.0
@@ -1222,17 +1248,16 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
         let unique = {
             let mut keys: Vec<String> = blocks
                 .iter()
-                .map(|(k, v)| format!("{}|{}", block_len(*k), block_key(v)))
+                .map(|(k, ns, ly)| format!("{}|{}", block_len(*k), block_key(ns, ly)))
                 .collect();
             keys.sort();
             keys.dedup();
             keys.len()
         };
         let mut clips = vec![];
-        for (k, mut ns) in blocks {
-            ns.sort_by(|a, b| a.start.total_cmp(&b.start).then(a.pitch.cmp(&b.pitch)));
+        for (k, ns, lyrics) in blocks {
             let length = block_len(k);
-            let key = format!("{length}|{}", block_key(&ns));
+            let key = format!("{length}|{}", block_key(&ns, &lyrics));
             let pid = match seen.get(&key) {
                 Some(p) => p.clone(),
                 None => {
@@ -1249,6 +1274,8 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                         color: ccolor.clone(),
                         length,
                         notes: ns,
+                        uses: vec![],
+                        lyrics,
                     });
                     seen.insert(key, pid.clone());
                     pid
@@ -1278,6 +1305,7 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                 offset: 0.0,
                 gain: 1.0,
                 mixer: InsertIx::MASTER,
+                verse: None,
             });
         }
     }
@@ -1297,13 +1325,102 @@ fn raw_group_key(group: &str) -> u8 {
         .unwrap_or(36)
 }
 
-fn block_key(notes: &[Note]) -> String {
+/// What makes two blocks the same pattern: their notes and words.
+fn block_key(notes: &[Note], lyrics: &[Lyrics]) -> String {
     let mut v: Vec<String> = notes
         .iter()
         .map(|n| format!("{}:{}:{}:{:.3}", n.pitch, n.start, n.length, n.velocity))
         .collect();
     v.sort();
-    v.join(",")
+    let words: Vec<&str> = lyrics
+        .iter()
+        .flat_map(|l| l.verses.values())
+        .map(String::as_str)
+        .collect();
+    format!("{}|{}", v.join(","), words.join("|"))
+}
+
+/// A block's notes in time order, and its lyric line when they sing.
+fn sung_block(channel: &str, mut sung: Vec<(Note, Option<&Syllable>)>) -> (Vec<Note>, Vec<Lyrics>) {
+    sung.sort_by(|a, b| {
+        a.0.start
+            .total_cmp(&b.0.start)
+            .then(a.0.pitch.cmp(&b.0.pitch))
+    });
+    let syllables: Vec<Option<&Syllable>> = sung.iter().map(|n| n.1).collect();
+    let lyrics = karaoke::notation(&syllables).map(|text| Lyrics {
+        channel: channel.to_string(),
+        lang: String::new(),
+        mode: LyricMode::Sing,
+        verses: [(1, text)].into(),
+        timing: vec![],
+    });
+    (
+        sung.into_iter().map(|n| n.0).collect(),
+        lyrics.into_iter().collect(),
+    )
+}
+
+/// Gives each track's lyrics to the notes of its vocal channel: the
+/// track's first melodic channel, or, for a track of lyrics alone (as in
+/// karaoke files), the channel whose notes start on most of them.
+fn attach_lyrics(
+    notes: &mut BTreeMap<Source, Vec<RawNote>>,
+    order: &[Source],
+    found: Vec<(usize, u64, karaoke::Lyric)>,
+    tolerance: u64,
+    warn: &mut Warnings,
+) {
+    let mut by_track: BTreeMap<usize, Vec<(u64, karaoke::Lyric)>> = BTreeMap::new();
+    for (track, tick, l) in found {
+        by_track.entry(track).or_default().push((tick, l));
+    }
+    let mut missed = 0;
+    for (track, lyrics) in by_track {
+        let Some(src) = vocal_source(notes, order, track, &lyrics, tolerance) else {
+            missed += lyrics.len();
+            continue;
+        };
+        let raw = notes.get_mut(&src).expect("sources have notes");
+        let starts: Vec<u64> = raw.iter().map(|n| n.start).collect();
+        let (each, lost) = karaoke::attach(&starts, &lyrics, tolerance);
+        missed += lost;
+        for (n, s) in raw.iter_mut().zip(karaoke::resolve(&each)) {
+            n.lyric = s;
+        }
+    }
+    if missed > 0 {
+        warn.add(format!(
+            "{missed} lyric(s) fell on no note and were skipped"
+        ));
+    }
+}
+
+/// The channel a track's lyrics are sung on.
+fn vocal_source(
+    notes: &BTreeMap<Source, Vec<RawNote>>,
+    order: &[Source],
+    track: usize,
+    lyrics: &[(u64, karaoke::Lyric)],
+    tolerance: u64,
+) -> Option<Source> {
+    let melodic = || order.iter().filter(|s| matches!(s, Source::Melodic { .. }));
+    if let Some(own) = melodic().find(|s| s.midi().0 == track) {
+        return Some(own.clone());
+    }
+    let hits = |s: &Source| {
+        let starts: Vec<u64> = notes[s].iter().map(|n| n.start).collect();
+        let (each, _) = karaoke::attach(&starts, lyrics, tolerance);
+        each.iter().filter(|l| l.is_some()).count()
+    };
+    let mut best: Option<(usize, &Source)> = None;
+    for s in melodic() {
+        let h = hits(s);
+        if h > best.map_or(0, |b| b.0) {
+            best = Some((h, s));
+        }
+    }
+    best.map(|b| b.1.clone())
 }
 
 /// A, B, ..., Z, AA, AB, ...

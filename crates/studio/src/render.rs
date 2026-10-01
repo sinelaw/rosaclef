@@ -34,6 +34,20 @@ pub fn render_project(
             Err(e) => warnings.push(format!("sample {path}: {e}")),
         }
     }
+    let mut unrendered = 0;
+    for path in engine.wanted_renders() {
+        let file = folder.resolve(&path).filter(|p| folder.fs.is_file(p));
+        match file.map(|p| crate::decode::decode_file(folder.fs.as_ref(), &p)) {
+            Some(Ok(data)) => engine.set_sample(&path, data),
+            Some(Err(e)) => warnings.push(format!("render {path}: {e}")),
+            None => unrendered += 1,
+        }
+    }
+    if unrendered > 0 {
+        warnings.push(format!(
+            "{unrendered} phrase(s) not rendered yet: the formant voice sings them"
+        ));
+    }
     warnings.extend(fonts.provide(&mut engine));
     (render::render(&mut engine, scope), warnings)
 }

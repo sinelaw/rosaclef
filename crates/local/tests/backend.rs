@@ -454,12 +454,28 @@ fn shell() {
     let out = term(&mut w, "note --channel nope --out samples/x.wav\r");
     assert!(out.contains("no channel"), "{out}");
     assert!(term(&mut w, "ls\r").contains("project.json"));
+    assert!(term(&mut w, "export\r").contains("musicxml"));
+    let out = term(&mut w, "export --format lrc\r");
+    assert!(out.contains("wrote renders/"), "{out}");
     assert!(term(&mut w, "bogus\r").contains("unknown command"));
     w.call(json!({"op": "term", "client": 1, "text": json!({"t": "start", "agent": "claude"}).to_string()}), b"");
     assert!(w.messages("term")[0]["text"]
         .as_str()
         .unwrap()
         .contains("native studio"));
+}
+
+#[test]
+fn exports_the_song() {
+    let mut w = Worker::boot(Store::default());
+    let formats = w.json("GET", "/api/export/formats", json!(null));
+    assert!(formats["formats"].as_array().unwrap().len() > 5);
+    let (status, body, _) = w.req("GET", "/api/export?format=midi", b"");
+    assert_eq!(status, 200);
+    assert!(body.starts_with(b"MThd"));
+    let (status, body, _) = w.req("GET", "/api/export?format=nope", b"");
+    assert_eq!(status, 400);
+    assert!(String::from_utf8_lossy(&body).contains("unknown format"));
 }
 
 #[test]

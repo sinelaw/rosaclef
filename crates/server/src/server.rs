@@ -107,6 +107,7 @@ pub struct App {
     >,
     /// Serializes project switches (and library operations on the open project).
     pub(crate) switching: Mutex<()>,
+    voices: crate::voices::Renderer,
 }
 
 pub(crate) type Shared = Arc<App>;
@@ -152,8 +153,10 @@ pub async fn run(cfg: Config) -> Result<()> {
         native: Mutex::new(None),
         watcher: Mutex::new(None),
         switching: Mutex::new(()),
+        voices: crate::voices::Renderer::new(),
     });
     write_status(&app);
+    app.voices.update(&app.project(), &app.folder());
 
     spawn_watcher(app.clone())?;
     #[cfg(feature = "device-audio")]
@@ -184,6 +187,8 @@ pub async fn run(cfg: Config) -> Result<()> {
         )
         .route("/api/peaks", get(get_peaks))
         .route("/api/transcribe", get(get_transcription))
+        .route("/api/export", get(get_export))
+        .route("/api/export/formats", get(get_export_formats))
         .route("/api/render", post(render))
         .route("/api/agents", get(get_agents))
         .route("/api/info", get(get_info))
@@ -287,7 +292,7 @@ impl App {
         };
         self.broadcast(exclude, json!({"t": "project", "rev": rev, "origin": origin, "project": project, "issues": issues}));
         write_status(self);
-        self.update_native(&project);
+        self.follow(&project);
         Ok(rev)
     }
 
@@ -379,7 +384,7 @@ impl App {
             }
         }
         write_status(self);
-        self.update_native(project);
+        self.follow(project);
         self.term.set_env(AgentEnv {
             dir: target.dir.clone(),
             url: self.url.clone(),
@@ -391,6 +396,23 @@ impl App {
             );
         }
         self.broadcast(0, self.welcome("switched", 0));
+    }
+
+    /// After the project changed: the native engine plays it and the voices
+    /// render its new phrases.
+    fn follow(&self, project: &Project) {
+        self.update_native(project);
+        self.voices.update(project, &self.folder());
+    }
+
+    /// New rendered phrases: the native engine loads them, and every client
+    /// is told so its browser engine can.
+    pub(crate) fn renders_arrived(&self) {
+        #[cfg(feature = "device-audio")]
+        if let Some(n) = self.native.lock().as_ref() {
+            n.load_renders(&self.folder());
+        }
+        self.broadcast(0, json!({"t": "renders"}));
     }
 
     #[cfg(feature = "device-audio")]
@@ -472,6 +494,14 @@ fn spawn_watcher(app: Shared) -> Result<()> {
             if paths.iter().any(|p| p.starts_with(&samples_dir)) {
                 app.broadcast(0, json!({"t": "samples", "samples": folder.list_samples()}));
             }
+            // Rendered phrases arriving (from a voice, or dropped in by hand).
+            let renders_dir = folder.dir.join(folder::RENDERS_DIR).join("voice");
+            if paths
+                .iter()
+                .any(|p| p.starts_with(&renders_dir) && p.extension().is_some_and(|e| e == "wav"))
+            {
+                app.renders_arrived();
+            }
         }
     });
     Ok(())
@@ -513,7 +543,7 @@ fn reload_from_disk(app: &App) {
             println!("  ↻ project.json changed on disk (rev {rev})");
             app.broadcast(0, json!({"t": "project", "rev": rev, "origin": "disk", "project": project, "issues": issues}));
             write_status(app);
-            app.update_native(&project);
+            app.follow(&project);
         }
         Outcome::Invalid(issues) => {
             println!(
@@ -827,6 +857,40 @@ async fn get_transcription(
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct ExportQuery {
+    format: String,
+    pattern: Option<String>,
+    verse: Option<u32>,
+}
+
+/// `GET /api/export?format=…[&pattern=…&verse=…]`: the song (or a pattern
+/// singing a verse) as MIDI, MusicXML, a singing project or a lyric file.
+async fn get_export(State(app): State<Shared>, Query(q): Query<ExportQuery>) -> Response {
+    let project = app.project();
+    let pattern = q.pattern.filter(|p| !p.is_empty());
+    let verse = q.verse.unwrap_or(1);
+    match rosaclef_studio::export::export(&project, &q.format, pattern.as_deref(), verse) {
+        Ok(file) => (
+            [
+                (header::CONTENT_TYPE, file.mime.to_string()),
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{}\"", file.name),
+                ),
+            ],
+            file.bytes,
+        )
+            .into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, format!("{e:#}")).into_response(),
+    }
+}
+
+/// `GET /api/export/formats`: what `/api/export` can write.
+async fn get_export_formats() -> impl IntoResponse {
+    Json(rosaclef_studio::export::formats())
 }
 
 #[derive(Deserialize)]

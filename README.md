@@ -71,7 +71,9 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef render [DIR] [--pattern ID] [--out FILE] [--bits 16\|24\|32]` | offline mixdown to WAV |
 | `rosaclef note --channel ID --pitch 60 --out samples/x.wav` | synthesize a note into a sample |
 | `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
-| `rosaclef import-midi FILE.mid [--name N] [--library LIB] [--synth]` | import a Standard MIDI File as a new project: tempo and time signature changes, sustain pedal, program changes, volume/pan automation; played on the sampled General MIDI instruments (`--synth`: on Rosaclef's synthesizers) |
+| `rosaclef import-midi FILE.mid [--name N] [--library LIB] [--synth]` | import a Standard MIDI File as a new project: tempo and time signature changes, sustain pedal, program changes, volume/pan automation, lyrics (`FF 05` events or karaoke text); played on the sampled General MIDI instruments (`--synth`: on Rosaclef's synthesizers) |
+| `rosaclef export [DIR] --format ID [--pattern ID --verse N] [--out FILE]` | the song (or one pattern) as MIDI with lyrics, MusicXML, a singing-synthesizer project or a lyric file (`--list` shows the formats, `--out -` prints the file) |
+| `rosaclef align [DIR] --pattern ID --channel ID [--verse N] --at SECONDS FILE` | a lyric line's phoneme timing from a forced aligner's TextGrid or WhisperX JSON |
 | `rosaclef fmt`, `schema`, `catalog`, `guide` | formatting, JSON schema, device catalog, agent guides |
 
 ## Voice to notes
@@ -108,6 +110,8 @@ It works in three steps:
    its channels; changes apply as it plays, and the song is not touched.
    **Take** plays the recording to compare; **Analyze again** re-reads it.
 3. **Add to song** — the pattern and a playlist clip, in one undoable step.
+   Type the **Lyrics** of a sung take (in the notation below) and they come
+   along as the pattern's words, one syllable per note.
 
 The analysis runs in Rust
 (`crates/studio/src/transcribe.rs`, `GET /api/transcribe?path=…&mode=melody|drums`),
@@ -145,6 +149,10 @@ pattern, picked from its menu.
 - **Colors**: drag across the music to color a passage (on some staves or
   all) and label it; a passage colored in a pattern is colored wherever the
   pattern plays.
+- **Lyrics**: the words of a channel that sings are set under its staff —
+  syllables centered under their notes, hyphens within words, extender lines
+  under held syllables. A pattern's verses are stacked and numbered; in the
+  song each clip sings the verse that plays there.
 - **Editing**: click notes to select them (they are the piano roll's
   selection), drag them up or down by step and along the bar, delete or
   transpose them, or switch to **Write** and click notes in with a chosen
@@ -152,6 +160,89 @@ pattern, picked from its menu.
 
 The settings live in `project.json` under `score`, so the agent can set the
 key, hide parts or color a chorus too.
+
+## Patterns used by reference, and lyrics
+
+A pattern can play other patterns, or ranges of them, by reference
+(`uses`: moved in time, transposed, on another channel), so a motif written
+once changes everywhere it plays. And a pattern can carry the words its
+notes sing (`lyrics`), with several verses.
+
+- **In the piano roll** the notes a pattern uses are drawn as ghost notes in
+  a box labeled with the pattern and how it is changed ("Hook +5 v2"); its
+  menu opens the pattern, makes the notes plain (**Make unique**),
+  transposes, picks the verse it sings or removes it. Select notes and press
+  the link button (**Make reference**) to turn them into a new pattern
+  played where they were.
+- **The lyric row** under the notes shows each note's syllable. Click a note's
+  cell and type: Tab goes to the next note, `_` holds the syllable before,
+  a trailing `-` joins the next syllable to the word. The verse buttons (and
+  `+`) pick or start a verse; **Lyrics…** edits a whole verse as text and
+  counts its syllables against the notes.
+- **The notation**: a space ends a word, `Hel-lo` splits syllables, `_` holds
+  a syllable over the next note, `/` ends a line and `//` a paragraph,
+  `word[w ɜ d]` gives a pronunciation, `(br)` a breath.
+- **Verses**: a clip sings the verse picked in the playlist's tools
+  (**Sings**, shown as a "v2" badge), else the pass of the repeat it plays
+  in — so one pattern carries all the verses of a strophic song.
+
+## Lyrics and singing
+
+Words live in the pattern whose notes sing them: a `lyrics` line per vocal
+channel, with verses, in a small notation (`Hel-lo dark-ness _ / my old
+friend`; see `AGENTS.md`). From that one copy Rosaclef writes the files that
+singers, karaoke players and song generators read — from the **Export**
+menu, `rosaclef export` or `GET /api/export?format=…`:
+
+| `--format` | file | for |
+|---|---|---|
+| `midi` | MIDI with lyrics | every channel; an `FF 05` lyric event before each sung note |
+| `musicxml` | MusicXML 4.0 | notation programs; Sinsy/NNSVS, VoiSona, Synthesizer V, ACE Studio |
+| `ustx` | OpenUtau project | DiffSinger, ENUNU and UTAU voicebanks |
+| `svp` | Synthesizer V project | |
+| `ds` | DiffSinger segments | phonemes with durations, and notes |
+| `ultrastar` | UltraStar song | UltraStar Deluxe, Vocaluxe, Performous |
+| `lrc`, `ttml` | lyrics with word times | karaoke players, music apps, DiffRhythm |
+| `jam` | timed words (JSON) | JAM and other song generators |
+| `tagged` | `[Verse]` / `[Chorus]` text | ACE-Step, YuE, Suno |
+| `ssml` | speech markup | text to speech, with IPA pronunciations and word marks |
+
+- The song is written as it plays (repeats unrolled, each pass singing its
+  verse); `--pattern ID --verse N` writes one pattern.
+- `rosaclef import-midi` reads lyrics back: `FF 05` lyric events or karaoke
+  (`.kar`) text become lyric lines on the sung channel's patterns.
+- `rosaclef align --pattern ID --channel ID --at SECONDS take.TextGrid`
+  turns what a forced aligner found in a sung take (Montreal Forced Aligner
+  or SOFA TextGrids, WhisperX JSON) into the line's fixed phoneme timing,
+  which DiffSinger exports use.
+
+**Voix** (`"type": "voice"`) sings them. The built-in formant voice plays
+live in the browser and natively — a synthetic guide vocal: consonants,
+vowels, diphthongs, held syllables, breaths, vibrato, glides; rap and speak
+lines on a speaking pitch. For a real singer, set `"engine": "render"` and
+name a voice you set up in `~/.config/rosaclef/voices.json`:
+
+```json
+{
+  "alto": { "input": "ds", "command": ["python3", "infer.py", "{input}", "--out", "{output}"] },
+  "by-hand": { "input": "ustx" }
+}
+```
+
+The studio cuts the vocal line into phrases at its rests, writes each phrase
+in the voice's input format (any format above) and runs the command in the
+background; the WAV becomes `renders/voice/<voice>/<key>.wav`, and the voice
+plays it in place, 0.3 s ahead of the first note so consonants land before
+the beat. Phrases are named by what they sing, so a render serves every
+place the pattern plays and an edit re-renders only what changed; until a
+phrase is ready the formant voice sings it. A voice without a command only
+gets the input files, to sing in OpenUtau, Synthesizer V or any other program
+and drop back beside them. Commands come only from your settings, never from
+a project.
+
+The formats live in `crates/vocal`, pronunciations (IPA, from a CMUdict
+subset and spelling rules) in `crates/phonetics`; the research behind them is
+in [`docs/voice-and-lyrics.md`](docs/voice-and-lyrics.md).
 
 ## Sampled instruments
 
@@ -196,9 +287,11 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 | path | |
 |---|---|
 | `crates/core` | project model, device catalog, validation, JSON Schema, formatter |
-| `crates/engine` | portable DSP engine: sequencer, synths (Aurum subtractive, Lumière FM, Atelier drums, Vault sampler), effects, mixer, offline render |
+| `crates/engine` | portable DSP engine: sequencer, synths (Aurum subtractive, Lumière FM, Atelier drums, Vault sampler, Voix singing voice), effects, mixer, offline render |
 | `crates/wasm` | the engine compiled to WebAssembly (C ABI for the AudioWorklet) |
-| `crates/import` | importers: LMMS projects (.mmp/.mmpz) and Standard MIDI Files |
+| `crates/import` | importers: LMMS projects (.mmp/.mmpz) and Standard MIDI Files (with lyrics) |
+| `crates/phonetics` | pronunciation: lyrics to IPA phonemes, syllable by syllable; ARPAbet and X-SAMPA |
+| `crates/vocal` | the song performed as sung lines, its exports (MIDI, MusicXML, singing and lyric formats) and alignment import |
 | `crates/fs` | the file system the studio works on: the disk, or an in-memory tree the browser persists |
 | `crates/studio` | the server's portable logic: project folders, library, file manager, zip archives, agent guides, audio decoding, rendering |
 | `crates/local` | the server's API and sockets in the browser (WebAssembly, for the static build) + the Rosaclef shell |
@@ -216,6 +309,7 @@ cargo test --workspace                 # Rust tests (engine, validation, CLAP ho
 ./tools/build-wasm.sh                  # rebuild web/engine/rosaclef.wasm and web/local/rosaclef-local.wasm
 node web/test/tree.test.js             # UI tree tests (no browser needed)
 node web/test/voice.test.js            # voice-to-notes logic (quantize, auto-tune, drums)
+node web/test/lyrics.test.js           # lyric notation and pattern expansion
 node tools/bench-engine.mjs            # real-time load of the WebAssembly engine (demo song)
 web/check.sh                           # type-check the frontend with inty
 cargo fmt --all                        # format Rust

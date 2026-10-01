@@ -1400,6 +1400,7 @@ dependencies = [
  "rosaclef-fs",
  "rosaclef-import",
  "rosaclef-studio",
+ "rosaclef-vocal",
  "serde",
  "serde_json",
  "tokio",
@@ -1442,6 +1443,8 @@ version = "0.1.0"
 dependencies = [
  "lewton",
  "rosaclef-core",
+ "rosaclef-phonetics",
+ "serde_json",
 ]
 
 [[package]]
@@ -1468,8 +1471,16 @@ dependencies = [
  "rosaclef-fs",
  "rosaclef-import",
  "rosaclef-studio",
+ "rosaclef-vocal",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "rosaclef-phonetics"
+version = "0.1.0"
+dependencies = [
+ "rosaclef-core",
 ]
 
 [[package]]
@@ -1482,9 +1493,22 @@ dependencies = [
  "rosaclef-engine",
  "rosaclef-fs",
  "rosaclef-import",
+ "rosaclef-vocal",
  "serde",
  "serde_json",
  "symphonia",
+]
+
+[[package]]
+name = "rosaclef-vocal"
+version = "0.1.0"
+dependencies = [
+ "rosaclef-core",
+ "rosaclef-import",
+ "rosaclef-phonetics",
+ "roxmltree",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

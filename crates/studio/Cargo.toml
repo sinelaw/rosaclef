@@ -10,6 +10,7 @@ rosaclef-core.workspace = true
 rosaclef-engine.workspace = true
 rosaclef-import.workspace = true
 rosaclef-fs.workspace = true
+rosaclef-vocal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow = "1"

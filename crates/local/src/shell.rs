@@ -3,7 +3,7 @@
 //! The native studio runs the producer's coding agent in a real terminal.
 //! In the browser there are no processes, so the agent panel runs this shell
 //! instead: the `rosaclef` command line (validate, summary, render, note,
-//! catalog, presets, schema — the commands AGENTS.md documents) plus a few
+//! export, catalog, presets, schema — the commands AGENTS.md documents) plus a few
 //! commands to look at and edit the song directly (`get`, `set`, `del`),
 //! browse the project's files and switch projects. Edits land in the studio
 //! live, like an agent's, and Ctrl+Z undoes them.
@@ -12,8 +12,8 @@ use crate::host::Host;
 use anyhow::{anyhow, bail, Result};
 use rosaclef_core::{validate, Device};
 use rosaclef_engine::render::{encode_wav, render_note_with};
-use rosaclef_studio::library;
 use rosaclef_studio::render::levels_db;
+use rosaclef_studio::{export, folder, library};
 use serde_json::{json, Value};
 
 const GOLD: &str = "\x1b[38;2;227;196;122m";
@@ -41,6 +41,9 @@ Sound
   note (--channel ID | --instrument JSON) [--pitch 60] [--velocity 0.9]
        [--seconds 2] --out samples/x.wav
                               synthesize one note into a sample
+  export [--format ID] [--pattern ID] [--verse N] [--out renders/x]
+                              MIDI with lyrics, MusicXML, singing and lyric
+                              files (without --format: the formats)
 
 Reference
   catalog                     every instrument and effect, with parameters
@@ -57,7 +60,8 @@ Files and projects
 
 const COMMANDS: &[&str] = &[
     "help", "summary", "validate", "get", "set", "del", "fmt", "context", "render", "note",
-    "catalog", "presets", "schema", "ls", "cat", "rm", "projects", "open", "clear", "exit",
+    "export", "catalog", "presets", "schema", "ls", "cat", "rm", "projects", "open", "clear",
+    "exit",
 ];
 
 /// Line editing state of one terminal.
@@ -159,6 +163,15 @@ impl Args {
             None => Ok(default),
         }
     }
+}
+
+/// The export formats, one per line.
+fn formats() -> String {
+    let lines: Vec<String> = rosaclef_vocal::FORMATS
+        .iter()
+        .map(|f| format!("{:<10} .{:<9} {}", f.id, f.extension, f.description))
+        .collect();
+    lines.join("\n")
 }
 
 /// Parse a JSON pointer's parent and last segment (`/a/b/0` → (`/a/b`, `0`)).
@@ -586,6 +599,19 @@ impl Host {
                 let (peak, _) = levels_db(&audio);
                 format!("wrote {out} ({seconds}s, peak {peak:.1} dBFS)")
             }
+            "export" => match a.opt("format") {
+                None => formats(),
+                Some(id) => {
+                    let verse = a.num("verse", 1)?;
+                    let file = export::export(self.project(), id, a.opt("pattern"), verse)?;
+                    let out = a.opt("out").map_or_else(
+                        || format!("{}/{}", folder::RENDERS_DIR, file.name),
+                        str::to_string,
+                    );
+                    self.folder.write(&out, &file.bytes)?;
+                    format!("wrote {out} ({} bytes)", file.bytes.len())
+                }
+            },
             "catalog" => rosaclef_core::catalog_markdown(),
             "schema" => rosaclef_core::schema::schema_text(),
             "presets" => {

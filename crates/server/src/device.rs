@@ -206,6 +206,27 @@ impl Native {
                 }
             }
         }
+        self.load_renders(folder);
+    }
+
+    /// Load the rendered phrases that exist (the voice sings the others).
+    pub fn load_renders(&self, folder: &Folder) {
+        let wanted: Vec<String> = {
+            let e = self.engine.lock();
+            e.wanted_renders()
+                .into_iter()
+                .filter(|p| !e.has_sample(p))
+                .collect()
+        };
+        for path in wanted {
+            let Some(file) = folder.resolve(&path).filter(|f| folder.fs.is_file(f)) else {
+                continue;
+            };
+            match crate::decode::decode_file(folder.fs.as_ref(), &file) {
+                Ok(data) => self.engine.lock().set_sample(&path, data),
+                Err(e) => eprintln!("render {path}: {e}"),
+            }
+        }
     }
 
     pub fn status_json(&self) -> Value {
@@ -381,6 +402,7 @@ fn finish_recording(app: &Arc<App>) {
         offset: 0.0,
         gain: 1.0,
         mixer: InsertIx::MASTER,
+        verse: None,
     });
     app.apply_edit(project);
     app.send_all(json!({"t": "recorded", "path": rel}));

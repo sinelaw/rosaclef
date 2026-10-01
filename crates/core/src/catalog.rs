@@ -178,6 +178,7 @@ pub const SCALES: &[&str] = &[
 ];
 pub const GEN_VOICES: &[&str] = &["pluck", "bell", "bass", "perc"];
 pub const FX_KINDS: &[&str] = &["riser", "downlifter", "impact", "sweep", "subdrop"];
+pub const VOICE_ENGINES: &[&str] = &["formant", "render"];
 
 const ENV: [ParamSpec; 4] = [
     pe(
@@ -522,6 +523,27 @@ pub static DEVICES: &[DeviceSpec] = &[
             p("gain", "Gain", 0.0, 1.5, 0.7, "", "Output level."),
         ],
         options: &[o("kind", "Kind", FX_KINDS, "riser", "Which effect.")],
+        open_params: false,
+    },
+    DeviceSpec {
+        kind: "voice",
+        label: "Voix",
+        category: Category::Instrument,
+        doc: "A voice that sings the channel's words (the patterns' lyrics) on its notes, or \"ah\" on notes without words; a lyric line in rap or speak mode is voiced on the notes' timing. One note at a time. engine \"formant\" is built in and plays live everywhere (a synthetic guide vocal); \"render\" plays phrases rendered by a singing engine the user set up (options.voice names it, see AGENTS.md), with the formant voice standing in until each phrase is ready.",
+        params: &[
+            p("gender", "Gender", -1.0, 1.0, 0.0, "", "Formant shift: -1 a larger, darker voice; +1 a smaller, brighter one."),
+            p("breath", "Breath", 0.0, 1.0, 0.15, "", "Breath noise in the voice."),
+            pe("bright", "Bright", 800.0, 9000.0, 3500.0, "Hz", "Brightness of the vocal folds' sound (tension)."),
+            p("vibrato", "Vibrato", 0.0, 1.0, 0.3, "st", "Vibrato depth in semitones (it starts after the note settles)."),
+            p("vibratoRate", "Vib Rate", 3.0, 8.0, 5.5, "Hz", "Vibrato speed."),
+            pe("glide", "Glide", 0.005, 0.5, 0.06, "s", "Pitch glide between connected notes."),
+            p("consonants", "Consonants", 0.3, 2.0, 1.0, "", "Length of the consonants."),
+            p("gain", "Gain", 0.0, 1.5, 0.8, "", "Output level."),
+        ],
+        options: &[
+            o("engine", "Engine", VOICE_ENGINES, "formant", "formant: the built-in voice; render: phrases rendered by the voice named in options.voice."),
+            o("voice", "Voice", &[], "", "With engine render: a voice from the user's voices settings (~/.config/rosaclef/voices.json)."),
+        ],
         open_params: false,
     },
     DeviceSpec {

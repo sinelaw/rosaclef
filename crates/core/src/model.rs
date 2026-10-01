@@ -5,6 +5,7 @@
 //! values are measured in **beats** (quarter notes) so that edits read
 //! naturally: `"start": 4` is the downbeat of bar 2 in 4/4.
 
+pub use crate::lyrics::{LyricMode, Lyrics, SyllableTiming, TimedPhoneme};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -434,6 +435,43 @@ pub struct Pattern {
     pub length: f64,
     #[serde(default)]
     pub notes: Vec<Note>,
+    /// Other patterns (or ranges of them) played inside this one, by
+    /// reference. See [`crate::expand`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uses: Vec<Use>,
+    /// Words sung on this pattern's notes, one line per vocal channel. See
+    /// [`crate::lyrics`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lyrics: Vec<Lyrics>,
+}
+
+/// Another pattern played inside a pattern, by reference: its notes are not
+/// copied, so editing it changes every place that uses it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Use {
+    /// The pattern played.
+    pub pattern: String,
+    /// Where it starts in this pattern, in beats.
+    pub start: f64,
+    /// The range of the used pattern played, in its own beats: from `from`
+    /// to `to` (default: its end). Notes are cut at `to`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub from: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<f64>,
+    /// Semitones the notes are moved by (pitched channels only).
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub transpose: i32,
+    /// A channel id to play every note on instead of its own.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub channel: String,
+    /// A factor on the notes' velocities.
+    #[serde(default = "default_one", skip_serializing_if = "is_one")]
+    pub velocity: f64,
+    /// The verse its lyrics sing; by default the verse this pattern sings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verse: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -492,6 +530,10 @@ pub struct Clip {
     /// Audio clips: mixer insert to play through (0 = master).
     #[serde(default)]
     pub mixer: InsertIx,
+    /// Pattern clips: the verse its lyrics sing. By default, the pass of the
+    /// repeat it plays in (verse 1 outside repeats).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verse: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -548,6 +590,9 @@ fn is_zero_i32(x: &i32) -> bool {
 fn is_zero(x: &f64) -> bool {
     *x == 0.0
 }
+fn is_one(x: &f64) -> bool {
+    *x == 1.0
+}
 fn default_lane_color() -> String {
     "#8a6bb0".into()
 }
@@ -581,6 +626,8 @@ impl Project {
                 color: default_color(),
                 length: 4.0,
                 notes: vec![],
+                uses: vec![],
+                lyrics: vec![],
             }],
             playlist: Playlist {
                 tracks: (1..=8)
@@ -656,6 +703,19 @@ impl Device {
             .and_then(|d| d.param(key))
             .map(|p| p.default)
             .unwrap_or(0.0)
+    }
+
+    /// Whether it plays notes at their pitch, so transposing moves them: not
+    /// the drum machine, nor a soundfont drum kit.
+    pub fn is_pitched(&self) -> bool {
+        match self.kind.as_str() {
+            "drum" => false,
+            "soundfont" => {
+                crate::gm::lookup(self.option("program")).map(|(bank, _)| bank)
+                    != Some(crate::gm::DRUM_BANK)
+            }
+            _ => true,
+        }
     }
 
     /// Textual option, falling back to the catalog default.

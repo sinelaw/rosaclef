@@ -142,6 +142,8 @@ export function decodeProject(raw) {
         length: Number(n.length),
         velocity: Number(n.velocity ?? 0.8),
       })),
+      uses: (p.uses ?? []).map(decodeUse),
+      lyrics: (p.lyrics ?? []).map(decodeLyrics),
     })),
     playlist: {
       tracks: (pl.tracks ?? []).map((tr) => ({ name: String(tr.name), mute: tr.mute === true })),
@@ -154,6 +156,7 @@ export function decodeProject(raw) {
         offset: Number(c.offset ?? 0),
         gain: Number(c.gain ?? 1),
         mixer: insertIx(Math.round(Number(c.mixer ?? 0))),
+        verse: Math.round(Number(c.verse ?? 0)),
       })),
     },
     mixer: {
@@ -180,6 +183,35 @@ export function decodeProject(raw) {
       end: Number(r.end),
       times: Math.round(Number(r.times ?? 2)),
       endings: (r.endings ?? []).map((e) => ({ start: Number(e.start), end: Number(e.end), passes: (e.passes ?? []).map((k) => Math.round(Number(k))) })),
+    })),
+  };
+}
+
+/** function decodeUse<T>(u: T) => Use */
+function decodeUse(u) {
+  return {
+    pattern: String(u.pattern),
+    start: Number(u.start),
+    from: Number(u.from ?? 0),
+    to: u.to === undefined || u.to === null ? -1 : Number(u.to),
+    transpose: Math.round(Number(u.transpose ?? 0)),
+    channel: String(u.channel ?? ""),
+    velocity: Number(u.velocity ?? 1),
+    verse: Math.round(Number(u.verse ?? 0)),
+  };
+}
+
+/** function decodeLyrics<T>(l: T) => Lyrics */
+function decodeLyrics(l) {
+  return {
+    channel: String(l.channel),
+    lang: String(l.lang ?? ""),
+    mode: String(l.mode ?? "sing"),
+    verses: decodeStrs(l.verses),
+    timing: (l.timing ?? []).map((t) => ({
+      verse: Math.round(Number(t.verse)),
+      at: Number(t.at),
+      phonemes: (t.phonemes ?? []).map((ph) => ({ p: String(ph.p), offset: Number(ph.offset) })),
     })),
   };
 }
@@ -259,6 +291,37 @@ function encodeClip(c) {
     o.gain = c.gain;
     o.mixer = insertIndex(c.mixer);
   }
+  if (c.verse > 0) o.verse = c.verse;
+  return o;
+}
+
+/** function encodeUse<R>(u: Use) => R */
+function encodeUse(u) {
+  const o = JSON.parse("{}");
+  o.pattern = u.pattern;
+  o.start = round6(u.start);
+  if (u.from !== 0) o.from = round6(u.from);
+  if (u.to >= 0) o.to = round6(u.to);
+  if (u.transpose !== 0) o.transpose = u.transpose;
+  if (u.channel !== "") o.channel = u.channel;
+  if (u.velocity !== 1) o.velocity = round6(u.velocity);
+  if (u.verse > 0) o.verse = u.verse;
+  return o;
+}
+
+/** function encodeLyrics<R>(l: Lyrics) => R */
+function encodeLyrics(l) {
+  const o = JSON.parse("{}");
+  o.channel = l.channel;
+  if (l.lang !== "") o.lang = l.lang;
+  if (l.mode !== "sing") o.mode = l.mode;
+  o.verses = encodeStrs(l.verses);
+  if (l.timing.length > 0)
+    o.timing = l.timing.map((t) => ({
+      verse: t.verse,
+      at: round6(t.at),
+      phonemes: t.phonemes.map((ph) => ({ p: ph.p, offset: round6(ph.offset) })),
+    }));
   return o;
 }
 
@@ -285,19 +348,7 @@ export function encodeProject(p) {
     if (a.on) ch.arp = { chord: a.chord, octaves: a.octaves, rate: round6(a.rate), direction: a.direction, gate: round6(a.gate), mode: a.mode };
     return ch;
   });
-  o.patterns = p.patterns.map((pt) => ({
-    id: pt.id,
-    name: pt.name,
-    color: pt.color,
-    length: round6(pt.length),
-    notes: pt.notes.map((n) => ({
-      channel: n.channel,
-      pitch: n.pitch,
-      start: round6(n.start),
-      length: round6(n.length),
-      velocity: round6(n.velocity),
-    })),
-  }));
+  o.patterns = p.patterns.map(encodePattern);
   o.playlist = { tracks: p.playlist.tracks, clips: p.playlist.clips.map(encodeClip) };
   o.mixer = {
     inserts: p.mixer.inserts.map((i) => ({
@@ -313,6 +364,25 @@ export function encodeProject(p) {
   const sc = encodeScore(p.score);
   if (Object.keys(sc).length > 0) o.score = sc;
   if (p.repeats.length > 0) o.repeats = p.repeats.map(encodeRepeat);
+  return o;
+}
+
+/** function encodePattern<R>(pt: Pattern) => R */
+function encodePattern(pt) {
+  const o = JSON.parse("{}");
+  o.id = pt.id;
+  o.name = pt.name;
+  o.color = pt.color;
+  o.length = round6(pt.length);
+  o.notes = pt.notes.map((n) => ({
+    channel: n.channel,
+    pitch: n.pitch,
+    start: round6(n.start),
+    length: round6(n.length),
+    velocity: round6(n.velocity),
+  }));
+  if (pt.uses.length > 0) o.uses = pt.uses.map(encodeUse);
+  if (pt.lyrics.length > 0) o.lyrics = pt.lyrics.map(encodeLyrics);
   return o;
 }
 
@@ -423,6 +493,14 @@ export function newDevice(type) {
 // ------------------------------------------------------------------ music
 
 const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+
+/** "gm" (a General MIDI kit), "synth" (synthesized drums) or "" (pitched). */
+/** function drumKit(c: Channel) => String */
+export function drumKit(c) {
+  if (c.instrument.type === "drum") return "synth";
+  if (c.instrument.type === "soundfont" && optionValue(c.instrument, "program").toLowerCase().includes("kit")) return "gm";
+  return "";
+}
 
 /** function noteName(pitch: Number) => String */
 export function noteName(pitch) {
@@ -665,6 +743,8 @@ export function describeChange(a, b) {
       if (removed.length > 0)
         out.push(`pattern "${p.id}": −${removed.length} note${removed.length > 1 ? "s" : ""} (${noteText(removed[0])}${removed.length > 1 ? ", …" : ""})`);
     }
+    usesDiff(p.id, old.uses, p.uses, out);
+    lyricsDiff(p.id, old.lyrics, p.lyrics, out);
   }
   for (const p of a.patterns) if (!b.patterns.some((x) => x.id === p.id)) out.push(`removed pattern "${p.id}"`);
 
@@ -674,6 +754,7 @@ export function describeChange(a, b) {
   else if (cb < ca) out.push(`playlist: −${ca - cb} clip${ca - cb > 1 ? "s" : ""}`);
   else if (JSON.stringify(a.playlist.clips.map(encodeClipKey)) !== JSON.stringify(b.playlist.clips.map(encodeClipKey)))
     out.push("playlist: clips moved or resized");
+  else if (a.playlist.clips.some((c, i) => c.verse !== b.playlist.clips[i].verse)) out.push("playlist: verses changed");
   for (let t = 0; t < b.playlist.tracks.length && t < a.playlist.tracks.length; t++) {
     const x = a.playlist.tracks[t];
     const y = b.playlist.tracks[t];
@@ -711,6 +792,52 @@ export function describeChange(a, b) {
   scoreDiff(a.score, b.score, out);
   repeatsDiff(a.repeats, b.repeats, out);
   return out.slice(0, 8);
+}
+
+/** function usesDiff(id: String, a: Use[], b: Use[], out: String[]) => Undefined */
+function usesDiff(id, a, b, out) {
+  const ka = a.map((u) => JSON.stringify(encodeUse(u)));
+  const kb = b.map((u) => JSON.stringify(encodeUse(u)));
+  const added = b.filter((u, i) => !ka.includes(kb[i]));
+  const removed = a.filter((u, i) => !kb.includes(ka[i]));
+  for (const u of added) {
+    const was = removed.find((x) => x.pattern === u.pattern && x.start === u.start);
+    if (was) removed.splice(removed.indexOf(was), 1);
+    const at = `"${u.pattern}" at beat ${fmtNum(u.start)}`;
+    out.push(was ? `pattern "${id}": use of ${at} → ${useText(u)}` : `pattern "${id}" uses ${at}`);
+  }
+  for (const u of removed) out.push(`pattern "${id}" no longer uses "${u.pattern}" at beat ${fmtNum(u.start)}`);
+}
+
+/** How a use changes what it plays: "+5, verse 2, on bass", or "as written". */
+/** function useText(u: Use) => String */
+function useText(u) {
+  /** const parts: String[] */
+  const parts = [];
+  if (u.transpose !== 0) parts.push(semitonesText(u.transpose));
+  if (u.verse > 0) parts.push(`verse ${u.verse}`);
+  if (u.channel !== "") parts.push(`on "${u.channel}"`);
+  if (u.velocity !== 1) parts.push(`velocity ×${fmtNum(u.velocity)}`);
+  if (u.from !== 0 || u.to >= 0) parts.push(`beats ${fmtNum(u.from)}–${u.to >= 0 ? fmtNum(u.to) : "end"}`);
+  return parts.length > 0 ? parts.join(", ") : "as written";
+}
+
+/** function lyricsDiff(id: String, a: Lyrics[], b: Lyrics[], out: String[]) => Undefined */
+function lyricsDiff(id, a, b, out) {
+  for (const l of b) {
+    const old = a.find((x) => x.channel === l.channel);
+    if (!old) {
+      out.push(`pattern "${id}": lyrics for "${l.channel}" (${plural(l.verses.length, "verse")})`);
+      continue;
+    }
+    for (const v of l.verses) {
+      const was = old.verses.find((x) => x.key === v.key);
+      if (!was) out.push(`pattern "${id}" "${l.channel}": added verse ${v.key}`);
+      else if (was.value !== v.value) out.push(`pattern "${id}" "${l.channel}": verse ${v.key} → "${v.value.slice(0, 40)}${v.value.length > 40 ? "…" : ""}"`);
+    }
+    for (const v of old.verses) if (!l.verses.some((x) => x.key === v.key)) out.push(`pattern "${id}" "${l.channel}": removed verse ${v.key}`);
+  }
+  for (const l of a) if (!b.some((x) => x.channel === l.channel)) out.push(`pattern "${id}": removed the lyrics for "${l.channel}"`);
 }
 
 /** function repeatText(r: Repeat) => String */

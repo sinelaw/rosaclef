@@ -34,6 +34,7 @@ fn play(dev: &Device, events: &[(f32, NoteKind)], total: f32) -> Vec<f32> {
             block.push(NoteEvent {
                 offset: evs[next].0.saturating_sub(pos),
                 kind: evs[next].1,
+                lyric: None,
             });
             next += 1;
         }

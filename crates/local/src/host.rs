@@ -16,7 +16,7 @@ use rosaclef_fs::{Fs, MemFs, SharedFs};
 use rosaclef_studio::fonts::{FontFiles, Fonts};
 use rosaclef_studio::library::{self, rewrite_refs, unique_sample_path, Library};
 use rosaclef_studio::render::{levels_db, render_project, required_presets, required_samples};
-use rosaclef_studio::{archive, decode, folder, slug, Folder};
+use rosaclef_studio::{archive, decode, export, folder, slug, Folder};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -534,6 +534,18 @@ impl Host {
             }
             ("GET", "/api/peaks") => self.peaks(&qs("path"), qs("n").parse().unwrap_or(1024))?,
             ("GET", "/api/transcribe") => self.transcribe(&qs("path"), &qs("mode"))?,
+            ("GET", "/api/export") => {
+                let pattern = q.get("pattern").filter(|p| !p.is_empty());
+                let verse = qs("verse").parse().unwrap_or(1);
+                let file = export::export(
+                    &self.doc.project,
+                    &qs("format"),
+                    pattern.map(String::as_str),
+                    verse,
+                )?;
+                Response::bytes(file.mime, file.bytes)
+            }
+            ("GET", "/api/export/formats") => Response::json(export::formats()),
             ("POST", "/api/render") => {
                 let v = body_json(body)?;
                 let r = self.render(

@@ -4,6 +4,8 @@ mod folder;
 mod library;
 mod server;
 mod terminal;
+mod vocal;
+mod voices;
 
 #[cfg(feature = "device-audio")]
 mod device;
@@ -48,7 +50,16 @@ enum Command {
     /// Rewrite a project file in canonical formatting.
     Fmt { path: Option<PathBuf> },
     /// Print a compact overview of a project.
-    Summary { path: Option<PathBuf> },
+    Summary {
+        path: Option<PathBuf>,
+        /// Instead, list the notes this pattern plays (uses resolved, with the
+        /// syllables they sing).
+        #[arg(long)]
+        expand: Option<String>,
+        /// The verse sung with --expand.
+        #[arg(long, default_value_t = 1)]
+        verse: u32,
+    },
     /// Render the song (or a pattern) to a WAV file.
     Render {
         /// Project folder or project.json (default: current folder).
@@ -105,6 +116,11 @@ enum Command {
     ImportLmms(ImportArgs),
     /// Import a Standard MIDI File (.mid) as a new project in the library.
     ImportMidi(ImportArgs),
+    /// Write the song (or a pattern) as MIDI with lyrics, MusicXML, a singing
+    /// synthesizer project or a lyric file (--list shows the formats).
+    Export(vocal::ExportArgs),
+    /// Fix a lyric line's phoneme timing from an aligned recording.
+    Align(vocal::AlignArgs),
 }
 
 #[derive(clap::Args)]
@@ -188,9 +204,23 @@ fn main() -> Result<()> {
             println!("formatted {}", file.display());
             Ok(())
         }
-        Command::Summary { path } => {
+        Command::Summary {
+            path,
+            expand,
+            verse,
+        } => {
             let p = load_project(&project_file(path)?)?;
-            print!("{}", rosaclef_core::summary(&p));
+            match expand {
+                Some(id) => {
+                    let i = p
+                        .patterns
+                        .iter()
+                        .position(|x| x.id == id)
+                        .ok_or_else(|| anyhow!("no pattern {id:?}"))?;
+                    print!("{}", rosaclef_core::expand::listing(&p, i, verse));
+                }
+                None => print!("{}", rosaclef_core::summary(&p)),
+            }
             Ok(())
         }
         Command::Render {
@@ -334,6 +364,8 @@ fn main() -> Result<()> {
                 rosaclef_import::midi::import(bytes, &opts)
             })
         }
+        Command::Export(a) => vocal::export_cli(a),
+        Command::Align(a) => vocal::align_cli(a),
     }
 }
 

@@ -11,13 +11,18 @@
 // Time is in ticks: 48 to the quarter note (a 32nd is 6, a triplet eighth 16).
 
 import { trackIndex } from "#brands";
-import { meterMap, optionValue } from "./model.js";
+import { meterMap, optionValue, drumKit } from "./model.js";
 import { detectKey } from "./voice.js";
+import { expandPattern, verseCount, sings } from "./expand.js";
+import { continues } from "./lyrics.js";
 
 export const TPQ = 48;
 
-/** A note as it sounds in the score's time: `origin` is where its pattern's beat 0 falls. */
-/** type SrcNote = { pitch: Int, start: Number, end: Number, velocity: Number, channel: String, pattern: String, index: Int, origin: Number } */
+/** A syllable a note sings in the score: on stacked lyric line `row` (0 = the top one), from verse `verse`. */
+/** type Word = { row: Int, verse: Int, token: LyricToken } */
+/** A note as it sounds in the score's time, written as `patterns[pattern].notes[index]`: `origin` is where
+ * that pattern's beat 0 falls; `used`: a pattern played by reference brought it (it is edited there); `words`: what it sings. */
+/** type SrcNote = { pitch: Int, start: Number, end: Number, velocity: Number, channel: String, pattern: String, index: Int, origin: Number, used: Boolean, words: Word[] } */
 
 /** What to write down: the "song", one playlist "track" or one "pattern". */
 /** type Scope = { kind: String, track: Int, pattern: String } */
@@ -34,8 +39,11 @@ export const TPQ = 48;
 /** type Part = { channels: Channel[], idx: Int[], kit: String, clef: String, name: String, color: String } */
 
 /** One staff (`channels`: whose notes it holds; `channel` is the first). `clef`: treble, treble8vb, bass, alto or percussion. A grand staff is two
- * staves of one channel (`part` 0 and 1) that share a `group`. */
-/** type Staff = { channel: String, channels: String[], name: String, color: String, clef: String, drum: Boolean, part: Int, group: Int, events: NEv[] } */
+ * staves of one channel (`part` 0 and 1) that share a `group`. `lyrics`: the syllables under it. */
+/** A syllable under a staff: under event `ev` (its index in the staff) on stacked line `row`
+ * (0 = top), sung in `verse`. `hyphen`: its word goes on; `until`: the last event it is held over (`ev` when none). */
+/** type Syl = { ev: Int, row: Int, verse: Int, text: String, hyphen: Boolean, until: Int } */
+/** type Staff = { channel: String, channels: String[], name: String, color: String, clef: String, drum: Boolean, part: Int, group: Int, events: NEv[], lyrics: Syl[] } */
 
 /** A measure: start and length in ticks, its meter, the beat (ticks) and whether the time signature
  * shows; `number` is its bar number, and `count` > 1 makes it a multi-measure rest of that many bars. */
@@ -242,107 +250,207 @@ export function channelKind(p, id) {
   return c ? optionValue(c.instrument, "kind") : "";
 }
 
-/** "gm" (a General MIDI kit), "synth" (synthesized drums) or "" (pitched). */
-/** function drumKit(c: Channel) => String */
-export function drumKit(c) {
-  if (c.instrument.type === "drum") return "synth";
-  if (c.instrument.type === "soundfont" && optionValue(c.instrument, "program").toLowerCase().includes("kit")) return "gm";
-  return "";
-}
-
 // ------------------------------------------------------------------ gather
 
 /** The notes of a scope in score time, sorted, and the scope's length (beats). */
 /** type Gathered = { notes: SrcNote[], length: Number } */
+/** A pattern's sounding notes at a verse, expanded once per gather. */
+/** type Sounds = { pattern: Int, verse: Int, notes: Sounding[] } */
 
 /** function gather(p: Project, scope: Scope) => Gathered */
 export function gather(p, scope) {
+  /** const cache: Sounds[] */
+  const cache = [];
+  const g = scope.kind === "pattern" ? gatherPattern(p, cache, scope.pattern) : gatherClips(p, cache, scope);
+  g.notes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  return g;
+}
+
+/** A pattern's notes, its verses stacked under them. */
+/** function gatherPattern(p: Project, cache: Sounds[], id: String) => Gathered */
+function gatherPattern(p, cache, id) {
+  /** const out: SrcNote[] */
+  const out = [];
+  const index = p.patterns.findIndex((x) => x.id === id);
+  if (index < 0) return { notes: out, length: 0 };
+  const pat = p.patterns[index];
+  /** const verses: Int[] */
+  const verses = [];
+  for (let v = 1; v <= verseCount(p, index); v++) verses.push(v);
+  const rows = verses.map((v) => v - 1);
+  const notes = sounds(p, cache, index, 1);
+  for (let k = 0; k < notes.length; k++) {
+    const n = notes[k];
+    // A pattern's notes end with it (as when it loops in the song).
+    if (n.start >= pat.length - 1e-9) continue;
+    out.push(srcNote(p, n, index, n.start, Math.min(n.start + n.length, pat.length), wordsOf(p, cache, index, k, verses, rows)));
+  }
+  return { notes: out, length: pat.length };
+}
+
+/** The notes of the song's clips (or one track's), each singing the verse that plays there. */
+/** function gatherClips(p: Project, cache: Sounds[], scope: Scope) => Gathered */
+function gatherClips(p, cache, scope) {
   /** const out: SrcNote[] */
   const out = [];
   let length = 0;
-  if (scope.kind === "pattern") {
-    const pat = p.patterns.find((x) => x.id === scope.pattern);
-    if (pat) {
-      length = pat.length;
-      for (let i = 0; i < pat.notes.length; i++) {
-        const n = pat.notes[i];
-        // A pattern's notes end with it (as when it loops in the song).
-        if (n.start >= pat.length - 1e-9) continue;
-        out.push({
-          pitch: Math.round(n.pitch),
-          start: n.start,
-          end: Math.min(n.start + n.length, pat.length),
-          velocity: n.velocity,
-          channel: n.channel,
-          pattern: pat.id,
-          index: i,
-          origin: 0,
-        });
-      }
-    }
-  } else {
-    const hidden = p.score.hiddenTracks.map(trackIndex);
-    for (const c of p.playlist.clips) {
-      if (c.pattern === "") continue;
-      const tr = trackIndex(c.track);
-      if (scope.kind === "track" ? tr !== scope.track : hidden.includes(tr)) continue;
-      const pat = p.patterns.find((x) => x.id === c.pattern);
-      if (!pat || pat.length <= 0) continue;
-      length = Math.max(length, c.start + c.length);
-      const L = pat.length;
-      const w0 = c.offset;
-      const w1 = c.offset + c.length;
-      const clipEnd = c.start + c.length;
-      for (let j = Math.floor(w0 / L); j * L < w1; j++) {
-        const base = j * L;
-        for (let i = 0; i < pat.notes.length; i++) {
-          const n = pat.notes[i];
-          const t = n.start + base;
-          if (t < w0 - 1e-9 || t >= w1 - 1e-9 || n.start >= L - 1e-9) continue;
-          const at = c.start + t - w0;
-          out.push({
-            pitch: Math.round(n.pitch),
-            start: at,
-            end: Math.min(Math.min(at + n.length, clipEnd), c.start + base + L - w0),
-            velocity: n.velocity,
-            channel: n.channel,
-            pattern: pat.id,
-            index: i,
-            origin: c.start - w0 + base,
-          });
-        }
+  const hidden = p.score.hiddenTracks.map(trackIndex);
+  for (const c of p.playlist.clips) {
+    if (c.pattern === "") continue;
+    const tr = trackIndex(c.track);
+    if (scope.kind === "track" ? tr !== scope.track : hidden.includes(tr)) continue;
+    const index = p.patterns.findIndex((x) => x.id === c.pattern);
+    if (index < 0 || p.patterns[index].length <= 0) continue;
+    length = Math.max(length, c.start + c.length);
+    const L = p.patterns[index].length;
+    const words = sings(p, index);
+    const notes = sounds(p, cache, index, 1);
+    const w0 = c.offset;
+    const w1 = c.offset + c.length;
+    const clipEnd = c.start + c.length;
+    for (let j = Math.floor(w0 / L); j * L < w1; j++) {
+      const base = j * L;
+      for (let k = 0; k < notes.length; k++) {
+        const n = notes[k];
+        const t = n.start + base;
+        if (t < w0 - 1e-9 || t >= w1 - 1e-9 || n.start >= L - 1e-9) continue;
+        const at = c.start + t - w0;
+        const end = Math.min(Math.min(at + n.length, clipEnd), c.start + base + L - w0);
+        out.push(srcNote(p, n, index, at, end, words ? clipWords(p, cache, index, k, c, at) : []));
       }
     }
   }
-  out.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
   return { notes: out, length: length };
+}
+
+/** A sounding note of patterns[top] placed in score time. */
+/** function srcNote(p: Project, n: Sounding, top: Int, at: Number, end: Number, words: Word[]) => SrcNote */
+function srcNote(p, n, top, at, end, words) {
+  const written = p.patterns[n.pattern];
+  return {
+    pitch: Math.round(n.pitch),
+    start: at,
+    end: end,
+    velocity: n.velocity,
+    channel: n.channel,
+    pattern: written.id,
+    index: n.note,
+    origin: at - written.notes[n.note].start,
+    used: n.pattern !== top,
+    words: words,
+  };
+}
+
+/** function sounds(p: Project, cache: Sounds[], index: Int, verse: Int) => Sounding[] */
+function sounds(p, cache, index, verse) {
+  const hit = cache.find((c) => c.pattern === index && c.verse === verse);
+  if (hit) return hit.notes;
+  const notes = expandPattern(p, index, verse);
+  cache.push({ pattern: index, verse: verse, notes: notes });
+  return notes;
+}
+
+/** What the `k`-th sounding note of patterns[index] sings in each verse (stacked on `rows`).
+ * Past the first, a verse its line does not have (singing another verse's words) is left out. */
+/** function wordsOf(p: Project, cache: Sounds[], index: Int, k: Int, verses: Int[], rows: Int[]) => Word[] */
+function wordsOf(p, cache, index, k, verses, rows) {
+  /** const out: Word[] */
+  const out = [];
+  for (let i = 0; i < verses.length; i++) {
+    const s = sounds(p, cache, index, verses[i])[k].sung;
+    if (s === undefined || (i > 0 && s.verse !== verses[i])) continue;
+    out.push({ row: rows[i], verse: verses[i], token: s.token });
+  }
+  return out;
+}
+
+/** What a clip's note at score beat `at` sings: the clip's verse, or the verse of each pass of the repeat it is in (stacked by pass). */
+/** function clipWords(p: Project, cache: Sounds[], index: Int, k: Int, c: Clip, at: Number) => Word[] */
+function clipWords(p, cache, index, k, c, at) {
+  if (c.verse > 0) return wordsOf(p, cache, index, k, [c.verse], [0]);
+  const passes = passesAt(p.repeats, at);
+  return wordsOf(
+    p,
+    cache,
+    index,
+    k,
+    passes,
+    passes.map((v) => v - 1)
+  );
+}
+
+/** The passes of the repeat that plays a song beat ([1] outside repeats): those of an ending there, else all of its repeat's. */
+/** function passesAt(repeats: Repeat[], beat: Number) => Int[] */
+export function passesAt(repeats, beat) {
+  for (const r of repeats) {
+    for (const e of r.endings) {
+      if (beat >= e.start - 1e-9 && beat < e.end - 1e-9 && e.passes.length > 0) return e.passes.slice().sort((x, y) => x - y);
+    }
+  }
+  for (const r of repeats) {
+    if (beat < r.start - 1e-9 || beat >= r.end - 1e-9) continue;
+    /** const all: Int[] */
+    const all = [];
+    for (let k = 1; k <= Math.max(1, r.times); k++) all.push(k);
+    return all;
+  }
+  return [1];
 }
 
 /** Where a pattern plays in the scope: score-time windows and the origin of pattern beat 0. */
 /** type Occurrence = { origin: Number, from: Number, to: Number } */
+/** An occurrence of `patterns[pattern]`. */
+/** type Played = { pattern: Int, origin: Number, from: Number, to: Number } */
 
+/** Where a pattern plays in the scope: itself, or inside the patterns that use it. */
 /** function occurrences(p: Project, scope: Scope, patternId: String) => Occurrence[] */
 export function occurrences(p, scope, patternId) {
   /** const out: Occurrence[] */
   const out = [];
-  const pat = p.patterns.find((x) => x.id === patternId);
-  if (!pat || pat.length <= 0) return out;
+  for (const o of played(p, scope)) within(p, o, patternId, 0, out);
+  return out;
+}
+
+/** The patterns the scope plays itself: the scope's pattern, or each repetition of each clip. */
+/** function played(p: Project, scope: Scope) => Played[] */
+function played(p, scope) {
+  /** const out: Played[] */
+  const out = [];
   if (scope.kind === "pattern") {
-    if (scope.pattern === patternId) out.push({ origin: 0, from: 0, to: pat.length });
+    const i = p.patterns.findIndex((x) => x.id === scope.pattern);
+    if (i >= 0 && p.patterns[i].length > 0) out.push({ pattern: i, origin: 0, from: 0, to: p.patterns[i].length });
     return out;
   }
   const hidden = p.score.hiddenTracks.map(trackIndex);
   for (const c of p.playlist.clips) {
-    if (c.pattern !== patternId) continue;
+    const i = p.patterns.findIndex((x) => x.id === c.pattern);
+    if (i < 0 || p.patterns[i].length <= 0) continue;
     const tr = trackIndex(c.track);
     if (scope.kind === "track" ? tr !== scope.track : hidden.includes(tr)) continue;
-    const L = pat.length;
+    const L = p.patterns[i].length;
     for (let j = Math.floor(c.offset / L); j * L < c.offset + c.length; j++) {
       const origin = c.start - c.offset + j * L;
-      out.push({ origin: origin, from: Math.max(c.start, origin), to: Math.min(c.start + c.length, origin + L) });
+      out.push({ pattern: i, origin: origin, from: Math.max(c.start, origin), to: Math.min(c.start + c.length, origin + L) });
     }
   }
   return out;
+}
+
+/** Add where `id` plays within an occurrence of a pattern: the pattern itself, or through its uses (nested, as deep as expand.js goes). */
+/** function within(p: Project, o: Played, id: String, depth: Int, out: Occurrence[]) => Undefined */
+function within(p, o, id, depth, out) {
+  const pat = p.patterns[o.pattern];
+  if (pat.id === id) out.push({ origin: o.origin, from: o.from, to: o.to });
+  if (depth >= 16) return undefined;
+  for (const u of pat.uses) {
+    const j = p.patterns.findIndex((x) => x.id === u.pattern);
+    if (j < 0) continue;
+    const at = o.origin + u.start;
+    const end = at + (u.to >= 0 ? u.to : p.patterns[j].length) - u.from;
+    const lo = Math.max(o.from, at);
+    const hi = Math.min(o.to, end);
+    if (hi > lo) within(p, { pattern: j, origin: at - u.from, from: lo, to: hi }, id, depth + 1, out);
+  }
 }
 
 // ------------------------------------------------------------------ measures
@@ -792,6 +900,39 @@ function multiRests(staves, ms, breaks) {
   return out;
 }
 
+// ------------------------------------------------------------------ lyrics
+
+/** The syllables under a staff: each note's words (one per stacked verse line) go under the
+ * first event of the note; a hold (_) or a tie carries the syllable before it on. */
+/** function staffLyrics(events: NEv[], notes: SrcNote[]) => Syl[] */
+function staffLyrics(events, notes) {
+  /** const out: Syl[] */
+  const out = [];
+  /** The last syllable on each line (index into out, -1: none). */
+  /** const last: Int[] */
+  const last = [];
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    if (ev.rest || ev.heads.length === 0) continue;
+    if (ev.heads.every((h) => h.tieIn)) {
+      // A tied note goes on sounding: so does a syllable held to it.
+      for (const k of last) if (k >= 0 && out[k].until === i - 1) out[k].until = i;
+      continue;
+    }
+    const head = ev.heads.find((h) => notes[h.src].words.length > 0);
+    if (head === undefined) continue;
+    for (const w of notes[head.src].words) {
+      while (last.length <= w.row) last.push(-1);
+      const t = w.token;
+      if (t.kind === "syllable") {
+        out.push({ ev: i, row: w.row, verse: w.verse, text: t.text, hyphen: continues(t), until: i });
+        last[w.row] = out.length - 1;
+      } else if (t.kind === "hold" && last[w.row] >= 0) out[last[w.row]].until = i;
+    }
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ marks
 
 /** function resolveMarks(p: Project, scope: Scope) => MarkSpan[] */
@@ -917,7 +1058,18 @@ export function buildScore(p, scope, grid) {
       const evs = eventsOf(chords, heads, ms, trip);
       if (!drum) markAccidentals(evs, fifths);
       beamId = markBeams(evs, ms, beamId);
-      staves.push({ channel: ids[0], channels: ids, name: pt.name, color: pt.color, clef: clefs[part], drum: drum, part: part, group: group, events: evs });
+      staves.push({
+        channel: ids[0],
+        channels: ids,
+        name: pt.name,
+        color: pt.color,
+        clef: clefs[part],
+        drum: drum,
+        part: part,
+        group: group,
+        events: evs,
+        lyrics: [],
+      });
     }
   }
 
@@ -932,10 +1084,13 @@ export function buildScore(p, scope, grid) {
       breaks.push(Math.round(e.end * TPQ));
     }
   }
+  const measures = staves.length > 0 ? multiRests(staves, ms, breaks) : ms;
+  // Words go under the final events (multi-measure rests renumber them).
+  for (const st of staves) if (!st.drum) st.lyrics = staffLyrics(st.events, notes);
   return {
     repeats: repeats,
     staves: staves,
-    measures: staves.length > 0 ? multiRests(staves, ms, breaks) : ms,
+    measures: measures,
     fifths: fifths,
     minor: minor,
     keyName: keyName,

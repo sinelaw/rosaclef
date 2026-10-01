@@ -13,6 +13,7 @@ import { voicePanel, voiceTools } from "./voice.js";
 import { agentPanel, agentDot } from "./agent.js";
 import { toastView } from "./toast.js";
 import { automationMenu } from "./lanes.js";
+import { exportMenu } from "./export.js";
 import { projectsOverlay } from "./projects.js";
 import { glyph } from "./widgets.js";
 import { keyboard, keyboardStrip, keysHelp } from "./keyboard.js";
@@ -239,6 +240,7 @@ export function studio(b) {
   projectsOverlay(b);
   toastView(b);
   automationMenu(b);
+  exportMenu(b);
   b.close();
 }
 

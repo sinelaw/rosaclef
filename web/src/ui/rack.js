@@ -523,7 +523,11 @@ function deleteChannel(ch) {
   const p = state.project;
   commit(() => {
     p.channels = p.channels.filter((c) => c.id !== ch.id);
-    for (const pat of p.patterns) pat.notes = pat.notes.filter((n) => n.channel !== ch.id);
+    for (const pat of p.patterns) {
+      pat.notes = pat.notes.filter((n) => n.channel !== ch.id);
+      pat.uses = pat.uses.filter((u) => u.channel !== ch.id);
+      pat.lyrics = pat.lyrics.filter((l) => l.channel !== ch.id);
+    }
     retargetLanes((t) => (t.startsWith(`channel/${ch.id}/`) ? "" : t));
   });
 }

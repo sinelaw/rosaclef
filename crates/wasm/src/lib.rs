@@ -92,7 +92,8 @@ pub unsafe extern "C" fn rc_set_project(ptr: *const u8, len: usize) -> i32 {
             return 1;
         }
         s.engine.set_project(checked.project.unwrap());
-        // Report which samples and soundfont presets still need to be provided.
+        // Report which samples, rendered phrases and soundfont presets still
+        // need to be provided.
         let samples: Vec<String> = s
             .engine
             .required_samples()
@@ -106,8 +107,16 @@ pub unsafe extern "C" fn rc_set_project(ptr: *const u8, len: usize) -> i32 {
             .filter(|k| !s.engine.has_preset(k))
             .map(|k| serde_json::json!({"font": k.font, "bank": k.bank, "program": k.program}))
             .collect();
-        s.result = serde_json::to_vec(&serde_json::json!({"samples": samples, "presets": presets}))
-            .unwrap_or_default();
+        let renders: Vec<String> = s
+            .engine
+            .wanted_renders()
+            .into_iter()
+            .filter(|p| !s.engine.has_sample(p))
+            .collect();
+        s.result = serde_json::to_vec(
+            &serde_json::json!({"samples": samples, "renders": renders, "presets": presets}),
+        )
+        .unwrap_or_default();
         0
     })
     .unwrap_or(2)

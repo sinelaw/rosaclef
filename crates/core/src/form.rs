@@ -9,6 +9,8 @@
 //!
 //! [`performance`] unrolls this into spans of written time (beats), played
 //! one after the other; without repeats it is the whole song in one span.
+//! Each span knows which pass of its repeat it is, so a pattern can sing its
+//! second verse the second time round.
 
 use crate::automation::TempoMap;
 use crate::model::{Ending, Project, Repeat};
@@ -18,6 +20,8 @@ use crate::model::{Ending, Project, Repeat};
 pub struct Span {
     pub start: f64,
     pub end: f64,
+    /// The pass of the repeat it belongs to, from 1 (1 outside repeats).
+    pub pass: u32,
 }
 
 const EPS: f64 = 1e-9;
@@ -39,31 +43,31 @@ fn playable(r: &Repeat) -> bool {
     r.start.is_finite() && r.end.is_finite() && r.start >= 0.0 && r.end > r.start + EPS
 }
 
-fn push(out: &mut Vec<Span>, start: f64, end: f64) {
+fn push(out: &mut Vec<Span>, start: f64, end: f64, pass: u32) {
     if end <= start + EPS {
         return;
     }
-    // Contiguous spans join: no jump between them.
+    // Contiguous spans of one pass join: no jump between them.
     if let Some(last) = out.last_mut() {
-        if (last.end - start).abs() < EPS {
+        if (last.end - start).abs() < EPS && last.pass == pass {
             last.end = end;
             return;
         }
     }
-    out.push(Span { start, end });
+    out.push(Span { start, end, pass });
 }
 
-/// Play `[a, b)` but skip the given endings (sorted by start).
-fn play_except(out: &mut Vec<Span>, a: f64, b: f64, skip: &[&Ending]) {
+/// Play `[a, b)` on `pass` but skip the given endings (sorted by start).
+fn play_except(out: &mut Vec<Span>, a: f64, b: f64, pass: u32, skip: &[&Ending]) {
     let mut t = a;
     for e in skip {
         if e.end <= t + EPS || e.start >= b - EPS {
             continue;
         }
-        push(out, t, e.start.max(t));
+        push(out, t, e.start.max(t), pass);
         t = t.max(e.end);
     }
-    push(out, t, b);
+    push(out, t, b, pass);
 }
 
 /// The order the song plays in: spans of written time, one after another.
@@ -77,7 +81,7 @@ pub fn performance(p: &Project) -> Vec<Span> {
         if r.end <= cursor + EPS {
             continue; // overlaps an earlier repeat (validation reports it)
         }
-        push(&mut out, cursor, r.start.max(cursor));
+        push(&mut out, cursor, r.start.max(cursor), 1);
         let start = r.start.max(cursor);
         let times = r.times.clamp(1, 99);
         let mut endings: Vec<&Ending> =
@@ -90,7 +94,7 @@ pub fn performance(p: &Project) -> Vec<Span> {
                 .copied()
                 .filter(|e| !e.passes.contains(&pass))
                 .collect();
-            play_except(&mut out, start, r.end, &skip);
+            play_except(&mut out, start, r.end, pass, &skip);
             if pass == times {
                 // Past the end sign, the endings of other passes are skipped.
                 for e in &endings {
@@ -99,11 +103,20 @@ pub fn performance(p: &Project) -> Vec<Span> {
                         after = e.end;
                     }
                 }
+                // The ending this pass plays after the end sign is still its pass.
+                if let Some(e) = endings.iter().find(|e| {
+                    (e.start - after).abs() < EPS
+                        && e.passes.contains(&pass)
+                        && r.end <= e.start + EPS
+                }) {
+                    push(&mut out, e.start, e.end, pass);
+                    after = e.end;
+                }
             }
         }
         cursor = after;
     }
-    push(&mut out, cursor, song_end);
+    push(&mut out, cursor, song_end, 1);
     out
 }
 
@@ -137,17 +150,21 @@ mod tests {
             offset: 0.0,
             gain: 1.0,
             mixer: Default::default(),
+            verse: None,
         });
         p
     }
 
-    fn spans(p: &Project) -> Vec<(f64, f64)> {
-        performance(p).iter().map(|s| (s.start, s.end)).collect()
+    fn spans(p: &Project) -> Vec<(f64, f64, u32)> {
+        performance(p)
+            .iter()
+            .map(|s| (s.start, s.end, s.pass))
+            .collect()
     }
 
     #[test]
     fn without_repeats_the_song_plays_through() {
-        assert_eq!(spans(&song(32.0)), vec![(0.0, 32.0)]);
+        assert_eq!(spans(&song(32.0)), vec![(0.0, 32.0, 1)]);
     }
 
     #[test]
@@ -159,10 +176,21 @@ mod tests {
             times: 2,
             endings: vec![],
         });
-        assert_eq!(spans(&p), vec![(0.0, 16.0), (8.0, 32.0)]);
+        assert_eq!(
+            spans(&p),
+            vec![(0.0, 16.0, 1), (8.0, 16.0, 2), (16.0, 32.0, 1)]
+        );
         assert_eq!(performance_beats(&p), 40.0);
         p.repeats[0].times = 3;
-        assert_eq!(spans(&p), vec![(0.0, 16.0), (8.0, 16.0), (8.0, 32.0)]);
+        assert_eq!(
+            spans(&p),
+            vec![
+                (0.0, 16.0, 1),
+                (8.0, 16.0, 2),
+                (8.0, 16.0, 3),
+                (16.0, 32.0, 1)
+            ]
+        );
     }
 
     #[test]
@@ -186,7 +214,15 @@ mod tests {
                 },
             ],
         });
-        assert_eq!(spans(&p), vec![(0.0, 16.0), (0.0, 12.0), (16.0, 24.0)]);
+        assert_eq!(
+            spans(&p),
+            vec![
+                (0.0, 16.0, 1),
+                (0.0, 12.0, 2),
+                (16.0, 20.0, 2),
+                (20.0, 24.0, 1)
+            ]
+        );
     }
 
     #[test]
@@ -212,7 +248,13 @@ mod tests {
         });
         assert_eq!(
             spans(&p),
-            vec![(0.0, 8.0), (0.0, 8.0), (0.0, 4.0), (8.0, 16.0)]
+            vec![
+                (0.0, 8.0, 1),
+                (0.0, 8.0, 2),
+                (0.0, 4.0, 3),
+                (8.0, 12.0, 3),
+                (12.0, 16.0, 1)
+            ]
         );
     }
 

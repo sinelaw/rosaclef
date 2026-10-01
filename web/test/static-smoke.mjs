@@ -80,8 +80,12 @@ await page.waitForSelector('.pm-card:has-text("Demo")');
 const [zip] = await Promise.all([page.waitForEvent("download"), page.click('.pm-card:has-text("Demo") button[title*=".zip"]')]);
 ok(`a project downloads as ${zip.suggestedFilename()}`);
 await page.keyboard.press("Escape");
-const [wav] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click("button.btn.gold:has-text('Export')")]);
-ok(`the song exports to ${wav.suggestedFilename()}`);
+await page.click("button.btn.gold:has-text('Export')");
+const [mid] = await Promise.all([page.waitForEvent("download"), page.click(".ctx-menu-item:has-text('MIDI with lyrics')")]);
+ok(`the song exports to ${mid.suggestedFilename()}`);
+await page.click("button.btn.gold:has-text('Export')");
+const [wav] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click(".ctx-menu-item:has-text('Mixdown')")]);
+ok(`the song renders to ${wav.suggestedFilename()}`);
 
 await browser.close();
 if (errors.length > 0) {

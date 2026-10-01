@@ -58,7 +58,7 @@ export function addPattern() {
     p.patterns.map((x) => x.id)
   );
   commit(() => {
-    p.patterns.push({ id: id, name: `Pattern ${n}`, color: paletteColor(n + 2), length: 4, notes: [] });
+    p.patterns.push({ id: id, name: `Pattern ${n}`, color: paletteColor(n + 2), length: 4, notes: [], uses: [], lyrics: [] });
   });
   selectPattern(id);
   followPattern();

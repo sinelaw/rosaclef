@@ -14,6 +14,10 @@ import { select, iconButton } from "./widgets.js";
 import { followButton } from "./playlist.js";
 import { dockScore } from "./score.js";
 import { openDock } from "./panes.js";
+import { useLayer, useMenu, referSelection } from "./usebox.js";
+import { lyricLabel, lyricRow } from "./lyricrow.js";
+import { lyricSheet } from "./lyricsheet.js";
+import { expandPattern } from "../expand.js";
 import { noteIx, noteIndex } from "#brands";
 
 const view = {
@@ -470,6 +474,8 @@ function gridView(b, g, pat, ch) {
     b.style("--c", "#8a7f6c");
     b.style("--vel", "0.5");
   }
+  // Notes of the patterns it uses, in their boxes.
+  useLayer(b, g.zoom, g.rowH, state.project.patterns.indexOf(pat), ch, x0, x1);
 
   // Notes of the selected channel.
   for (const r of layout(g, pat, ch.id)) {
@@ -564,7 +570,7 @@ export function pianoRoll(b) {
   const focus = `${pat.id}/${ch.id}`;
   if (view.focus !== focus && view.centered) {
     view.focus = focus;
-    const mine = pat.notes.filter((n) => n.channel === ch.id);
+    const mine = expandPattern(state.project, state.project.patterns.indexOf(pat), 1).filter((n) => n.channel === ch.id);
     let sum = 0;
     for (const n of mine) sum = sum + n.pitch;
     const mid = mine.length > 0 ? sum / mine.length : 66;
@@ -588,16 +594,38 @@ export function pianoRoll(b) {
   rulerView(b, g, pat);
   keysView(b, g, ch);
   gridView(b, g, pat, ch);
+  const index = state.project.patterns.indexOf(pat);
+  lyricLabel(b, index, ch);
+  lyricRow(b, { zoom: g.zoom, left: view.scrollLeft, width: view.width }, index, ch, revealBeat);
   b.leaf("div", "vl", "vel-label", "Velocity");
   velocityView(b, g, pat, ch);
+  lyricSheet(b, index);
   b.close();
+  useMenu(b, index);
   b.close();
+}
+
+/** Scroll the grid so a beat is in view. */
+/** function revealBeat(beat: Number) => Undefined */
+function revealBeat(beat) {
+  const x = beat * view.zoom;
+  if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.85) view.scrollLeft = Math.max(0, x - view.width * 0.15);
+  invalidate();
 }
 
 /** function pianoTools(b: Builder) => Undefined */
 export function pianoTools(b) {
   const ids = state.project.channels.map((c) => c.id);
   const names = state.project.channels.map((c) => c.name);
+  if (state.selection.length > 0)
+    iconButton(
+      b,
+      "ref",
+      "small",
+      "link",
+      "Make reference: the selected notes become a new pattern, played here by reference (edit it once, it changes everywhere)",
+      () => referSelection()
+    );
   followButton(b);
   b.leaf("span", "cl", "label", "Channel");
   select(b, "ch", "", state.channel, ids, names, "Channel to edit", (v) => selectChannel(v));

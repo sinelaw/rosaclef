@@ -34,6 +34,7 @@ function onEngineMessage(m) {
     invalidate();
   } else if (m.t === "loaded") {
     for (const path of m.missing) loadSample(path);
+    for (const path of m.renders) loadRender(path);
     for (const p of m.presets) loadPreset(p);
   } else if (m.t === "loadError") {
     toast("The audio engine rejected the project", m.message, "error");
@@ -52,6 +53,23 @@ function loadSample(path) {
     })
     .catch((e) => {
       toast("Could not load sample", path, "error");
+      return false;
+    });
+}
+
+/** A phrase rendered by a singing engine, if it exists yet (the voice sings it until then; the server says when renders arrive). */
+/** function loadRender(path: String) => Undefined */
+function loadRender(path) {
+  if (loaded.includes(path) || loading.includes(path)) return undefined;
+  loading.push(path);
+  decodeAudioUrl(`/files/${path}`)
+    .then((d) => {
+      audioPostSample(path, d);
+      loaded.push(path);
+      return true;
+    })
+    .catch((e) => {
+      loading.splice(loading.indexOf(path), 1);
       return false;
     });
 }
@@ -346,6 +364,7 @@ export function stopRecording() {
         offset: 0,
         gain: 1,
         mixer: insertIx(0),
+        verse: 0,
       });
     });
     toast("Recording placed on the playlist", path, "info");

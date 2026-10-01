@@ -69,6 +69,7 @@ fn song(arp: Option<Arpeggio>) -> Project {
         offset: 0.0,
         gain: 1.0,
         mixer: InsertIx(0),
+        verse: None,
     });
     p
 }

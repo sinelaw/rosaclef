@@ -5,10 +5,13 @@ pub mod arp;
 pub mod automation;
 pub mod catalog;
 pub mod context;
+pub mod expand;
 pub mod form;
 pub mod format;
 pub mod gm;
+pub mod lyrics;
 pub mod model;
+pub mod phrase;
 pub mod presets;
 pub mod schema;
 pub mod validate;
@@ -17,6 +20,51 @@ pub use model::*;
 
 /// Name of the project document inside a project folder.
 pub const PROJECT_FILE: &str = "project.json";
+
+/// The uses and lyric lines of a pattern, one line each, for the summary.
+fn pattern_extras(s: &mut String, pat: &Pattern) {
+    use std::fmt::Write;
+    for u in &pat.uses {
+        let range = match (u.from, u.to) {
+            (f, Some(t)) => format!("[{}..{}]", format::format_f64(f), format::format_f64(t)),
+            (f, None) if f > 0.0 => format!("[{}..]", format::format_f64(f)),
+            _ => String::new(),
+        };
+        let mut extra = String::new();
+        if u.transpose != 0 {
+            extra += &format!(" {:+}", u.transpose);
+        }
+        if !u.channel.is_empty() {
+            extra += &format!(" on {}", u.channel);
+        }
+        if let Some(v) = u.verse {
+            extra += &format!(" verse {v}");
+        }
+        let _ = writeln!(
+            s,
+            "      uses {}{range} at {}{extra}",
+            u.pattern,
+            format::format_f64(u.start)
+        );
+    }
+    for l in &pat.lyrics {
+        let verses: Vec<String> = l.verses.keys().map(|k| k.to_string()).collect();
+        let first = l.verses.values().next().map(String::as_str).unwrap_or("");
+        let shown: String = first.chars().take(48).collect();
+        let more = if first.chars().count() > 48 {
+            "…"
+        } else {
+            ""
+        };
+        let _ = writeln!(
+            s,
+            "      lyrics on {} ({}), verses {}: \"{shown}{more}\"",
+            l.channel,
+            l.language(),
+            verses.join(",")
+        );
+    }
+}
 
 /// A short human-readable overview of a project (used by `rosaclef summary`).
 pub fn summary(p: &Project) -> String {
@@ -77,6 +125,7 @@ pub fn summary(p: &Project) -> String {
             pat.notes.len(),
             per.join(" ")
         );
+        pattern_extras(&mut s, pat);
     }
     let secs = form::performance_seconds(p, &automation::TempoMap::new(p));
     let _ = writeln!(

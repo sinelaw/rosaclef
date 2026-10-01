@@ -12,6 +12,8 @@ import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
 import { dragSample } from "./browser.js";
 import { revealDock } from "./panes.js";
+import { verseBadge, verseTool } from "./clipverse.js";
+import { expandPattern } from "../expand.js";
 import { toast } from "./toast.js";
 import { autoHeight, autoHeads, autoBody, onAutoDown, onAutoDblClick, autoHint, revealOffset, LANE_H } from "./lanes.js";
 import { clipIx, clipIndex, trackIx, trackIndex, insertIx } from "#brands";
@@ -215,6 +217,7 @@ function onLaneDown(e, g) {
             offset: c.offset,
             gain: c.gain,
             mixer: c.mixer,
+            verse: c.verse,
           });
         }
       });
@@ -247,7 +250,17 @@ function onLaneDown(e, g) {
   if (!pat) return undefined;
   const start = snapDown(x / g.zoom, snap);
   begin();
-  p.playlist.clips.push({ pattern: pat.id, sample: "", track: trackIx(track), start: start, length: pat.length, offset: 0, gain: 1, mixer: insertIx(0) });
+  p.playlist.clips.push({
+    pattern: pat.id,
+    sample: "",
+    track: trackIx(track),
+    start: start,
+    length: pat.length,
+    offset: 0,
+    gain: 1,
+    mixer: insertIx(0),
+    verse: 0,
+  });
   const idx = p.playlist.clips.length - 1;
   state.clipSelection = [clipIx(idx)];
   changed(true);
@@ -282,6 +295,7 @@ function dropSample(path, x, y, g) {
           offset: 0,
           gain: 1,
           mixer: insertIx(0),
+          verse: 0,
         });
       });
       return true;
@@ -294,16 +308,31 @@ function dropSample(path, x, y, g) {
 
 // ------------------------------------------------------------------ render
 
+/** A pattern's notes as they sound (with the patterns it uses), for its clips' previews. */
+/** function soundingNotes(pat: Pattern) => Note[] */
+function soundingNotes(pat) {
+  if (pat.uses.length === 0) return pat.notes;
+  const p = state.project;
+  return expandPattern(p, p.patterns.indexOf(pat), 1).map((n) => ({
+    channel: n.channel,
+    pitch: n.pitch,
+    start: n.start,
+    length: n.length,
+    velocity: n.velocity,
+  }));
+}
+
 /** function clipBody(b: Builder, c: Clip, w: Number) => Undefined */
 function clipBody(b, c, w) {
   if (c.pattern !== "") {
     const pat = patternById(c.pattern);
     if (!pat) return undefined;
+    const notes = soundingNotes(pat);
     b.canvas("prev", "", (g2, cw, ch) => {
-      if (pat.notes.length === 0) return undefined;
+      if (notes.length === 0) return undefined;
       let lo = 127;
       let hi = 0;
-      for (const n of pat.notes) {
+      for (const n of notes) {
         lo = Math.min(lo, n.pitch);
         hi = Math.max(hi, n.pitch);
       }
@@ -312,7 +341,7 @@ function clipBody(b, c, w) {
       const nh = Math.max(1.5, (ch - 4) / span);
       g2.fillStyle = "rgba(255, 244, 220, 0.8)";
       for (let rep = -c.offset; rep < c.length; rep = rep + pat.length) {
-        for (const n of pat.notes) {
+        for (const n of notes) {
           const t = rep + n.start;
           if (t < 0 || t >= c.length) continue;
           g2.fillRect(t * scale, ch - 2 - (n.pitch - lo + 1) * nh, Math.max(1.5, n.length * scale - 1), Math.max(1.2, nh - 0.6));
@@ -536,7 +565,10 @@ export function playlist(b) {
     b.style("width", `${r.w - 1}px`);
     b.style("height", `${r.h}px`);
     b.style("--c", color);
-    b.leaf("div", "title", "clip-title", title);
+    b.open("div", "title", "clip-title");
+    b.text(title);
+    verseBadge(b, c);
+    b.close();
     clipBody(b, c, r.w);
     b.leaf("div", "edge", "clip-edge", "");
     b.close();
@@ -627,6 +659,7 @@ export function playlistTools(b) {
     b.leaf("span", "sw", "swatch", "");
     b.style("--c", pat.color);
   }
+  verseTool(b);
   iconButton(b, "addtrack", "small ghost", "plus", "Add a playlist track", () => {
     commit(() => {
       state.project.playlist.tracks.push({ name: `Track ${state.project.playlist.tracks.length + 1}`, mute: false });

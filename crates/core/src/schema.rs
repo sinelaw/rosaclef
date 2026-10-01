@@ -232,7 +232,66 @@ pub fn schema() -> Value {
                     "name": {"type": "string"},
                     "color": color,
                     "length": {"type": "number", "exclusiveMinimum": 0, "maximum": 4096, "description": "Pattern length in beats."},
-                    "notes": {"type": "array", "items": {"$ref": "#/$defs/note"}}
+                    "notes": {"type": "array", "items": {"$ref": "#/$defs/note"}},
+                    "uses": {"type": "array", "items": {"$ref": "#/$defs/use"}, "description": "Other patterns played inside this one by reference (not copied): editing them changes every place that uses them."},
+                    "lyrics": {"type": "array", "items": {"$ref": "#/$defs/lyrics"}, "description": "Words sung on this pattern's notes, one line per vocal channel."}
+                }
+            },
+            "use": {
+                "type": "object",
+                "required": ["pattern", "start"],
+                "additionalProperties": false,
+                "properties": {
+                    "pattern": {"type": "string", "description": "Id of the pattern played (it cannot contain this one)."},
+                    "start": {"type": "number", "minimum": 0, "description": "Where it starts in this pattern, in beats."},
+                    "from": {"type": "number", "minimum": 0, "default": 0, "description": "Start of the range played, in the used pattern's beats."},
+                    "to": {"type": "number", "description": "End of the range played (default: the used pattern's end). Notes are cut here."},
+                    "transpose": {"type": "integer", "minimum": -48, "maximum": 48, "default": 0, "description": "Semitones (drum channels are not moved)."},
+                    "channel": {"type": "string", "description": "Channel id to play every note on instead of its own."},
+                    "velocity": {"type": "number", "minimum": 0, "maximum": 2, "default": 1, "description": "Factor on the notes' velocities."},
+                    "verse": {"type": "integer", "minimum": 1, "description": "Verse its lyrics sing (default: the verse this pattern sings)."}
+                }
+            },
+            "lyrics": {
+                "type": "object",
+                "required": ["channel", "verses"],
+                "additionalProperties": false,
+                "description": "Words for one vocal channel. Syllables fall on the channel's notes in time order (notes that used patterns already gave words are skipped). Notation: a space ends a word, `-` splits syllables (Hel-lo), `_` holds the previous syllable over a note, `/` ends a line and `//` a paragraph, `word[w ɜ d]` gives a pronunciation in IPA, `(br)` is a breath; `\\` escapes a character.",
+                "properties": {
+                    "channel": {"type": "string", "description": "The vocal channel."},
+                    "lang": {"type": "string", "description": "BCP 47 language tag (en, en-US, ja, es...). Default: en."},
+                    "mode": {"enum": ["sing", "rap", "speak"], "default": "sing", "description": "sing on the pitches, rap (pitch ignored), speak."},
+                    "verses": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "propertyNames": {"pattern": "^[1-9][0-9]*$"},
+                        "additionalProperties": {"type": "string"},
+                        "description": "Verse number (from 1) → text. A verse a line does not have sings its lowest-numbered one."
+                    },
+                    "timing": {"type": "array", "items": {"$ref": "#/$defs/syllableTiming"}}
+                }
+            },
+            "syllableTiming": {
+                "type": "object",
+                "required": ["verse", "at", "phonemes"],
+                "additionalProperties": false,
+                "description": "Fixed phoneme timing for one syllable (from aligning a recording, or by hand).",
+                "properties": {
+                    "verse": {"type": "integer", "minimum": 1},
+                    "at": {"type": "number", "minimum": 0, "description": "Beat (in this pattern) of the note the syllable is sung on."},
+                    "phonemes": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "required": ["p", "offset"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "p": {"type": "string", "description": "IPA phoneme."},
+                                "offset": {"type": "number", "description": "Seconds from the note's start (negative: before it)."}
+                            }
+                        }
+                    }
                 }
             },
             "note": {
@@ -266,7 +325,8 @@ pub fn schema() -> Value {
                     "length": {"type": "number", "exclusiveMinimum": 0, "description": "Length in beats."},
                     "offset": {"type": "number", "minimum": 0, "description": "Start offset into the pattern/sample, in beats."},
                     "gain": {"type": "number", "minimum": 0, "maximum": 4, "default": 1},
-                    "mixer": {"type": "integer", "minimum": 0, "description": "Audio clips: mixer insert."}
+                    "mixer": {"type": "integer", "minimum": 0, "description": "Audio clips: mixer insert."},
+                    "verse": {"type": "integer", "minimum": 1, "description": "Pattern clips: the verse its lyrics sing (default: the pass of the repeat it plays in, else 1)."}
                 }
             },
             "insert": {

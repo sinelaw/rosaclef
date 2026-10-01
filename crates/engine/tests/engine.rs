@@ -44,6 +44,7 @@ fn drum_project() -> Project {
         offset: 0.0,
         gain: 1.0,
         mixer: InsertIx::MASTER,
+        verse: None,
     });
     p
 }
@@ -170,4 +171,56 @@ fn project_updates_keep_instruments() {
         l.iter().any(|x| x.abs() > 0.01),
         "note was cut by the update"
     );
+}
+
+#[test]
+fn a_used_pattern_plays_like_its_notes_copied() {
+    // A kick on 0 in pattern-1, used again at beat 2 of a second pattern.
+    let mut copied = drum_project();
+    copied.patterns[0].length = 4.0;
+    let mut used = copied.clone();
+    let kick = copied.patterns[0].notes[0].clone();
+    copied.patterns[0].notes.push(Note { start: 2.0, ..kick });
+    let notes = std::mem::take(&mut used.patterns[0].notes);
+    used.patterns.push(rosaclef_core::Pattern {
+        id: "kick".into(),
+        name: "Kick".into(),
+        color: "#ffffff".into(),
+        length: 1.0,
+        notes,
+        uses: vec![],
+        lyrics: vec![],
+    });
+    for start in [0.0, 2.0] {
+        used.patterns[0].uses.push(rosaclef_core::Use {
+            pattern: "kick".into(),
+            start,
+            from: 0.0,
+            to: None,
+            transpose: 0,
+            channel: String::new(),
+            velocity: 1.0,
+            verse: None,
+        });
+    }
+    assert!(
+        validate::validate(&used).is_empty(),
+        "{:?}",
+        validate::validate(&used)
+    );
+    let audio = |p: Project| {
+        let mut e = Engine::new(48000.0);
+        e.set_project(p);
+        render(
+            &mut e,
+            &RenderScope::Pattern {
+                id: "pattern-1".into(),
+                loops: 1,
+            },
+        )
+        .left
+    };
+    let (a, b) = (audio(copied), audio(used));
+    assert_eq!(onsets(&a, 48000.0).len(), 2);
+    assert_eq!(a, b);
 }

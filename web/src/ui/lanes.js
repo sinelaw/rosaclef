@@ -12,7 +12,8 @@ import { drag, promptBox, fmt } from "#platform";
 import { state, commit, begin, changed, invalidate, hint, reportContext } from "../store.js";
 import { snapTo, dbText, panText, barBeat, PALETTE } from "../model.js";
 import { auto, curveShape, laneValueAt, targetInfo, goToLane, removeLane, createLane, closeMenu, laneByTarget, selectedPoints } from "../automation.js";
-import { iconButton, paramText, glyph } from "./widgets.js";
+import { iconButton, paramText } from "./widgets.js";
+import { contextMenu, item } from "./menu.js";
 import { pointIx, pointIndex } from "#brands";
 
 /** Height of a lane row and of the section divider, in pixels. */
@@ -542,18 +543,6 @@ export function autoBody(b, lg) {
 
 // ------------------------------------------------------------------ menu
 
-/** function menuItem(b: Builder, key: String, icon: String, label: String, onClick: () => Undefined) => Undefined */
-function menuItem(b, key, icon, label, onClick) {
-  b.open("button", key, "auto-menu-item");
-  b.on("click", (e) => {
-    closeMenu();
-    onClick();
-  });
-  glyph(b, icon);
-  b.leaf("span", "l", "", label);
-  b.close();
-}
-
 /** The right-click menu of automatable controls (rendered by the shell). */
 /** function automationMenu(b: Builder) => Undefined */
 export function automationMenu(b) {
@@ -571,37 +560,22 @@ function automationMenuBody(b) {
   const target = m.target;
   const info = targetInfo(target);
   const lane = laneByTarget(target);
-  b.leaf("div", "auto-backdrop", "auto-backdrop", "");
-  b.on("pointerdown", (e) => {
-    e.preventDefault();
-    closeMenu();
-  });
-  b.on("contextmenu", (e) => {
-    e.preventDefault();
-    closeMenu();
-  });
-  b.open("div", "auto-menu", "auto-menu");
-  b.style("left", `min(${m.x}px, calc(100vw - 250px))`);
-  b.style("top", `min(${m.y}px, calc(100vh - 170px))`);
-  b.on("contextmenu", (e) => {
-    e.preventDefault();
-  });
-  b.leaf("div", "t", "auto-menu-title", info.label);
-  b.leaf("div", "s", "auto-menu-sub", target);
-  if (!info.ok) {
-    b.leaf("div", "x", "auto-menu-note", "This control cannot be automated.");
-  } else if (!lane) {
-    menuItem(b, "create", "draw", "Create automation lane", () => createLane(target));
-  } else {
+  /** const items: MenuItem[] */
+  const items = [];
+  if (info.ok && !lane) items.push(item("create", "draw", "Create automation lane", () => createLane(target)));
+  if (lane) {
     const id = lane.id;
     const muted = lane.mute;
-    menuItem(b, "go", "playlist", "Go to automation lane", () => goToLane(id));
-    menuItem(b, "mute", "mute", muted ? "Unmute automation" : "Mute automation", () => {
-      commit(() => {
-        for (const l of state.project.automation) if (l.id === id) l.mute = !muted;
-      });
-    });
-    menuItem(b, "rm", "trash", "Remove automation", () => removeLane(id));
+    items.push(item("go", "playlist", "Go to automation lane", () => goToLane(id)));
+    items.push(
+      item("mute", "mute", muted ? "Unmute automation" : "Mute automation", () => {
+        commit(() => {
+          for (const l of state.project.automation) if (l.id === id) l.mute = !muted;
+        });
+      })
+    );
+    items.push(item("rm", "trash", "Remove automation", () => removeLane(id)));
   }
-  b.close();
+  const note = info.ok ? "" : "This control cannot be automated.";
+  contextMenu(b, { x: m.x, y: m.y, title: info.label, sub: target, note: note, items: items }, closeMenu);
 }

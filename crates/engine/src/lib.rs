@@ -12,6 +12,7 @@ mod automation;
 pub mod dsp;
 pub mod effects;
 pub mod instruments;
+mod patterns;
 pub mod render;
 pub mod samples;
 pub mod soundfont;
@@ -19,8 +20,8 @@ pub mod soundfont;
 use automation::CLane;
 use dsp::{hermite, pan_gains, Ramp};
 use effects::Effect;
-use instruments::{Instrument, NoteEvent, NoteKind};
-use rosaclef_core::arp;
+use instruments::{Instrument, Lyrics, NoteEvent, NoteKind};
+use patterns::{CNote, CPattern};
 use rosaclef_core::automation::TempoMap;
 use rosaclef_core::form::{self, Span};
 use rosaclef_core::{Device, InsertIx, Project};
@@ -35,19 +36,6 @@ pub const AUTOMATION_BLOCK: usize = 64;
 
 /// Devices whose settings depend on the tempo (they are reconfigured when
 /// tempo automation moves the tempo).
-/// Whether an instrument plays its notes at their pitch (the master
-/// transpose shifts it): not the drum machine, nor a soundfont drum kit.
-fn pitched(dev: &Device) -> bool {
-    match dev.kind.as_str() {
-        "drum" => false,
-        "soundfont" => {
-            rosaclef_core::gm::lookup(dev.option("program")).map(|(bank, _)| bank)
-                != Some(rosaclef_core::gm::DRUM_BANK)
-        }
-        _ => true,
-    }
-}
-
 fn tempo_synced(kind: &str) -> bool {
     matches!(kind, "delay" | "comete" | "dedale")
 }
@@ -230,35 +218,6 @@ impl InsertRt {
     }
 }
 
-#[derive(Clone, Copy)]
-struct CNote {
-    channel: usize,
-    key: u8,
-    /// Start without swing.
-    start: f64,
-    /// On an off-beat 16th: delayed by the swing amount.
-    swung: bool,
-    length: f64,
-    velocity: f32,
-}
-
-impl CNote {
-    #[inline]
-    fn start_at(&self, swing_shift: f64) -> f64 {
-        if self.swung {
-            self.start + swing_shift
-        } else {
-            self.start
-        }
-    }
-}
-
-struct CPattern {
-    id: String,
-    length: f64,
-    notes: Vec<CNote>,
-}
-
 struct CClip {
     pattern: Option<usize>,
     sample_path: String,
@@ -268,6 +227,8 @@ struct CClip {
     offset: f64,
     gain: f32,
     mixer: InsertIx,
+    /// The verse it sings, when the clip sets one (else the repeat's pass).
+    verse: Option<u32>,
 }
 
 #[derive(Clone, Copy)]
@@ -292,6 +253,8 @@ pub struct Engine {
     channels: Vec<ChannelRt>,
     inserts: Vec<InsertRt>,
     patterns: Vec<CPattern>,
+    /// What the patterns' notes sing, and the rendered phrases.
+    lyrics: Arc<Lyrics>,
     clips: Vec<CClip>,
     song_length: f64,
     /// The order the song plays in (its repeats taken): spans of written time.
@@ -349,6 +312,7 @@ impl Engine {
             channels: vec![],
             inserts: vec![],
             patterns: vec![],
+            lyrics: Arc::new(Lyrics::default()),
             clips: vec![],
             song_length: 0.0,
             form: vec![],
@@ -450,7 +414,7 @@ impl Engine {
             rt.mute = ch.mute;
             rt.update_gains();
             rt.mixer = clamp_insert(ch.mixer, &project);
-            rt.shift = if pitched(&ch.instrument) {
+            rt.shift = if ch.instrument.is_pitched() {
                 project.transport.transpose.clamp(-12, 12)
             } else {
                 0
@@ -512,65 +476,15 @@ impl Engine {
             rt.audible = idx == 0 || !any_solo || ins.solo;
         }
 
-        // Patterns. Swing delays off-beat 16ths when they are scheduled.
-        self.patterns = project
-            .patterns
-            .iter()
-            .map(|p| {
-                // A channel's arpeggiator plays its notes as runs of notes.
-                let mut played: Vec<(usize, f64, f64, i32, f64)> = vec![];
-                for (channel, ch) in project.channels.iter().enumerate() {
-                    let mine = p.notes.iter().filter(|n| n.channel == ch.id);
-                    match &ch.arp {
-                        None => played.extend(
-                            mine.map(|n| (channel, n.start, n.length, n.pitch, n.velocity)),
-                        ),
-                        Some(a) => {
-                            let held: Vec<&rosaclef_core::Note> = mine.collect();
-                            let input: Vec<arp::Held> = held
-                                .iter()
-                                .map(|n| arp::Held {
-                                    start: n.start,
-                                    length: n.length,
-                                    pitch: n.pitch,
-                                })
-                                .collect();
-                            played.extend(arp::arpeggiate(a, &input).into_iter().map(|h| {
-                                (channel, h.start, h.length, h.pitch, held[h.source].velocity)
-                            }));
-                        }
-                    }
-                }
-                let mut notes: Vec<CNote> = played
-                    .into_iter()
-                    .map(|(channel, start, length, pitch, velocity)| {
-                        let sixteenth = start * 4.0;
-                        let on_grid = (sixteenth - sixteenth.round()).abs() < 1e-6;
-                        let swung = on_grid && (sixteenth.round() as i64) % 2 == 1;
-                        let shift = project.transport.transpose.clamp(-12, 12);
-                        let shift = if pitched(&project.channels[channel].instrument) {
-                            shift
-                        } else {
-                            0
-                        };
-                        CNote {
-                            channel,
-                            key: (pitch + shift).clamp(0, 127) as u8,
-                            start,
-                            swung,
-                            length: length.max(1e-4),
-                            velocity: velocity as f32,
-                        }
-                    })
-                    .collect();
-                notes.sort_by(|a, b| a.start.total_cmp(&b.start));
-                CPattern {
-                    id: p.id.clone(),
-                    length: p.length.max(1e-3),
-                    notes,
-                }
-            })
-            .collect();
+        // Patterns (swing delays off-beat 16ths when they are scheduled) and
+        // the syllables their notes sing.
+        let (patterns, lyrics) = patterns::compile(&project);
+        self.patterns = patterns;
+        self.lyrics = Arc::new(lyrics);
+        for ch in &mut self.channels {
+            ch.inst.set_lyrics(&self.lyrics);
+            ch.inst.set_samples(&self.samples);
+        }
 
         // Clips.
         let muted_tracks: Vec<bool> = project.playlist.tracks.iter().map(|t| t.mute).collect();
@@ -596,6 +510,7 @@ impl Engine {
                 offset: c.offset,
                 gain: c.gain as f32,
                 mixer: clamp_insert(c.mixer, &project),
+                verse: c.verse,
             })
             .filter(|c| c.pattern.is_some() || !c.sample_path.is_empty())
             .collect();
@@ -677,6 +592,16 @@ impl Engine {
         for c in &self.project.playlist.clips {
             add(&c.sample);
         }
+        out
+    }
+
+    /// Rendered phrases the project's voices would play (see
+    /// [`rosaclef_core::phrase`]): load the ones that exist; the voice sings
+    /// the others itself until they do.
+    pub fn wanted_renders(&self) -> Vec<String> {
+        let mut out = self.lyrics.phrases.clone();
+        out.sort();
+        out.dedup();
         out
     }
 
@@ -862,6 +787,7 @@ impl Engine {
             ch.events.push(NoteEvent {
                 offset: 0,
                 kind: NoteKind::AllOff,
+                lyric: None,
             });
         }
     }
@@ -880,6 +806,7 @@ impl Engine {
                     key: sounding,
                     velocity,
                 },
+                lyric: None,
             });
         }
     }
@@ -897,6 +824,7 @@ impl Engine {
             ch.events.push(NoteEvent {
                 offset: 0,
                 kind: NoteKind::Off { key: sounding },
+                lyric: None,
             });
         }
     }
@@ -1147,6 +1075,7 @@ impl Engine {
                         ch.events.push(NoteEvent {
                             offset: off,
                             kind: NoteKind::Off { key: p.key },
+                            lyric: None,
                         });
                     }
                     false
@@ -1156,6 +1085,7 @@ impl Engine {
             });
 
             let emit = |note: &CNote,
+                        lyric: Option<instruments::LyricId>,
                         t: f64,
                         max_len: f64,
                         channels: &mut Vec<ChannelRt>,
@@ -1168,6 +1098,7 @@ impl Engine {
                         key: note.key,
                         velocity: note.velocity,
                     },
+                    lyric,
                 });
                 pending.push(Pending {
                     handle: ch.handle,
@@ -1176,38 +1107,69 @@ impl Engine {
                 });
             };
 
+            // A rendered phrase starting at `t` (its audio runs ahead of its
+            // first note, maybe from the loop before).
+            let cue = |cue: &patterns::Cue, t: f64, channels: &mut Vec<ChannelRt>| {
+                if t >= b0 && t < b1 {
+                    let off = frame + (((t - b0) / bpf) as usize).min(seg - 1);
+                    channels[cue.channel].inst.cue(off, cue.phrase);
+                }
+            };
+
             let shift = self.swing * (1.0 / 12.0);
             match &self.mode {
                 PlayMode::Pattern(id) => {
                     if let Some(p) = self.patterns.iter().find(|p| &p.id == id) {
+                        for c in p.cues(1) {
+                            cue(c, c.beat.rem_euclid(p.length), &mut self.channels);
+                        }
                         for note in &p.notes {
                             let t = note.start_at(shift);
                             if t >= b0 && t < b1 {
-                                emit(note, t, f64::MAX, &mut self.channels, &mut self.pending);
+                                let lyric = p.lyric(note, 1);
+                                emit(
+                                    note,
+                                    lyric,
+                                    t,
+                                    f64::MAX,
+                                    &mut self.channels,
+                                    &mut self.pending,
+                                );
                             }
                         }
                     }
                 }
                 PlayMode::Song => {
+                    let pass = self.form.get(self.form_at).map(|s| s.pass).unwrap_or(1);
                     for clip in &self.clips {
                         if clip.end <= b0 || clip.start >= b1 {
                             continue;
                         }
                         if let Some(pi) = clip.pattern {
                             let p = &self.patterns[pi];
+                            let verse = clip.verse.unwrap_or(pass);
                             let base = clip.start - clip.offset;
                             let lo = b0.max(clip.start);
                             let hi = b1.min(clip.end);
                             let k0 = ((lo - base) / p.length).floor() as i64;
                             let k1 = ((hi - base) / p.length).floor() as i64;
-                            for k in k0.max(0)..=k1 {
+                            for k in k0.max(0)..=k1 + 1 {
                                 let origin = base + k as f64 * p.length;
+                                for c in p.cues(verse) {
+                                    if (clip.start..clip.end).contains(&(origin + c.note)) {
+                                        cue(c, origin + c.beat, &mut self.channels);
+                                    }
+                                }
+                                if k > k1 {
+                                    continue;
+                                }
                                 for note in &p.notes {
                                     let start = note.start_at(shift);
                                     let t = origin + start;
                                     if t >= lo && t < hi && start < p.length {
                                         emit(
                                             note,
+                                            p.lyric(note, verse),
                                             t,
                                             clip.end - t,
                                             &mut self.channels,

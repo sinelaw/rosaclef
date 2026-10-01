@@ -315,6 +315,77 @@ optional top-level `score` object says how it reads; it changes nothing that pla
 - When the producer asks to "highlight", "color" or "label" a passage, add a mark; to show or
   hide an instrument in the score, edit `hidden`.
 
+### Reuse by reference (`uses`)
+
+A pattern can play other patterns — or ranges of them — **by reference**, instead of copying
+their notes. Editing the used pattern changes every place that uses it.
+
+```jsonc
+{ "id": "verse", "name": "Verse", "length": 16,
+  "notes": [ /* its own notes */ ],
+  "uses": [
+    { "pattern": "hook", "start": 4, "transpose": 5 },              // the hook a fourth up, at beat 4
+    { "pattern": "hook", "from": 2, "to": 4, "start": 12,           // beats 2–4 of the hook ...
+      "channel": "bass", "transpose": -12, "velocity": 0.7 }        // ... doubled by the bass
+  ] }
+```
+
+- `start`: where it starts in this pattern; `from` / `to`: the range of the used pattern (default:
+  all of it; notes are cut at `to`); `transpose`: semitones (drum channels are not moved);
+  `channel`: play every note on this channel; `velocity`: a factor; `verse`: the verse its
+  lyrics sing.
+- Uses nest; a pattern cannot contain itself. `rosaclef summary` shows the sounding notes.
+- When a motif, riff or phrase comes back (or is doubled), use it instead of copying notes.
+  Copy only when the copy will change.
+
+### Lyrics (`lyrics`)
+
+Words live in the pattern whose notes sing them, one line per vocal channel, with **verses**:
+
+```jsonc
+{ "id": "verse", "name": "Verse", "length": 16, "notes": [ /* the melody, on "lead" */ ],
+  "lyrics": [
+    { "channel": "lead", "lang": "en",
+      "verses": {
+        "1": "Hel-lo dark-ness my old friend _ / I've come to talk with you a-gain",
+        "2": "Be-cause a vi-sion soft-ly creep-ing _ / left its seeds while I was sleep-ing"
+      } }
+  ] }
+```
+
+- Each token takes one note of the channel, in time order: a space ends a word, `-` splits a
+  word into syllables (`Hel-lo`), `_` holds the previous syllable over a note (a melisma),
+  `/` ends a line and `//` a paragraph, `word[w ɜ d]` gives a pronunciation in IPA, `(br)` is a
+  breath; `\` escapes a character (`\-`). Validation warns when a verse has more syllables than
+  notes or the reverse — add `_` or notes until they match.
+- Which verse plays: a use's `verse`, else the clip's `"verse": 2`, else the pass of the repeat
+  it plays in (pass 2 sings verse 2), else 1. A line without that verse sings its first one, so
+  a chorus is written once.
+- A used pattern brings its own words; a line gives words to the notes its uses did not. Notes a
+  use moves to another `channel` (a doubling) leave their words behind.
+- `mode`: `sing` (default), `rap` (rhythm only) or `speak`. One voice sings one note at a time,
+  so keep a sung channel monophonic.
+- Fixed phoneme timing (from aligning a recording) is kept in `timing`; leave it alone unless asked.
+
+**Exports.** `rosaclef export --format ID [--pattern ID --verse N] [--out FILE]` writes the song
+(or one pattern) as `midi` (lyric events), `musicxml`, `ustx` (OpenUtau), `svp` (Synthesizer V),
+`ds` (DiffSinger), `ultrastar`, `lrc`, `ttml`, `jam` (timed words), `tagged` (`[Verse]` /
+`[Chorus]` text for song generators) or `ssml`; `rosaclef export --list` describes them and
+`--out -` prints the file. Name patterns after song sections ("Verse", "Chorus") so tagged lyrics
+are labeled. `rosaclef align --pattern ID --channel ID --at SECONDS take.TextGrid` (or WhisperX
+`.json`) fills `timing` from a recording a forced aligner has read.
+
+**Singing (`voice`).** A channel whose instrument is `{ "type": "voice" }` sings its notes' words
+(or "ah" without words); keep its notes monophonic and give every note a token. `gender`,
+`breath`, `bright`, `vibrato`, `glide` and `consonants` shape it, and automation lanes can move
+them. The built-in `"engine": "formant"` voice is a synthetic guide vocal that plays everywhere.
+With `"options": { "engine": "render", "voice": "alto" }` the studio renders each phrase with the
+singing engine the user set up under that name in `~/.config/rosaclef/voices.json`
+(`{ "alto": { "input": "ds", "command": ["…", "{input}", "{output}"] } }`; a voice without a
+command only gets input files) into `renders/voice/alto/`, and the formant voice stands in until
+a phrase is ready. Never put commands in `project.json`; ask the producer to add a voice to their
+settings.
+
 ## Musical craft
 
 - Think like a producer: groove (velocity variation, swing), voice-leading in chords,

@@ -4,7 +4,7 @@ import { connectRaw, wsUrl, loadPref, savePref, now } from "#platform";
 import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel, dockName } from "./store.js";
 import { toast } from "./ui/toast.js";
 import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
-import { decodeProject, encodeClipWire, barBeat } from "./model.js";
+import { decodeProject, encodeClipWire, barBeat, projectJson } from "./model.js";
 import { selectedLane, selectedPoints, laneValueAt } from "./automation.js";
 import { projectSwitched } from "./ui/projects.js";
 
@@ -66,6 +66,9 @@ function onMessage(text) {
   } else if (t === "samples") {
     state.samples = m.samples;
     invalidate();
+  } else if (t === "renders") {
+    // New phrases rendered: the engine says again which ones it would play.
+    if (hooks.engine) hooks.engine(projectJson(state.project));
   } else if (t === "native") {
     state.nativeEnabled = m.status.enabled === true;
     state.nativeDevice = String(m.status.device ?? "");

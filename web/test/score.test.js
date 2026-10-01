@@ -1,8 +1,10 @@
 // Tests for the sheet-music logic (notation.js, engrave.js), run with:
 // node web/test/score.test.js (also type-checked by inty via web/check.sh).
 import { emptyProject, noArp } from "../src/model.js";
-import { spell, spelledName, keyAlter, stepPitch, pieces, buildScore, gather, autoClef, gmDrum, TPQ, NO_ACC, passesText } from "../src/notation.js";
+import { spell, spelledName, keyAlter, stepPitch, pieces, buildScore, gather, autoClef, gmDrum, TPQ, NO_ACC, passesText, passesAt } from "../src/notation.js";
 import { engrave, timeX, xTick } from "../src/engrave.js";
+import { drawLyrics, sylWidth } from "../src/underlay.js";
+import { painter } from "../src/paint.js";
 import { scorePdf, pathOps, pdfString, pdfLayout, pageSvg } from "../src/pdf.js";
 import { trackIx, insertIx } from "#brands";
 
@@ -34,6 +36,8 @@ function song(notes, length) {
     color: "#d4af37",
     length: length,
     notes: notes.map((n) => ({ channel: "lead", pitch: n[0], start: n[1], length: n[2], velocity: 0.8 })),
+    uses: [],
+    lyrics: [],
   });
   p.playlist.tracks.push({ name: "Track 1", mute: false });
   return p;
@@ -169,8 +173,8 @@ check("General MIDI drums sit where drummers read them", gmDrum(36).step === 38 
 {
   const p = song([[60, 0, 1]], 4);
   p.playlist.tracks.push({ name: "Track 2", mute: false });
-  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(0), start: 4, length: 8, offset: 0, gain: 1, mixer: insertIx(0) });
-  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(1), start: 16, length: 2, offset: 0, gain: 1, mixer: insertIx(0) });
+  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(0), start: 4, length: 8, offset: 0, gain: 1, mixer: insertIx(0), verse: 0 });
+  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(1), start: 16, length: 2, offset: 0, gain: 1, mixer: insertIx(0), verse: 0 });
   const g = gather(p, { kind: "song", track: 0, pattern: "" });
   check("a clip loops its pattern", g.notes.length === 3 && g.notes[0].start === 4 && g.notes[1].start === 8 && g.notes[1].origin === 8);
   check(
@@ -218,7 +222,7 @@ check("endings name their passes", passesText([1]) === "1." && passesText([2, 1]
   const notes = [];
   for (let i = 0; i < 4; i++) notes.push([60 + i, i, 1]);
   const p = song(notes, 24);
-  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(0), start: 0, length: 24, offset: 0, gain: 1, mixer: insertIx(0) });
+  p.playlist.clips.push({ pattern: "a", sample: "", track: trackIx(0), start: 0, length: 24, offset: 0, gain: 1, mixer: insertIx(0), verse: 0 });
   p.repeats.push({
     start: 4,
     end: 12,
@@ -248,6 +252,179 @@ check("endings name their passes", passesText([1]) === "1." && passesText([2, 1]
   );
 }
 
+// ------------------------------------------------------------------ uses and lyrics
+
+const SONG = { kind: "song", track: 0, pattern: "" };
+
+/** Give a pattern's lead its words: verses from 1. */
+/** function sing(pat: Pattern, verses: String[]) => Undefined */
+function sing(pat, verses) {
+  /** const kv: KS[] */
+  const kv = [];
+  for (let i = 0; i < verses.length; i++) kv.push({ key: String(i + 1), value: verses[i] });
+  pat.lyrics.push({ channel: "lead", lang: "", mode: "sing", verses: kv, timing: [] });
+}
+
+/** A staff's syllables as "text@row", with "-" when the word goes on and "_" when held. */
+/** function syls(st: Staff) => String */
+function syls(st) {
+  return st.lyrics.map((s) => `${s.text}${s.hyphen ? "-" : ""}${s.until > s.ev ? "_" : ""}@${s.row}`).join(" ");
+}
+
+/** What each note of a scope sings, as "text@row" (notes apart by " | "). */
+/** function sung(p: Project, scope: Scope) => String */
+function sung(p, scope) {
+  return gather(p, scope)
+    .notes.map((n) => n.words.map((w) => `${w.token.text}@${w.row}`).join(" "))
+    .join(" | ");
+}
+
+/** The first system of a score engraved 120 spaces wide. */
+/** function buildScoreSystem(sc: Score) => Sys */
+function buildScoreSystem(sc) {
+  return engrave(sc, { width: 120, hideEmpty: false }).systems[0];
+}
+
+/** Where a lyric label's text reaches: [left, right]. */
+/** function textBox(l: Label) => Number[] */
+function textBox(l) {
+  const w = sylWidth(l.text);
+  const x0 = l.anchor === "middle" ? l.x - w / 2 : l.anchor === "end" ? l.x - w : l.x;
+  return [x0, x0 + w];
+}
+
+/** function clip(start: Number, length: Number, verse: Int) => Clip */
+function clip(start, length, verse) {
+  return { pattern: "a", sample: "", track: trackIx(0), start: start, length: length, offset: 0, gain: 1, mixer: insertIx(0), verse: verse };
+}
+
+{
+  // A motif used twice, the second time a fourth up, after a note of the pattern's own.
+  const p = song([[60, 0, 1]], 8);
+  p.patterns.push({
+    id: "m",
+    name: "M",
+    color: "#d4af37",
+    length: 2,
+    notes: [
+      { channel: "lead", pitch: 62, start: 0, length: 1, velocity: 0.8 },
+      { channel: "lead", pitch: 64, start: 1, length: 1, velocity: 0.8 },
+    ],
+    uses: [],
+    lyrics: [],
+  });
+  p.patterns[0].uses.push({ pattern: "m", start: 1, from: 0, to: -1, transpose: 0, channel: "", velocity: 1, verse: 0 });
+  p.patterns[0].uses.push({ pattern: "m", start: 4, from: 0, to: -1, transpose: 5, channel: "", velocity: 1, verse: 0 });
+  const g = gather(p, PAT);
+  check("a pattern's score plays the patterns it uses", g.notes.map((n) => n.pitch).join(" ") === "60 62 64 67 69");
+  const n = g.notes[3];
+  check(
+    "…their notes say where they are written, and that a use brings them",
+    n.pattern === "m" && n.index === 0 && n.used && n.origin === 4 && !g.notes[0].used
+  );
+  p.playlist.clips.push(clip(8, 8, 0));
+  check("so does the song's", gather(p, SONG).notes.length === 5 && gather(p, SONG).notes[4].start === 13);
+  p.score.marks.push({ start: 1, end: 2, color: "#c97b84", label: "", pattern: "m", channels: [] });
+  check(
+    "a passage colored in a used pattern is colored where it is used",
+    buildScore(p, PAT, 12)
+      .marks.map((m) => `${m.start}-${m.end}`)
+      .join(" ") === "2-3 5-6" &&
+      buildScore(p, SONG, 12)
+        .marks.map((m) => `${m.start}-${m.end}`)
+        .join(" ") === "10-11 13-14"
+  );
+}
+
+{
+  // Two verses stacked: a word of two syllables, a syllable held over the last note.
+  const p = song(
+    [
+      [60, 0, 1],
+      [62, 1, 1],
+      [64, 2, 1],
+      [65, 3, 1],
+    ],
+    4
+  );
+  sing(p.patterns[0], ["Hel-lo world _", "Good-bye moon"]);
+  const sc = buildScore(p, PAT, 12);
+  const st = sc.staves[0];
+  check("the words go under their notes, verse under verse", syls(st) === "Hel-@0 Good-@1 lo@0 bye@1 world_@0 moon@1");
+  const s = buildScoreSystem(sc);
+  const lyr = s.labels.filter((l) => l.cls === "lyric");
+  check("every syllable is set", lyr.map((l) => l.text).join(" ") === "Hel Good lo bye world moon");
+  check("…below the staff, the second verse under the first", lyr.every((l) => l.y > s.rows[0].y + 5) && lyr[1].y > lyr[0].y + 1.5);
+  check("…centered under its note", lyr[0].anchor === "middle" && Math.abs(lyr[0].x - (s.heads[0].x + s.heads[0].w / 2)) < 0.05);
+  check("…or flush with it when held over the notes after it", lyr[4].anchor === "start");
+  check(
+    "stacked verses are numbered at the start of the line",
+    s.labels.some((l) => l.cls === "lyric num" && l.text === "1.") && s.labels.some((l) => l.cls === "lyric num" && l.text === "2.")
+  );
+  let apart = true;
+  for (const row of [0, 1]) {
+    const line = lyr.filter((l) => Math.abs(l.y - lyr[row].y) < 0.01);
+    for (let k = 0; k + 1 < line.length; k++) if (textBox(line[k])[1] + 0.5 > textBox(line[k + 1])[0]) apart = false;
+  }
+  check("the spacing keeps the syllables of a line apart", apart);
+
+  // The ink under the words, drawn with one beat every 10 spaces.
+  const ink = painter();
+  /** const labels: Label[] */
+  const labels = [];
+  drawLyrics(ink, labels, st, 0, sc.measures.length, (t) => (t / TPQ) * 10, 0, 100);
+  const hyphens = ink.prims.filter((pr) => pr.kind === 0 && Math.abs(pr.nums[5] - pr.nums[1] - 0.12) < 1e-6);
+  const extenders = ink.prims.filter((pr) => pr.kind === 0 && Math.abs(pr.nums[5] - pr.nums[1] - 0.1) < 1e-6);
+  check("a hyphen between the syllables of a word, in each verse", hyphens.length === 2 && hyphens.every((h) => h.nums[0] > 1.7 && h.nums[2] < 9.8));
+  check(
+    "an extender under the note a last syllable is held over",
+    extenders.length === 1 && extenders[0].nums[0] > 23 && Math.abs(extenders[0].nums[2] - 31.18) < 0.05
+  );
+  check("the staff makes room for the words", ink.bottom > 8);
+}
+
+{
+  // Long words on sixteenths: the notes move apart to fit them.
+  /** const notes: Number[][] */
+  const notes = [];
+  for (let i = 0; i < 8; i++) notes.push([60 + i, i * 0.25, 0.25]);
+  const p = song(notes, 2);
+  sing(p.patterns[0], ["won-der-ful-ly mag-nif-i-cent"]);
+  const lyr = buildScoreSystem(buildScore(p, PAT, 12)).labels.filter((l) => l.cls === "lyric");
+  let apart = lyr.length === 8;
+  for (let k = 0; k + 1 < lyr.length; k++) if (textBox(lyr[k])[1] + 1 > textBox(lyr[k + 1])[0]) apart = false;
+  check("syllables push their notes apart, with room for the hyphens", apart);
+}
+
+{
+  // The song: each clip sings the verse it names, else the pass of the repeat it plays in.
+  const p = song(
+    [
+      [60, 0, 1],
+      [62, 1, 1],
+    ],
+    2
+  );
+  sing(p.patterns[0], ["one two", "three four"]);
+  p.playlist.clips.push(clip(0, 2, 0));
+  p.playlist.clips.push(clip(2, 2, 2));
+  p.playlist.clips.push(clip(4, 2, 0));
+  p.repeats.push({ start: 4, end: 6, times: 2, endings: [] });
+  check(
+    "each clip of the song sings its verse, a repeat its verses stacked",
+    sung(p, SONG) === "one@0 | two@0 | three@0 | four@0 | one@0 three@1 | two@0 four@1"
+  );
+  p.patterns[0].lyrics[0].verses.pop();
+  check("a verse the line does not have is not written again", sung(p, SONG) === "one@0 | two@0 | one@0 | two@0 | one@0 | two@0");
+}
+{
+  const r = { start: 0, end: 8, times: 3, endings: [{ start: 4, end: 8, passes: [2, 1] }] };
+  check(
+    "an ending plays its passes, the rest of the repeat all of them",
+    passesAt([r], 5).join() === "1,2" && passesAt([r], 2).join() === "1,2,3" && passesAt([r], 9).join() === "1"
+  );
+}
+
 // ------------------------------------------------------------------ PDF
 
 check("SVG paths become PDF paths", pathOps("M1 2L3 4H5V6C1 1 2 2 3 3Z") === "1 2 m\n3 4 l\n5 4 l\n5 6 l\n1 1 2 2 3 3 c\nh");
@@ -271,6 +448,13 @@ check("PDF strings escape and spell out", pdfString("A (b) ♭ é Œ") === "(A \
   check(
     "US Letter pages",
     letter.some((o) => o.head.includes("612 792"))
+  );
+  const words = song([[60, 0, 1]], 4);
+  sing(words.patterns[0], ["Hel-"]);
+  const sungPdf = scorePdf(buildScore(words, PAT, 12), { title: "x", subtitle: "", author: "", bpm: 0 }, "a4", false, measure);
+  check(
+    "the PDF sets the words in Times Roman",
+    sungPdf.some((o) => o.stream.includes("/F1 1.6 Tf") && o.stream.includes("(Hel) Tj"))
   );
   // As on screen: each page as SVG, on paper and through the ink filter.
   const lay = pdfLayout(sc, "a4", false);
