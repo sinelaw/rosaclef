@@ -417,7 +417,6 @@ fn imports_a_song() {
         "missing.wav",
         "FX 9",
         "from FX 2 to FX 1",
-        "automation",
         "louder than 100%",
         "Kicker was approximated",
         "LB302",
@@ -465,4 +464,241 @@ fn transposes_by_base_note_and_master_pitch() {
 fn rejects_non_lmms_files() {
     assert!(lmms::import(b"<html></html>", &Options::new("x")).is_err());
     assert!(lmms::import(b"\x00\x00\x01\x00not zlib at all", &Options::new("x")).is_err());
+}
+
+/// Wrap tracks (and an FX mixer) in an LMMS 1.2 song at 120 BPM.
+fn song(head: &str, tracks: &str, mixer: &str) -> Vec<u8> {
+    format!(
+        r#"<?xml version="1.0"?><lmms-project creatorversion="1.2.1" type="song">{head}
+      <song><trackcontainer type="song">{tracks}</trackcontainer>{mixer}</song></lmms-project>"#
+    )
+    .into_bytes()
+}
+
+const HEAD: &str = r#"<head bpm="120" mastervol="100" masterpitch="0" timesig_numerator="4" timesig_denominator="4"/>"#;
+
+fn triple(name: &str, extra: &str, patterns: &str) -> String {
+    format!(
+        r#"<track type="0" name="{name}"><instrumenttrack basenote="57" fxch="0">
+          <instrument name="tripleoscillator"><tripleoscillator vol0="50" vol1="0" vol2="0"/></instrument>{extra}</instrumenttrack>{patterns}</track>"#
+    )
+}
+
+#[test]
+fn lmms_1_2_patterns_span_their_notes() {
+    // LMMS 1.2 saves no `len`: melody patterns span their notes in whole
+    // bars, beat patterns their steps.
+    let tracks = triple(
+        "Lead",
+        "",
+        r#"<pattern type="1" steps="16" pos="0"><note key="57" pos="0" len="48"/><note key="57" pos="768" len="96"/></pattern>
+           <pattern type="0" steps="32" pos="1920"><note key="57" pos="0" len="-192"/></pattern>
+           <pattern type="0" steps="16" pos="3840"/>"#,
+    );
+    let im = lmms::import(&song(HEAD, &tracks, ""), &Options::new("t")).unwrap();
+    let p = &im.project;
+    let clips: Vec<(f64, f64)> = p
+        .playlist
+        .clips
+        .iter()
+        .map(|c| (c.start, c.length))
+        .collect();
+    // 768 + 96 ticks = 18 beats → 5 bars.
+    assert_eq!(clips, [(0.0, 20.0), (40.0, 8.0), (80.0, 4.0)]);
+    let lead = &p.patterns[0];
+    assert_eq!(lead.length, 20.0);
+    assert_eq!(lead.notes.len(), 2);
+}
+
+#[test]
+fn automation_becomes_lanes() {
+    let tracks = format!(
+        r#"{}
+        <track type="5" name="Automation track"><automationtrack/>
+          <automationpattern name="Lead>Volume" pos="192" len="384" prog="1" mute="0">
+            <time pos="0" value="100"/><time pos="192" value="50"/><time pos="576" value="0"/>
+            <object id="11"/>
+          </automationpattern>
+          <automationpattern name="Lead>Volume" pos="960" len="192" prog="0" mute="0">
+            <time pos="0" value="20"/><time pos="96" value="80"/>
+            <object id="11"/>
+          </automationpattern>
+          <automationpattern name="Bus" pos="0" len="192" prog="1" mute="0">
+            <time pos="0" value="1"/><time pos="192" value="0.5"/>
+            <object id="22"/>
+          </automationpattern>
+          <automationpattern name="Cutoff" pos="0" len="192" prog="1" mute="0">
+            <time pos="0" value="1"/><object id="33"/>
+          </automationpattern>
+        </track>"#,
+        triple(
+            "Lead",
+            r#"<vol value="80" id="11"/><pan value="0" id="12"/>"#,
+            r#"<pattern type="1" pos="0"><note key="57" pos="0" len="48"/></pattern>"#
+        )
+    );
+    let mixer = r#"<fxmixer><fxchannel num="0" name="Master" volume="1" muted="0"/>
+        <fxchannel num="1" name="Bus" muted="0"><volume value="1" id="22"/></fxchannel></fxmixer>"#;
+    let head = r#"<head mastervol="100" masterpitch="0"><bpm value="120" id="44"/></head>"#;
+    let tracks = format!(
+        r#"{tracks}<track type="6" name="Automation track"><automationtrack/>
+          <automationpattern name="Tempo" pos="384" len="192" prog="0"><time pos="0" value="90"/><object id="44"/></automationpattern>
+        </track>"#
+    );
+    let im = lmms::import(&song(head, &tracks, mixer), &Options::new("t")).unwrap();
+    let p = &im.project;
+    let lane = |target: &str| {
+        p.automation
+            .iter()
+            .find(|l| l.target == target)
+            .unwrap_or_else(|| panic!("no lane for {target}: {:#?}", p.automation))
+            .points
+            .iter()
+            .map(|q| (q.beat, q.value))
+            .collect::<Vec<_>>()
+    };
+    let lead = &p.channels[0].id;
+    assert_eq!(p.channels[0].volume, 0.8);
+    // Saved value until the first pattern (beat 4); linear from 100% to
+    // 50% over a bar, then toward 0 until the pattern ends at beat 12
+    // (25%), held until the discrete pattern at beat 20, which steps.
+    assert_eq!(
+        lane(&format!("channel/{lead}/volume")),
+        [
+            (0.0, 0.8),
+            (4.0, 0.8),
+            (4.0, 1.0),
+            (8.0, 0.5),
+            (12.0, 0.25),
+            (20.0, 0.25),
+            (20.0, 0.2),
+            (22.0, 0.2),
+            (22.0, 0.8)
+        ]
+    );
+    assert_eq!(lane("insert/1/volume"), [(0.0, 1.0), (4.0, 0.5)]);
+    assert_eq!(lane("tempo"), [(0.0, 120.0), (8.0, 120.0), (8.0, 90.0)]);
+    assert_eq!(p.automation[0].name, "Lead · Volume");
+    assert!(
+        im.warnings
+            .iter()
+            .any(|w| w.contains("\"Cutoff\"") && w.contains("cannot automate")),
+        "{:#?}",
+        im.warnings
+    );
+}
+
+#[test]
+fn arpeggio_and_chords_are_written_out() {
+    // 120 BPM: 250 ms = half a beat.
+    let arp = r#"<arpeggiator arp-enabled="1" arp="0" arprange="2" arptime="250" arpgate="50" arpdir="0" arpmode="0"/>"#;
+    let chord = r#"<chordcreator chord-enabled="1" chord="1" chordrange="1"/>"#;
+    let note = r#"<pattern type="1" pos="0"><note key="57" pos="0" len="96"/></pattern>"#;
+    let tracks = format!(
+        "{}{}",
+        triple("Arp", arp, note),
+        triple("Chord", chord, note)
+    );
+    let im = lmms::import(&song(HEAD, &tracks, ""), &Options::new("t")).unwrap();
+    let p = &im.project;
+    let notes = |ch: &str| {
+        p.patterns
+            .iter()
+            .flat_map(|x| &x.notes)
+            .filter(|n| n.channel == ch)
+            .map(|n| (n.pitch, n.start, n.length))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        notes(&p.channels[0].id),
+        [
+            (69, 0.0, 0.25),
+            (81, 0.5, 0.25),
+            (69, 1.0, 0.25),
+            (81, 1.5, 0.25)
+        ]
+    );
+    assert_eq!(
+        notes(&p.channels[1].id),
+        [(69, 0.0, 2.0), (73, 0.0, 2.0), (76, 0.0, 2.0)]
+    );
+}
+
+#[test]
+fn maps_soundfonts_drumsynth_and_plugin_effects() {
+    let reverb = r#"<fxchain numofeffects="1" enabled="1"><effect name="ladspaeffect" on="1" wet="1">
+        <ladspacontrols/><key><attribute name="file" value="calf"/><attribute name="plugin" value="Reverb"/></key>
+      </effect></fxchain>"#;
+    let tracks = format!(
+        r#"<track type="0" name="Violin"><instrumenttrack basenote="57" vol="100" fxch="1" pitch="-100">
+          <instrument name="sf2player"><sf2player src="soundfonts/FatBoy.sf2" bank="0" patch="40" gain="1.5"/></instrument>{reverb}</instrumenttrack>
+          <pattern type="1" pos="0"><note key="57" pos="0" len="48"/></pattern></track>
+        <track type="0" name="Hat"><instrumenttrack basenote="57" vol="100" fxch="2">
+          <instrument name="audiofileprocessor"><audiofileprocessor src="drumsynth/tr808/Hat_c.ds" amp="100"/></instrument>{reverb}</instrumenttrack>
+          <pattern type="0" steps="16" pos="0"><note key="57" pos="0" len="-192"/></pattern></track>
+        <track type="0" name="Kick"><instrumenttrack basenote="57" vol="100" fxch="2">
+          <instrument name="audiofileprocessor"><audiofileprocessor src="drumsynth/tr808/Kickhard.ds" amp="100"/></instrument></instrumenttrack></track>"#
+    );
+    let mixer = r#"<fxmixer><fxchannel num="0" name="Master" volume="1"/>
+        <fxchannel num="1" name="Strings" volume="0.5"/>
+        <fxchannel num="2" name="Drums" volume="0.4" muted="0"/></fxmixer>"#;
+    let im = lmms::import(&song(HEAD, &tracks, mixer), &Options::new("t")).unwrap();
+    let p = &im.project;
+    let violin = &p.channels[0];
+    assert_eq!(violin.instrument.kind, "soundfont");
+    assert_eq!(violin.instrument.option("program"), "Violin");
+    assert_eq!(violin.instrument.param("gain"), 1.5);
+    // The pitch knob (-100 cents) transposes down a semitone.
+    assert_eq!(p.patterns[0].notes[0].pitch, 68);
+    // Strings serves only the violin: its reverb stays on that insert.
+    assert_eq!(violin.mixer.0, 1);
+    assert_eq!(p.mixer.inserts[1].effects[0].kind, "reverb");
+    assert_eq!(p.mixer.inserts[1].volume, 0.5);
+    let (hat, kick) = (&p.channels[1], &p.channels[2]);
+    assert_eq!(hat.instrument.kind, "drum");
+    assert_eq!(hat.instrument.option("kind"), "hat");
+    assert_eq!(kick.instrument.option("kind"), "kick");
+    assert!(
+        im.samples.is_empty(),
+        "DrumSynth patches are not sample files"
+    );
+    // Drums is shared: the hat's reverb gets a copy of it.
+    assert_eq!(kick.mixer.0, 2);
+    let own = &p.mixer.inserts[hat.mixer.index()];
+    assert_ne!(hat.mixer.0, 2);
+    assert_eq!((own.volume, own.effects[0].kind.as_str()), (0.4, "reverb"));
+}
+
+#[test]
+fn envelopes_and_bass_booster_follow_lmms() {
+    // LMMS 1.2 saves `sustain` (amplitude = its square) and a hold stage;
+    // the bass booster is (in + lowpass · ratio) · gain.
+    let el = r#"<eldata fwet="0"><elvol amt="1" att="0" hold="0.5" dec="0.2" sustain="0.5" rel="0.2"/></eldata>
+        <fxchain numofeffects="1" enabled="1"><effect name="bassbooster" on="1" wet="1">
+          <bassboostercontrols gain="2" ratio="3" freq="100"/></effect></fxchain>"#;
+    let tracks = triple(
+        "Bass",
+        el,
+        r#"<pattern type="1" pos="0"><note key="45" pos="0" len="48"/></pattern>"#,
+    )
+    .replace(r#"fxch="0""#, r#"fxch="1""#);
+    let mixer = r#"<fxmixer><fxchannel num="0" name="Master" volume="1"/><fxchannel num="1" name="Bass" volume="0.5"/></fxmixer>"#;
+    let im = lmms::import(&song(HEAD, &tracks, mixer), &Options::new("t")).unwrap();
+    let p = &im.project;
+    let synth = &p.channels[0].instrument;
+    assert_eq!(synth.param("sustain"), 0.25);
+    // hold 5·0.5² + decay 5·0.2²
+    assert!((synth.param("decay") - 1.45).abs() < 1e-9);
+    let bus = &p.mixer.inserts[1];
+    assert_eq!(
+        p.channels[0].mixer.0, 1,
+        "the only user keeps its FX channel"
+    );
+    assert_eq!(bus.effects[0].kind, "eq");
+    assert!(
+        (bus.effects[0].param("low") - 12.041).abs() < 0.01,
+        "20·log10(1 + 3)"
+    );
+    assert!((bus.effects[0].param("lowFreq") - 69.84).abs() < 0.1);
+    assert_eq!(bus.volume, 1.0, "FX volume 0.5 × booster gain 2");
 }
