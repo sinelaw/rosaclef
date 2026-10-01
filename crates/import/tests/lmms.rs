@@ -653,7 +653,11 @@ fn maps_soundfonts_drumsynth_and_plugin_effects() {
     // Strings serves only the violin: its reverb stays on that insert.
     assert_eq!(violin.mixer.0, 1);
     assert_eq!(p.mixer.inserts[1].effects[0].kind, "reverb");
-    assert_eq!(p.mixer.inserts[1].volume, 0.5);
+    // The Calf reverb keeps its dry at full level: the insert makes up
+    // for the crossfade of the built-in reverb.
+    let strings = &p.mixer.inserts[1];
+    let mix = strings.effects[0].param("mix");
+    assert!((strings.volume - 0.5 / (1.0 - mix / 2.0)).abs() < 1e-9);
     let (hat, kick) = (&p.channels[1], &p.channels[2]);
     assert_eq!(hat.instrument.kind, "drum");
     assert_eq!(hat.instrument.option("kind"), "hat");
@@ -666,7 +670,12 @@ fn maps_soundfonts_drumsynth_and_plugin_effects() {
     assert_eq!(kick.mixer.0, 2);
     let own = &p.mixer.inserts[hat.mixer.index()];
     assert_ne!(hat.mixer.0, 2);
-    assert_eq!((own.volume, own.effects[0].kind.as_str()), (0.4, "reverb"));
+    assert_eq!(own.effects[0].kind, "reverb");
+    let mix = own.effects[0].param("mix");
+    assert!(
+        (own.volume - 0.4 / (1.0 - mix / 2.0)).abs() < 1e-9,
+        "Drums' fader, dry kept"
+    );
 }
 
 #[test]
@@ -701,4 +710,42 @@ fn envelopes_and_bass_booster_follow_lmms() {
     );
     assert!((bus.effects[0].param("lowFreq") - 69.84).abs() < 0.1);
     assert_eq!(bus.volume, 1.0, "FX volume 0.5 × booster gain 2");
+}
+
+#[test]
+fn ladspa_effects_read_their_ports() {
+    // TAP Reverberator: decay 1175 ms, dry 0 dB, wet 0 dB. Calf Phaser:
+    // amount 1 and dry 1 (dry + effect).
+    let fx = r#"<fxchain numofeffects="2" enabled="1">
+        <effect name="ladspaeffect" on="1" wet="1"><ladspacontrols ports="8"><port00 data="1175"/><port01 data="0"/><port02 data="0"/></ladspacontrols>
+          <key><attribute name="file" value="tap_reverb"/><attribute name="plugin" value="tap_reverb"/></key></effect>
+        <effect name="ladspaeffect" on="1" wet="1"><ladspacontrols ports="9"><port011 data="1"/><port012 data="1"/></ladspacontrols>
+          <key><attribute name="file" value="calf"/><attribute name="plugin" value="Phaser"/></key></effect>
+      </fxchain>"#;
+    let tracks = triple(
+        "Pad",
+        fx,
+        r#"<pattern type="1" pos="0"><note key="57" pos="0" len="48"/></pattern>"#,
+    )
+    .replace(r#"fxch="0""#, r#"fxch="1""#);
+    let mixer = r#"<fxmixer><fxchannel num="0" name="Master" volume="1"/><fxchannel num="1" name="Pad" volume="1"/></fxmixer>"#;
+    let im = lmms::import(&song(HEAD, &tracks, mixer), &Options::new("t")).unwrap();
+    let ins = &im.project.mixer.inserts[1];
+    let (rev, cho) = (&ins.effects[0], &ins.effects[1]);
+    assert_eq!((rev.kind.as_str(), cho.kind.as_str()), ("reverb", "chorus"));
+    // A 1.2 s decay is a mid-sized room.
+    assert!(
+        (0.4..0.6).contains(&rev.param("size")),
+        "{}",
+        rev.param("size")
+    );
+    // Equal amounts of dry and phased signal: the widest Chœur mix.
+    assert_eq!(cho.param("mix"), 1.0);
+    // Both keep the dry at full level; the insert restores it.
+    let expect = 1.0 / (1.0 - rev.param("mix") / 2.0) / (0.5 * 1.2);
+    assert!(
+        (ins.volume - expect.min(2.0)).abs() < 1e-9,
+        "{} vs {expect}",
+        ins.volume
+    );
 }

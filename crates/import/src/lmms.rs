@@ -237,20 +237,86 @@ fn plugin_name(effect: Node) -> String {
     }
 }
 
-/// The built-in effect of a plugin's family, judged by its name.
-fn generic_effect(label: &str, wet: f64) -> Option<Device> {
+/// A LADSPA plugin's control values by port number (left channel):
+/// `<port011 data="1"/>` is channel 0, port 11.
+fn ladspa_ports(effect: Node) -> HashMap<u32, f64> {
+    let Some(controls) = child(effect, &["ladspacontrols"]) else {
+        return HashMap::new();
+    };
+    controls
+        .children()
+        .filter(|c| c.is_element())
+        .filter_map(|c| {
+            let rest = c.tag_name().name().strip_prefix("port0")?;
+            let value = c
+                .attribute("data")
+                .or_else(|| child(c, &["data"])?.attribute("value"))?;
+            Some((rest.parse().ok()?, value.trim().parse().ok()?))
+        })
+        .collect()
+}
+
+/// Rosaclef's reverb that matches a plugin keeping `dry` and adding a
+/// tail of `wet` (linear) decaying in `decay` seconds, and the gain the
+/// insert must add (the reverb crossfades: dry · (1 − mix/2) + 3 · mix ·
+/// tail). `tail_db` is the plugin's tail energy relative to the dry at
+/// unit wet, measured in LMMS renders; Rosaclef's tail measures about
+/// −5.2 + 5.5 · size dB.
+fn reverb(decay: f64, dry: f64, wet: f64, tail_db: f64) -> (Device, f64) {
+    let mut d = Device::new("reverb");
+    // Combs of ~30 ms with feedback 0.7 + 0.28 · size.
+    let size = clamp((10f64.powf(-0.09 / decay.max(0.05)) - 0.7) / 0.28, 0.0, 1.0);
+    set_param(&mut d, "size", size);
+    let tail = wet * 10f64.powf((tail_db - (-5.2 + 5.5 * size)) / 20.0);
+    let ratio = tail / dry.max(1e-3);
+    let mix = (ratio / (3.0 + 0.5 * ratio)).min(1.0);
+    set_param(&mut d, "mix", mix);
+    (d, dry / (1.0 - mix / 2.0))
+}
+
+/// The built-in effect of a plugin's family, judged by its name, and the
+/// gain the insert must add. Settings are read from the ports of plugins
+/// whose layout is known (TAP Reverberator, Calf Reverb, Phaser, Chorus,
+/// Flanger); others get the family's defaults.
+fn generic_effect(label: &str, wet: f64, ports: &HashMap<u32, f64>) -> Option<(Device, f64)> {
     let l = label.to_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| l.contains(w));
+    let port = |n: u32, d: f64| ports.get(&n).copied().unwrap_or(d);
+    let db = |v: f64| 10f64.powf(v / 20.0);
     let mut d;
-    if has(&["reverb", "verb", "plate", "hall"]) {
-        d = Device::new("reverb");
-        set_param(&mut d, "mix", 0.3 * wet);
+    let mut gain = 1.0;
+    if has(&["tap_reverb"]) {
+        // Decay [ms], dry [dB], wet [dB].
+        let (r, g) = reverb(
+            port(0, 2500.0) / 1000.0,
+            db(port(1, 0.0)),
+            wet * db(port(2, 0.0)),
+            2.0,
+        );
+        (d, gain) = (r, g);
+    } else if l.contains("calf") && has(&["reverb"]) {
+        // Decay time [s], ..., amount, dry.
+        let (r, g) = reverb(port(7, 1.5), port(12, 1.0), wet * port(11, 0.25), 2.6);
+        (d, gain) = (r, g);
+    } else if has(&["reverb", "verb", "plate", "hall"]) {
+        let (r, g) = reverb(1.5, 1.0, wet * 0.5, 2.0);
+        (d, gain) = (r, g);
     } else if has(&["delay", "echo"]) {
         d = Device::new("delay");
         set_param(&mut d, "mix", 0.25 * wet);
     } else if has(&["flang", "phas", "chorus", "ensemble", "vibrato"]) {
         d = Device::new("chorus");
-        set_param(&mut d, "mix", 0.4 * wet);
+        if l.contains("calf") && has(&["phaser", "chorus", "flanger"]) {
+            // Calf keeps `dry` and adds `amount` of the effect; Chœur
+            // outputs (dry · (1 − mix/2) + wet · mix/2) · (1 + mix/5).
+            let (amount, dry) = (wet * port(11, 1.0), port(12, 1.0));
+            let ratio = amount / dry.max(1e-3);
+            let mix = (2.0 * ratio / (1.0 + ratio)).min(1.0);
+            set_param(&mut d, "mix", mix);
+            gain = dry / ((1.0 - mix / 2.0) * (1.0 + mix / 5.0));
+        } else {
+            set_param(&mut d, "mix", 0.4 * wet);
+        }
     } else if has(&["limit", "maximi"]) {
         d = Device::new("limiter");
     } else if has(&["compress", "dynamic", "expander", "gate"]) {
@@ -287,7 +353,7 @@ fn generic_effect(label: &str, wet: f64) -> Option<Device> {
     } else {
         return None;
     }
-    Some(d)
+    Some((d, gain))
 }
 
 /// Which Atelier drum a DrumSynth patch is, judged by its file name.
@@ -929,8 +995,11 @@ impl<'o> Importer<'o> {
                     } else {
                         plugin
                     };
-                    match generic_effect(&label, wet) {
-                        Some(d) => {
+                    match generic_effect(&label, wet, &ladspa_ports(e)) {
+                        Some((d, gain)) => {
+                            if num_or(e, "on", 1.0) != 0.0 {
+                                self.fx_gain *= gain;
+                            }
                             self.warn.add(format!(
                                 "effect \"{label}\" was approximated by the built-in \"{}\"",
                                 d.kind
