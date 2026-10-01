@@ -371,7 +371,7 @@ function arpControls(b, ch) {
       b,
       "octaves",
       "Octaves",
-      a.octaves,
+      Number(a.octaves),
       octaves,
       octaves.map((o) => String(o)),
       "",
