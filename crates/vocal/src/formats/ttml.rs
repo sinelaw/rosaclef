@@ -80,7 +80,7 @@ mod tests {
         let text = write(&song());
         let doc = roxmltree::Document::parse(&text).unwrap();
         let count = |name: &str| doc.descendants().filter(|n| n.has_tag_name(name)).count();
-        assert_eq!((count("div"), count("p"), count("span")), (4, 6, 12));
+        assert_eq!((count("div"), count("p"), count("span")), (4, 6, 13));
         assert!(text.contains(r#"<body dur="00:00:08.000">"#));
         assert!(text.contains(
             r#"<p begin="00:00:02.500" end="00:00:03.000"><span begin="00:00:02.500" end="00:00:03.000">Hi</span></p>"#

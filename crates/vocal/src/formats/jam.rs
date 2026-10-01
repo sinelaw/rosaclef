@@ -23,7 +23,7 @@ mod tests {
     fn words_with_seconds() {
         let v: Value = serde_json::from_str(&write(&song())).unwrap();
         let list = v.as_array().unwrap();
-        assert_eq!(list.len(), 12);
+        assert_eq!(list.len(), 13);
         assert_eq!(list[2], json!({"start": 1.5, "end": 2.0, "word": "friend"}));
         assert_eq!(list[6]["word"], "Bye");
         assert_eq!(list[6]["start"], 4.0);

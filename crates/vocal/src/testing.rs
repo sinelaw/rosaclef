@@ -8,7 +8,7 @@ use rosaclef_core::{
 /// "Song" by Ann, 120 BPM (a beat is half a second), 4/4.
 ///
 /// - `verse` (8 beats) sings, on `lead`: verse 1 "Hel-lo dark
-///   friend[f ɹ ɛ n d] _ / (br) Hi", verse 2 "Bye now friend _ / (br) Hi";
+///   friend[f ɹ ɛ n d] _ / (br) Hi", verse 2 "Bye now my friend _ / (br) Hi";
 ///   a kick plays on beats 0 and 4.
 /// - At beat 6 it uses `hook` (2 beats), which brings its own words "La la".
 /// - The playlist plays `verse` once, inside a repeat of two passes: pass 2
@@ -49,7 +49,7 @@ pub fn project() -> Project {
             }],
             lyrics: vec![lyrics(&[
                 (1, "Hel-lo dark friend[f ɹ ɛ n d] _ / (br) Hi"),
-                (2, "Bye now friend _ / (br) Hi"),
+                (2, "Bye now my friend _ / (br) Hi"),
             ])],
             ..pattern("verse", "Verse", 8.0, notes)
         },

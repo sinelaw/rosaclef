@@ -231,7 +231,7 @@ mod tests {
         let count = |name: &str| doc.descendants().filter(|n| n.has_tag_name(name)).count();
         assert_eq!(count("part"), 1);
         assert_eq!(count("measure"), 4);
-        assert_eq!(count("lyric"), 15, "13 syllables, 2 extender stops");
+        assert_eq!(count("lyric"), 16, "14 syllables, 2 extender stops");
         assert_eq!(count("rest"), 2, "the breaths");
         assert!(text.contains(
             "<lyric number=\"1\"><syllabic>begin</syllabic><text xml:lang=\"en\">Hel</text></lyric>"

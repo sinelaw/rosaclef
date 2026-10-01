@@ -532,3 +532,70 @@ fn plays_programs_and_drums_on_the_gm_soundfont_by_default() {
     assert_eq!(keys, [20, 36, 38, 42, 49], "drum keys stay as written");
     assert!(!warned(&im, "drum map"), "{:?}", im.warnings);
 }
+
+/// A track singing one note per beat (96 PPQ, keys from 60), each with its
+/// lyric (`kind` 0x05, or 0x01 for karaoke text) right before the note-on.
+fn sung(mut t: Trk, kind: u8, lyrics: &[Option<&[u8]>]) -> Trk {
+    for (i, lyric) in lyrics.iter().enumerate() {
+        if let Some(text) = lyric {
+            t = t.meta(0, kind, text);
+        }
+        let key = 60 + i as u8;
+        t = t.ev(0, &[0x90, key, 100]).ev(96, &[0x80, key, 0]);
+    }
+    t
+}
+
+fn verse(im: &Imported, pattern: usize) -> String {
+    im.project.patterns[pattern].lyrics[0].verses[&1].clone()
+}
+
+#[test]
+fn lyric_events_become_verses_of_their_patterns() {
+    let conductor = Trk::new()
+        .tempo(0, 120.0)
+        .meta(0, 0x58, &[4, 2, 24, 8])
+        .end();
+    let bar1: [Option<&[u8]>; 4] = [Some(b"Hel-"), Some(b"lo\r"), None, Some(b"world ")];
+    let bar2: [Option<&[u8]>; 4] = [
+        Some(b"Good"),
+        Some(b"bye "),
+        Some(b"(sweet) "),
+        Some(b"moon"),
+    ];
+    let vocal = sung(Trk::new().name("Vocal"), 0x05, &bar1);
+    let vocal = sung(vocal, 0x05, &bar2).meta(0, 0x05, b"\r").end();
+    let opts = Options {
+        bars_per_pattern: 1,
+        ..synth("lyrics")
+    };
+    let im = midi::import(&smf(1, 96, vec![conductor, vocal]), &opts).unwrap();
+    check_valid(&im);
+    let p = &im.project;
+    assert_eq!(p.patterns.len(), 2, "the same notes with other words");
+    assert_eq!(p.patterns[0].lyrics[0].channel, p.channels[0].id);
+    assert_eq!(verse(&im, 0), "Hel- lo _ / world");
+    assert_eq!(verse(&im, 1), "Good- bye \\(sweet\\) moon");
+    let read: Vec<String> = rosaclef_core::expand::pattern(p, 0, 1)
+        .iter()
+        .map(|n| n.lyric.as_ref().unwrap().token.reads())
+        .collect();
+    assert_eq!(read, ["Hel-", "lo", "_", "world"]);
+}
+
+#[test]
+fn karaoke_text_finds_its_melody_and_encoding() {
+    let words = Trk::new()
+        .name("Words")
+        .meta(0, 0x01, b"@KMIDI KARAOKE FILE")
+        .meta(0, 0x01, b"@TSong")
+        .meta(0, 0x01, b"/Hel")
+        .meta(96, 0x01, b"lo")
+        .meta(192, 0x01, b" w\xf6rld")
+        .end();
+    let melody = sung(Trk::new().name("Melody"), 0x01, &[None; 4]).end();
+    let im = midi::import(&smf(1, 96, vec![words, melody]), &synth("kar")).unwrap();
+    check_valid(&im);
+    assert_eq!(verse(&im, 0), "Hel- lo _ wörld");
+    assert!(!warned(&im, "lyric"), "{:?}", im.warnings);
+}

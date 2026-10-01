@@ -111,7 +111,7 @@ mod tests {
         assert_eq!(
             write(&song()),
             "[Verse 1]\nHello dark friend\nHi\n\n[Hook]\nLa la\n\n\
-             [Verse 2]\nBye now friend\nHi\n\n[Hook]\nLa la\n"
+             [Verse 2]\nBye now my friend\nHi\n\n[Hook]\nLa la\n"
         );
     }
 

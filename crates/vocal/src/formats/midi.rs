@@ -223,10 +223,27 @@ mod tests {
         );
         assert!(find(&bytes, b"(br)").is_none());
         let lyrics = bytes.windows(2).filter(|w| w == &[0xff, 0x05]).count();
-        assert_eq!(lyrics, 13, "a lyric per syllable, none on the hold");
+        assert_eq!(lyrics, 14, "a lyric per syllable, none on the hold");
         assert!(find(&bytes, b"\xff\x03\x04Lead").is_some());
         assert!(find(&bytes, b"\xff\x03\x03kit").is_some());
         assert_eq!(vlq(0x4000), [0x81, 0x80, 0x00]);
         assert_eq!(midi_channel(9), 10);
+    }
+
+    #[test]
+    fn the_importer_reads_the_lyrics_back() {
+        let opts = rosaclef_import::midi::Options::new("back");
+        let im = rosaclef_import::midi::import(&write(&song()), &opts).unwrap();
+        let lead = &im.project.channels[0].id;
+        let p = im
+            .project
+            .patterns
+            .iter()
+            .find(|p| p.notes[0].channel == *lead);
+        assert_eq!(
+            p.unwrap().lyrics[0].verses[&1],
+            "Hel- lo dark friend _ / Hi La la Bye now my friend _ / Hi La la",
+            "the breaths are left out"
+        );
     }
 }

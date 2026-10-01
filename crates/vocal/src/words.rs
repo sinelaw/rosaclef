@@ -224,7 +224,7 @@ mod tests {
             [
                 vec!["Hello dark friend", "Hi"],
                 vec!["La la"],
-                vec!["Bye now friend", "Hi"],
+                vec!["Bye now my friend", "Hi"],
                 vec!["La la"]
             ]
         );

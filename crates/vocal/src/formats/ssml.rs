@@ -91,7 +91,7 @@ mod tests {
         let count = |name: &str| doc.descendants().filter(|n| n.has_tag_name(name)).count();
         assert_eq!(count("p"), 4);
         assert_eq!(count("s"), 6);
-        assert_eq!(count("mark"), 12);
+        assert_eq!(count("mark"), 13);
         assert!(text.contains(
             r#"<s><mark name="w0"/>Hello <mark name="w1"/>dark <mark name="w2"/><phoneme alphabet="ipa" ph="fɹɛnd">friend</phoneme></s>"#
         ));
