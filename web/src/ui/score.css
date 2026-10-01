@@ -348,6 +348,21 @@
   font: 500 10.5px/1 var(--mono);
   color: var(--muted);
 }
+/* The wet ink's knobs: gloss and shine. */
+.score-ink-knob {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.score-ribbon .score-ink-knob .label {
+  margin-left: 2px;
+}
+.score-slider {
+  width: 56px;
+  margin: 0;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
 .select.score-scope {
   max-width: 190px;
 }

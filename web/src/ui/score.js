@@ -54,7 +54,13 @@ import { trackIx, trackIndex, noteIx, noteIndex } from "#brands";
 /** type Ghost = { sys: Int, row: Int, step: Int, tick: Number, x: Number } */
 /** The engraved score of the last flush, and what it was built from. */
 /** type Cached = { key: String, score: Score, page: Page } */
-/** type ScoreView = { id: String, scope: String, zoom: Number, width: Number, height: Number, scrollTop: Number, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, ink: String, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, cache: Cached[] } */
+/** type ScoreView = { id: String, scope: String, zoom: Number, width: Number, height: Number, scrollTop: Number, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, ink: String, gloss: Number, shine: Number, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, cache: Cached[] } */
+
+/** The wet ink's knobs: how bright its highlights are (1 is full), and how
+ * broad (0 a pin-point speck, 1 the whole dome of a notehead). */
+const GLOSS_DEFAULT = 1;
+const GLOSS_MAX = 1.5;
+const SHINE_DEFAULT = 0.75;
 
 /** function newView(id: String, scope: String) => ScoreView */
 function newView(id, scope) {
@@ -71,6 +77,8 @@ function newView(id, scope) {
     grid: 12,
     night: false,
     ink: "wet",
+    gloss: GLOSS_DEFAULT,
+    shine: SHINE_DEFAULT,
     side: true,
     condense: true,
     range: { on: false, t0: 0, t1: 0, s0: 0, s1: 0 },
@@ -92,6 +100,10 @@ export function loadScorePrefs() {
     if (z >= 4 && z <= 16) v.zoom = z;
     v.night = loadPref(`${PREF}${v.id}.night`) === "1";
     if (loadPref(`${PREF}${v.id}.ink`) === "dry") v.ink = "dry";
+    const gl = loadPref(`${PREF}${v.id}.gloss`);
+    if (gl !== "" && Number(gl) >= 0 && Number(gl) <= GLOSS_MAX) v.gloss = Number(gl);
+    const sh = loadPref(`${PREF}${v.id}.shine`);
+    if (sh !== "" && Number(sh) >= 0 && Number(sh) <= 1) v.shine = Number(sh);
     if (loadPref(`${PREF}${v.id}.side`) === "0") v.side = false;
     const sc = loadPref(`${PREF}${v.id}.scope`);
     if (sc !== "") v.scope = sc;
@@ -103,6 +115,8 @@ function savePrefs(v) {
   savePref(`${PREF}${v.id}.zoom`, String(v.zoom));
   savePref(`${PREF}${v.id}.night`, v.night ? "1" : "0");
   savePref(`${PREF}${v.id}.ink`, v.ink);
+  savePref(`${PREF}${v.id}.gloss`, fmt(v.gloss, 2));
+  savePref(`${PREF}${v.id}.shine`, fmt(v.shine, 2));
   savePref(`${PREF}${v.id}.side`, v.side ? "1" : "0");
   savePref(`${PREF}${v.id}.scope`, v.scope);
 }
@@ -762,7 +776,7 @@ function paperView(b, v, c, geo, sc) {
   }
   b.close();
 
-  inkFilter(b, `score-ink-${v.id}`, v.ink === "wet", v.night);
+  inkFilter(b, `score-ink-${v.id}`, v.ink === "wet", v.night, v.gloss, v.shine);
 
   // Systems in view (and a screen around).
   const lo = v.scrollTop - v.height;
@@ -886,8 +900,8 @@ function fe(b, type, key, attrs) {
  *    mottled body: the darker rim a drop of ink leaves as it dries.
  * Colors pass through, so colored passages stay colored.
  */
-/** function inkFilter(b: Builder, id: String, wet: Boolean, night: Boolean) => Undefined */
-function inkFilter(b, id, wet, night) {
+/** function inkFilter(b: Builder, id: String, wet: Boolean, night: Boolean, gloss: Number, shine: Number) => Undefined */
+function inkFilter(b, id, wet, night, gloss, shine) {
   b.open("svg", "defs", "score-defs");
   b.attr("width", "0");
   b.attr("height", "0");
@@ -915,17 +929,20 @@ function inkFilter(b, id, wet, night) {
     fe(b, "feGaussianBlur", "dome", ["in", "SourceAlpha", "stdDeviation", "0.2", "result", "dome"]);
     fe(b, "feComposite", "height", ["in", "ridge", "in2", "dome", "operator", "arithmetic", "k2", "0.55", "k3", "0.45", "result", "height"]);
     // The light of a window on the upper left, mirrored where the surface turns
-    // toward it: a bright rim along the strokes, a highlight on the domes.
+    // toward it: a bright rim along the strokes, a highlight on the domes. The
+    // tighter the shine, the sharper the reflection (and the brighter, to be seen).
     b.open("feSpecularLighting", "light", "");
     b.attr("in", "height");
     b.attr("result", "light");
     b.attr("surfaceScale", "0.3");
-    b.attr("specularConstant", night ? "1.1" : "1.5");
-    b.attr("specularExponent", "45");
+    b.attr("specularConstant", fmt((2.2 - 0.93 * shine) * (night ? 0.73 : 1), 2));
+    b.attr("specularExponent", fmt(120 - 100 * shine, 1));
     b.attr("lighting-color", night ? "#fff3d6" : "#fffdf6");
     fe(b, "feDistantLight", "sun", ["azimuth", "235", "elevation", "34"]);
     b.close();
-    fe(b, "feComposite", "glint", ["in", "light", "in2", "spread", "operator", "in", "result", "glint"]);
+    fe(b, "feComposite", "lit", ["in", "light", "in2", "spread", "operator", "in", "result", "lit"]);
+    const k = fmt(gloss, 2);
+    fe(b, "feColorMatrix", "glint", ["in", "lit", "type", "matrix", "values", `${k} 0 0 0 0  0 ${k} 0 0 0  0 0 ${k} 0 0  0 0 0 ${k} 0`, "result", "glint"]);
     // The drop's shadow, cast down and to the right on the paper.
     fe(b, "feGaussianBlur", "fall", ["in", "SourceAlpha", "stdDeviation", "0.06", "result", "fall"]);
     fe(b, "feOffset", "drop", ["in", "fall", "dx", "0.035", "dy", "0.08", "result", "drop"]);
@@ -1107,6 +1124,9 @@ function systemView(b, v, c, geo, i, y, sel) {
       if (!ink) continue;
       b.leaf("path", run, run, "");
       b.attr("d", ink.d);
+      // As bright as the gloss; the broad sheen fades as the shine tightens to a speck.
+      const o = run === SHEEN ? 0.16 * Math.min(1, v.shine / SHINE_DEFAULT) : 0.62;
+      b.style("opacity", fmt(Math.min(1, o * v.gloss), 3));
     }
   }
   // Where Write would put a note.
@@ -1544,6 +1564,31 @@ export function scoreTools(b, v) {
   if (v.id === "dock" && v.scope === "current") iconButton(b, "roll", "small", "piano", "Back to the piano roll (F7)", () => revealDock("piano"));
 }
 
+/** A small slider for one of the wet ink's knobs, 0..`max`; saved when let go. */
+/** function inkSlider(b: Builder, v: ScoreView, key: String, label: String, tip: String, value: Number, max: Number, dflt: Number, onSet: (Number) => Undefined) => Undefined */
+function inkSlider(b, v, key, label, tip, value, max, dflt, onSet) {
+  b.open("label", key, "score-ink-knob");
+  b.attr("title", tip);
+  b.leaf("span", "l", "label", label);
+  b.leaf("input", "in", "score-slider", "");
+  b.attr("type", "range");
+  b.attr("min", "0");
+  b.attr("max", fmt(max, 2));
+  b.attr("step", "0.05");
+  b.prop("value", fmt(value, 2));
+  b.on("input", (e) => {
+    onSet(Number(e.value));
+    invalidate();
+  });
+  b.on("change", (e) => savePrefs(v));
+  b.on("dblclick", (e) => {
+    onSet(dflt);
+    savePrefs(v);
+    invalidate();
+  });
+  b.close();
+}
+
 /** The ribbon over the paper: tools, note values, key, grid, zoom, paper or night, sidebar. */
 /** function ribbon(b: Builder, v: ScoreView) => Undefined */
 function ribbon(b, v) {
@@ -1631,6 +1676,14 @@ function ribbon(b, v) {
       invalidate();
     }
   );
+  if (v.ink === "wet") {
+    inkSlider(b, v, "gloss", "Gloss", "Gloss: how bright the wet ink shines (double-click to reset)", v.gloss, GLOSS_MAX, GLOSS_DEFAULT, (x) => {
+      v.gloss = x;
+    });
+    inkSlider(b, v, "shine", "Shine", "Shine: a small speck of light, or a broad dome (double-click to reset)", v.shine, 1, SHINE_DEFAULT, (x) => {
+      v.shine = x;
+    });
+  }
   iconButton(b, "pdf", "small", "export", "Download as PDF — vector pages, ready to print", () => exportPdf(v));
   iconButton(b, "side", v.side ? "small on" : "small", "sidebar", "Parts, tracks and colors", () => {
     v.side = !v.side;

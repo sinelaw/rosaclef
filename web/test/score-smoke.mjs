@@ -138,8 +138,13 @@ await page.waitForSelector(".score-dock .score-sys");
 
 // One ink at a time: wet (glossy notes) by default, or dry (faded, no gloss).
 await page.waitForSelector(".score-dock path.gloss");
+// Its gloss and shine are knobs on the ribbon, shown while it is wet.
+await page.locator(".score-dock input.score-slider").nth(1).fill("0.1");
+await page.waitForFunction(() => document.querySelector(".score-dock feSpecularLighting")?.getAttribute("specularExponent") === "110.0");
+ok("the shine of the wet ink tightens to a speck");
 await page.click(".score-dock .score-ribbon button[title^='Ink:']");
 await page.waitForFunction(() => document.querySelector(".score-dock path.gloss") === null);
+if ((await count(".score-dock input.score-slider")) !== 0) throw new Error("the wet ink's knobs show on dry ink");
 ok("the ink is wet and glossy, or dry and faded");
 
 // Night ink, and the phone layout.
