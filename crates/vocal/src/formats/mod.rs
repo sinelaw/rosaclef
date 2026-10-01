@@ -10,6 +10,7 @@
 pub mod diffsinger;
 pub mod jam;
 pub mod lrc;
+pub mod midi;
 pub mod musicxml;
 mod phones;
 pub mod ssml;
@@ -47,6 +48,14 @@ impl Format {
 
 /// Every format, in the order menus list them.
 pub const FORMATS: &[Format] = &[
+    Format {
+        id: "midi",
+        extension: "mid",
+        mime: "audio/midi",
+        label: "MIDI with lyrics",
+        description: "Standard MIDI File: every channel, lyric events on the sung notes",
+        write: midi::write,
+    },
     Format {
         id: "musicxml",
         extension: "musicxml",
