@@ -9,6 +9,7 @@ import { isAutomated, shownValue, openMenu } from "../automation.js";
 import { toast } from "./toast.js";
 import { projectsButton } from "./projects.js";
 import { keyboard, toggleKeyboard } from "./keyboard.js";
+import { exportButton } from "./export.js";
 
 /** function lcd(b: Builder, key: String, label: String, value: String, unit: String) => Undefined */
 function lcd(b, key, label, value, unit) {
@@ -236,13 +237,6 @@ export function topbar(b) {
   iconButton(b, "redo", "", "redo", "Redo (Ctrl+Shift+Z)", () => {
     redo();
   });
-  b.open("button", "export", "btn gold");
-  b.attr("title", "Render the song to a WAV file");
-  b.on("pointerenter", (e) => hint("Export: render the whole song offline to a 24-bit WAV (saved in renders/, and downloaded)"));
-  b.on("click", (e) => {
-    exportSong();
-  });
-  b.leaf("span", "t", "", "Export");
-  b.close();
+  exportButton(b, exportSong);
   b.close();
 }
