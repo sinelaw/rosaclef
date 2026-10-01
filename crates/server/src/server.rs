@@ -107,6 +107,7 @@ pub struct App {
     >,
     /// Serializes project switches (and library operations on the open project).
     pub(crate) switching: Mutex<()>,
+    voices: crate::voices::Renderer,
 }
 
 pub(crate) type Shared = Arc<App>;
@@ -152,8 +153,10 @@ pub async fn run(cfg: Config) -> Result<()> {
         native: Mutex::new(None),
         watcher: Mutex::new(None),
         switching: Mutex::new(()),
+        voices: crate::voices::Renderer::new(),
     });
     write_status(&app);
+    app.voices.update(&app.project(), &app.folder());
 
     spawn_watcher(app.clone())?;
     #[cfg(feature = "device-audio")]
@@ -289,7 +292,7 @@ impl App {
         };
         self.broadcast(exclude, json!({"t": "project", "rev": rev, "origin": origin, "project": project, "issues": issues}));
         write_status(self);
-        self.update_native(&project);
+        self.follow(&project);
         Ok(rev)
     }
 
@@ -381,7 +384,7 @@ impl App {
             }
         }
         write_status(self);
-        self.update_native(project);
+        self.follow(project);
         self.term.set_env(AgentEnv {
             dir: target.dir.clone(),
             url: self.url.clone(),
@@ -393,6 +396,13 @@ impl App {
             );
         }
         self.broadcast(0, self.welcome("switched", 0));
+    }
+
+    /// After the project changed: the native engine plays it and the voices
+    /// render its new phrases.
+    fn follow(&self, project: &Project) {
+        self.update_native(project);
+        self.voices.update(project, &self.folder());
     }
 
     /// New rendered phrases: the native engine loads them, and every client
@@ -533,7 +543,7 @@ fn reload_from_disk(app: &App) {
             println!("  ↻ project.json changed on disk (rev {rev})");
             app.broadcast(0, json!({"t": "project", "rev": rev, "origin": "disk", "project": project, "issues": issues}));
             write_status(app);
-            app.update_native(&project);
+            app.follow(&project);
         }
         Outcome::Invalid(issues) => {
             println!(

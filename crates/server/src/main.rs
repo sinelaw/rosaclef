@@ -5,6 +5,7 @@ mod library;
 mod server;
 mod terminal;
 mod vocal;
+mod voices;
 
 #[cfg(feature = "device-audio")]
 mod device;
