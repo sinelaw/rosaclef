@@ -13,6 +13,11 @@
 //! everything, so in full: `midi = key + 12 + (57 − basenote) + masterpitch`
 //! — the same offset LMMS's own MIDI exporter applies.
 //!
+//! ## Pattern length
+//! LMMS 1.x does not save a pattern's length: a melody pattern spans its
+//! notes rounded up to whole bars (at least one), a beat pattern its
+//! `steps` (16 per 4/4 bar). Newer versions save `len`, which wins.
+//!
 //! ## Mapping
 //! | LMMS | Rosaclef |
 //! |---|---|
@@ -20,26 +25,36 @@
 //! | instrument track (`type="0"`) | channel + one pattern per distinct LMMS pattern, placed as clips |
 //! | Beat+Bassline track (`type="1"`) | one multi-channel pattern per B&B, a clip wherever its `bbtco` appears |
 //! | sample track (`type="2"`) | audio clips (files copied into `samples/`) |
-//! | FX mixer channels | mixer inserts (name, volume, mute, some effects) |
+//! | automation tracks (`type="5"`, `"6"`) | lanes for tempo, track volume / pan, FX channel and master volume |
+//! | FX mixer channels | mixer inserts (name, volume, mute, effects) |
+//! | track effects | prepended to the track's FX channel when it is the only user, else a new insert |
+//! | arpeggiator, chord stacking | written out as notes |
 //! | TripleOscillator | `synth` (Aurum) |
 //! | Kicker | `drum` kick |
-//! | AudioFileProcessor | `sampler` (Vault) |
+//! | AudioFileProcessor | `sampler` (Vault); DrumSynth `.ds` patches become `drum` voices |
 //! | LB302 | `cuivre` acid bass (ladder / screamer filter, mono, legato glide) |
+//! | Sf2 Player | `soundfont` (Orchestre) playing the same General MIDI patch |
+//! | OpulenZ (OPL2) | `fm` (Lumière) |
+//! | NES, BitInvader | `synth` with the nearest waveforms |
+//! | LADSPA / LV2 effects | the built-in effect of the same family (reverb, delay, chorus, ...) |
 //! | other instruments | `synth` fallback, with a warning |
 //!
-//! Automation, per-clip mutes, sends between FX channels and unsupported
-//! plugins are skipped with a warning.
+//! Instrument parameter automation, per-clip mutes, sends between FX
+//! channels and unsupported plugins are skipped with a warning.
 
 use crate::{
-    beats, clamp, color, ensure_valid, pad_tracks, set_option, set_param, Ids, Imported,
-    SampleCopy, Warnings, MAX_INSERTS,
+    beats, clamp, color, ensure_valid, has_instrument, pad_tracks, set_option, set_param, Ids,
+    Imported, SampleCopy, Warnings, MAX_INSERTS,
 };
 use anyhow::{anyhow, bail, Context, Result};
+use rosaclef_core::automation::AutomationTarget;
 use rosaclef_core::{
-    Channel, Clip, Device, Insert, InsertIx, Note, Pattern, Project, Track, TrackIx,
+    AutomationLane, AutomationPoint, Channel, Clip, Device, Insert, InsertIx, Note, Pattern,
+    Project, Track, TrackIx,
 };
 use roxmltree::{Document, Node, ParsingOptions};
 use std::collections::{HashMap, HashSet};
+use std::f64::consts::TAU;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -197,6 +212,332 @@ fn text<'a>(n: Node<'a, '_>, name: &str) -> &'a str {
     n.attribute(name).unwrap_or("")
 }
 
+/// The plugin a LADSPA / LV2 / VST effect hosts, from its `<key>`
+/// (e.g. "calf Reverb", "tap_limiter").
+fn plugin_name(effect: Node) -> String {
+    let Some(key) = child(effect, &["key"]) else {
+        return String::new();
+    };
+    let attr = |n: &str| {
+        children(key, &["attribute"])
+            .find(|a| text(*a, "name") == n)
+            .map(|a| text(a, "value").to_string())
+            .unwrap_or_default()
+    };
+    let (file, plugin) = (attr("file"), attr("plugin"));
+    let uri = attr("uri");
+    if !plugin.is_empty() && !file.is_empty() && !plugin.contains(&file) {
+        format!("{file} {plugin}")
+    } else if !plugin.is_empty() {
+        plugin
+    } else if !uri.is_empty() {
+        uri
+    } else {
+        file
+    }
+}
+
+/// A LADSPA plugin's control values by port number (left channel):
+/// `<port011 data="1"/>` is channel 0, port 11.
+fn ladspa_ports(effect: Node) -> HashMap<u32, f64> {
+    let Some(controls) = child(effect, &["ladspacontrols"]) else {
+        return HashMap::new();
+    };
+    controls
+        .children()
+        .filter(|c| c.is_element())
+        .filter_map(|c| {
+            let rest = c.tag_name().name().strip_prefix("port0")?;
+            let value = c
+                .attribute("data")
+                .or_else(|| child(c, &["data"])?.attribute("value"))?;
+            Some((rest.parse().ok()?, value.trim().parse().ok()?))
+        })
+        .collect()
+}
+
+/// Rosaclef's reverb that matches a plugin keeping `dry` and adding a
+/// tail of `wet` (linear) decaying in `decay` seconds, and the gain the
+/// insert must add (the reverb crossfades: dry · (1 − mix/2) + 3 · mix ·
+/// tail). `tail_db` is the plugin's tail energy relative to the dry at
+/// unit wet, measured in LMMS renders; Rosaclef's tail measures about
+/// −5.2 + 5.5 · size dB.
+fn reverb(decay: f64, dry: f64, wet: f64, tail_db: f64) -> (Device, f64) {
+    let mut d = Device::new("reverb");
+    // Combs of ~30 ms with feedback 0.7 + 0.28 · size.
+    let size = clamp((10f64.powf(-0.09 / decay.max(0.05)) - 0.7) / 0.28, 0.0, 1.0);
+    set_param(&mut d, "size", size);
+    let tail = wet * 10f64.powf((tail_db - (-5.2 + 5.5 * size)) / 20.0);
+    let ratio = tail / dry.max(1e-3);
+    let mix = (ratio / (3.0 + 0.5 * ratio)).min(1.0);
+    set_param(&mut d, "mix", mix);
+    (d, dry / (1.0 - mix / 2.0))
+}
+
+/// The built-in effect of a plugin's family, judged by its name, and the
+/// gain the insert must add. Settings are read from the ports of plugins
+/// whose layout is known (TAP Reverberator, Calf Reverb, Phaser, Chorus,
+/// Flanger); others get the family's defaults.
+fn generic_effect(label: &str, wet: f64, ports: &HashMap<u32, f64>) -> Option<(Device, f64)> {
+    let l = label.to_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| l.contains(w));
+    let port = |n: u32, d: f64| ports.get(&n).copied().unwrap_or(d);
+    let db = |v: f64| 10f64.powf(v / 20.0);
+    let mut d;
+    let mut gain = 1.0;
+    if has(&["tap_reverb"]) {
+        // Decay [ms], dry [dB], wet [dB].
+        let (r, g) = reverb(
+            port(0, 2500.0) / 1000.0,
+            db(port(1, 0.0)),
+            wet * db(port(2, 0.0)),
+            2.0,
+        );
+        (d, gain) = (r, g);
+    } else if l.contains("calf") && has(&["reverb"]) {
+        // Decay time [s], ..., amount, dry.
+        let (r, g) = reverb(port(7, 1.5), port(12, 1.0), wet * port(11, 0.25), 2.6);
+        (d, gain) = (r, g);
+    } else if has(&["reverb", "verb", "plate", "hall"]) {
+        let (r, g) = reverb(1.5, 1.0, wet * 0.5, 2.0);
+        (d, gain) = (r, g);
+    } else if has(&["delay", "echo"]) {
+        d = Device::new("delay");
+        set_param(&mut d, "mix", 0.25 * wet);
+    } else if has(&["flang", "phas", "chorus", "ensemble", "vibrato"]) {
+        d = Device::new("chorus");
+        if l.contains("calf") && has(&["phaser", "chorus", "flanger"]) {
+            // Calf keeps `dry` and adds `amount` of the effect; Chœur
+            // outputs (dry · (1 − mix/2) + wet · mix/2) · (1 + mix/5).
+            let (amount, dry) = (wet * port(11, 1.0), port(12, 1.0));
+            let ratio = amount / dry.max(1e-3);
+            let mix = (2.0 * ratio / (1.0 + ratio)).min(1.0);
+            set_param(&mut d, "mix", mix);
+            gain = dry / ((1.0 - mix / 2.0) * (1.0 + mix / 5.0));
+        } else {
+            set_param(&mut d, "mix", 0.4 * wet);
+        }
+    } else if has(&["limit", "maximi"]) {
+        d = Device::new("limiter");
+    } else if has(&["compress", "dynamic", "expander", "gate"]) {
+        d = Device::new("compressor");
+    } else if has(&[
+        "distort",
+        "overdrive",
+        "satur",
+        "fuzz",
+        "crush",
+        "tube",
+        "shaper",
+        "exciter",
+    ]) {
+        d = Device::new("drive");
+        set_param(&mut d, "amount", 0.4);
+        set_param(&mut d, "mix", wet);
+    } else if has(&["bass"]) {
+        d = Device::new("eq");
+        set_param(&mut d, "low", 6.0);
+    } else if has(&["eq", "equal", "shelf", "treble"]) {
+        d = Device::new("eq");
+    } else if has(&["filter", "pass", "lpf", "hpf", "moog", "ladder"]) {
+        d = Device::new("filter");
+        let mode = if has(&["high", "hpf"]) {
+            "highpass"
+        } else if has(&["band"]) {
+            "bandpass"
+        } else {
+            "lowpass"
+        };
+        set_option(&mut d, "mode", mode);
+        set_param(&mut d, "mix", wet);
+    } else {
+        return None;
+    }
+    Some((d, gain))
+}
+
+/// Which Atelier drum a DrumSynth patch is, judged by its file name.
+fn drumsynth_kind(path: &str) -> Option<&'static str> {
+    let name = Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let has = |words: &[&str]| words.iter().any(|w| name.contains(w));
+    Some(
+        if has(&[
+            "hat_o", "hato", "openhat", "open", "ohh", "cymbal", "crash", "ride", "splash",
+        ]) {
+            "openhat"
+        } else if has(&["hat", "hh"]) {
+            "hat"
+        } else if has(&["kick", "bd", "bassdrum"]) {
+            "kick"
+        } else if has(&["snare", "sd"]) {
+            "snare"
+        } else if has(&["clap"]) {
+            "clap"
+        } else if has(&["tom", "conga", "bongo"]) {
+            "tom"
+        } else if has(&["rim", "clave", "stick"]) {
+            "rim"
+        } else if has(&["cowbell", "bell", "agogo"]) {
+            "cowbell"
+        } else if has(&["shake", "maraca", "cabasa", "tamb"]) {
+            "shaker"
+        } else {
+            return None;
+        },
+    )
+}
+
+/// Write out LMMS's arpeggiator: each note becomes a run of notes `step`
+/// apart, cycling through the offsets, for as long as the note is held.
+/// In sort mode, notes struck together take turns, lowest first.
+fn arpeggiate(arp: &Arp, notes: Vec<Note>) -> Vec<Note> {
+    let n = arp.offsets.len().max(1);
+    let round = |x: f64| (x * 1_000_000.0).round() / 1_000_000.0;
+    let mut out = vec![];
+    for note in &notes {
+        let (turn, group) = if arp.sort {
+            let mut together: Vec<i32> = notes
+                .iter()
+                .filter(|o| o.start == note.start)
+                .map(|o| o.pitch)
+                .collect();
+            together.sort();
+            let turn = together.iter().position(|p| *p == note.pitch).unwrap_or(0);
+            (turn, together.len())
+        } else {
+            (0, 1)
+        };
+        let end = note.start + note.length;
+        let steps = (note.length / arp.step - 1e-9).ceil().max(1.0) as usize;
+        for k in 0..steps {
+            if (k % (n * group)) / n != turn {
+                continue;
+            }
+            let up_down = |k: usize| {
+                if n < 2 {
+                    0
+                } else {
+                    let m = k % (2 * n - 2);
+                    if m >= n {
+                        2 * n - 2 - m
+                    } else {
+                        m
+                    }
+                }
+            };
+            let idx = match arp.direction {
+                1 => n - 1 - k % n,
+                2 => up_down(k),
+                3 => n - 1 - up_down(k),
+                // Random: a fixed hash, so imports are reproducible.
+                4 => ((k as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 33) as usize % n,
+                _ => k % n,
+            };
+            let start = note.start + k as f64 * arp.step;
+            let length = (arp.step * arp.gate).min(end - start);
+            if length <= 1e-6 {
+                continue;
+            }
+            out.push(Note {
+                pitch: note.pitch + arp.offsets.get(idx).copied().unwrap_or(0),
+                start: round(start),
+                length: round(length),
+                ..note.clone()
+            });
+        }
+    }
+    out
+}
+
+/// Atelier decay and gain that match LMMS's factory DrumSynth patches of
+/// a kind (medians over the 345 tr606/tr808/tr909/... patches whose
+/// kind the file name tells, rendered by LMMS 1.2.2 and Rosaclef).
+fn drumsynth_level(kind: &str) -> (f64, f64) {
+    match kind {
+        "kick" => (0.35, 1.39),
+        "snare" => (0.23, 1.30),
+        "clap" => (0.19, 1.32),
+        "hat" => (0.48, 1.24),
+        "openhat" => (0.36, 0.86),
+        "rim" => (0.57, 1.01),
+        "cowbell" => (0.22, 0.59),
+        "shaker" => (0.40, 0.64),
+        _ => (0.11, 0.61),
+    }
+}
+
+/// Decode standard base64 (BitInvader's `sampleShape`).
+fn base64(s: &str) -> Option<Vec<u8>> {
+    let val = |c: u8| -> Option<u32> {
+        Some(match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        } as u32)
+    };
+    let bytes: Vec<u8> = s
+        .bytes()
+        .filter(|c| !c.is_ascii_whitespace() && *c != b'=')
+        .collect();
+    let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
+    for chunk in bytes.chunks(4) {
+        let mut acc = 0u32;
+        for (i, c) in chunk.iter().enumerate() {
+            acc |= val(*c)? << (18 - 6 * i);
+        }
+        let n = chunk.len().saturating_sub(1);
+        for i in 0..n {
+            out.push((acc >> (16 - 8 * i)) as u8);
+        }
+    }
+    Some(out)
+}
+
+/// The basic waveform closest to a drawn single-cycle wave (best
+/// correlation over every phase shift).
+fn nearest_wave(shape: &[f64]) -> &'static str {
+    let n = shape.len();
+    if n < 4 {
+        return "saw";
+    }
+    let normalize = |v: Vec<f64>| {
+        let mean = v.iter().sum::<f64>() / v.len() as f64;
+        let v: Vec<f64> = v.iter().map(|x| x - mean).collect();
+        let norm = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+        if norm > 1e-12 {
+            v.iter().map(|x| x / norm).collect()
+        } else {
+            v
+        }
+    };
+    let shape = normalize(shape.to_vec());
+    let phase = |i: usize| i as f64 / n as f64;
+    type Wave = fn(f64) -> f64;
+    let refs: [(&str, Wave); 4] = [
+        ("sine", |t| (std::f64::consts::TAU * t).sin()),
+        ("triangle", |t| 1.0 - 4.0 * (t - 0.5).abs()),
+        ("square", |t| if t < 0.5 { 1.0 } else { -1.0 }),
+        ("saw", |t| 2.0 * t - 1.0),
+    ];
+    let mut best = ("saw", f64::MIN);
+    for (name, f) in refs {
+        let r = normalize((0..n).map(|i| f(phase(i))).collect());
+        let score = (0..n)
+            .map(|s| (0..n).map(|i| shape[i] * r[(i + s) % n]).sum::<f64>().abs())
+            .fold(0.0, f64::max);
+        if score > best.1 {
+            best = (name, score);
+        }
+    }
+    best.0
+}
+
 // ---------------------------------------------------------------- importer
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -215,6 +556,88 @@ struct ChannelInfo {
     base_note: i32,
     transpose: i32,
     mode: PitchMode,
+    /// Whether the project's master pitch applies (`usemasterpitch`).
+    master_pitch: bool,
+    /// The track's arpeggiator, when enabled.
+    arp: Option<Arp>,
+    /// Chord stacking: semitone offsets each note is expanded into.
+    chord: Vec<i32>,
+}
+
+/// LMMS's arpeggiator, written out as notes.
+#[derive(Clone, Debug)]
+struct Arp {
+    /// Offsets cycled through: the chord over the arpeggio's octave range.
+    offsets: Vec<i32>,
+    /// Time between arpeggio notes, in beats.
+    step: f64,
+    /// Arpeggio note length as a fraction of `step`.
+    gate: f64,
+    /// 0 up, 1 down, 2 up and down, 3 down and up, 4 random.
+    direction: i32,
+    /// Sort mode: notes struck together take turns.
+    sort: bool,
+}
+
+/// LMMS chords (the chord creator and arpeggiator table), by index.
+const CHORDS: &[&[i32]] = &[
+    &[0],              // octave
+    &[0, 4, 7],        // Major
+    &[0, 4, 6],        // Majb5
+    &[0, 3, 7],        // minor
+    &[0, 3, 6],        // minb5
+    &[0, 2, 7],        // sus2
+    &[0, 5, 7],        // sus4
+    &[0, 4, 8],        // aug
+    &[0, 5, 8],        // augsus4
+    &[0, 3, 6, 9],     // tri
+    &[0, 4, 7, 9],     // 6
+    &[0, 5, 7, 9],     // 6sus4
+    &[0, 4, 7, 14],    // 6add9
+    &[0, 3, 7, 9],     // m6
+    &[0, 3, 7, 9, 14], // m6add9
+    &[0, 4, 7, 10],    // 7
+    &[0, 5, 7, 10],    // 7sus4
+    &[0, 4, 8, 10],    // 7#5
+    &[0, 4, 6, 10],    // 7b5
+];
+
+/// An automatable LMMS control (an element with an `id`) that maps onto
+/// a Rosaclef automation target: `value = lmms value × scale`.
+#[derive(Clone, Debug)]
+struct Model {
+    target: AutomationTarget,
+    scale: f64,
+    color: String,
+}
+
+/// One LMMS automation pattern, for one control.
+#[derive(Clone, Debug)]
+struct AutoClip {
+    name: String,
+    /// Song position and length in ticks.
+    start: f64,
+    len: f64,
+    /// 0 discrete, 1 linear, 2 cubic (approximated as linear).
+    progression: i32,
+    /// (tick, value), sorted by tick.
+    points: Vec<(f64, f64)>,
+}
+
+impl AutoClip {
+    fn value_at(&self, tick: f64) -> f64 {
+        let i = self.points.partition_point(|p| p.0 <= tick);
+        if i == 0 {
+            return self.points[0].1;
+        }
+        let a = self.points[i - 1];
+        match self.points.get(i) {
+            Some(b) if self.progression != 0 && b.0 > a.0 => {
+                a.1 + (b.1 - a.1) * (tick - a.0) / (b.0 - a.0)
+            }
+            _ => a.1,
+        }
+    }
 }
 
 struct Importer<'o> {
@@ -233,6 +656,20 @@ struct Importer<'o> {
     ticks_per_bar: f64,
     bar_beats: f64,
     loud_notes: usize,
+    /// Automatable controls by LMMS id.
+    models: HashMap<String, Model>,
+    /// How many tracks feed each FX channel.
+    fx_users: HashMap<usize, usize>,
+    /// `mastervol` / 100 and the master FX channel's volume (their product
+    /// is the master insert's volume).
+    master_gain: f64,
+    master_fx_volume: f64,
+    /// Level the instrument mapped last could not reach with its own gain
+    /// (multiplies the channel volume).
+    makeup: f64,
+    /// Broadband gain of the effect chain mapped last (multiplies the
+    /// volume of the insert it lands on).
+    fx_gain: f64,
 }
 
 impl<'o> Importer<'o> {
@@ -256,6 +693,12 @@ impl<'o> Importer<'o> {
             ticks_per_bar: 192.0,
             bar_beats: 4.0,
             loud_notes: 0,
+            models: HashMap::new(),
+            fx_users: HashMap::new(),
+            master_gain: 1.0,
+            master_fx_volume: 1.0,
+            makeup: 1.0,
+            fx_gain: 1.0,
         }
     }
 
@@ -287,6 +730,7 @@ impl<'o> Importer<'o> {
             self.project.transport.beats_per_bar = bpb.round().clamp(1.0, 32.0) as u32;
             self.master_pitch = num_or(head, "masterpitch", 0.0).round() as i32;
             let master_vol = num_or(head, "mastervol", 100.0);
+            self.master_gain = master_vol / 100.0;
             self.project.mixer.inserts[0].volume = clamp(master_vol / 100.0, 0.0, 2.0);
         } else {
             self.warn
@@ -294,7 +738,25 @@ impl<'o> Importer<'o> {
         }
         let song = child(root, &["song"])
             .ok_or_else(|| anyhow!("not an LMMS song project (no <song> element)"))?;
+        for t in song
+            .descendants()
+            .filter(|n| is(n, &["instrumenttrack", "sampletrack"]))
+        {
+            let fx = num(t, "fxch").or_else(|| num(t, "mixch")).unwrap_or(0.0);
+            *self.fx_users.entry(fx.max(0.0) as usize).or_insert(0) += 1;
+        }
         self.build_mixer(song);
+        if let Some(head) = child(root, &["head"]) {
+            self.register(head, "bpm", AutomationTarget::Tempo, 1.0, "#d4af37");
+            let scale = self.master_fx_volume / 100.0;
+            self.register(
+                head,
+                "mastervol",
+                AutomationTarget::InsertVolume(InsertIx::MASTER),
+                scale,
+                "#d4af37",
+            );
+        }
 
         let container = child(song, &["trackcontainer"])
             .ok_or_else(|| anyhow!("the project has no song track container"))?;
@@ -305,6 +767,7 @@ impl<'o> Importer<'o> {
             .filter(|t| text(*t, "type") == "1")
             .collect();
         let mut bb_patterns: Option<Vec<Option<String>>> = None;
+        let mut automation: Vec<Node> = vec![];
         for t in &tracks {
             match text(*t, "type") {
                 "0" | "" => self.instrument_track(*t),
@@ -320,18 +783,17 @@ impl<'o> Importer<'o> {
                     self.bb_track(*t, pat);
                 }
                 "2" => self.sample_track(*t),
-                "5" | "6" => self.warn.add("automation tracks were skipped"),
+                "5" | "6" => automation.push(*t),
                 other => self.warn.add(format!(
                     "track \"{}\" of unsupported type {other} was skipped",
                     text(*t, "name")
                 )),
             }
         }
-        for t in children(song, &["track"]) {
-            if matches!(text(t, "type"), "5" | "6") {
-                self.warn.add("automation tracks were skipped");
-            }
-        }
+        // The global automation track (tempo, master volume) sits in <song>.
+        automation
+            .extend(children(song, &["track"]).filter(|t| matches!(text(*t, "type"), "5" | "6")));
+        self.automation(&automation);
         if self.loud_notes > 0 {
             self.warn.add(format!(
                 "{} note(s) louder than 100% were clamped to full velocity",
@@ -397,9 +859,41 @@ impl<'o> Importer<'o> {
             if !name.is_empty() {
                 ins.name = name.to_string();
             }
-            ins.volume = clamp(ins.volume * vol, 0.0, 2.0);
+            ins.volume = clamp(ins.volume * vol * self.fx_gain, 0.0, 2.0);
             ins.mute = flag(c, "muted");
             ins.effects.extend(effects);
+            let scale = if i == 0 {
+                self.master_fx_volume = vol * self.fx_gain;
+                self.master_gain * self.fx_gain
+            } else {
+                self.fx_gain
+            };
+            let target = AutomationTarget::InsertVolume(InsertIx(i as u32));
+            self.register(c, "volume", target, scale, "#d4af37");
+        }
+    }
+
+    /// Set an instrument's output gain, the rest of the level going to the
+    /// channel volume when it exceeds the knob's range.
+    fn level(&mut self, d: &mut Device, gain: f64) {
+        set_param(d, "gain", gain);
+        let got = d.param("gain");
+        if got > 0.0 && gain > got {
+            self.makeup = gain / got;
+        }
+    }
+
+    /// Remember an automatable control (`<name id=".." value=".."/>`).
+    fn register(&mut self, n: Node, name: &str, target: AutomationTarget, scale: f64, color: &str) {
+        if let Some(id) = child(n, &[name]).and_then(|c| c.attribute("id")) {
+            self.models.insert(
+                id.to_string(),
+                Model {
+                    target,
+                    scale,
+                    color: color.to_string(),
+                },
+            );
         }
     }
 
@@ -418,6 +912,7 @@ impl<'o> Importer<'o> {
     /// Map an LMMS effect chain onto built-in effects.
     fn effects(&mut self, chain: Node, owner: &str) -> Vec<Device> {
         let mut out = vec![];
+        self.fx_gain = 1.0;
         for e in children(chain, &["effect"]) {
             let name = text(e, "name");
             let wet = clamp(num_or(e, "wet", 1.0), 0.0, 1.0);
@@ -453,13 +948,21 @@ impl<'o> Importer<'o> {
                     d
                 }
                 "bassbooster" => {
+                    // LMMS computes (in + lowpass(in) · ratio) · gain with a
+                    // one-pole low-pass of coefficient freq / (freq + 1): a
+                    // low shelf plus a broadband gain, which goes to the
+                    // insert's volume.
                     let mut d = Device::new("eq");
                     set_param(
                         &mut d,
                         "low",
-                        20.0 * get("gain", 1.0).max(0.01).log10() + 6.0,
+                        20.0 * (1.0 + get("ratio", 2.0).max(0.0)).log10(),
                     );
-                    set_param(&mut d, "lowFreq", get("freq", 100.0));
+                    let coef = get("freq", 100.0).max(10.0);
+                    set_param(&mut d, "lowFreq", 44100.0 / (TAU * (coef + 0.5)));
+                    if num_or(e, "on", 1.0) != 0.0 {
+                        self.fx_gain *= 1.0 + wet * (get("gain", 1.0).max(0.0) - 1.0);
+                    }
                     d
                 }
                 "dualfilter" => {
@@ -485,9 +988,30 @@ impl<'o> Importer<'o> {
                 "eq" => Device::new("eq"),
                 "" => continue,
                 other => {
-                    self.warn.add(format!(
-                        "effect \"{other}\" on {owner} has no Rosaclef equivalent and was skipped"
-                    ));
+                    // Plugin hosts name the plugin in <key>: map it by family.
+                    let plugin = plugin_name(e);
+                    let label = if plugin.is_empty() {
+                        other.to_string()
+                    } else {
+                        plugin
+                    };
+                    match generic_effect(&label, wet, &ladspa_ports(e)) {
+                        Some((d, gain)) => {
+                            if num_or(e, "on", 1.0) != 0.0 {
+                                self.fx_gain *= gain;
+                            }
+                            self.warn.add(format!(
+                                "effect \"{label}\" was approximated by the built-in \"{}\"",
+                                d.kind
+                            ));
+                            let mut d = d;
+                            d.enabled = num_or(e, "on", 1.0) != 0.0;
+                            out.push(d);
+                        }
+                        None => self.warn.add(format!(
+                            "effect \"{label}\" on {owner} has no Rosaclef equivalent and was skipped"
+                        )),
+                    }
                     continue;
                 }
             };
@@ -509,7 +1033,10 @@ impl<'o> Importer<'o> {
         let name = if name.is_empty() { "Instrument" } else { name };
         let it = child(track, &["instrumenttrack"])?;
         let base_note = num_or(it, "basenote", DEFAULT_BASE_NOTE as f64).round() as i32;
-        let (instrument, mode, transpose) = self.instrument(name, it, has_steps);
+        self.makeup = 1.0;
+        let (instrument, mode, mut transpose) = self.instrument(name, it, has_steps);
+        // The track's pitch knob, in cents.
+        transpose += (num_or(it, "pitch", 0.0) / 100.0).round() as i32;
         let vol = num_or(it, "vol", 100.0);
         if vol > 150.0 {
             self.warn.add(format!(
@@ -518,16 +1045,29 @@ impl<'o> Importer<'o> {
         }
         let fx = num(it, "fxch").or_else(|| num(it, "mixch")).unwrap_or(0.0);
         let mut mixer = self.insert(fx, &format!("track \"{name}\""));
-        // Track-level effects get an insert of their own.
+        // Track-level effects run before the FX channel: prepend them to
+        // its chain when no other track uses it, else give them an insert
+        // of their own that copies the FX channel.
         if let Some(chain) = child(it, &["fxchain"]) {
             let fx = self.effects(chain, &format!("track \"{name}\""));
+            let fx_gain = self.fx_gain;
             if !fx.is_empty() {
-                if self.project.mixer.inserts.len() < MAX_INSERTS {
-                    if mixer != InsertIx::MASTER {
-                        self.warn.add(format!("track \"{name}\": its effects moved to a new insert, which feeds the master instead of FX {}", mixer.0));
-                    }
+                let only_user = self.fx_users.get(&mixer.index()).copied().unwrap_or(0) <= 1;
+                if mixer != InsertIx::MASTER && only_user {
+                    let ins = &mut self.project.mixer.inserts[mixer.index()];
+                    ins.effects.splice(0..0, fx);
+                    ins.volume = clamp(ins.volume * fx_gain, 0.0, 2.0);
+                } else if self.project.mixer.inserts.len() < MAX_INSERTS {
                     let mut ins = Insert::new(&format!("{name} FX"));
                     ins.effects = fx;
+                    if mixer != InsertIx::MASTER {
+                        let shared = self.project.mixer.inserts[mixer.index()].clone();
+                        self.warn.add(format!("track \"{name}\": its effects got an insert of their own, a copy of FX {} (\"{}\"), which other tracks share", mixer.0, shared.name));
+                        ins.volume = shared.volume;
+                        ins.mute = shared.mute;
+                        ins.effects.extend(shared.effects);
+                    }
+                    ins.volume = clamp(ins.volume * fx_gain, 0.0, 2.0);
                     mixer = InsertIx(self.project.mixer.inserts.len() as u32);
                     self.project.mixer.inserts.push(ins);
                 } else {
@@ -551,12 +1091,40 @@ impl<'o> Importer<'o> {
             self.warn
                 .add(format!("track \"{name}\" was soloed; solo is not imported"));
         }
+        let volume = AutomationTarget::ChannelVolume(id.clone());
+        self.register(it, "vol", volume, 0.01 * self.makeup, &color);
+        self.register(
+            it,
+            "pan",
+            AutomationTarget::ChannelPan(id.clone()),
+            0.01,
+            &color,
+        );
+        let arp = child(it, &["arpeggiator"])
+            .filter(|a| flag(*a, "arp-enabled"))
+            .map(|a| self.arpeggio(a, name));
+        let chord = match child(it, &["chordcreator"]).filter(|c| flag(*c, "chord-enabled")) {
+            Some(_) if arp.is_some() => {
+                self.warn.add(format!(
+                    "track \"{name}\": chord stacking under the arpeggiator was ignored"
+                ));
+                vec![]
+            }
+            Some(c) => {
+                let chord = self.chord(num_or(c, "chord", 0.0), name);
+                let octaves = num_or(c, "chordrange", 1.0).round().clamp(1.0, 9.0) as i32;
+                (0..octaves)
+                    .flat_map(|o| chord.iter().map(move |k| k + 12 * o))
+                    .collect()
+            }
+            None => vec![],
+        };
         self.project.channels.push(Channel {
             id: id.clone(),
             name: name.to_string(),
             color,
             instrument,
-            volume: clamp(vol / 100.0, 0.0, 1.5),
+            volume: clamp(vol / 100.0 * self.makeup, 0.0, 1.5),
             pan: clamp(num_or(it, "pan", 0.0) / 100.0, -1.0, 1.0),
             mute: flag(track, "muted"),
             mixer,
@@ -566,7 +1134,52 @@ impl<'o> Importer<'o> {
             base_note,
             transpose,
             mode,
+            master_pitch: num_or(it, "usemasterpitch", 1.0) != 0.0,
+            arp,
+            chord,
         })
+    }
+
+    /// The intervals of LMMS chord number `index`.
+    fn chord(&mut self, index: f64, track: &str) -> &'static [i32] {
+        match CHORDS.get(index.max(0.0) as usize) {
+            Some(c) => c,
+            None => {
+                self.warn.add(format!(
+                    "track \"{track}\": LMMS chord #{index} is not supported; octaves were used"
+                ));
+                CHORDS[0]
+            }
+        }
+    }
+
+    fn arpeggio(&mut self, a: Node, track: &str) -> Arp {
+        let chord = self.chord(num_or(a, "arp", 0.0), track);
+        let octaves = num_or(a, "arprange", 1.0).round().clamp(1.0, 9.0) as i32;
+        // `arptime` is in milliseconds (a tempo-synced knob saves its
+        // current value too).
+        let ms = num_or(a, "arptime", 200.0);
+        let step = (ms / 1000.0 * self.project.transport.bpm / 60.0).max(0.01);
+        for (k, what) in [
+            ("arpskip", "skip"),
+            ("arpmiss", "miss"),
+            ("arpcycle", "cycle"),
+        ] {
+            if num_or(a, k, 0.0) != 0.0 {
+                self.warn.add(format!(
+                    "track \"{track}\": the arpeggiator's {what} setting was ignored"
+                ));
+            }
+        }
+        Arp {
+            offsets: (0..octaves)
+                .flat_map(|o| chord.iter().map(move |k| k + 12 * o))
+                .collect(),
+            step,
+            gate: clamp(num_or(a, "arpgate", 100.0) / 100.0, 0.01, 2.0),
+            direction: num_or(a, "arpdir", 0.0) as i32,
+            sort: num_or(a, "arpmode", 0.0) as i32 == 1,
+        }
     }
 
     /// Map an LMMS instrument onto a built-in one. Returns the device, how
@@ -623,8 +1236,12 @@ impl<'o> Importer<'o> {
                             self.warn.add(format!("track \"{track}\": TripleOscillator's third oscillator was dropped (Aurum has two plus a sub)"));
                         }
                     }
+                    // TripleOscillator sums its oscillators (100% = full
+                    // scale); Aurum outputs (osc 1 + osc 2 + sub) × gain / 2.
                     let total: f64 = osc.iter().map(|o| o.1).sum();
-                    set_param(&mut d, "gain", 0.6 * clamp(total / 100.0, 0.2, 2.5));
+                    let mix2 = d.param("osc2Mix");
+                    let sum = 1.0 - mix2 * 0.5 + mix2 + d.param("sub");
+                    self.level(&mut d, 2.0 * (total / 100.0) / sum.max(0.1));
                 } else {
                     set_param(&mut d, "gain", 0.0);
                 }
@@ -651,7 +1268,8 @@ impl<'o> Importer<'o> {
                 set_param(&mut d, "decay", get("decay", 440.0) / 440.0);
                 set_param(&mut d, "snap", get("click", 0.4));
                 set_param(&mut d, "drive", get("dist", 0.8) / 10.0);
-                set_param(&mut d, "gain", 0.8 * get("gain", 1.0));
+                // Measured against LMMS renders: Atelier at 1.2 × Kicker's gain.
+                self.level(&mut d, 1.2 * get("gain", 1.0));
                 self.warn.add(format!(
                     "track \"{track}\": Kicker was approximated by the Atelier drum"
                 ));
@@ -665,6 +1283,26 @@ impl<'o> Importer<'o> {
                     },
                     0,
                 )
+            }
+            "audiofileprocessor"
+                if settings
+                    .map(|s| text(s, "src").to_lowercase().ends_with(".ds"))
+                    .unwrap_or(false) =>
+            {
+                // A DrumSynth patch is synthesized by LMMS, not an audio
+                // file: play the Atelier drum it is closest to.
+                let src = settings.map(|s| text(s, "src")).unwrap_or("");
+                let mut d = Device::new("drum");
+                let kind = drumsynth_kind(src);
+                let (decay, gain) = drumsynth_level(kind.unwrap_or("tom"));
+                set_option(&mut d, "kind", kind.unwrap_or("tom"));
+                set_param(&mut d, "decay", decay);
+                self.level(&mut d, gain * get("amp", 100.0) / 100.0);
+                self.warn.add(format!(
+                    "track \"{track}\": DrumSynth patch \"{src}\" was approximated by the Atelier {} drum",
+                    kind.unwrap_or("tom")
+                ));
+                (d, PitchMode::Relative, 0)
             }
             "audiofileprocessor" => {
                 let mut d = Device::new("sampler");
@@ -680,7 +1318,8 @@ impl<'o> Importer<'o> {
                     set_param(&mut d, "start", s);
                     set_param(&mut d, "end", e);
                 }
-                set_param(&mut d, "gain", 0.8 * get("amp", 100.0) / 100.0);
+                // Measured against LMMS: unity at 100% amplification.
+                self.level(&mut d, get("amp", 100.0) / 100.0);
                 let looped = get("looped", 0.0) as i32 != 0;
                 set_option(
                     &mut d,
@@ -772,6 +1411,155 @@ impl<'o> Importer<'o> {
                 ));
                 (d, PitchMode::Normal, 0)
             }
+            "sf2player" if has_instrument("soundfont") => {
+                // The same General MIDI patch on the built-in soundfont.
+                let mut d = Device::new("soundfont");
+                let patch = get("patch", 0.0).clamp(0.0, 127.0) as u8;
+                let program = if get("bank", 0.0) as i32 == 128 {
+                    rosaclef_core::gm::kit(patch)
+                } else {
+                    rosaclef_core::gm::PROGRAMS[patch as usize]
+                };
+                set_option(&mut d, "program", program);
+                set_param(&mut d, "gain", get("gain", 1.0));
+                let src = settings.map(|s| text(s, "src")).unwrap_or("");
+                let file = Path::new(src)
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                self.warn.add(format!(
+                    "track \"{track}\": SoundFont \"{file}\" was replaced by the built-in General MIDI \"{program}\""
+                ));
+                if get("reverbOn", 0.0) != 0.0 || get("chorusOn", 0.0) != 0.0 {
+                    self.warn.add(format!(
+                        "track \"{track}\": the Sf2 Player's own reverb and chorus were skipped"
+                    ));
+                }
+                (d, PitchMode::Normal, 0)
+            }
+            "OPL2" | "opl2" | "opulenz" => {
+                // Two-operator FM: operator 1 modulates operator 2 (or both
+                // sound, in additive mode). Levels count up to 63.
+                let mut d = Device::new("fm");
+                const MUL: [f64; 16] = [
+                    0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 10.0, 12.0, 12.0, 15.0,
+                    15.0,
+                ];
+                let mul = |k: &str| MUL[get(k, 1.0).clamp(0.0, 15.0) as usize];
+                set_param(&mut d, "ratio", mul("op1_mul") / mul("op2_mul"));
+                let depth = if get("fm", 1.0) != 0.0 {
+                    6.0 * get("op1_lvl", 40.0) / 63.0
+                } else {
+                    0.0
+                };
+                set_param(&mut d, "index", depth);
+                set_param(&mut d, "feedback", get("feedback", 0.0) / 7.0);
+                set_param(&mut d, "detune", 0.0);
+                // Envelope knobs count down the chip's rates (0 fastest);
+                // sustain counts up from -45 dB in 3 dB steps. A rate r
+                // decays 96 dB in about 39 s / 2^(r-1); Rosaclef times are
+                // to -40 dB.
+                let rate = |k: &str, d: f64| 15.0 - get(k, d).clamp(0.0, 15.0);
+                let fall = |r: f64| {
+                    if r < 1.0 {
+                        30.0
+                    } else {
+                        39.28 / 2f64.powf(r - 1.0) * 40.0 / 96.0
+                    }
+                };
+                let attack = match rate("op2_a", 14.0) {
+                    r if r >= 15.0 => 0.0005,
+                    r if r < 1.0 => 8.0,
+                    r => 2.826 / 2f64.powf(r - 1.0),
+                };
+                set_param(&mut d, "attack", attack);
+                set_param(&mut d, "decay", fall(rate("op2_d", 14.0)));
+                set_param(
+                    &mut d,
+                    "sustain",
+                    10f64.powf(-3.0 * (15.0 - get("op2_s", 3.0)) / 20.0),
+                );
+                set_param(&mut d, "release", 0.75 * fall(rate("op2_r", 10.0)));
+                set_param(&mut d, "indexDecay", fall(rate("op1_d", 14.0)));
+                // Measured against LMMS: a full-level carrier peaks at
+                // about -26 dBFS; levels are 0.75 dB steps.
+                let carrier = 10f64.powf(-(63.0 - get("op2_lvl", 63.0)) * 0.75 / 20.0);
+                self.level(&mut d, 0.17 * carrier);
+                self.warn.add(format!(
+                    "track \"{track}\": OpulenZ (OPL2) was approximated by Lumière (fm)"
+                ));
+                (d, PitchMode::Normal, 0)
+            }
+            "nes" => {
+                // Two pulse channels, a triangle and noise: the first two
+                // enabled become Aurum's oscillators.
+                let mut d = Device::new("synth");
+                let voices: Vec<(&str, f64, f64)> =
+                    [(1, "square"), (2, "square"), (3, "triangle"), (4, "noise")]
+                        .into_iter()
+                        .filter(|(i, _)| get(&format!("on{i}"), 0.0) != 0.0)
+                        .map(|(i, w)| {
+                            (
+                                w,
+                                get(&format!("vol{i}"), 15.0),
+                                get(&format!("crs{i}"), 0.0),
+                            )
+                        })
+                        .collect();
+                let mut transpose = 0;
+                match voices.first() {
+                    Some(a) => {
+                        transpose = a.2.round() as i32;
+                        set_option(&mut d, "wave1", a.0);
+                        match voices.get(1) {
+                            Some(b) => {
+                                set_option(&mut d, "wave2", b.0);
+                                set_param(&mut d, "osc2Semi", b.2 - a.2);
+                                set_param(&mut d, "osc2Detune", 0.0);
+                                set_param(&mut d, "osc2Mix", b.1 / a.1.max(1.0));
+                            }
+                            None => set_param(&mut d, "osc2Mix", 0.0),
+                        }
+                    }
+                    None => set_param(&mut d, "gain", 0.0),
+                }
+                self.envelope(it, &mut d);
+                self.warn.add(format!(
+                    "track \"{track}\": the NES synth was approximated by Aurum (synth); sweeps and vibrato were dropped"
+                ));
+                (d, PitchMode::Normal, transpose)
+            }
+            "bitinvader" => {
+                // A drawn single-cycle wave (base64 floats): use the basic
+                // waveform it resembles most.
+                let mut d = Device::new("synth");
+                let len = get("sampleLength", 128.0).max(0.0) as usize;
+                let shape: Option<Vec<f64>> = settings
+                    .and_then(|s| base64(text(s, "sampleShape")))
+                    .map(|b| {
+                        b.chunks_exact(4)
+                            .take(len)
+                            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f64)
+                            .filter(|v| v.is_finite())
+                            .collect()
+                    });
+                let wave = match shape {
+                    Some(s) if s.len() >= 4 => {
+                        let every = s.len().div_ceil(256);
+                        nearest_wave(&s.iter().step_by(every).copied().collect::<Vec<_>>())
+                    }
+                    _ => "saw",
+                };
+                set_option(&mut d, "wave1", wave);
+                set_param(&mut d, "osc2Mix", 0.0);
+                // Measured against LMMS: BitInvader peaks near -6 dBFS.
+                self.level(&mut d, 0.9);
+                self.envelope(it, &mut d);
+                self.warn.add(format!(
+                    "track \"{track}\": BitInvader's drawn waveform was approximated by a {wave} wave in Aurum (synth)"
+                ));
+                (d, PitchMode::Normal, 0)
+            }
             other => {
                 let mut d = Device::new("synth");
                 self.envelope(it, &mut d);
@@ -799,8 +1587,16 @@ impl<'o> Importer<'o> {
         match vol_env {
             Some(v) => {
                 set_param(d, "attack", secs(num_or(v, "att", 0.0)).max(0.001));
-                set_param(d, "decay", secs(num_or(v, "dec", 0.5)).max(0.001));
-                set_param(d, "sustain", 1.0 - num_or(v, "sus", 0.5));
+                // No hold stage in Rosaclef: the decay starts later instead.
+                let hold = secs(num_or(v, "hold", 0.0));
+                set_param(d, "decay", (hold + secs(num_or(v, "dec", 0.5))).max(0.001));
+                // LMMS 1.x saves `sustain`, the level (measured: the
+                // amplitude is its square); older files `sus`, inverted.
+                let sustain = match num(v, "sustain") {
+                    Some(s) => s.clamp(0.0, 1.0).powi(2),
+                    None => 1.0 - num_or(v, "sus", 0.5),
+                };
+                set_param(d, "sustain", sustain);
                 set_param(d, "release", secs(num_or(v, "rel", 0.1)).max(0.001));
             }
             None => {
@@ -840,27 +1636,25 @@ impl<'o> Importer<'o> {
     fn pitch(&self, key: i32, ch: &ChannelInfo) -> i32 {
         match ch.mode {
             PitchMode::Normal => {
-                key + KEY_TO_MIDI
-                    + (DEFAULT_BASE_NOTE - ch.base_note)
-                    + self.master_pitch
-                    + ch.transpose
+                let master = if ch.master_pitch {
+                    self.master_pitch
+                } else {
+                    0
+                };
+                key + KEY_TO_MIDI + (DEFAULT_BASE_NOTE - ch.base_note) + master + ch.transpose
             }
             PitchMode::Fixed => 60,
-            PitchMode::Relative => 60 + key - ch.base_note,
+            PitchMode::Relative => 60 + key - ch.base_note + ch.transpose,
         }
     }
 
-    /// Notes of an LMMS pattern, in beats relative to the pattern start.
+    /// Notes of an LMMS pattern, in beats relative to the pattern start,
+    /// with the track's chord stacking or arpeggio written out.
     fn notes(&mut self, pattern: Node, ch: &ChannelInfo, track: &str) -> Vec<Note> {
         let mut out = vec![];
-        let mut dropped = 0;
         for n in children(pattern, &["note"]) {
             let key = num_or(n, "key", DEFAULT_BASE_NOTE as f64).round() as i32;
             let pitch = self.pitch(key, ch);
-            if !(0..=127).contains(&pitch) {
-                dropped += 1;
-                continue;
-            }
             let len = num_or(n, "len", 48.0);
             let vol = num_or(n, "vol", 100.0);
             if vol > 100.0 {
@@ -878,6 +1672,22 @@ impl<'o> Importer<'o> {
                 velocity: clamp(vol / 100.0, 0.0, 1.0),
             });
         }
+        if let Some(arp) = &ch.arp {
+            out = arpeggiate(arp, out);
+        } else if ch.chord.len() > 1 {
+            out = out
+                .into_iter()
+                .flat_map(|n| {
+                    ch.chord.iter().map(move |k| Note {
+                        pitch: n.pitch + k,
+                        ..n.clone()
+                    })
+                })
+                .collect();
+        }
+        let before = out.len();
+        out.retain(|n| (0..=127).contains(&n.pitch));
+        let dropped = before - out.len();
         if dropped > 0 {
             self.warn.add(format!(
                 "track \"{track}\": {dropped} note(s) outside the MIDI range were dropped"
@@ -887,20 +1697,37 @@ impl<'o> Importer<'o> {
         out
     }
 
-    /// Length of an LMMS pattern in ticks.
+    /// Length of an LMMS pattern in ticks: its saved `len` (newer LMMS),
+    /// else what LMMS 1.x computes on load (`Pattern::updateLength`). A
+    /// pattern with any note of positive length is a melody pattern and
+    /// spans its notes; otherwise it is a beat pattern of `steps` 16ths
+    /// (and at least its last step). Both round up to whole bars.
     fn pattern_ticks(&self, pattern: Node) -> f64 {
         let len = num_or(pattern, "len", 0.0);
         if len > 0.0 {
             return len;
         }
-        let steps = num_or(pattern, "steps", 0.0);
-        if steps > 0.0 {
-            return steps * 12.0;
-        }
-        let end = children(pattern, &["note"])
-            .map(|n| num_or(n, "pos", 0.0) + num_or(n, "len", 12.0).max(12.0))
-            .fold(0.0, f64::max);
-        ((end / self.ticks_per_bar).ceil().max(1.0)) * self.ticks_per_bar
+        let notes: Vec<(f64, f64)> = children(pattern, &["note"])
+            .map(|n| (num_or(n, "pos", 0.0).max(0.0), num_or(n, "len", 48.0)))
+            .collect();
+        let melody = notes.iter().any(|n| n.1 > 0.0);
+        let end = if melody {
+            notes
+                .iter()
+                .filter(|n| n.1 > 0.0)
+                .map(|n| n.0 + n.1)
+                .fold(0.0, f64::max)
+        } else {
+            let steps = num_or(pattern, "steps", 0.0);
+            let last = notes.iter().map(|n| n.0 + 1.0).fold(0.0, f64::max);
+            if steps > 0.0 {
+                // One step is a 16th: 12 ticks.
+                (steps * 12.0).max(last)
+            } else {
+                last
+            }
+        };
+        (end / self.ticks_per_bar - 1e-9).ceil().max(1.0) * self.ticks_per_bar
     }
 
     fn has_steps(track: Node) -> bool {
@@ -1137,6 +1964,164 @@ impl<'o> Importer<'o> {
                 gain: clamp(vol / 100.0, 0.0, 4.0),
                 mixer,
             });
+        }
+    }
+
+    // ------------------------------------------------------------ automation
+
+    /// Turn the automation tracks into lanes. Every LMMS automation
+    /// pattern drives the controls it lists (`<object id>`); while it is
+    /// the latest one to have started it sets their value, and after its
+    /// end the value holds. Before the first pattern a control keeps its
+    /// saved value.
+    fn automation(&mut self, tracks: &[Node]) {
+        let mut by_control: Vec<(String, Vec<AutoClip>)> = vec![];
+        for t in tracks {
+            let patterns: Vec<Node> =
+                children(*t, &["automationpattern", "automationclip"]).collect();
+            if flag(*t, "muted") {
+                if !patterns.is_empty() {
+                    self.warn.add("a muted automation track was skipped");
+                }
+                continue;
+            }
+            for ap in patterns {
+                let mut points: Vec<(f64, f64)> = children(ap, &["time"])
+                    .map(|n| (num_or(n, "pos", 0.0).max(0.0), num_or(n, "value", 0.0)))
+                    .collect();
+                // Sorted by tick; a repeated tick keeps the last value.
+                points.sort_by(|a, b| a.0.total_cmp(&b.0));
+                points.reverse();
+                points.dedup_by(|a, b| a.0 == b.0);
+                points.reverse();
+                let mut ids: Vec<&str> = children(ap, &["object"])
+                    .filter_map(|o| o.attribute("id"))
+                    .collect();
+                ids.dedup();
+                if points.is_empty() || ids.is_empty() {
+                    continue;
+                }
+                let name = text(ap, "name");
+                if flag(ap, "mute") || flag(ap, "muted") {
+                    self.warn.add(format!(
+                        "the muted automation pattern \"{name}\" was skipped"
+                    ));
+                    continue;
+                }
+                let last = points.last().map(|p| p.0).unwrap_or(0.0);
+                let len = num_or(ap, "len", 0.0);
+                let clip = AutoClip {
+                    name: name.to_string(),
+                    start: num_or(ap, "pos", 0.0).max(0.0),
+                    len: if len > 0.0 { len } else { last },
+                    progression: num_or(ap, "prog", 0.0) as i32,
+                    points,
+                };
+                for id in ids {
+                    match by_control.iter_mut().find(|c| c.0 == id) {
+                        Some(c) => c.1.push(clip.clone()),
+                        None => by_control.push((id.to_string(), vec![clip.clone()])),
+                    }
+                }
+            }
+        }
+
+        let mut lane_ids = Ids::default();
+        let mut cubic = false;
+        for (id, mut clips) in by_control {
+            clips.sort_by(|a, b| a.start.total_cmp(&b.start));
+            let Some(model) = self.models.get(&id).cloned() else {
+                self.warn.add(format!(
+                    "automation \"{}\" was skipped: Rosaclef cannot automate that control",
+                    clips[0].name
+                ));
+                continue;
+            };
+            let Ok(info) = model.target.resolve(&self.project) else {
+                continue;
+            };
+            let target = model.target.to_string();
+            if self.project.automation.iter().any(|l| l.target == target) {
+                self.warn.add(format!(
+                    "automation \"{}\" was skipped: another lane already drives {target}",
+                    clips[0].name
+                ));
+                continue;
+            }
+            cubic |= clips.iter().any(|c| c.progression == 2);
+            let base = model.target.base_value(&self.project).unwrap_or(info.min);
+            let conv = |v: f64| clamp(v * model.scale, info.min, info.max);
+            let at = |tick: f64| beats(tick, TICKS_PER_BEAT);
+            let point = |beat: f64, value: f64| AutomationPoint {
+                beat,
+                value,
+                curve: 0.0,
+            };
+            let mut pts: Vec<AutomationPoint> = vec![];
+            if clips[0].start > 0.0 {
+                pts.push(point(0.0, base));
+            }
+            for (i, c) in clips.iter().enumerate() {
+                // The pattern rules until the next one starts or it ends.
+                let stop = match clips.get(i + 1) {
+                    Some(next) => (next.start - c.start).min(c.len),
+                    None => c.len,
+                };
+                if let Some(last) = pts.last().copied() {
+                    if last.beat < at(c.start) {
+                        pts.push(point(at(c.start), last.value));
+                    }
+                }
+                let mut prev = conv(c.value_at(0.0));
+                pts.push(point(at(c.start), prev));
+                for &(tick, v) in &c.points {
+                    if tick <= 0.0 || tick >= stop {
+                        continue;
+                    }
+                    let v = conv(v);
+                    if c.progression == 0 {
+                        // Discrete: a vertical step.
+                        if v != prev {
+                            pts.push(point(at(c.start + tick), prev));
+                            pts.push(point(at(c.start + tick), v));
+                        }
+                    } else {
+                        pts.push(point(at(c.start + tick), v));
+                    }
+                    prev = v;
+                }
+                if stop > 0.0 {
+                    pts.push(point(at(c.start + stop), conv(c.value_at(stop))));
+                }
+            }
+            // Drop points in the middle of flat stretches, and a flat end
+            // (a lane holds its last value).
+            let pts: Vec<AutomationPoint> = (0..pts.len())
+                .filter(|&i| {
+                    i == 0
+                        || pts[i - 1].value != pts[i].value
+                        || pts.get(i + 1).is_some_and(|n| n.value != pts[i].value)
+                })
+                .map(|i| pts[i])
+                .collect();
+            if pts.iter().all(|p| p.value == base) {
+                continue;
+            }
+            // LMMS names patterns after their first control, which goes
+            // stale when they are reconnected: name the lane by its target.
+            let name = info.label.clone();
+            self.project.automation.push(AutomationLane {
+                id: lane_ids.make(&name),
+                name,
+                target,
+                color: model.color.clone(),
+                mute: false,
+                points: pts,
+            });
+        }
+        if cubic {
+            self.warn
+                .add("cubic automation curves were approximated by straight lines");
         }
     }
 
