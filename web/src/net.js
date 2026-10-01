@@ -1,7 +1,7 @@
 // Connection to the Rosaclef server: project sync, native engine status.
 
 import { connectRaw, wsUrl, loadPref, savePref, now } from "#platform";
-import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel } from "./store.js";
+import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel, dockName } from "./store.js";
 import { toast } from "./ui/toast.js";
 import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
 import { decodeProject, encodeClipWire, barBeat } from "./model.js";
@@ -167,7 +167,7 @@ export function sendContext() {
     t: "context",
     context: {
       focus: state.focus,
-      dock: state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : state.dock === "voice" ? "voice to notes" : "channel rack",
+      dock: dockName(state.dock),
       transport: {
         playing: state.playing,
         mode: state.mode,

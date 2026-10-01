@@ -71,7 +71,7 @@ with what the producer is doing. **Read it whenever they say "this", "here",
 "these notes", "the selected…", "what I just did", or refer to a part of the
 song without naming it.** Fields (full schema in `.rosaclef/context.schema.json`):
 
-- `focus` — panel they last touched: `playlist`, `channel rack`, `piano roll`, `voice to notes`, `mixer`, `browser`, `agent`.
+- `focus` — panel they last touched: `playlist`, `score`, `channel rack`, `piano roll`, `voice to notes`, `mixer`, `browser`, `agent`.
 - `transport` — `playing`, `mode` (`song` / `pattern`), playhead `positionBeats` and `position` (`bar:beat:tick`), `bpm`.
 - `selection` — the selected `pattern`, `channel`, mixer `insert` and playlist `track`; `notes`
   (selected notes of the selected pattern, each with its `index` in that pattern's `notes`) and
@@ -260,6 +260,30 @@ Examples:
 { "id": "fade-out", "name": "Fade out", "target": "insert/0/volume",
   "points": [ { "beat": 224, "value": 1 }, { "beat": 256, "value": 0, "curve": -0.4 } ] }
 ```
+
+### Sheet music (`score`)
+
+The studio's **Score** view writes the song (or one playlist track, or one pattern) as sheet
+music: one staff per channel, measures from the meters, notes quantized for reading. The
+optional top-level `score` object says how it reads; it changes nothing that plays.
+
+```jsonc
+"score": {
+  "key": "Eb",                       // key signature: "auto" (default, guessed), "C", "F#", "Bb", "Am", "C#m", ...
+  "hidden": ["hats"],                // channels whose staves are hidden
+  "hiddenTracks": [5],               // playlist tracks left out of the song's score
+  "clefs": { "keys": "grand", "bass": "bass" },  // auto, treble, treble8vb, bass, alto, grand, percussion
+  "marks": [                         // colored passages
+    { "start": 32, "end": 64, "color": "#c97b84", "label": "Chorus" },
+    { "pattern": "lead", "start": 4, "end": 8, "color": "#3f8f7a", "label": "Motif", "channels": ["lead"] }
+  ]
+}
+```
+
+- A mark's `start` / `end` are song beats, or, with `pattern`, beats of that pattern — the
+  passage is then colored wherever the pattern plays. `channels` limits it to some staves.
+- When the producer asks to "highlight", "color" or "label" a passage, add a mark; to show or
+  hide an instrument in the score, edit `hidden`.
 
 ## Musical craft
 

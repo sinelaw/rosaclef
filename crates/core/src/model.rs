@@ -70,6 +70,79 @@ pub struct Project {
     /// filter sweeps, fades). See [`crate::automation`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub automation: Vec<AutomationLane>,
+    /// How the song reads as sheet music: the key, which parts show, clefs
+    /// and colored passages. It changes nothing that plays.
+    #[serde(default, skip_serializing_if = "Score::is_empty")]
+    pub score: Score,
+}
+
+/// Sheet-music settings (the studio's Score view). Notes stay in the
+/// patterns; this only says how to write them down.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Score {
+    /// Key signature: `auto` (or empty: guessed from the notes), or a key
+    /// such as `C`, `Eb`, `F#`, `Am`, `C#m` (see [`SCORE_KEYS`]).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub key: String,
+    /// Channels whose staves are hidden.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hidden: Vec<String>,
+    /// Playlist tracks left out of the song's score.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hidden_tracks: Vec<TrackIx>,
+    /// Clef per channel id (see [`SCORE_CLEFS`]); unlisted channels pick one
+    /// from their range.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub clefs: BTreeMap<String, String>,
+    /// Colored passages.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub marks: Vec<ScoreMark>,
+}
+
+impl Score {
+    pub fn is_empty(&self) -> bool {
+        *self == Score::default()
+    }
+}
+
+/// Key signatures a score may name (minor keys end in `m`).
+pub const SCORE_KEYS: &[&str] = &[
+    "auto", "C", "G", "D", "A", "E", "B", "F#", "C#", "F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb",
+    "Am", "Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m", "Dm", "Gm", "Cm", "Fm", "Bbm", "Ebm",
+    "Abm",
+];
+
+/// Clefs a staff may use: `grand` is a piano's treble + bass pair.
+pub const SCORE_CLEFS: &[&str] = &[
+    "auto",
+    "treble",
+    "treble8vb",
+    "bass",
+    "alto",
+    "grand",
+    "percussion",
+];
+
+/// A colored passage of the score: from `start` to `end` (beats), on some
+/// channels or all of them.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScoreMark {
+    /// Start, in beats: song time, or pattern time when `pattern` is set.
+    pub start: f64,
+    /// End, in beats (after `start`).
+    pub end: f64,
+    pub color: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub label: String,
+    /// A pattern id: the passage is in that pattern's time and colors it
+    /// wherever it plays. Empty: song time.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pattern: String,
+    /// Channel ids the color applies to; empty = every staff.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub channels: Vec<String>,
 }
 
 /// One automation lane: a breakpoint curve driving a single target over the
@@ -415,6 +488,7 @@ impl Project {
             },
             mixer: Mixer { inserts },
             automation: vec![],
+            score: Score::default(),
         }
     }
 

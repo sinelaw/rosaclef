@@ -1,7 +1,8 @@
 // The studio shell: composes every panel into one description tree.
 
 import { drag, fmt } from "#platform";
-import { state, invalidate, setFocus } from "../store.js";
+import { state, invalidate, setFocus, dockName } from "../store.js";
+import { scoreView, scoreTools, topScore, dockScore } from "./score.js";
 import { topbar } from "./topbar.js";
 import { browser } from "./browser.js";
 import { rack, rackTools } from "./rack.js";
@@ -30,6 +31,7 @@ import {
   saveLayout,
   isCompact,
   setView,
+  setTop,
 } from "./panes.js";
 
 /** function px(v: Number) => String */
@@ -65,6 +67,18 @@ function navItem(b, key, label, icon, on, dot, onClick) {
   b.close();
 }
 
+/** A tab of the top pane: the playlist or the score. */
+/** function topTab(b: Builder, id: String, label: String, icon: String, mode: String) => Undefined */
+function topTab(b, id, label, icon, mode) {
+  const on = layoutState.top === id;
+  b.open("button", `t-${id}`, on ? "tab on" : "tab");
+  b.attr("title", mode === "min" ? `${label} — click to restore` : on ? `${label} — double-click to maximize` : `Show the ${label.toLowerCase()} here`);
+  b.on("click", (e) => setTop(id));
+  glyph(b, icon);
+  b.leaf("span", "l", "", label);
+  b.close();
+}
+
 /** The phone layout's bottom navigation: one view at a time. */
 /** function navBar(b: Builder) => Undefined */
 function navBar(b) {
@@ -76,6 +90,7 @@ function navBar(b) {
   navItem(b, "piano", "Piano", "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
   navItem(b, "voice", "Voice", "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
   navItem(b, "mixer", "Mixer", "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
+  navItem(b, "score", "Score", "score", v === "dock" && state.dock === "score", "", () => openDock("score"));
   navItem(b, "agent", "Maestro", "spark", v === "agent", agentDot(), () => setView("agent"));
   b.close();
 }
@@ -119,25 +134,22 @@ export function studio(b) {
   }
 
   const plMode = compact ? "open" : workMode("playlist");
+  const top = layoutState.top;
   b.open("section", "top", `pane pane-top ${plMode}`);
-  b.on("pointerdown", (e) => setFocus("playlist"));
+  b.on("pointerdown", (e) => setFocus(top === "score" ? "score" : "playlist"));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "playlist");
-  b.open("div", "t", "tab on");
-  b.attr("title", plMode === "min" ? "Playlist — click to restore" : "Playlist — double-click to maximize");
-  b.on("click", (e) => {
-    if (workMode("playlist") === "min") setWork("playlist", "open");
-  });
-  glyph(b, "playlist");
-  b.leaf("span", "l", "", "Playlist");
-  b.close();
+  topTab(b, "playlist", "Playlist", "playlist", plMode);
+  topTab(b, "score", "Score", "score", plMode);
   b.open("div", "tools", "tools");
-  playlistTools(b);
+  if (top === "score") scoreTools(b, topScore);
+  else playlistTools(b);
   b.close();
   paneControls(b, "playlist");
   b.close();
   b.open("div", "body", "dock-body");
-  playlist(b);
+  if (top === "score") scoreView(b, topScore);
+  else playlist(b);
   b.close();
   b.close();
 
@@ -163,19 +175,19 @@ export function studio(b) {
   });
 
   b.open("section", "dock", `pane pane-dock ${compact ? "open" : workMode("dock")}`);
-  b.on("pointerdown", (e) =>
-    setFocus(state.dock === "piano" ? "piano roll" : state.dock === "mixer" ? "mixer" : state.dock === "voice" ? "voice to notes" : "channel rack")
-  );
+  b.on("pointerdown", (e) => setFocus(dockName(state.dock)));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "dock");
   tab(b, "rack", "Channel Rack", "rack", "F6");
   tab(b, "piano", "Piano Roll", "piano", "F7");
   tab(b, "voice", "Voice", "mic", "F8");
   tab(b, "mixer", "Mixer", "mixer", "F9");
+  tab(b, "score", "Score", "score", "F10");
   b.open("div", "tools", "tools");
   if (state.dock === "rack") rackTools(b);
   else if (state.dock === "piano") pianoTools(b);
   else if (state.dock === "voice") voiceTools(b);
+  else if (state.dock === "score") scoreTools(b, dockScore);
   else mixerTools(b);
   b.close();
   paneControls(b, "dock");
@@ -185,6 +197,7 @@ export function studio(b) {
   if (state.dock === "rack") rack(b);
   else if (state.dock === "piano") pianoRoll(b);
   else if (state.dock === "voice") voicePanel(b);
+  else if (state.dock === "score") scoreView(b, dockScore);
   else mixer(b);
   b.close();
   b.close();
@@ -239,7 +252,7 @@ function hintBar(b) {
     "hint",
     state.hint !== ""
       ? state.hint
-      : "Space plays · Z–/ and Q–[ play notes · Shift+L pattern/song · Shift+R records · F6 rack · F7 piano roll · F8 voice · F9 mixer · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
+      : "Space plays · Z–/ and Q–[ play notes · Shift+L pattern/song · Shift+R records · F6 rack · F7 piano roll · F8 voice · F9 mixer · F10 score · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
   );
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");

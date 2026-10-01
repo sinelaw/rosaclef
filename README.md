@@ -113,6 +113,36 @@ The analysis runs in Rust
 (`crates/studio/src/transcribe.rs`, `GET /api/transcribe?path=…&mode=melody|drums`),
 natively or in the browser-only build.
 
+## Sheet music
+
+The **Score** tab beside the playlist writes the whole song as engraved sheet
+music, and the dock's **Score** (F10, or the score button in the piano roll)
+does the same for the pattern in the piano roll — or any playlist track or
+pattern, picked from its menu.
+
+- **Engraved, not drawn**: one staff per instrument (a grand staff for wide
+  piano parts, one drum staff for the drum channels with the drummer's
+  noteheads), measures from the meters, a key signature (guessed, or set),
+  pitches spelled in the key, durations split to show the beat and tied,
+  triplets, beams, multi-measure rests. Glyphs come from the
+  [Bravura](web/fonts/Bravura-OFL.txt) music font (SMuFL, SIL OFL); spacing
+  follows durations on columns shared by every staff, systems are chosen for
+  the whole piece at once and justified, and staves are spaced by their ink.
+- **Parts**: show or hide instruments, leave playlist tracks out, pick a clef,
+  hide staves that rest (as in orchestral scores); paper or night ink.
+- **PDF**: download what the view shows as vector pages ready to print (A4,
+  or US Letter in the US and Canada), paginated with a title page heading.
+- **Colors**: drag across the music to color a passage (on some staves or
+  all) and label it; a passage colored in a pattern is colored wherever the
+  pattern plays.
+- **Editing**: click notes to select them (they are the piano roll's
+  selection), drag them up or down by step and along the bar, delete or
+  transpose them, or switch to **Write** and click notes in with a chosen
+  value. Everything is undoable and plays at once.
+
+The settings live in `project.json` under `score`, so the agent can set the
+key, hide parts or color a chorus too.
+
 ## Sampled instruments
 
 **Orchestre** (`"type": "soundfont"`) plays sampled instruments: the 128

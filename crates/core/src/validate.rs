@@ -6,7 +6,7 @@
 
 use crate::automation::AutomationTarget;
 use crate::catalog::{self, Category, DeviceSpec};
-use crate::model::{Device, Project, FORMAT};
+use crate::model::{Device, Project, FORMAT, SCORE_CLEFS, SCORE_KEYS};
 use serde::Serialize;
 use std::collections::HashSet;
 
@@ -376,7 +376,81 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     }
 
     check_automation(&mut v, p);
+    check_score(&mut v, p);
     v.issues
+}
+
+fn check_score(v: &mut V, p: &Project) {
+    let sc = &p.score;
+    if !sc.key.is_empty() && !SCORE_KEYS.contains(&sc.key.as_str()) {
+        v.err(
+            "score.key",
+            format!(
+                "unknown key {:?}: use auto or one of {}",
+                sc.key,
+                SCORE_KEYS[1..].join(", ")
+            ),
+        );
+    }
+    for (i, id) in sc.hidden.iter().enumerate() {
+        if p.channel(id).is_none() {
+            v.warn(
+                format!("score.hidden[{i}]"),
+                format!("channel {id:?} does not exist"),
+            );
+        }
+    }
+    for (i, t) in sc.hidden_tracks.iter().enumerate() {
+        if t.index() >= p.playlist.tracks.len() {
+            v.warn(
+                format!("score.hiddenTracks[{i}]"),
+                format!("track {t} does not exist"),
+            );
+        }
+    }
+    for (id, clef) in &sc.clefs {
+        if p.channel(id).is_none() {
+            v.warn(
+                format!("score.clefs.{id}"),
+                format!("channel {id:?} does not exist"),
+            );
+        }
+        if !SCORE_CLEFS.contains(&clef.as_str()) {
+            v.err(
+                format!("score.clefs.{id}"),
+                format!(
+                    "unknown clef {clef:?}: use one of {}",
+                    SCORE_CLEFS.join(", ")
+                ),
+            );
+        }
+    }
+    for (i, m) in sc.marks.iter().enumerate() {
+        let path = format!("score.marks[{i}]");
+        if !(m.start >= 0.0 && m.start.is_finite()) {
+            v.err(format!("{path}.start"), "start must be >= 0");
+        }
+        if !(m.end > m.start && m.end.is_finite()) {
+            v.err(format!("{path}.end"), "end must come after start");
+        }
+        if !valid_color(&m.color) {
+            v.err(format!("{path}.color"), "colors are #rrggbb hex strings");
+        }
+        if !m.pattern.is_empty() && p.pattern(&m.pattern).is_none() {
+            v.err(
+                format!("{path}.pattern"),
+                format!("pattern {:?} does not exist", m.pattern),
+            );
+        }
+        for (j, id) in m.channels.iter().enumerate() {
+            if p.channel(id).is_none() {
+                v.err(
+                    format!("{path}.channels[{j}]"),
+                    format!("channel {id:?} does not exist"),
+                );
+            }
+        }
+    }
 }
 
 fn check_automation(v: &mut V, p: &Project) {

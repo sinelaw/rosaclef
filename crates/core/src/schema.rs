@@ -3,7 +3,7 @@
 
 use crate::automation;
 use crate::catalog::{self, Category, DeviceSpec};
-use crate::model::FORMAT;
+use crate::model::{FORMAT, SCORE_CLEFS, SCORE_KEYS};
 use serde_json::{json, Map, Value};
 
 pub const SCHEMA_ID: &str = "https://rosaclef.dev/schema/project-v1.json";
@@ -165,6 +165,22 @@ pub fn schema() -> Value {
                 "type": "array",
                 "description": "Automation lanes: breakpoint curves that drive one value each (tempo, a mix control or a device parameter) over song time. Applied while the song plays in song mode and in renders.",
                 "items": {"$ref": "#/$defs/automationLane"}
+            },
+            "score": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "How the song reads as sheet music in the studio's Score view. Changes nothing that plays.",
+                "properties": {
+                    "key": {"type": "string", "enum": SCORE_KEYS, "default": "auto", "description": "Key signature; auto guesses it from the notes. Minor keys end in m (Am, F#m)."},
+                    "hidden": {"type": "array", "items": {"type": "string"}, "description": "Channel ids whose staves are hidden."},
+                    "hiddenTracks": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Playlist tracks left out of the song's score."},
+                    "clefs": {
+                        "type": "object",
+                        "additionalProperties": {"type": "string", "enum": SCORE_CLEFS},
+                        "description": "Clef per channel id (grand = a piano's treble and bass staves). Unlisted channels pick one from their range."
+                    },
+                    "marks": {"type": "array", "items": {"$ref": "#/$defs/scoreMark"}}
+                }
             }
         },
         "$defs": {
@@ -267,6 +283,20 @@ pub fn schema() -> Value {
                         "description": "Breakpoints sorted by beat. Before the first point the lane holds its first value, after the last point its last value. Two points on the same beat make a step.",
                         "items": {"$ref": "#/$defs/automationPoint"}
                     }
+                }
+            },
+            "scoreMark": {
+                "type": "object",
+                "required": ["start", "end", "color"],
+                "additionalProperties": false,
+                "description": "A colored passage of the score.",
+                "properties": {
+                    "start": {"type": "number", "minimum": 0, "description": "Start in beats: song time, or pattern time when pattern is set."},
+                    "end": {"type": "number", "description": "End in beats (after start)."},
+                    "color": color,
+                    "label": {"type": "string", "description": "Shown above the passage."},
+                    "pattern": {"type": "string", "description": "Pattern id: the passage is in that pattern's time and is colored wherever the pattern plays."},
+                    "channels": {"type": "array", "items": {"type": "string"}, "description": "Channel ids to color; empty or missing = every staff."}
                 }
             },
             "automationPoint": {

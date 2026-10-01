@@ -15,6 +15,7 @@ import { auto, closeMenu } from "./automation.js";
 import { openDock, paneShortcut } from "./ui/panes.js";
 import { keyboard, pressKey, releaseKey, typedPitch, shiftTyped, toggleRecordKeys } from "./ui/keyboard.js";
 import { voice, startTake, stopTake } from "./ui/voice.js";
+import { setScoreTool, cancelScoreRange } from "./ui/score.js";
 
 /** Computer keys holding a note, by `code`. */
 /** const held: String[] */
@@ -29,6 +30,8 @@ function letterShortcut(c) {
   else if (c === "r") record();
   else if (c === "m") toggleMetronome();
   else if (c === "q" && state.dock === "piano") quantize();
+  else if (c === "p" && state.focus === "score") setScoreTool("write");
+  else if (c === "e" && state.focus === "score") setScoreTool("select");
   else if (c === "p" && state.dock === "piano") setTool("draw");
   else if (c === "e" && state.dock === "piano") setTool("select");
   else return false;
@@ -88,6 +91,7 @@ export function installKeys() {
       togglePlay();
     } else if (k === "Escape") {
       if (auto.menu.open) closeMenu();
+      else if (cancelScoreRange()) return undefined;
       else if (voice.status === "recording") stopTake();
       else if (keyboard.armed) toggleRecordKeys();
       else stop();
@@ -103,10 +107,13 @@ export function installKeys() {
     } else if (k === "F9") {
       e.preventDefault();
       openDock("mixer");
+    } else if (k === "F10") {
+      e.preventDefault();
+      openDock("score");
     } else if (k === "Delete" || k === "Backspace") {
-      if (state.dock === "piano" && state.selection.length > 0) deleteSelection();
+      if ((state.dock === "piano" || state.focus === "score") && state.selection.length > 0) deleteSelection();
       else deleteSelectedClips();
-    } else if (state.dock === "piano" && (k === "ArrowUp" || k === "ArrowDown")) {
+    } else if ((state.dock === "piano" || state.focus === "score") && (k === "ArrowUp" || k === "ArrowDown")) {
       e.preventDefault();
       transpose((k === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 12 : 1));
     }
