@@ -1495,6 +1495,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rosaclef-vocal"
+version = "0.1.0"
+dependencies = [
+ "rosaclef-core",
+ "rosaclef-phonetics",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rosaclef-wasm"
 version = "0.1.0"
 dependencies = [

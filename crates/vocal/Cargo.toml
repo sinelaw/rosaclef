@@ -1,0 +1,12 @@
+[package]
+name = "rosaclef-vocal"
+description = "Rosaclef's sung lines: lyrics on timed notes, and the singing, karaoke and notation formats made from them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rosaclef-core.workspace = true
+rosaclef-phonetics.workspace = true
+serde.workspace = true
+serde_json.workspace = true

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/engine", "crates/fs", "crates/studio", "crates/wasm", "crates/local", "crates/server", "crates/clap-host", "crates/clap-testplug", "crates/import", "crates/phonetics"]
-default-members = ["crates/core", "crates/engine", "crates/fs", "crates/studio", "crates/server", "crates/clap-host", "crates/import", "crates/phonetics"]
+members = ["crates/core", "crates/engine", "crates/fs", "crates/studio", "crates/wasm", "crates/local", "crates/server", "crates/clap-host", "crates/clap-testplug", "crates/import", "crates/phonetics", "crates/vocal"]
+default-members = ["crates/core", "crates/engine", "crates/fs", "crates/studio", "crates/server", "crates/clap-host", "crates/import", "crates/phonetics", "crates/vocal"]
 
 [workspace.package]
 version = "0.1.0"
@@ -17,6 +17,7 @@ rosaclef-core = { path = "crates/core" }
 rosaclef-engine = { path = "crates/engine" }
 rosaclef-import = { path = "crates/import" }
 rosaclef-phonetics = { path = "crates/phonetics" }
+rosaclef-vocal = { path = "crates/vocal" }
 rosaclef-fs = { path = "crates/fs" }
 rosaclef-studio = { path = "crates/studio" }
 
