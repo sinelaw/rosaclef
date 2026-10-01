@@ -25,9 +25,9 @@ if (await page.isVisible('.seg button:has-text("Studio")')) throw new Error("the
 const before = await page.textContent(".lcd.static .lcd-value");
 await page.mouse.click(700, 400);
 await page.keyboard.press("Space");
-await page.waitForTimeout(1500);
+// Playing moves the playhead (shown in the song position display).
+await page.waitForFunction((b) => document.querySelector(".lcd.static .lcd-value")?.textContent !== b, before, { timeout: 20000 });
 await page.keyboard.press("Space");
-if ((await page.textContent(".lcd.static .lcd-value")) === before) throw new Error("the playhead did not move");
 ok("it plays");
 
 await page.click(".agent-choice");

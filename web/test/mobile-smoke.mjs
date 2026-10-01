@@ -16,16 +16,33 @@ const assert = (c, m) => {
   if (!c) throw new Error(m);
   console.log("ok  ", m);
 };
+// Waits for a condition in the page (no fixed sleeps), then reports it.
+const until = async (page, fn, arg, m) => {
+  await page.waitForFunction(fn, arg, { timeout: 10000 }).catch(() => {
+    throw new Error(`timed out: ${m}`);
+  });
+  console.log("ok  ", m);
+};
+const frame = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(true))));
+// Every finite CSS transition and animation has finished (panels in place); endless ones (a pulsing dot) do not count.
+const settled = (page) =>
+  page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running" || a.effect.getComputedTiming().endTime === Infinity), null, {
+    timeout: 10000,
+  });
 async function open(opts) {
   const ctx = await browser.newContext(opts);
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto(base);
   await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
-  await page.waitForTimeout(500);
+  // The store module, to wait on the app's state.
+  await page.evaluate(async () => {
+    window.__store = await import("/src/store.js");
+  });
   return page;
 }
 const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").length);
+const keysDown = (sel, n) => [(a) => document.querySelectorAll(a.sel).length === a.n, { sel: sel, n: n }];
 
 // ---- phone
 {
@@ -43,19 +60,22 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
     { x: kb.x + w.width * 0.5, y, id: 1 },
     { x: kb.x + w.width * 2.5, y, id: 2 },
   ]);
-  await page.waitForTimeout(100);
-  assert((await page.locator(".kb-white.down").count()) === 2, "two fingers hold two keys");
+  await until(page, ...keysDown(".kb-white.down", 2), "two fingers hold two keys");
   await touch("touchEnd", [{ x: kb.x + w.width * 2.5, y, id: 2 }]);
-  await page.waitForTimeout(100);
-  assert((await page.locator(".kb-white.down").count()) === 1, "lifting one finger keeps the other key");
+  await until(page, ...keysDown(".kb-white.down", 1), "lifting one finger keeps the other key");
   const before = await page.evaluate(() => [...document.querySelectorAll(".kb-white")].findIndex((e) => e.classList.contains("down")));
   for (let i = 1; i <= 8; i++) await touch("touchMove", [{ x: kb.x + w.width * (0.5 + i * 0.5), y, id: 1 }]);
-  await page.waitForTimeout(100);
-  const after = await page.evaluate(() => [...document.querySelectorAll(".kb-white")].findIndex((e) => e.classList.contains("down")));
-  assert(before === 0 && after === 4 && (await page.locator(".kb-white.down").count()) === 1, `sliding moves the note (glissando) ${before}->${after}`);
+  assert(before === 0, "the first finger holds the first key");
+  await until(
+    page,
+    () =>
+      document.querySelectorAll(".kb-white.down").length === 1 &&
+      [...document.querySelectorAll(".kb-white")].findIndex((e) => e.classList.contains("down")) === 4,
+    null,
+    "sliding moves the note (glissando)"
+  );
   await touch("touchEnd", []);
-  await page.waitForTimeout(100);
-  assert((await page.locator(".kb-white.down, .kb-black.down").count()) === 0, "all keys released");
+  await until(page, ...keysDown(".kb-white.down, .kb-black.down", 0), "all keys released");
 
   // swipe on the playlist scrolls, adds nothing
   const grid = await page.locator(".pl .scroller").last().boundingBox();
@@ -65,23 +85,18 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   await touch("touchStart", [{ x: sx, y: sy, id: 3 }]);
   for (let i = 1; i <= 10; i++) {
     await touch("touchMove", [{ x: sx - i * 20, y: sy + i * 3, id: 3 }]);
-    await page.waitForTimeout(16);
+    await frame(page);
   }
   await touch("touchEnd", []);
-  await page.waitForTimeout(400);
-  const sl = await page.evaluate(() => [...document.querySelectorAll(".pl .scroller")].map((e) => e.scrollLeft));
+  await until(page, () => [...document.querySelectorAll(".pl .scroller")].some((e) => e.scrollLeft > 0), null, "a swipe scrolls the playlist");
+  await frame(page);
   assert((await clips(page)) === n0, `a swipe adds no clip (${n0})`);
-  assert(
-    sl.some((v) => v > 0),
-    `a swipe scrolls the playlist (${sl})`
-  );
   // a tap on an empty cell paints a clip
   await touch("touchStart", [{ x: grid.x + grid.width * 0.5, y: grid.y + 30, id: 4 }]);
   await touch("touchEnd", []);
-  await page.waitForTimeout(400);
-  assert((await clips(page)) === n0 + 1, "a tap paints a clip");
+  await until(page, (n) => document.querySelectorAll(".clip").length === n, n0 + 1, "a tap paints a clip");
   await page.keyboard.press("Control+z");
-  await page.waitForTimeout(300);
+  await until(page, (n) => document.querySelectorAll(".clip").length === n, n0, "Ctrl+Z takes it back");
 
   // nav: browser pattern double-click reveals the piano roll
   await page.click(".nav-item[aria-label=Browser]");
@@ -91,23 +106,33 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
     .first()
     .dblclick()
     .catch(() => {});
-  await page.waitForTimeout(300);
-  assert(await page.evaluate(() => document.querySelector(".studio").className.includes("v-dock")), "double-clicking a pattern switches to the dock");
+  await until(page, () => document.querySelector(".studio").className.includes("v-dock"), null, "double-clicking a pattern switches to the dock");
   await page.click(".nav-item[aria-label=Maestro]");
-  await page.waitForTimeout(300);
-  assert((await page.locator(".keyboard").count()) === 0, "no keys over the terminal");
+  await until(
+    page,
+    () => document.querySelector(".studio").className.includes("v-agent") && !document.querySelector(".keyboard"),
+    null,
+    "no keys over the terminal"
+  );
   // The keys make room where they do not help, and come back where they do.
   for (const view of ["Mixer", "Voice"]) {
     await page.click(`.nav-item[aria-label=${view}]`);
-    await page.waitForTimeout(300);
-    assert((await page.locator(".keyboard").count()) === 0, `no keys under the ${view.toLowerCase()}`);
+    await until(
+      page,
+      (v) => document.querySelector(`.nav-item[aria-label=${v}]`).classList.contains("on") && !document.querySelector(".keyboard"),
+      view,
+      `no keys under the ${view.toLowerCase()}`
+    );
   }
   await page.click(".nav-item[aria-label=Rack]");
-  await page.waitForTimeout(300);
-  assert((await page.locator(".keyboard").count()) === 1, "the keys are back under the rack");
+  await until(page, () => document.querySelectorAll(".keyboard").length === 1, null, "the keys are back under the rack");
   // Everything in the Voice panel can be scrolled to, uncovered, on a phone.
   await page.click(".nav-item[aria-label=Voice]");
-  await page.waitForTimeout(300);
+  await page.waitForSelector(".voice");
+  // A notice (the first visit's welcome) would cover the bottom of the panel: dismiss it.
+  for (const t of await page.locator(".toast").all()) await t.click();
+  await page.waitForFunction(() => document.querySelector(".toast") === null, null, { timeout: 10000 });
+  await settled(page);
   const hidden = await page.evaluate(() => {
     const out = [];
     for (const el of document.querySelectorAll(".voice button, .voice select, .voice .knob")) {
@@ -136,49 +161,34 @@ const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").l
   const grid = await page.locator(".pl .scroller").last().boundingBox();
   const n0 = await clips(page);
   await page.mouse.click(grid.x + 30, grid.y + 30);
-  await page.waitForTimeout(300);
-  assert((await clips(page)) === n0 + 1, "desktop: a click paints a clip");
+  await until(page, (n) => document.querySelectorAll(".clip").length === n, n0 + 1, "desktop: a click paints a clip");
   const k = await page.locator(".kb-white").nth(3).boundingBox();
   await page.mouse.move(k.x + k.width / 2, k.y + k.height * 0.8);
   await page.mouse.down();
-  await page.waitForTimeout(80);
-  assert((await page.locator(".kb-white.down").count()) === 1, "desktop: mouse plays a key");
+  await until(page, ...keysDown(".kb-white.down", 1), "desktop: mouse plays a key");
   await page.mouse.up();
-  await page.waitForTimeout(80);
-  assert((await page.locator(".kb-white.down").count()) === 0, "desktop: mouse releases it");
+  await until(page, ...keysDown(".kb-white.down", 0), "desktop: mouse releases it");
   await page.mouse.click(700, 300);
   await page.keyboard.down("z");
-  await page.waitForTimeout(80);
-  assert((await page.locator(".kb-white.down").count()) === 1, "desktop: the Z key lights C4");
+  await until(page, ...keysDown(".kb-white.down", 1), "desktop: the Z key lights C4");
   await page.keyboard.up("z");
+  await until(page, ...keysDown(".kb-white.down", 0), "desktop: and releases it");
   // The Q row plays too; letter shortcuts take Shift; the record button writes steps into the piano roll.
   await page.keyboard.down("q");
-  await page.waitForTimeout(80);
-  assert((await page.locator(".kb-white.down").count()) === 1, "desktop: Q plays a key");
+  await until(page, ...keysDown(".kb-white.down", 1), "desktop: Q plays a key");
   await page.keyboard.up("q");
-  const mode = () => page.evaluate(async () => (await import("/src/store.js")).state.mode);
-  const mode0 = await mode();
+  const mode0 = await page.evaluate(() => window.__store.state.mode);
   await page.keyboard.press("Shift+L");
-  await page.waitForTimeout(80);
-  assert((await mode()) !== mode0, "desktop: Shift+L switches pattern/song");
-  const notes = () =>
-    page.evaluate(async () => {
-      const s = await import("/src/store.js");
-      const p = s.currentPattern();
-      return p ? p.notes.length : -1;
-    });
-  const before = await notes();
+  await until(page, (m) => window.__store.state.mode !== m, mode0, "desktop: Shift+L switches pattern/song");
+  const before = await page.evaluate(() => window.__store.currentPattern()?.notes.length ?? -1);
   await page.click(".kb-rec");
   await page.keyboard.press("z");
   await page.keyboard.press("x");
-  await page.waitForTimeout(100);
-  assert((await notes()) === before + 2, "desktop: armed, each key adds a step to the pattern");
+  await until(page, (n) => (window.__store.currentPattern()?.notes.length ?? -1) === n, before + 2, "desktop: armed, each key adds a step to the pattern");
   await page.keyboard.press("Escape");
-  await page.waitForTimeout(80);
-  assert((await page.locator(".kb-rec.armed").count()) === 0, "Esc stops recording notes");
+  await until(page, () => document.querySelectorAll(".kb-rec.armed").length === 0, null, "Esc stops recording notes");
   await page.click(".kb-toggle");
-  await page.waitForTimeout(100);
-  assert((await page.locator(".keyboard").count()) === 0, "the toggle hides the keys");
+  await until(page, () => document.querySelectorAll(".keyboard").length === 0, null, "the toggle hides the keys");
   await page.reload();
   await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
   assert((await page.locator(".keyboard").count()) === 0, "hidden keys stay hidden after a reload");
