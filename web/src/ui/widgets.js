@@ -314,6 +314,7 @@ const ICONS = [
   { name: "restore", d: "M5 10h9v9H5zM5 13h9M9 10V6h10v9h-5" },
   { name: "left", d: "M14.5 6l-6 6 6 6" },
   { name: "right", d: "M9.5 6l6 6-6 6" },
+  { name: "metronome", d: "M8 20.5h8L13.5 3.5h-3zM9 15.5h6M12 15.5l5.5-9" },
   { name: "keys", d: "M3.5 6.5h17v11h-17zM8.5 6.5v6.5M12 6.5v6.5M15.5 6.5v6.5M6 13h5M13 13h5M8.5 13v4.5M15.5 13v4.5" },
 ];
 

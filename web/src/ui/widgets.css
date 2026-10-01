@@ -118,6 +118,16 @@
   height: 34px;
   border-radius: 10px;
 }
+.btn.metro {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+.btn.metro.on {
+  color: var(--gold-hi);
+  border-color: var(--gold-mid);
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.35);
+}
 .btn.rec {
   width: 34px;
   height: 34px;
