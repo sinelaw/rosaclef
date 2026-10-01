@@ -75,8 +75,16 @@ function verdict(index) {
 /** The sheet over the piano roll, when it is open on patterns[index]. */
 /** function lyricSheet(b: Builder, index: Int) => Undefined */
 export function lyricSheet(b, index) {
+  // A stable container: a child coming and going would re-append (and so
+  // scroll back) the grid beside it.
+  b.open("div", "lyr-sheet-root", "lyr-sheet-root");
+  if (sheet.open && state.project.patterns[index].id === sheet.pattern) sheetBody(b, index);
+  b.close();
+}
+
+/** function sheetBody(b: Builder, index: Int) => Undefined */
+function sheetBody(b, index) {
   const p = state.project;
-  if (!sheet.open || p.patterns[index].id !== sheet.pattern) return undefined;
   const ch = p.channels.find((c) => c.id === sheet.channel);
   const v = verdict(index);
   b.open("div", "lyr-sheet", "lyr-sheet");

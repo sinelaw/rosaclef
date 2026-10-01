@@ -109,6 +109,15 @@ function openUsed(pattern, k) {
 /** The open use menu, if it belongs to patterns[index]. */
 /** function useMenu(b: Builder, index: Int) => Undefined */
 export function useMenu(b, index) {
+  // A stable container: a child coming and going would re-append (and so
+  // scroll back) the grid beside it.
+  b.open("div", "use-menu-root", "use-menu-root");
+  useMenuBody(b, index);
+  b.close();
+}
+
+/** function useMenuBody(b: Builder, index: Int) => Undefined */
+function useMenuBody(b, index) {
   const p = state.project;
   const pat = p.patterns[index];
   if (menu.use < 0 || menu.pattern !== pat.id) return undefined;
@@ -127,7 +136,8 @@ export function useMenu(b, index) {
 function useItems(p, index, k) {
   const pat = p.patterns[index];
   const u = pat.uses[k];
-  const name = useLabel(p, { pattern: u.pattern, start: 0, from: 0, to: -1, transpose: 0, channel: "", velocity: 1, verse: 0 });
+  const j = patternIndex(p, u.pattern);
+  const name = j >= 0 ? p.patterns[j].name : u.pattern;
   const items = [
     item("open", "piano", `Open “${name}”`, () => openUsed(pat.id, k)),
     item("unique", "copy", "Make unique (its notes become this pattern's own)", () => uniqueUse(index, k)),
@@ -136,7 +146,6 @@ function useItems(p, index, k) {
     const label = `Transpose ${semitonesText(d)}${Math.abs(d) === 12 ? " (an octave)" : ""}`;
     items.push(item(`t${d}`, d > 0 ? "plus" : "minus", label, () => commit(() => setTranspose(u, u.transpose + d))));
   }
-  const j = patternIndex(p, u.pattern);
   if (j >= 0 && sings(p, j)) {
     const auto = item("v0", "mic", "Sings this pattern's verse", () => commit(() => setVerse(u, 0)));
     auto.on = u.verse === 0;
