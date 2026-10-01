@@ -347,3 +347,43 @@
 .clip.muted {
   filter: grayscale(0.8) brightness(0.6);
 }
+
+/* ---------------------------------------------------------------- uses (usebox.js) */
+
+.note.used {
+  opacity: 0.42;
+  pointer-events: none;
+  border-style: dashed;
+  box-shadow: none;
+}
+.use-box {
+  position: absolute;
+  border: 1px dashed color-mix(in srgb, var(--c) 75%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--c) 7%, transparent);
+  pointer-events: none;
+}
+.use-box.open {
+  border-style: solid;
+  background: color-mix(in srgb, var(--c) 13%, transparent);
+}
+.use-tab {
+  position: absolute;
+  left: -1px;
+  bottom: 100%;
+  z-index: 3;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 7px;
+  border-radius: 5px 5px 0 0;
+  background: color-mix(in srgb, var(--c) 58%, #141117);
+  color: #fff6e4;
+  font: 600 9.5px/1.45 var(--sans);
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.use-tab:hover {
+  background: color-mix(in srgb, var(--c) 78%, #141117);
+}

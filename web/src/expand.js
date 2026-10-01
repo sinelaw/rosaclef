@@ -131,6 +131,12 @@ export function verseCount(p, index) {
   return Math.max(1, versesIn(p, index, []));
 }
 
+/** Whether a lyric line in this pattern's tree has a verse (the pattern sings somewhere). */
+/** function sings(p: Project, index: Int) => Boolean */
+export function sings(p, index) {
+  return versesIn(p, index, []) > 0;
+}
+
 /** function versesIn(p: Project, index: Int, stack: Int[]) => Int */
 function versesIn(p, index, stack) {
   if (stack.includes(index) || stack.length >= MAX_DEPTH) return 0;
