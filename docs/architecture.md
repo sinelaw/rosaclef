@@ -130,7 +130,13 @@
   itself draws the glyphs), caches the engraving by `state.edits`, and maps
   edits back to pattern notes. `project.score` (`Score` in
   `crates/core/src/model.rs`) holds the key, hidden channels and tracks,
-  clefs and colored passages.
+  clefs and colored passages. An SVG filter gives the engraving the look of
+  ink on paper (wicked edges, rounded bleed, a pooled rim).
+- `web/src/pdf.js` engraves the score again for a printed page, paginates it
+  (spreading the systems of full pages) and writes PDF objects: the glyphs as
+  forms drawn from Bravura's outlines (no embedded font), text in the
+  standard Times faces. `downloadPdf` in `web/lib/platform.js` compresses the
+  streams and writes the file.
 
 ### The UI library (`web/src/ui/tree.js`)
 

@@ -3,6 +3,7 @@
 import { emptyProject } from "../src/model.js";
 import { spell, spelledName, keyAlter, stepPitch, pieces, buildScore, gather, autoClef, gmDrum, TPQ, NO_ACC } from "../src/notation.js";
 import { engrave, timeX, xTick } from "../src/engrave.js";
+import { scorePdf, pathOps, pdfString } from "../src/pdf.js";
 import { trackIx, insertIx } from "#brands";
 
 let failures = 0;
@@ -188,6 +189,32 @@ check("General MIDI drums sit where drummers read them", gmDrum(36).step === 38 
   check("every note gets a notehead to click", heads === 64);
   const s0 = page.systems[0];
   check("time maps to x and back", Math.abs(xTick(s0.times, timeX(s0.times, 2 * TPQ)) - 2 * TPQ) < 1e-6 && timeX(s0.times, TPQ) < timeX(s0.times, 2 * TPQ));
+}
+
+// ------------------------------------------------------------------ PDF
+
+check("SVG paths become PDF paths", pathOps("M1 2L3 4H5V6C1 1 2 2 3 3Z") === "1 2 m\n3 4 l\n5 4 l\n5 6 l\n1 1 2 2 3 3 c\nh");
+check("PDF strings escape and spell out", pdfString("A (b) ♭ é Œ") === "(A \\(b\\) -flat \\351 \\214)");
+{
+  /** const notes: Number[][] */
+  const notes = [];
+  for (let i = 0; i < 400; i++) notes.push([60 + (i % 12), i * 0.5, 0.5]);
+  const sc = buildScore(song(notes, 200), PAT, 12);
+  /** function measure(face: String, text: String) => Number */
+  function measure(face, text) {
+    return text.length * 0.45;
+  }
+  const objs = scorePdf(sc, { title: "Étude", subtitle: "C major", author: "", bpm: 96 }, "a4", false, measure);
+  const pages = objs.filter((o) => o.head.startsWith("<< /Type /Page /"));
+  check("a long score fills several A4 pages", pages.length >= 2 && pages[0].head.includes("595.28 841.89"));
+  check("the catalog comes first and the document info last", objs[0].head.includes("/Catalog") && objs[objs.length - 1].head.includes("/Title (\\311tude)"));
+  check("the pages list counts its pages", objs[1].head.includes(`/Count ${pages.length}`));
+  check("noteheads are drawn from glyph forms", objs.some((o) => o.stream.includes(" Do Q")) && objs.some((o) => o.head.includes("/Subtype /Form")));
+  const letter = scorePdf(sc, { title: "x", subtitle: "", author: "", bpm: 0 }, "letter", false, measure);
+  check(
+    "US Letter pages",
+    letter.some((o) => o.head.includes("612 792"))
+  );
 }
 
 if (failures > 0) {

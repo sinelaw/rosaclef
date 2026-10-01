@@ -484,44 +484,40 @@ function beatOf(ms, t) {
   return m.start + Math.floor((t - m.start) / TPQ) * TPQ;
 }
 
-/** Beats written as triplets: where the onsets and ends of the notes inside
- * fall much closer to thirds of the beat than to the grid. */
+/** Beats written as triplets: every onset inside the beat sits on a third of
+ * it (and nearer to one than to the grid), and at least one is clearly off the
+ * grid. Note ends are not evidence (they are rarely played exactly), nor is
+ * playing that only wavers around the grid. */
 /** function tripletBeats(notes: SrcNote[], idx: Int[], ms: Measure[], grid: Int) => Int[] */
 function tripletBeats(notes, idx, ms, grid) {
   /** const beats: Int[] */
   const beats = [];
-  /** const straight: Number[] */
-  const straight = [];
-  /** const thirds: Number[] */
-  const thirds = [];
-  /** const seen: Int[] */
-  const seen = [];
+  /** const fits: Boolean[] */
+  const fits = [];
+  /** const clear: Boolean[] */
+  const clear = [];
   for (const i of idx) {
-    for (const at of [notes[i].start, notes[i].end]) {
-      const t = at * TPQ;
-      const b = beatOf(ms, t);
-      if (b < 0) continue;
-      const r = t - b;
-      // On the beat itself both readings agree.
-      if (r < 2 || r > TPQ - 2) continue;
-      let k = beats.indexOf(b);
-      if (k < 0) {
-        beats.push(b);
-        straight.push(0);
-        thirds.push(0);
-        seen.push(0);
-        k = beats.length - 1;
-      }
-      straight[k] = straight[k] + Math.abs(r - Math.round(r / grid) * grid);
-      thirds[k] = thirds[k] + Math.abs(r - Math.round(r / 16) * 16);
-      seen[k] = seen[k] + 1;
+    const t = notes[i].start * TPQ;
+    const b = beatOf(ms, t);
+    if (b < 0) continue;
+    const r = t - b;
+    // On the beat itself both readings agree.
+    if (r < 2 || r > TPQ - 2) continue;
+    let k = beats.indexOf(b);
+    if (k < 0) {
+      beats.push(b);
+      fits.push(true);
+      clear.push(false);
+      k = beats.length - 1;
     }
+    const third = Math.abs(r - Math.round(r / 16) * 16);
+    const straight = Math.abs(r - Math.round(r / grid) * grid);
+    if (third > 2.5 || third >= straight) fits[k] = false;
+    if (straight >= 3.5) clear[k] = true;
   }
   /** const out: Int[] */
   const out = [];
-  for (let k = 0; k < beats.length; k++) {
-    if (thirds[k] < straight[k] * 0.5 && thirds[k] / seen[k] < 2.5) out.push(beats[k]);
-  }
+  for (let k = 0; k < beats.length; k++) if (fits[k] && clear[k]) out.push(beats[k]);
   return out;
 }
 

@@ -19,11 +19,12 @@
 //  - Write (Shift+P): click on a staff to add a note of the chosen value.
 //  - Delete, ↑/↓ (Shift: octave) act on the selection, as in the piano roll.
 
-import { drag, fmt, loadPref, savePref, pressOrTap } from "#platform";
+import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, textWidth, paperSize } from "#platform";
 import { state, commit, begin, changed, invalidate, hint, setFocus, reportContext, currentPattern } from "../store.js";
 import { PALETTE } from "../model.js";
 import { buildScore, TPQ, KEYS, keyLabel, keyAlter, spell, spelledName, stepPitch, drumAt, kindDrum, channelKind, bottomStep } from "../notation.js";
 import { engrave, timeX, xTick } from "../engrave.js";
+import { scorePdf } from "../pdf.js";
 import { preview, seek } from "../audio.js";
 import { select, iconButton, glyph, textInput } from "./widgets.js";
 import { followButton } from "./playlist.js";
@@ -687,6 +688,70 @@ function paperView(b, v, c, geo, sc) {
   b.close();
 }
 
+/** The line under the title: what is shown, and the key. */
+/** function subtitle(score: Score, sc: Scope) => String */
+function subtitle(score, sc) {
+  const p = state.project;
+  /** const sub: String[] */
+  const sub = [];
+  if (sc.kind === "pattern") sub.push(`pattern · ${p.patterns.find((x) => x.id === sc.pattern) ? fmt(score.end / TPQ, 0) : "0"} beats`);
+  if (sc.kind === "track") sub.push("one track of the song");
+  if (!score.empty) sub.push(keyLabel(score.keyName));
+  return sub.join(" · ");
+}
+
+/** A file name in plain ASCII (browsers drop names they cannot pass on): accents dropped, ligatures and symbols spelled. */
+/** function fileName(title: String) => String */
+export function fileName(title) {
+  const plain = title
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replaceAll("œ", "oe")
+    .replaceAll("Œ", "OE")
+    .replaceAll("æ", "ae")
+    .replaceAll("Æ", "AE")
+    .replaceAll("ß", "ss")
+    .replaceAll("♭", "b")
+    .replaceAll("♯", "#")
+    .replace(/[·–—]/g, "-")
+    .replace(/[‘’]/g, "'")
+    .replace(/[^\x20-\x7e]/g, "")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  return plain === "" ? "score" : plain;
+}
+
+/** Download what the view shows as a PDF (A4, or US Letter where that is the paper). */
+/** function exportPdf(v: ScoreView) => Undefined */
+function exportPdf(v) {
+  const sc = scopeOf(v);
+  const c = cached(v, sc, pageGeo(v, sc));
+  if (c.score.empty) {
+    toast("Nothing to print", "This score has no notes to write down.", "warn");
+    return undefined;
+  }
+  const p = state.project;
+  const title = scopeTitle(sc);
+  const objs = scorePdf(
+    c.score,
+    { title: title, subtitle: subtitle(c.score, sc), author: sc.kind === "song" ? p.meta.author : "", bpm: p.transport.bpm },
+    paperSize(),
+    v.condense && sc.kind !== "pattern",
+    textWidth
+  );
+  const name = `${fileName(title)}.pdf`;
+  downloadPdf(name, objs)
+    .then((ok) => {
+      toast("Score exported", `${name} — vector, ${paperSize() === "letter" ? "US Letter" : "A4"}.`, "info");
+      return true;
+    })
+    .catch((e) => {
+      toast("The PDF could not be written", String(e), "error");
+      return false;
+    });
+}
+
 /** function titleBlock(b: Builder, v: ScoreView, score: Score, geo: PageGeo, sc: Scope) => Undefined */
 function titleBlock(b, v, score, geo, sc) {
   const p = state.project;
@@ -694,12 +759,7 @@ function titleBlock(b, v, score, geo, sc) {
   b.style("padding", `${geo.padX * 0.6}px ${geo.padX}px 0`);
   b.style("height", `${geo.head}px`);
   b.leaf("div", "title", "score-title", scopeTitle(sc));
-  /** const sub: String[] */
-  const sub = [];
-  if (sc.kind === "pattern") sub.push(`pattern · ${p.patterns.find((x) => x.id === sc.pattern) ? fmt(score.end / TPQ, 0) : "0"} beats`);
-  if (sc.kind === "track") sub.push("one track of the song");
-  if (!score.empty) sub.push(keyLabel(score.keyName));
-  b.leaf("div", "sub", "score-sub", sub.join(" · "));
+  b.leaf("div", "sub", "score-sub", subtitle(score, sc));
   b.open("div", "row", "score-row");
   b.style("padding", `0 ${geo.padX}px`);
   b.open("span", "tempo", "score-tempo");
@@ -1289,6 +1349,7 @@ function ribbon(b, v) {
   });
   glyph(b, "moon");
   b.close();
+  iconButton(b, "pdf", "small", "export", "Download as PDF — vector pages, ready to print", () => exportPdf(v));
   iconButton(b, "side", v.side ? "small on" : "small", "sidebar", "Parts, tracks and colors", () => {
     v.side = !v.side;
     savePrefs(v);

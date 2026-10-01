@@ -63,39 +63,39 @@ const STEM_Y = 0.168;
 // ------------------------------------------------------------------ painter
 
 /** A list of primitives with their vertical extent; shifted into place later. */
-/** type Painter = { prims: Prim[], top: Number, bottom: Number } */
+/** type Inker = { prims: Prim[], top: Number, bottom: Number } */
 
-/** function painter() => Painter */
+/** function painter() => Inker */
 function painter() {
   return { prims: [], top: 0, bottom: 4 };
 }
 
-/** function extend(p: Painter, y0: Number, y1: Number) => Undefined */
+/** function extend(p: Inker, y0: Number, y1: Number) => Undefined */
 function extend(p, y0, y1) {
   if (y0 < p.top) p.top = y0;
   if (y1 > p.bottom) p.bottom = y1;
 }
 
-/** function rect(p: Painter, x: Number, y: Number, w: Number, h: Number, color: String) => Undefined */
+/** function rect(p: Inker, x: Number, y: Number, w: Number, h: Number, color: String) => Undefined */
 function rect(p, x, y, w, h, color) {
   p.prims.push({ kind: 0, color: color, nums: [x, y, x + w, y, x + w, y + h, x, y + h], ch: "" });
   extend(p, y, y + h);
 }
 
-/** function quad(p: Painter, x0: Number, y0: Number, x1: Number, y1: Number, t: Number, color: String) => Undefined */
+/** function quad(p: Inker, x0: Number, y0: Number, x1: Number, y1: Number, t: Number, color: String) => Undefined */
 function quad(p, x0, y0, x1, y1, t, color) {
   p.prims.push({ kind: 0, color: color, nums: [x0, y0, x1, y1, x1, y1 + t, x0, y0 + t], ch: "" });
   extend(p, Math.min(y0, y1), Math.max(y0, y1) + t);
 }
 
-/** function glyph(p: Painter, g: Glyph, x: Number, y: Number, color: String) => Undefined */
+/** function glyph(p: Inker, g: Glyph, x: Number, y: Number, color: String) => Undefined */
 function glyph(p, g, x, y, color) {
   p.prims.push({ kind: 1, color: color, nums: [x, y], ch: g.c });
   extend(p, y + g.top, y + g.bottom);
 }
 
 /** A tie or slur: a crescent between two points bulging by `h` (negative: up). */
-/** function tie(p: Painter, x0: Number, x1: Number, y: Number, h: Number, color: String) => Undefined */
+/** function tie(p: Inker, x0: Number, x1: Number, y: Number, h: Number, color: String) => Undefined */
 function tie(p, x0, x1, y, h, color) {
   const len = x1 - x0;
   if (len < 0.3) return undefined;
@@ -212,7 +212,7 @@ function timeSigWidth(m) {
   return Math.max(digitsWidth(m.num), digitsWidth(m.den));
 }
 
-/** function drawDigits(p: Painter, n: Int, cx: Number, y: Number, color: String) => Undefined */
+/** function drawDigits(p: Inker, n: Int, cx: Number, y: Number, color: String) => Undefined */
 function drawDigits(p, n, cx, y, color) {
   let x = cx - digitsWidth(n) / 2;
   for (const ch of String(n).split("")) {
@@ -636,7 +636,7 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
   }
 
   // ---- each staff, in its own coordinates
-  /** const painters: Painter[] */
+  /** const painters: Inker[] */
   const painters = [];
   /** const heads: HeadBox[][] */
   const heads = [];
@@ -805,7 +805,7 @@ export function xTick(times, x) {
 
 // ------------------------------------------------------------------ a staff
 
-/** function drawStaff(sc: Score, st: Staff, si: Int, geo: EvGeo[], firstEv: Int[], a: Int, b: Int, p: Painter, hb: HeadBox[], colAt: (Int) => Number, bars: Number[], meterAt: { x: Number, m: Int }[], mcs: MCols[], indent: Number, hdr: Number, x1: Number, final: Boolean) => Undefined */
+/** function drawStaff(sc: Score, st: Staff, si: Int, geo: EvGeo[], firstEv: Int[], a: Int, b: Int, p: Inker, hb: HeadBox[], colAt: (Int) => Number, bars: Number[], meterAt: { x: Number, m: Int }[], mcs: MCols[], indent: Number, hdr: Number, x1: Number, final: Boolean) => Undefined */
 function drawStaff(sc, st, si, geo, firstEv, a, b, p, hb, colAt, bars, meterAt, mcs, indent, hdr, x1, final) {
   // Lines.
   for (let l = 0; l < 5; l++) rect(p, indent, l - STAFF_LINE / 2, x1 - indent, STAFF_LINE, "staff");
@@ -909,7 +909,7 @@ function drawStaff(sc, st, si, geo, firstEv, a, b, p, hb, colAt, bars, meterAt, 
 }
 
 /** Triplets: a 3 over (or under) the beam of a beamed group, else in a bracket. */
-/** function drawTuplets(st: Staff, geo: EvGeo[], evs: NEv[], i0: Int, i1: Int, p: Painter, colAt: (Int) => Number, tips: Number[]) => Undefined */
+/** function drawTuplets(st: Staff, geo: EvGeo[], evs: NEv[], i0: Int, i1: Int, p: Inker, colAt: (Int) => Number, tips: Number[]) => Undefined */
 function drawTuplets(st, geo, evs, i0, i1, p, colAt, tips) {
   let k = i0;
   while (k < i1) {
@@ -966,7 +966,7 @@ function tieDir(ev, g, h) {
   return h >= ev.heads.length / 2 ? -1 : 1;
 }
 
-/** function drawRest(p: Painter, ev: NEv, cx: Number, mc: MCols, bar: Number, count: Int) => Undefined */
+/** function drawRest(p: Inker, ev: NEv, cx: Number, mc: MCols, bar: Number, count: Int) => Undefined */
 function drawRest(p, ev, cx, mc, bar, count) {
   if (ev.whole && count > 1) {
     // The H-bar, with its count above the staff.
@@ -991,7 +991,7 @@ function drawRest(p, ev, cx, mc, bar, count) {
 }
 
 /** Draw a note or chord; returns where its stem ends (its outer head without one). */
-/** function drawChord(sc: Score, st: Staff, si: Int, g: EvGeo, ev: NEv, cx: Number, tip: Number, p: Painter, hb: HeadBox[]) => Number */
+/** function drawChord(sc: Score, st: Staff, si: Int, g: EvGeo, ev: NEv, cx: Number, tip: Number, p: Inker, hb: HeadBox[]) => Number */
 function drawChord(sc, st, si, g, ev, cx, tip, p, hb) {
   const n = ev.heads.length;
   if (n === 0) return 2;
@@ -1095,7 +1095,7 @@ function drawChord(sc, st, si, g, ev, cx, tip, p, hb) {
 /** Beam a group of events [k, j): a line over the stems, sloped with the
  * notes but at most a space, snapped to quarter spaces, keeping every stem
  * long enough; then secondary beams and hooks. Writes each stem's end into `tips`. */
-/** function drawBeam(sc: Score, st: Staff, geo: EvGeo[], evs: NEv[], k: Int, j: Int, p: Painter, colAt: (Int) => Number, tips: Number[]) => Undefined */
+/** function drawBeam(sc: Score, st: Staff, geo: EvGeo[], evs: NEv[], k: Int, j: Int, p: Inker, colAt: (Int) => Number, tips: Number[]) => Undefined */
 function drawBeam(sc, st, geo, evs, k, j, p, colAt, tips) {
   const up = geo[k].up;
   /** const xs: Number[] */

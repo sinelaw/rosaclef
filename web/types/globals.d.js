@@ -113,6 +113,9 @@
     strokeGradient: (Gradient) => Undefined
 } */
 
+/** A PDF object: its dictionary and, for a stream, its content (compressed when written). */
+/** type PdfObj = { head: String, stream: String } */
+
 /** type Bytes = { byteLength: Number } */
 /** type Floats = { length: Number } */
 /** type FileRef = { name: String, size: Number } */

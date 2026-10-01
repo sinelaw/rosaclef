@@ -77,6 +77,25 @@ await page.keyboard.press("Control+z");
 await page.waitForFunction(() => document.querySelectorAll(".score-dock .score-band").length === 0);
 ok("Ctrl+Z removes the color");
 
+// Download it as a PDF.
+const [pdf] = await Promise.all([page.waitForEvent("download"), page.click(".score-dock .score-ribbon button[title^='Download as PDF']")]);
+const bytes = await new Promise((resolve, reject) => {
+  pdf
+    .createReadStream()
+    .then((stream) => {
+      const chunks = [];
+      stream.on("data", (c) => chunks.push(c));
+      stream.on("end", () => resolve(Buffer.concat(chunks)));
+      stream.on("error", reject);
+    })
+    .catch(reject);
+});
+const text = bytes.toString("latin1");
+if (!text.startsWith("%PDF-") || !text.trimEnd().endsWith("%%EOF") || !text.includes("/Type /Page ")) throw new Error("the download is not a PDF");
+if (!/^[\x20-\x7e]+\.pdf$/.test(pdf.suggestedFilename()) || pdf.suggestedFilename() === "download.pdf")
+  throw new Error(`the PDF is not named after the score: ${pdf.suggestedFilename()}`);
+ok(`the score downloads as ${pdf.suggestedFilename()} (${Math.round(bytes.length / 1024)} kB)`);
+
 // Hide a part.
 const parts = await count(".score-dock .score-part");
 if (parts < 1) throw new Error("no parts listed");

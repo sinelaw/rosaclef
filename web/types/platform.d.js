@@ -46,6 +46,18 @@ export const pickFiles;
 /** const download: (String, String) => Undefined */
 export const download;
 
+/** Write PDF objects (the catalog first, the document info last) to a file and download it. */
+/** const downloadPdf: (String, PdfObj[]) => Promise<Boolean> */
+export const downloadPdf;
+
+/** Width of a text in a PDF standard font ("Times-Italic", …) at size 1, measured with a metric-compatible face. */
+/** const textWidth: (String, String) => Number */
+export const textWidth;
+
+/** "letter" where US Letter is the paper size (the US and Canada), else "a4". */
+/** const paperSize: () => String */
+export const paperSize;
+
 /** const previewAudio: (String, () => Undefined) => Undefined */
 export const previewAudio;
 

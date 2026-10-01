@@ -624,6 +624,57 @@ export function debounce(ms, fn) {
   };
 }
 
+// ------------------------------------------------------------------ PDF
+
+/** Deflate a string (zlib format: PDF's FlateDecode). */
+async function deflate(text) {
+  const stream = new Blob([new TextEncoder().encode(text)]).stream().pipeThrough(new CompressionStream("deflate"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+export async function downloadPdf(name, objs) {
+  const enc = new TextEncoder();
+  const parts = [enc.encode("%PDF-1.5\n%\u00e2\u00e3\u00cf\u00d3\n")];
+  const offsets = [];
+  let at = parts[0].byteLength;
+  for (let i = 0; i < objs.length; i++) {
+    const o = objs[i];
+    offsets.push(at);
+    let chunk;
+    if (o.stream !== "") {
+      const data = await deflate(o.stream);
+      const dict = o.head.replace(/>>\s*$/, `/Length ${data.byteLength} /Filter /FlateDecode >>`);
+      chunk = [enc.encode(`${i + 1} 0 obj\n${dict}\nstream\n`), data, enc.encode("\nendstream\nendobj\n")];
+    } else chunk = [enc.encode(`${i + 1} 0 obj\n${o.head}\nendobj\n`)];
+    for (const c of chunk) {
+      parts.push(c);
+      at += c.byteLength;
+    }
+  }
+  const xref = [`xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`];
+  for (const off of offsets) xref.push(`${String(off).padStart(10, "0")} 00000 n \n`);
+  xref.push(`trailer\n<< /Size ${objs.length + 1} /Root 1 0 R /Info ${objs.length} 0 R >>\nstartxref\n${at}\n%%EOF\n`);
+  parts.push(enc.encode(xref.join("")));
+  const url = URL.createObjectURL(new Blob(parts, { type: "application/pdf" }));
+  download(url, name);
+  return true;
+}
+
+let measureCtx = null;
+export function textWidth(face, text) {
+  if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
+  const style = face.includes("Italic") ? "italic " : "";
+  const weight = face.includes("Bold") ? "bold " : "";
+  // Liberation Serif and Times New Roman share Times' widths.
+  measureCtx.font = `${style}${weight}100px "Times New Roman", "Liberation Serif", Tinos, Times, serif`;
+  return measureCtx.measureText(text).width / 100;
+}
+
+export function paperSize() {
+  const lang = (navigator.language || "").toLowerCase();
+  return lang === "en-us" || lang === "en-ca" || lang.endsWith("-us") ? "letter" : "a4";
+}
+
 // ------------------------------------------------------------------ UI backend
 
 /** The DOM backend for web/src/ui/tree.js: primitive operations on handles. */
