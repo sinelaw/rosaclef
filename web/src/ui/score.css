@@ -9,6 +9,10 @@
 .score {
   --paper: #fbf7ec;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.36 0 0 0 0 0.2 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  /* The paper's tooth (fibers in relief, lit from the upper left like the ink) and its
+     cloudy formation, each a tile of noise. */
+  --tooth: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E %3Cfilter id='t' filterUnits='userSpaceOnUse' x='-16' y='-16' width='288' height='288'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' seed='7' stitchTiles='stitch' x='0' y='0' width='256' height='256' result='n'/%3E %3CfeTile in='n' result='t'/%3E %3CfeDiffuseLighting in='t' surfaceScale='1.4' diffuseConstant='1' lighting-color='%23fff' result='l'%3E%3CfeDistantLight azimuth='235' elevation='50'/%3E%3C/feDiffuseLighting%3E %3CfeColorMatrix in='l' result='s' values='0 0 0 0 0.36 0 0 0 0 0.27 0 0 0 0 0.13 -0.22 0 0 0 0.169'/%3E %3CfeColorMatrix in='l' result='h' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 0.97 0.16 0 0 0 -0.123'/%3E %3CfeMerge%3E%3CfeMergeNode in='s'/%3E%3CfeMergeNode in='h'/%3E%3C/feMerge%3E%3C/filter%3E %3Crect x='-16' y='-16' width='288' height='288' filter='url(%23t)'/%3E%3C/svg%3E");
+  --mottle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E %3Cfilter id='m' x='0' y='0' width='1' height='1'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.006' numOctaves='4' seed='3' stitchTiles='stitch'/%3E %3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.42 0 0 0 0 0.22 0.3 0 0 0 -0.1'/%3E%3C/filter%3E %3Crect width='600' height='600' filter='url(%23m)'/%3E%3C/svg%3E");
   --gloss: rgba(255, 252, 242, 0.9);
   --ink: #1b1712;
   --staff: rgba(27, 23, 18, 0.82);
@@ -25,6 +29,8 @@
 .score.night {
   --paper: #15121a;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.83 0 0 0 0 0.69 0 0 0 0 0.22 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  --tooth: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E %3Cfilter id='t' filterUnits='userSpaceOnUse' x='-16' y='-16' width='288' height='288'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' seed='7' stitchTiles='stitch' x='0' y='0' width='256' height='256' result='n'/%3E %3CfeTile in='n' result='t'/%3E %3CfeDiffuseLighting in='t' surfaceScale='1.4' diffuseConstant='1' lighting-color='%23fff' result='l'%3E%3CfeDistantLight azimuth='235' elevation='50'/%3E%3C/feDiffuseLighting%3E %3CfeColorMatrix in='l' result='s' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.3 0 0 0 0.230'/%3E %3CfeColorMatrix in='l' result='h' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 0.97 0.05 0 0 0 -0.038'/%3E %3CfeMerge%3E%3CfeMergeNode in='s'/%3E%3CfeMergeNode in='h'/%3E%3C/feMerge%3E%3C/filter%3E %3Crect x='-16' y='-16' width='288' height='288' filter='url(%23t)'/%3E%3C/svg%3E");
+  --mottle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E %3Cfilter id='m' x='0' y='0' width='1' height='1'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='0.006' numOctaves='4' seed='3' stitchTiles='stitch'/%3E %3CfeColorMatrix values='0 0 0 0 0.83 0 0 0 0 0.69 0 0 0 0 0.22 0.12 0 0 0 -0.05'/%3E%3C/filter%3E %3Crect width='600' height='600' filter='url(%23m)'/%3E%3C/svg%3E");
   --gloss: rgba(255, 246, 220, 0.75);
   --ink: #ecdcb4;
   --staff: rgba(212, 175, 55, 0.55);
@@ -41,6 +47,23 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+.score-view {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* The lamp over the desk: a warm light from the upper left, falling off toward the
+   corners. It stays put while the paper scrolls beneath it. */
+.score-lamp {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(90% 70% at 22% 0%, rgba(255, 246, 222, 0.12), transparent 70%),
+    radial-gradient(160% 120% at 40% 25%, transparent 50%, rgba(28, 18, 6, 0.18) 100%);
 }
 .score-scroll {
   position: relative;
@@ -62,11 +85,17 @@
 .score-paper {
   position: absolute;
   border-radius: 3px;
-  /* One color all the way down (a score can be very tall), with a fine grain that repeats. */
+  /* One color all the way down (a score can be very tall), with its tooth, formation and
+     grain in tiles of different sizes, so no repeat lines up. */
   background-color: var(--paper);
-  background-image: var(--grain);
-  background-size: 180px 180px;
+  background-image: var(--tooth), var(--mottle), var(--grain);
+  background-size:
+    256px 256px,
+    600px 600px,
+    180px 180px;
   box-shadow:
+    /* Edges warmed a little, as paper tones with age. */
+    inset 0 0 calc(var(--sp) * 6) rgba(150, 106, 38, 0.14),
     0 1px 0 rgba(255, 255, 255, 0.6) inset,
     0 0 0 1px rgba(120, 96, 52, 0.18),
     0 18px 50px rgba(0, 0, 0, 0.55),
@@ -83,6 +112,7 @@
 }
 .score.night .score-paper {
   box-shadow:
+    inset 0 0 calc(var(--sp) * 6) rgba(0, 0, 0, 0.3),
     0 0 0 1px rgba(212, 175, 55, 0.22),
     0 18px 50px rgba(0, 0, 0, 0.7);
 }

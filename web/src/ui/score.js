@@ -704,6 +704,8 @@ function paperView(b, v, c, geo, sc) {
   const page = c.page;
   const score = c.score;
   const total = geo.top * 2 + paperH(geo, page);
+  // The scroller, under a lamp that stays put while the paper slides beneath it.
+  b.open("div", "view", "score-view");
   b.open("div", "scroll", `score-scroll${v.tool === "write" ? " writing" : ""}`);
   // The width the page is laid out for: it matches the element once the layout has caught up with a resize.
   b.attr("data-width", String(Math.round(v.width)));
@@ -791,6 +793,8 @@ function paperView(b, v, c, geo, sc) {
 
   playheadView(b, v, c, geo, sc);
   b.close();
+  b.close();
+  b.leaf("div", "lamp", "score-lamp", "");
   b.close();
 }
 
