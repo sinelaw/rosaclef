@@ -76,7 +76,7 @@ jobs:
 
       # The browser-only studio, rebuilt from source (WebAssembly included),
       # driven in Chromium: desktop, phone layout, touch, the on-screen piano,
-      # soundfont instruments and the score.
+      # soundfont instruments, the score, and patterns used by reference and lyrics.
       - run: tools/build-static.sh dist
       - name: Install Playwright
         working-directory: web
@@ -91,3 +91,4 @@ jobs:
           node web/test/mobile-smoke.mjs http://localhost:8765/
           node web/test/soundfont-smoke.mjs http://localhost:8765/
           node web/test/score-smoke.mjs http://localhost:8765/
+          node web/test/lyrics-smoke.mjs http://localhost:8765/
