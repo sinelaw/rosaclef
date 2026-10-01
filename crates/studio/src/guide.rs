@@ -375,6 +375,17 @@ Words live in the pattern whose notes sing them, one line per vocal channel, wit
 are labeled. `rosaclef align --pattern ID --channel ID --at SECONDS take.TextGrid` (or WhisperX
 `.json`) fills `timing` from a recording a forced aligner has read.
 
+**Singing (`voice`).** A channel whose instrument is `{ "type": "voice" }` sings its notes' words
+(or "ah" without words); keep its notes monophonic and give every note a token. `gender`,
+`breath`, `bright`, `vibrato`, `glide` and `consonants` shape it, and automation lanes can move
+them. The built-in `"engine": "formant"` voice is a synthetic guide vocal that plays everywhere.
+With `"options": { "engine": "render", "voice": "alto" }` the studio renders each phrase with the
+singing engine the user set up under that name in `~/.config/rosaclef/voices.json`
+(`{ "alto": { "input": "ds", "command": ["…", "{input}", "{output}"] } }`; a voice without a
+command only gets input files) into `renders/voice/alto/`, and the formant voice stands in until
+a phrase is ready. Never put commands in `project.json`; ask the producer to add a voice to their
+settings.
+
 ## Musical craft
 
 - Think like a producer: groove (velocity variation, swing), voice-leading in chords,

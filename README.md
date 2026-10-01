@@ -185,6 +185,30 @@ menu, `rosaclef export` or `GET /api/export?format=…`:
   or SOFA TextGrids, WhisperX JSON) into the line's fixed phoneme timing,
   which DiffSinger exports use.
 
+**Voix** (`"type": "voice"`) sings them. The built-in formant voice plays
+live in the browser and natively — a synthetic guide vocal: consonants,
+vowels, diphthongs, held syllables, breaths, vibrato, glides; rap and speak
+lines on a speaking pitch. For a real singer, set `"engine": "render"` and
+name a voice you set up in `~/.config/rosaclef/voices.json`:
+
+```json
+{
+  "alto": { "input": "ds", "command": ["python3", "infer.py", "{input}", "--out", "{output}"] },
+  "by-hand": { "input": "ustx" }
+}
+```
+
+The studio cuts the vocal line into phrases at its rests, writes each phrase
+in the voice's input format (any format above) and runs the command in the
+background; the WAV becomes `renders/voice/<voice>/<key>.wav`, and the voice
+plays it in place, 0.3 s ahead of the first note so consonants land before
+the beat. Phrases are named by what they sing, so a render serves every
+place the pattern plays and an edit re-renders only what changed; until a
+phrase is ready the formant voice sings it. A voice without a command only
+gets the input files, to sing in OpenUtau, Synthesizer V or any other program
+and drop back beside them. Commands come only from your settings, never from
+a project.
+
 The formats live in `crates/vocal`, pronunciations (IPA, from a CMUdict
 subset and spelling rules) in `crates/phonetics`; the research behind them is
 in [`docs/voice-and-lyrics.md`](docs/voice-and-lyrics.md).
@@ -222,7 +246,10 @@ Times are in beats, pitches are MIDI numbers, instruments and effects are
 **Automation** lanes (`"automation": [{ "target": "channel/pad/cutoff", "points": [...] }]`)
 drive the tempo, swing, channel and insert volume/pan or any device parameter over the song;
 right-click a knob, fader or the tempo display to create one, and edit its curve under the
-playlist tracks. **Transpose** (beside the tempo; `transport.transpose`, −12…12) shifts
+playlist tracks. A pattern can play other patterns **by reference**
+(`"uses": [{ "pattern": "hook", "start": 4, "transpose": 5 }]`, or a range of
+one with `from`/`to`, on another `channel`), so a riff written once plays
+wherever it comes back. **Transpose** (beside the tempo; `transport.transpose`, −12…12) shifts
 every pitched instrument by semitones to suit a singer: the notes stay as written, drums
 and audio clips are not shifted.
 See [`docs/architecture.md`](docs/architecture.md) for the design.
@@ -232,7 +259,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 | path | |
 |---|---|
 | `crates/core` | project model, device catalog, validation, JSON Schema, formatter |
-| `crates/engine` | portable DSP engine: sequencer, synths (Aurum subtractive, Lumière FM, Atelier drums, Vault sampler), effects, mixer, offline render |
+| `crates/engine` | portable DSP engine: sequencer, synths (Aurum subtractive, Lumière FM, Atelier drums, Vault sampler, Voix singing voice), effects, mixer, offline render |
 | `crates/wasm` | the engine compiled to WebAssembly (C ABI for the AudioWorklet) |
 | `crates/import` | importers: LMMS projects (.mmp/.mmpz) and Standard MIDI Files (with lyrics) |
 | `crates/phonetics` | pronunciation: lyrics to IPA phonemes, syllable by syllable; ARPAbet and X-SAMPA |
@@ -254,6 +281,7 @@ cargo test --workspace                 # Rust tests (engine, validation, CLAP ho
 ./tools/build-wasm.sh                  # rebuild web/engine/rosaclef.wasm and web/local/rosaclef-local.wasm
 node web/test/tree.test.js             # UI tree tests (no browser needed)
 node web/test/voice.test.js            # voice-to-notes logic (quantize, auto-tune, drums)
+node web/test/lyrics.test.js           # lyric notation and pattern expansion
 node tools/bench-engine.mjs            # real-time load of the WebAssembly engine (demo song)
 web/check.sh                           # type-check the frontend with inty
 cargo fmt --all                        # format Rust
