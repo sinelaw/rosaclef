@@ -10,3 +10,6 @@ rosaclef-core.workspace = true
 rosaclef-phonetics.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+roxmltree = "0.21"

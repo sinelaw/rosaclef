@@ -40,6 +40,11 @@ pub struct Syllable {
     pub mode: LyricMode,
     /// Phoneme timing fixed in the project, if any.
     pub timing: Option<SyllableTiming>,
+    /// The name of the pattern whose lyric line it comes from: the song
+    /// section ("Verse", "Chorus") for formats that label them.
+    pub section: String,
+    /// The verse of that line it sings.
+    pub verse: u32,
 }
 
 /// One vocal channel's notes, in playing order.
@@ -274,6 +279,8 @@ fn performed(p: &Project, n: &Sounding, phonemes: &[String], start: Time, end: T
                 lang: line.language().to_string(),
                 mode: line.mode,
                 timing: line.timing_at(l.line.verse, l.line.at).cloned(),
+                section: p.patterns[l.line.pattern].name.clone(),
+                verse: l.line.verse,
             }
         }),
     }

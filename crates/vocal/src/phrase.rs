@@ -78,6 +78,8 @@ fn phrase_song(p: &Project, notes: &[Sounding], phonemes: &[Vec<String>], ph: &P
                         lang: line.language().to_string(),
                         mode: line.mode,
                         timing: line.timing_at(l.line.verse, l.line.at).cloned(),
+                        section: p.patterns[l.line.pattern].name.clone(),
+                        verse: l.line.verse,
                     }
                 }),
             }
