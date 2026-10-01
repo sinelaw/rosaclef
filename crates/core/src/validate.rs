@@ -266,6 +266,9 @@ pub fn validate(p: &Project) -> Vec<Issue> {
             &ch.instrument,
             Category::Instrument,
         );
+        if let Some(arp) = &ch.arp {
+            check_arp(&mut v, &format!("{path}.arp"), arp);
+        }
     }
 
     // Patterns.
@@ -619,6 +622,51 @@ fn check_automation(v: &mut V, p: &Project) {
             }
             v.range(&format!("{pp}.curve"), pt.curve, -1.0, 1.0);
         }
+    }
+}
+
+fn check_arp(v: &mut V, path: &str, arp: &crate::Arpeggio) {
+    use crate::arp;
+    if arp::chord(&arp.chord).is_none() {
+        let names: Vec<&str> = arp::CHORDS.iter().map(|c| c.0).collect();
+        v.err(
+            format!("{path}.chord"),
+            format!(
+                "unknown chord {:?}; expected one of {}",
+                arp.chord,
+                names.join(", ")
+            ),
+        );
+    }
+    if !(1..=arp::OCTAVES_MAX).contains(&arp.octaves) {
+        v.err(
+            format!("{path}.octaves"),
+            format!("octaves must be 1..={}", arp::OCTAVES_MAX),
+        );
+    }
+    v.range(
+        &format!("{path}.rate"),
+        arp.rate,
+        arp::RATE_MIN,
+        arp::RATE_MAX,
+    );
+    v.range(
+        &format!("{path}.gate"),
+        arp.gate,
+        arp::GATE_MIN,
+        arp::GATE_MAX,
+    );
+    if !arp::DIRECTIONS.contains(&arp.direction.as_str()) {
+        v.err(
+            format!("{path}.direction"),
+            format!("expected one of {}", arp::DIRECTIONS.join(", ")),
+        );
+    }
+    if !arp::MODES.contains(&arp.mode.as_str()) {
+        v.err(
+            format!("{path}.mode"),
+            format!("expected one of {}", arp::MODES.join(", ")),
+        );
     }
 }
 

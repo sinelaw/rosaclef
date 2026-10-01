@@ -589,9 +589,9 @@ fn automation_becomes_lanes() {
 }
 
 #[test]
-fn arpeggio_and_chords_are_written_out() {
+fn arpeggios_play_on_the_channel_and_chords_are_written_out() {
     // 120 BPM: 250 ms = half a beat.
-    let arp = r#"<arpeggiator arp-enabled="1" arp="0" arprange="2" arptime="250" arpgate="50" arpdir="0" arpmode="0"/>"#;
+    let arp = r#"<arpeggiator arp-enabled="1" arp="3" arprange="2" arptime="250" arpgate="50" arpdir="2" arpmode="1"/>"#;
     let chord = r#"<chordcreator chord-enabled="1" chord="1" chordrange="1"/>"#;
     let note = r#"<pattern type="1" pos="0"><note key="57" pos="0" len="96"/></pattern>"#;
     let tracks = format!(
@@ -609,15 +609,20 @@ fn arpeggio_and_chords_are_written_out() {
             .map(|n| (n.pitch, n.start, n.length))
             .collect::<Vec<_>>()
     };
+    // The note stays as written; the channel arpeggiates it as LMMS did.
+    assert_eq!(notes(&p.channels[0].id), [(69, 0.0, 2.0)]);
     assert_eq!(
-        notes(&p.channels[0].id),
-        [
-            (69, 0.0, 0.25),
-            (81, 0.5, 0.25),
-            (69, 1.0, 0.25),
-            (81, 1.5, 0.25)
-        ]
+        p.channels[0].arp,
+        Some(rosaclef_core::Arpeggio {
+            chord: "minor".into(),
+            octaves: 2,
+            rate: 0.5,
+            direction: "updown".into(),
+            gate: 0.5,
+            mode: "sort".into(),
+        })
     );
+    assert_eq!(p.channels[1].arp, None);
     assert_eq!(
         notes(&p.channels[1].id),
         [(69, 0.0, 2.0), (73, 0.0, 2.0), (76, 0.0, 2.0)]

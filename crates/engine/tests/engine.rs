@@ -26,6 +26,7 @@ fn drum_project() -> Project {
         pan: 0.0,
         mute: false,
         mixer: InsertIx(1),
+        arp: None,
     });
     p.patterns[0].notes.push(Note {
         channel: "k".into(),

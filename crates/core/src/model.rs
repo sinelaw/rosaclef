@@ -343,6 +343,65 @@ pub struct Channel {
     /// Mixer insert this channel is routed to (0 = master).
     #[serde(default)]
     pub mixer: InsertIx,
+    /// The channel's arpeggiator, when on: every note it plays becomes a
+    /// run of notes (see [`crate::arp`]). The notes stay as written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arp: Option<Arpeggio>,
+}
+
+/// An arpeggiator: while a note is held it plays the notes of `chord`
+/// above it, over `octaves` octaves, one every `rate` beats.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Arpeggio {
+    /// Chord the notes cycle through (see [`crate::arp::CHORDS`]): "octave"
+    /// plays the note itself in each octave.
+    #[serde(default = "default_arp_chord")]
+    pub chord: String,
+    /// Octaves the run spans (1..=8).
+    #[serde(default = "default_arp_octaves")]
+    pub octaves: u32,
+    /// Beats from one note to the next (1/64..=4; 0.25 = sixteenths).
+    pub rate: f64,
+    /// "up", "down", "updown", "downup" or "random".
+    #[serde(default = "default_arp_direction")]
+    pub direction: String,
+    /// Length of each note as a fraction of `rate` (0.05..=2).
+    #[serde(default = "default_arp_gate")]
+    pub gate: f64,
+    /// "free": every held note runs its own arpeggio; "sort": notes struck
+    /// together take turns, lowest first, as one arpeggio.
+    #[serde(default = "default_arp_mode")]
+    pub mode: String,
+}
+
+impl Default for Arpeggio {
+    fn default() -> Self {
+        Arpeggio {
+            chord: default_arp_chord(),
+            octaves: default_arp_octaves(),
+            rate: 0.25,
+            direction: default_arp_direction(),
+            gate: default_arp_gate(),
+            mode: default_arp_mode(),
+        }
+    }
+}
+
+fn default_arp_chord() -> String {
+    "octave".into()
+}
+fn default_arp_octaves() -> u32 {
+    1
+}
+fn default_arp_direction() -> String {
+    "up".into()
+}
+fn default_arp_gate() -> f64 {
+    1.0
+}
+fn default_arp_mode() -> String {
+    "free".into()
 }
 
 /// An instrument or an effect: a device type plus its settings.

@@ -148,6 +148,7 @@ pub fn render_note_with(
         pan: 0.0,
         mute: false,
         mixer: rosaclef_core::InsertIx::MASTER,
+        arp: None,
     });
     project.mixer.inserts[0].effects.clear();
     let mut engine = Engine::new(sample_rate);

@@ -20,6 +20,7 @@ use automation::CLane;
 use dsp::{hermite, pan_gains, Ramp};
 use effects::Effect;
 use instruments::{Instrument, NoteEvent, NoteKind};
+use rosaclef_core::arp;
 use rosaclef_core::automation::TempoMap;
 use rosaclef_core::form::{self, Span};
 use rosaclef_core::{Device, InsertIx, Project};
@@ -516,12 +517,34 @@ impl Engine {
             .patterns
             .iter()
             .map(|p| {
-                let mut notes: Vec<CNote> = p
-                    .notes
-                    .iter()
-                    .filter_map(|n| {
-                        let channel = project.channels.iter().position(|c| c.id == n.channel)?;
-                        let sixteenth = n.start * 4.0;
+                // A channel's arpeggiator plays its notes as runs of notes.
+                let mut played: Vec<(usize, f64, f64, i32, f64)> = vec![];
+                for (channel, ch) in project.channels.iter().enumerate() {
+                    let mine = p.notes.iter().filter(|n| n.channel == ch.id);
+                    match &ch.arp {
+                        None => played.extend(
+                            mine.map(|n| (channel, n.start, n.length, n.pitch, n.velocity)),
+                        ),
+                        Some(a) => {
+                            let held: Vec<&rosaclef_core::Note> = mine.collect();
+                            let input: Vec<arp::Held> = held
+                                .iter()
+                                .map(|n| arp::Held {
+                                    start: n.start,
+                                    length: n.length,
+                                    pitch: n.pitch,
+                                })
+                                .collect();
+                            played.extend(arp::arpeggiate(a, &input).into_iter().map(|h| {
+                                (channel, h.start, h.length, h.pitch, held[h.source].velocity)
+                            }));
+                        }
+                    }
+                }
+                let mut notes: Vec<CNote> = played
+                    .into_iter()
+                    .map(|(channel, start, length, pitch, velocity)| {
+                        let sixteenth = start * 4.0;
                         let on_grid = (sixteenth - sixteenth.round()).abs() < 1e-6;
                         let swung = on_grid && (sixteenth.round() as i64) % 2 == 1;
                         let shift = project.transport.transpose.clamp(-12, 12);
@@ -530,14 +553,14 @@ impl Engine {
                         } else {
                             0
                         };
-                        Some(CNote {
+                        CNote {
                             channel,
-                            key: (n.pitch + shift).clamp(0, 127) as u8,
-                            start: n.start,
+                            key: (pitch + shift).clamp(0, 127) as u8,
+                            start,
                             swung,
-                            length: n.length.max(1e-4),
-                            velocity: n.velocity as f32,
-                        })
+                            length: length.max(1e-4),
+                            velocity: velocity as f32,
+                        }
                     })
                     .collect();
                 notes.sort_by(|a, b| a.start.total_cmp(&b.start));

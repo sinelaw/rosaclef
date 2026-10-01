@@ -765,6 +765,7 @@ mod tests {
                 pan: 0.0,
                 mute: false,
                 mixer: rosaclef_core::InsertIx(0),
+                arp: None,
             });
 
             let list = files(&f, "", &p).unwrap();

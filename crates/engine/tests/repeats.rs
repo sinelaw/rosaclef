@@ -40,6 +40,7 @@ fn song() -> Project {
         pan: 0.0,
         mute: false,
         mixer: InsertIx(1),
+        arp: None,
     });
     let pat = &mut p.patterns[0];
     pat.length = 16.0;

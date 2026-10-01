@@ -1,6 +1,6 @@
 // Tests for the sheet-music logic (notation.js, engrave.js), run with:
 // node web/test/score.test.js (also type-checked by inty via web/check.sh).
-import { emptyProject } from "../src/model.js";
+import { emptyProject, noArp } from "../src/model.js";
 import { spell, spelledName, keyAlter, stepPitch, pieces, buildScore, gather, autoClef, gmDrum, TPQ, NO_ACC, passesText } from "../src/notation.js";
 import { engrave, timeX, xTick } from "../src/engrave.js";
 import { scorePdf, pathOps, pdfString, pdfLayout, pageSvg } from "../src/pdf.js";
@@ -26,6 +26,7 @@ function song(notes, length) {
     pan: 0,
     mute: false,
     mixer: insertIx(0),
+    arp: noArp(),
   });
   p.patterns.push({
     id: "a",

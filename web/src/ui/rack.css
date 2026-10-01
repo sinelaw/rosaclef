@@ -212,6 +212,17 @@
   margin: 0 0 10px 4px;
   letter-spacing: 0.04em;
 }
+.arp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.arp-head .param-group-title {
+  margin-bottom: 0;
+}
+.arp .options {
+  margin: 10px 0 0;
+}
 .inspector .field .select {
   width: 100%;
 }

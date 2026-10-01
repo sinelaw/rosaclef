@@ -35,9 +35,22 @@ export function decodeDevice(d) {
 
 /** function decodeCatalog<T>(raw: T) => Catalog */
 export function decodeCatalog(raw) {
+  const a = raw.arp;
   return {
     devices: raw.devices,
     plugins: raw.plugins,
+    arp: a
+      ? {
+          chords: a.chords.map((x) => String(x)),
+          directions: a.directions.map((x) => String(x)),
+          modes: a.modes.map((x) => String(x)),
+          rateMin: Number(a.rateMin),
+          rateMax: Number(a.rateMax),
+          gateMin: Number(a.gateMin),
+          gateMax: Number(a.gateMax),
+          octavesMax: Math.round(Number(a.octavesMax)),
+        }
+      : { chords: ["octave"], directions: ["up"], modes: ["free"], rateMin: 1 / 64, rateMax: 4, gateMin: 0.05, gateMax: 2, octavesMax: 8 },
     presets: (raw.presets ?? []).map((p) => ({
       name: String(p.name),
       type: String(p.type),
@@ -46,6 +59,32 @@ export function decodeCatalog(raw) {
       params: decodeNums(p.params),
       options: decodeStrs(p.options),
     })),
+  };
+}
+
+/** No arpeggiator (its settings are what turning it on starts from). */
+/** function noArp() => Arp */
+export function noArp() {
+  return { on: false, chord: "octave", octaves: 1, rate: 0.25, direction: "up", gate: 1, mode: "free" };
+}
+
+/** function copyArp(a: Arp) => Arp */
+export function copyArp(a) {
+  return { on: a.on, chord: a.chord, octaves: a.octaves, rate: a.rate, direction: a.direction, gate: a.gate, mode: a.mode };
+}
+
+/** A channel's `arp` from the project JSON (absent = off). */
+/** function decodeArp(a: Any) => Arp */
+function decodeArp(a) {
+  if (a === undefined || a === null) return noArp();
+  return {
+    on: true,
+    chord: String(a.chord ?? "octave"),
+    octaves: Math.round(Number(a.octaves ?? 1)),
+    rate: Number(a.rate),
+    direction: String(a.direction ?? "up"),
+    gate: Number(a.gate ?? 1),
+    mode: String(a.mode ?? "free"),
   };
 }
 
@@ -83,6 +122,7 @@ export function decodeProject(raw) {
       pan: Number(c.pan ?? 0),
       mute: c.mute === true,
       mixer: insertIx(Math.round(Number(c.mixer ?? 0))),
+      arp: decodeArp(c.arp),
     })),
     patterns: (raw.patterns ?? []).map((p) => ({
       id: String(p.id),
@@ -225,16 +265,20 @@ export function encodeProject(p) {
   o.transport = { bpm: p.transport.bpm, beatsPerBar: p.transport.beatsPerBar, swing: p.transport.swing };
   if (p.transport.transpose !== 0) o.transport.transpose = p.transport.transpose;
   if (p.transport.meters.length > 0) o.transport.meters = p.transport.meters;
-  o.channels = p.channels.map((c) => ({
-    id: c.id,
-    name: c.name,
-    color: c.color,
-    instrument: encodeDevice(c.instrument),
-    volume: round6(c.volume),
-    pan: round6(c.pan),
-    mute: c.mute,
-    mixer: insertIndex(c.mixer),
-  }));
+  o.channels = p.channels.map((c) => {
+    const ch = JSON.parse("{}");
+    ch.id = c.id;
+    ch.name = c.name;
+    ch.color = c.color;
+    ch.instrument = encodeDevice(c.instrument);
+    ch.volume = round6(c.volume);
+    ch.pan = round6(c.pan);
+    ch.mute = c.mute;
+    ch.mixer = insertIndex(c.mixer);
+    const a = c.arp;
+    if (a.on) ch.arp = { chord: a.chord, octaves: a.octaves, rate: round6(a.rate), direction: a.direction, gate: round6(a.gate), mode: a.mode };
+    return ch;
+  });
   o.patterns = p.patterns.map((pt) => ({
     id: pt.id,
     name: pt.name,
@@ -583,6 +627,8 @@ export function describeChange(a, b) {
     if (old.pan !== c.pan) out.push(`channel "${c.id}" pan → ${fmtNum(c.pan)}`);
     if (old.mute !== c.mute) out.push(`channel "${c.id}" ${c.mute ? "muted" : "unmuted"}`);
     if (old.mixer !== c.mixer) out.push(`channel "${c.id}" rerouted to another insert`);
+    if (old.arp.on !== c.arp.on) out.push(`channel "${c.id}" arpeggiator ${c.arp.on ? "on" : "off"}`);
+    else if (c.arp.on && JSON.stringify(old.arp) !== JSON.stringify(c.arp)) out.push(`channel "${c.id}" arpeggiator changed`);
     deviceDiff(`channel "${c.id}"`, old.instrument, c.instrument, out);
   }
   for (const c of a.channels) if (!b.channels.some((x) => x.id === c.id)) out.push(`removed channel "${c.id}"`);
