@@ -180,7 +180,7 @@ impl ClipEnd for rosaclef_core::Clip {
 struct Performer<'a> {
     p: &'a Project,
     tempo: &'a TempoMap,
-    expanded: HashMap<(usize, u32), Vec<(Sounding, Vec<String>)>>,
+    expanded: HashMap<(usize, u32), Vec<Voiced>>,
     out: Vec<Performed>,
 }
 
@@ -240,8 +240,11 @@ impl<'a> Performer<'a> {
     }
 }
 
+/// A sounding note and the phonemes it sings.
+type Voiced = (Sounding, Vec<String>);
+
 /// A pattern's sounding notes for a verse, each with its phonemes.
-fn with_phonemes(p: &Project, index: usize, verse: u32) -> Vec<(Sounding, Vec<String>)> {
+fn with_phonemes(p: &Project, index: usize, verse: u32) -> Vec<Voiced> {
     let notes = expand::pattern(p, index, verse);
     let mut phonemes = vec![vec![]; notes.len()];
     for c in &p.channels {
