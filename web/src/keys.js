@@ -8,7 +8,7 @@
 
 import { listenWindow } from "#platform";
 import { state, undo, redo, currentChannel } from "./store.js";
-import { togglePlay, stop, setMode, record } from "./audio.js";
+import { togglePlay, stop, setMode, record, toggleMetronome } from "./audio.js";
 import { deleteSelection, selectAll, transpose, quantize, duplicateSelection, setTool } from "./ui/pianoroll.js";
 import { deleteSelectedClips } from "./ui/playlist.js";
 import { auto, closeMenu } from "./automation.js";
@@ -28,6 +28,7 @@ function letterShortcut(c) {
   // In the Voice dock, Shift+R records a take to turn into notes.
   else if (c === "r" && state.dock === "voice") startTake();
   else if (c === "r") record();
+  else if (c === "m") toggleMetronome();
   else if (c === "q" && state.dock === "piano") quantize();
   else if (c === "p" && state.focus === "score") setScoreTool("write");
   else if (c === "e" && state.focus === "score") setScoreTool("select");

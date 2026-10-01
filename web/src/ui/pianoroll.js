@@ -37,7 +37,11 @@ const view = {
 
 /** function geometry(pat: Pattern) => Geo */
 function geometry(pat) {
-  const beats = Math.max(pat.length, Math.ceil(view.width / view.zoom / 4) * 4);
+  const shown = Math.ceil(view.width / view.zoom / 4) * 4;
+  // Recording plays on past the pattern's end (nothing loops): room for the
+  // playhead, a screen ahead, so following it keeps the grid under the ruler.
+  const ahead = state.playing && state.mode === "pattern" && state.loopLength <= 0 ? Math.ceil(state.position) + shown : 0;
+  const beats = Math.max(Math.max(pat.length, shown), ahead);
   return { zoom: view.zoom, rowH: view.rowH, width: beats * view.zoom, height: 128 * view.rowH, beats: beats };
 }
 

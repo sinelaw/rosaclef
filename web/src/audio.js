@@ -7,7 +7,7 @@
 //    lowest latency).
 // The UI sends the same transport commands to whichever one is selected.
 
-import { audioStart, audioPost, audioPostSample, audioLoadPreset, audioResume, decodeAudioUrl, recStart, recStop, now } from "#platform";
+import { audioStart, audioPost, audioPostSample, audioLoadPreset, audioResume, decodeAudioUrl, recStart, recStop, now, loadPref, savePref } from "#platform";
 import { state, hooks, invalidate, commit, currentPattern, reportContext } from "./store.js";
 import { send } from "./net.js";
 import { toast } from "./ui/toast.js";
@@ -144,17 +144,53 @@ function modeTarget() {
 }
 
 export async function play() {
+  return await playCountIn(0);
+}
+
+/** Play after `beats` beats of count-in clicks; the position reads negative
+ * (the beats left) until the sequencer starts. */
+/** async function playCountIn(beats: Number) => Boolean */
+export async function playCountIn(beats) {
   if (state.output === "native") {
-    send({ t: "native.play", pattern: modeTarget() });
+    send({ t: "native.metronome", on: state.metronome });
+    send({ t: "native.play", pattern: modeTarget(), countIn: beats });
     return true;
   }
   await startAudio();
+  audioPost({ t: "metronome", on: state.metronome });
   audioPost({ t: "mode", pattern: modeTarget() });
-  audioPost({ t: "play" });
+  audioPost({ t: "play", countIn: beats });
+  if (!state.playing && beats > 0) {
+    state.position = -beats;
+    state.positionAt = now();
+  }
   state.playing = true;
   reportContext();
   invalidate();
   return true;
+}
+
+/** In pattern mode, play on past the pattern's end instead of looping (while
+ * recording into a pattern that grows as it goes). */
+/** function setOpenEnded(on: Boolean) => Undefined */
+export function setOpenEnded(on) {
+  if (state.output === "native") send({ t: "native.openEnded", on: on });
+  else audioPost({ t: "openEnded", on: on });
+}
+
+const METRONOME_PREF = "rosaclef.metronome";
+
+export function loadMetronome() {
+  state.metronome = loadPref(METRONOME_PREF) === "on";
+}
+
+/** Turn the metronome on or off (it clicks every beat while playing). */
+export function toggleMetronome() {
+  state.metronome = !state.metronome;
+  savePref(METRONOME_PREF, state.metronome ? "on" : "off");
+  if (state.output === "native") send({ t: "native.metronome", on: state.metronome });
+  else if (state.audioReady) audioPost({ t: "metronome", on: state.metronome });
+  invalidate();
 }
 
 export function stop() {

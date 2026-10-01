@@ -33,6 +33,8 @@ export const state = {
   chMeters /*: Number[] */: [],
   snap: 0.25,
   follow: true,
+  /** Click on every beat while playing. */
+  metronome: false,
   output: "browser",
   nativeAvailable: false,
   /** "server" (the Rosaclef server) or "local" (the browser-only studio, projects in browser storage). */

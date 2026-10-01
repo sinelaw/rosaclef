@@ -6,7 +6,7 @@ import { decodeCatalog } from "./model.js";
 import { mount } from "./ui/tree.js";
 import { studio } from "./ui/shell.js";
 import { connect, installSync } from "./net.js";
-import { installEngine, startAudio } from "./audio.js";
+import { installEngine, startAudio, loadMetronome } from "./audio.js";
 import { installKeys } from "./keys.js";
 import { loadAgents } from "./ui/agent.js";
 import { loadLayout } from "./ui/panes.js";
@@ -15,6 +15,7 @@ import { loadScorePrefs } from "./ui/score.js";
 
 loadLayout();
 loadKeyboard();
+loadMetronome();
 loadScorePrefs();
 const ui = mount(domBackend("app"), studio);
 hooks.mark = ui.mark;

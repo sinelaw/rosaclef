@@ -23,6 +23,8 @@ const until = async (page, fn, arg, m) => {
   });
   console.log("ok  ", m);
 };
+// Waits until the playhead (beats, negative during a count-in) reaches `beat`.
+const untilBeat = (page, beat) => page.waitForFunction((b) => window.__audio.livePosition() >= b, beat, { timeout: 60000 });
 const frame = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(true))));
 // Every finite CSS transition and animation has finished (panels in place); endless ones (a pulsing dot) do not count.
 const settled = (page) =>
@@ -38,6 +40,7 @@ async function open(opts) {
   // The store module, to wait on the app's state.
   await page.evaluate(async () => {
     window.__store = await import("/src/store.js");
+    window.__audio = await import("/src/audio.js");
   });
   return page;
 }
@@ -172,21 +175,91 @@ const keysDown = (sel, n) => [(a) => document.querySelectorAll(a.sel).length ===
   await page.keyboard.down("z");
   await until(page, ...keysDown(".kb-white.down", 1), "desktop: the Z key lights C4");
   await page.keyboard.up("z");
-  await until(page, ...keysDown(".kb-white.down", 0), "desktop: and releases it");
-  // The Q row plays too; letter shortcuts take Shift; the record button writes steps into the piano roll.
+  await until(page, ...keysDown(".kb-white.down", 0), "desktop: and goes out");
+  // The Q row plays too; letter shortcuts take Shift; Shift+M the metronome.
   await page.keyboard.down("q");
   await until(page, ...keysDown(".kb-white.down", 1), "desktop: Q plays a key");
   await page.keyboard.up("q");
   const mode0 = await page.evaluate(() => window.__store.state.mode);
   await page.keyboard.press("Shift+L");
   await until(page, (m) => window.__store.state.mode !== m, mode0, "desktop: Shift+L switches pattern/song");
-  const before = await page.evaluate(() => window.__store.currentPattern()?.notes.length ?? -1);
+  await page.keyboard.press("Shift+M");
+  await until(page, ...keysDown(".btn.metro.on", 1), "desktop: Shift+M turns the metronome on");
+  await page.click(".btn.metro");
+  await until(page, ...keysDown(".btn.metro.on", 0), "desktop: its button turns it off");
+  const notes = () => page.evaluate(() => window.__store.currentPattern()?.notes.length ?? -1);
+  const pos = () => page.evaluate(() => window.__audio.livePosition());
+  // Recording counts in a bar, then writes what is played in real time: each
+  // key where it went down, as long as it was held, both ends on the grid.
+  const before = await notes();
   await page.click(".kb-rec");
+  await until(page, () => window.__audio.livePosition() < 0, null, "desktop: recording starts with a count-in");
+  await until(page, () => document.querySelector(".lcd").textContent.includes("Count-in"), null, "the position shows the count-in");
   await page.keyboard.press("z");
+  await frame(page);
+  assert((await notes()) === before, "a key early in the count-in is not recorded");
+  await untilBeat(page, 0.3);
+  // A chord: both keys struck at once (one page event, however busy the machine), held a beat.
+  const chord = (type) =>
+    page.evaluate((type) => {
+      for (const code of ["KeyZ", "KeyC"]) window.dispatchEvent(new KeyboardEvent(type, { code: code, key: code[3].toLowerCase() }));
+    }, type);
+  await chord("keydown");
+  await untilBeat(page, (await pos()) + 1);
+  await chord("keyup");
+  // Half a beat's rest, then a short note.
+  await untilBeat(page, (await pos()) + 0.5);
   await page.keyboard.press("x");
-  await until(page, (n) => (window.__store.currentPattern()?.notes.length ?? -1) === n, before + 2, "desktop: armed, each key adds a step to the pattern");
+  await until(
+    page,
+    (n) => (window.__store.currentPattern()?.notes.length ?? -1) === n,
+    before + 3,
+    "desktop: armed, keys played in time are written, a chord together"
+  );
+  const took = await page.evaluate(() => {
+    const s = window.__store;
+    const g = s.state.snap;
+    const n = s.currentPattern().notes.slice(-3);
+    const onGrid = (x) => Math.abs(x / g - Math.round(x / g)) < 1e-6;
+    return {
+      grid: n.every((x) => onGrid(x.start) && onGrid(x.length)),
+      chord: n[0].start === n[1].start && Math.abs(n[0].length - n[1].length) <= g + 1e-6,
+      rest: n[2].start > n[0].start + n[0].length,
+      held: n[0].length > n[2].length,
+    };
+  });
+  assert(took.grid, "recorded notes start and end on the grid");
+  assert(took.chord, "keys held together make a chord");
+  assert(took.rest && took.held, "a key held longer is longer, and the gap before the next is a rest");
   await page.keyboard.press("Escape");
   await until(page, () => document.querySelectorAll(".kb-rec.armed").length === 0, null, "Esc stops recording notes");
+  // Recording does not loop: a one-bar pattern grows as the playhead goes on,
+  // then ends with the bar of the last note played.
+  const one = await page.evaluate(() => {
+    const s = window.__store;
+    const p = s.currentPattern();
+    s.commit(() => {
+      p.notes = [];
+      p.length = s.state.project.transport.beatsPerBar;
+    });
+    return s.state.project.transport.beatsPerBar;
+  });
+  await page.click(".kb-rec");
+  await untilBeat(page, one + 1.5);
+  await page.keyboard.press("v");
+  await until(
+    page,
+    (one) => {
+      const p = window.__store.currentPattern();
+      return p.length >= 2 * one && p.notes.length > 0 && p.notes[p.notes.length - 1].start > one;
+    },
+    one,
+    "the pattern grows while recording, with the note played in its second bar"
+  );
+  await untilBeat(page, 3 * one + 1.5);
+  await until(page, (one) => window.__store.currentPattern().length >= 4 * one, one, "and keeps growing");
+  await page.keyboard.press("Escape");
+  await until(page, (one) => window.__store.currentPattern().length === 2 * one, one, "stopping trims it after the last note");
   await page.click(".kb-toggle");
   await until(page, () => document.querySelectorAll(".keyboard").length === 0, null, "the toggle hides the keys");
   await page.reload();
