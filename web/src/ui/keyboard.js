@@ -80,6 +80,8 @@ const TYPED = [
   { code: "KeyP", label: "P", semi: 28, low: false },
   { code: "BracketLeft", label: "[", semi: 29, low: false },
 ];
+/** Keys struck within this long of each other (ms) are one chord when recording. */
+const CHORD_MS = 60;
 /** The highest semitone of the typing piano. */
 const TYPED_SPAN = 29;
 /** The highest base C that keeps the typing piano in range. */
@@ -340,6 +342,10 @@ export function pressKey(source, pitch, velocity) {
   if (!ch || pitch < 0) return undefined;
   const beat = livePosition();
   const taken = takeAt(beat);
+  // A key struck with one still held starts with it, even if the grid line
+  // between their two starts fell in that instant.
+  const at = now();
+  const chord = held.find((x) => x.take && pat !== undefined && x.pattern === pat.id && at - x.at < CHORD_MS);
   held.push({
     source: source,
     channel: ch.id,
@@ -347,9 +353,9 @@ export function pressKey(source, pitch, velocity) {
     velocity: Math.round(velocity * 100) / 100,
     take: taken,
     pattern: pat ? pat.id : "",
-    start: taken ? takeStart(beat) : 0,
-    beat: beat,
-    at: now(),
+    start: taken ? (chord ? chord.start : takeStart(beat)) : 0,
+    beat: chord ? chord.beat : beat,
+    at: chord ? chord.at : at,
   });
   noteOn(ch.id, pitch, velocity);
   invalidate();
