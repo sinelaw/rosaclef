@@ -43,7 +43,11 @@
 /** type Transport = { bpm: Number, beatsPerBar: Number, swing: Number, meters: Meter[] } */
 /** type AutomationPoint = { beat: Number, value: Number, curve: Number } */
 /** type AutomationLane = { id: String, name: String, target: String, color: String, mute: Boolean, points: AutomationPoint[] } */
-/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[] } */
+/** A colored passage of the score: song beats, or beats of `pattern` when set; `channels` empty = every staff. */
+/** type ScoreMark = { start: Number, end: Number, color: String, label: String, pattern: String, channels: String[] } */
+/** Sheet-music settings (project.score): key ("" = auto), hidden channels and tracks, clef per channel, colored passages. */
+/** type ScoreSettings = { key: String, hidden: String[], hiddenTracks: TrackIx[], clefs: KS[], marks: ScoreMark[] } */
+/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings } */
 
 /** type Issue = { severity: String, path: String, message: String } */
 

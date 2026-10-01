@@ -11,6 +11,8 @@ import { insertIx, insertIndex, trackIx, noteIndex, clipIndex } from "#brands";
 export const state = {
   project /*: Project */: emptyProject(),
   rev: 0,
+  /** Counts changes to the project (edits, undo, remote versions): views cache what they derive from it by this. */
+  edits: 0,
   loaded: false,
   catalog /*: Catalog */: { devices: [], plugins: [], presets: [] },
   agents /*: AgentPreset[] */: [],
@@ -134,6 +136,7 @@ export function begin() {
 /** Report a mutation made during a gesture. `structural` re-renders views. */
 /** function changed(structural: Boolean) => Undefined */
 export function changed(structural) {
+  state.edits = state.edits + 1;
   syncSoon();
   pushToEngine();
   if (structural) invalidate();
@@ -163,6 +166,7 @@ export function redo() {
 export function applyRemote(p) {
   snapshot();
   state.project = p;
+  state.edits = state.edits + 1;
   logged.project = cloneProject(p);
   fixSelection();
   pushToEngine();
@@ -173,6 +177,7 @@ export function applyRemote(p) {
 /** function load(p: Project) => Undefined */
 export function load(p) {
   state.project = p;
+  state.edits = state.edits + 1;
   logged.project = cloneProject(p);
   state.loaded = true;
   undoStack.length = 0;
@@ -232,6 +237,16 @@ export function selectInsert(i) {
   state.insert = i;
   reportContext();
   invalidate();
+}
+
+/** The dock's editor as the agent's context names it. */
+/** function dockName(dock: String) => String */
+export function dockName(dock) {
+  if (dock === "piano") return "piano roll";
+  if (dock === "mixer") return "mixer";
+  if (dock === "voice") return "voice to notes";
+  if (dock === "score") return "score";
+  return "channel rack";
 }
 
 /** function showDock(name: String) => Undefined */

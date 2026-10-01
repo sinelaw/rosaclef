@@ -406,6 +406,56 @@ mod tests {
     }
 
     #[test]
+    fn score_round_trips_and_validates() {
+        let mut p = with_pad();
+        p.score.key = "Eb".into();
+        p.score.hidden.push("pad".into());
+        p.score.hidden_tracks.push(model::TrackIx(0));
+        p.score.clefs.insert("pad".into(), "grand".into());
+        p.score.marks.push(model::ScoreMark {
+            start: 4.0,
+            end: 8.0,
+            color: "#c97b84".into(),
+            label: "Chorus".into(),
+            pattern: String::new(),
+            channels: vec!["pad".into()],
+        });
+        let text = format::to_string(&p);
+        let checked = validate::parse_and_validate(&text);
+        assert!(checked.is_ok(), "{:?}", checked.issues);
+        assert_eq!(checked.project.unwrap(), p);
+        // Projects without score settings serialize without the key.
+        assert!(!format::to_string(&with_pad()).contains("score"));
+    }
+
+    #[test]
+    fn score_errors_have_paths() {
+        let mut p = with_pad();
+        p.score.key = "H".into();
+        p.score.clefs.insert("pad".into(), "soprano".into());
+        p.score.marks.push(model::ScoreMark {
+            start: 8.0,
+            end: 4.0,
+            color: "red".into(),
+            label: String::new(),
+            pattern: "nope".into(),
+            channels: vec!["ghost".into()],
+        });
+        let issues = validate::validate(&p);
+        let has = |path: &str, needle: &str| {
+            issues
+                .iter()
+                .any(|i| i.path == path && i.message.contains(needle))
+        };
+        assert!(has("score.key", "unknown key"), "{issues:?}");
+        assert!(has("score.clefs.pad", "unknown clef"));
+        assert!(has("score.marks[0].end", "after start"));
+        assert!(has("score.marks[0].color", "hex"));
+        assert!(has("score.marks[0].pattern", "does not exist"));
+        assert!(has("score.marks[0].channels[0]", "does not exist"));
+    }
+
+    #[test]
     fn typos_are_reported_with_path() {
         let text = r#"{"format":"rosaclef/1","meta":{"title":"x"},"transport":{"bpm":120},
             "patterns":[{"id":"a","name":"A","length":4,"notes":[{"channel":"c","pitch":60,"startTime":0,"length":1}]}],

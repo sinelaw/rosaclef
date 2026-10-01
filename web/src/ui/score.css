@@ -1,0 +1,486 @@
+/* The Score view (score.js): engraved sheet music on paper. */
+
+@font-face {
+  font-family: "Bravura";
+  src: url("../../fonts/Bravura.woff2") format("woff2");
+  font-display: block;
+}
+
+.score {
+  --paper: #fbf7ec;
+  --paper-2: #f3ecdb;
+  --ink: #1b1712;
+  --staff: rgba(27, 23, 18, 0.82);
+  --ink-soft: #6b5f4d;
+  --sel: #b0283f;
+  --range: rgba(176, 40, 63, 0.1);
+  --range-line: rgba(176, 40, 63, 0.55);
+  --desk: radial-gradient(120% 90% at 50% 0%, #2a2430 0%, #17141b 55%, #0e0c11 100%);
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: var(--desk);
+}
+.score.night {
+  --paper: #15121a;
+  --paper-2: #1d1923;
+  --ink: #ecdcb4;
+  --staff: rgba(212, 175, 55, 0.55);
+  --ink-soft: #a39271;
+  --sel: #ff9fae;
+  --range: rgba(212, 175, 55, 0.1);
+  --range-line: rgba(212, 175, 55, 0.6);
+  --desk: radial-gradient(120% 90% at 50% 0%, #120f16 0%, #08070a 100%);
+}
+
+.score-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.score-scroll {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  cursor: default;
+}
+.score-scroll.writing {
+  cursor: crosshair;
+}
+.score-content {
+  position: relative;
+  min-height: 100%;
+}
+
+/* ---------------------------------------------------------------- paper */
+
+.score-paper {
+  position: absolute;
+  border-radius: 3px;
+  background: radial-gradient(140% 60% at 50% 0%, rgba(255, 255, 255, 0.55), transparent 60%), linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 0 0 1px rgba(120, 96, 52, 0.18),
+    0 18px 50px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.score-paper::after {
+  /* A deckled gold rule framing the page. */
+  content: "";
+  position: absolute;
+  inset: calc(var(--sp) * 1.2);
+  border: 1px solid rgba(160, 124, 52, 0.22);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.score.night .score-paper {
+  background: radial-gradient(140% 60% at 50% 0%, rgba(212, 175, 55, 0.07), transparent 60%), linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+  box-shadow:
+    0 0 0 1px rgba(212, 175, 55, 0.22),
+    0 18px 50px rgba(0, 0, 0, 0.7);
+}
+.score.night .score-paper::after {
+  border-color: rgba(212, 175, 55, 0.18);
+}
+
+.score-head {
+  position: relative;
+  text-align: center;
+  color: var(--ink);
+  box-sizing: border-box;
+}
+.score-title {
+  font: 600 calc(var(--sp) * 2.6) / 1.1 var(--serif);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.score-head.song .score-title {
+  font-size: calc(var(--sp) * 3.6);
+  padding-top: calc(var(--sp) * 0.6);
+}
+.score-sub {
+  margin-top: calc(var(--sp) * 0.5);
+  font: italic 500 calc(var(--sp) * 1.5) / 1.2 var(--serif);
+  color: var(--ink-soft);
+  letter-spacing: 0.03em;
+}
+.score-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--sp) * 0.6);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.score-tempo {
+  font: 600 calc(var(--sp) * 1.6) / 1 var(--serif);
+  color: var(--ink);
+}
+.score-tempo .smufl {
+  font-family: "Bravura";
+  font-size: calc(var(--sp) * 3);
+  line-height: 0;
+  vertical-align: calc(var(--sp) * -0.15);
+}
+.score-author {
+  font: italic 500 calc(var(--sp) * 1.6) / 1 var(--serif);
+  color: var(--ink-soft);
+}
+.score-empty {
+  position: absolute;
+  inset: 40% 0 auto;
+  text-align: center;
+  color: var(--ink-soft);
+  font: italic 500 18px/1.4 var(--serif);
+}
+.score-empty div + div {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+/* ---------------------------------------------------------------- engraving */
+
+.score-sys {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+.score-sys .ink {
+  fill: var(--ink);
+}
+.score-sys .staff {
+  fill: var(--staff);
+}
+.score-sys .glyphs {
+  font-family: "Bravura";
+  font-size: 4px;
+}
+.score-sys .sname {
+  font: italic 500 1.55px var(--serif);
+  fill: var(--ink);
+  letter-spacing: 0.02px;
+}
+.score-sys .sname.short {
+  font-size: 1.3px;
+  fill: var(--ink-soft);
+}
+.score-sys .mnum {
+  font: italic 600 1.25px var(--serif);
+  fill: var(--ink-soft);
+}
+.score-sys .score-tag {
+  font: italic 700 1.35px var(--serif);
+  letter-spacing: 0.04px;
+}
+.score-sys .score-band {
+  stroke-width: 0.08;
+}
+.score-sys .score-range {
+  fill: var(--range);
+  stroke: var(--range-line);
+  stroke-width: 0.1;
+  stroke-dasharray: 0.5 0.3;
+}
+.score-sys .sel {
+  fill: var(--sel);
+  filter: drop-shadow(0 0 0.35px var(--sel));
+}
+.score-sys .ghost {
+  fill: var(--sel);
+  opacity: 0.55;
+}
+.score-sys .ghost-ledger {
+  fill: var(--sel);
+  opacity: 0.45;
+}
+
+.score-ph {
+  position: absolute;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, transparent, rgba(176, 40, 63, 0.75) 12%, rgba(176, 40, 63, 0.75) 88%, transparent);
+  pointer-events: none;
+}
+.score-ph.on {
+  box-shadow: 0 0 10px rgba(176, 40, 63, 0.45);
+}
+.score.night .score-ph {
+  background: linear-gradient(180deg, transparent, rgba(245, 226, 166, 0.85) 12%, rgba(245, 226, 166, 0.85) 88%, transparent);
+}
+.score.night .score-ph.on {
+  box-shadow: var(--glow);
+}
+
+/* ---------------------------------------------------------------- the passage bar */
+
+.score-rangebar {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px 7px 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(36, 31, 42, 0.96), rgba(18, 16, 22, 0.96));
+  border: 1px solid var(--line-3);
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.6),
+    var(--glow);
+  backdrop-filter: blur(8px);
+  animation: score-rise 0.18s ease-out;
+  white-space: nowrap;
+  z-index: 3;
+}
+@keyframes score-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+.score-range-what {
+  font: 600 13px/1 var(--serif);
+  letter-spacing: 0.06em;
+  color: var(--champagne);
+  margin-right: 4px;
+}
+.score-swatch {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 240, 200, 0.35);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.55), transparent 45%), var(--c);
+  cursor: pointer;
+  flex: none;
+  transition: transform 0.12s;
+}
+.score-swatch.big {
+  width: 20px;
+  height: 20px;
+}
+.score-swatch:hover {
+  transform: scale(1.18);
+  box-shadow: 0 0 0 2px rgba(245, 226, 166, 0.35);
+}
+
+/* ---------------------------------------------------------------- the toolbar */
+
+.score-values {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+}
+.score-value {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 15px/1 "Bravura";
+  cursor: pointer;
+}
+.score-value:hover {
+  color: var(--gold-hi);
+  background: rgba(212, 175, 55, 0.08);
+}
+.score-value.on {
+  background: var(--metal);
+  color: #251a06;
+}
+.score-value.dot {
+  font-size: 18px;
+}
+.score-zoom {
+  min-width: 36px;
+  text-align: center;
+  font: 500 10.5px/1 var(--mono);
+  color: var(--muted);
+}
+.select.score-scope {
+  max-width: 190px;
+}
+
+/* ---------------------------------------------------------------- the sidebar */
+
+.score-side {
+  width: 236px;
+  flex: none;
+  overflow: auto;
+  padding: 10px 10px 16px;
+  background: linear-gradient(180deg, #16131a, #0f0d12);
+  border-right: 1px solid var(--line);
+}
+.score-side-h {
+  margin: 12px 4px 6px;
+  font: 600 11px/1 var(--sans);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold-mid);
+}
+.score-side-h:first-child {
+  margin-top: 2px;
+}
+.score-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.score-part,
+.score-mark {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 2px 4px 2px 2px;
+  border-radius: 7px;
+}
+.score-part:hover,
+.score-mark:hover {
+  background: rgba(212, 175, 55, 0.05);
+}
+.score-part.off .score-part-name {
+  color: var(--dim);
+  text-decoration: line-through;
+  text-decoration-color: rgba(163, 151, 128, 0.4);
+}
+.score-part.off .score-dot {
+  opacity: 0.35;
+}
+.score-eye {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  flex: none;
+}
+.score-eye .glyph {
+  width: 15px;
+  height: 15px;
+}
+.score-eye.on {
+  color: var(--gold);
+}
+.score-eye:hover {
+  color: var(--gold-hi);
+  background: rgba(212, 175, 55, 0.08);
+}
+.score-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 6px var(--c);
+  flex: none;
+}
+.score-part-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 15px/1.1 var(--serif);
+  color: var(--text);
+}
+.select.score-clef {
+  width: 74px;
+  height: 22px;
+  font-size: 10.5px;
+  padding: 0 4px;
+}
+.btn.score-only {
+  font-size: 10px;
+}
+.score-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 4px;
+}
+.btn.on-text {
+  color: var(--gold);
+}
+.score-mark .text-input.score-mark-label {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  font: italic 500 14px/1 var(--serif);
+}
+.score-mark-where {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: 500 10px/1 var(--mono);
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.score-mark-where:hover {
+  color: var(--gold-hi);
+}
+.score-none {
+  padding: 4px 6px;
+  font: italic 13px/1.35 var(--serif);
+  color: var(--dim);
+}
+
+/* A narrow pane: the sidebar would crowd the music. */
+@media (max-width: 1100px) {
+  .score-side {
+    width: 200px;
+  }
+}
+.compact .score-side {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- the ribbon */
+
+.score-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(30, 26, 35, 0.92), rgba(17, 15, 20, 0.92));
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: none;
+}
+.score-ribbon::-webkit-scrollbar {
+  display: none;
+}
+.score-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+.score-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+.score-ribbon .label {
+  margin-left: 6px;
+}

@@ -11,9 +11,11 @@ import { installKeys } from "./keys.js";
 import { loadAgents } from "./ui/agent.js";
 import { loadLayout } from "./ui/panes.js";
 import { loadKeyboard } from "./ui/keyboard.js";
+import { loadScorePrefs } from "./ui/score.js";
 
 loadLayout();
 loadKeyboard();
+loadScorePrefs();
 const ui = mount(domBackend("app"), studio);
 hooks.mark = ui.mark;
 

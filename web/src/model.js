@@ -127,7 +127,33 @@ export function decodeProject(raw) {
       mute: l.mute === true,
       points: (l.points ?? []).map((pt) => ({ beat: Number(pt.beat), value: Number(pt.value), curve: Number(pt.curve ?? 0) })),
     })),
+    score: decodeScore(raw.score),
   };
+}
+
+/** function decodeScore<T>(s: T) => ScoreSettings */
+export function decodeScore(s) {
+  if (!s) return emptyScore();
+  const key = String(s.key ?? "");
+  return {
+    key: key === "auto" ? "" : key,
+    hidden: (s.hidden ?? []).map((x) => String(x)),
+    hiddenTracks: (s.hiddenTracks ?? []).map((x) => trackIx(Math.round(Number(x)))),
+    clefs: decodeStrs(s.clefs),
+    marks: (s.marks ?? []).map((m) => ({
+      start: Number(m.start),
+      end: Number(m.end),
+      color: String(m.color ?? "#c97b84"),
+      label: String(m.label ?? ""),
+      pattern: String(m.pattern ?? ""),
+      channels: (m.channels ?? []).map((x) => String(x)),
+    })),
+  };
+}
+
+/** function emptyScore() => ScoreSettings */
+export function emptyScore() {
+  return { key: "", hidden: [], hiddenTracks: [], clefs: [], marks: [] };
 }
 
 // ------------------------------------------------------------------ encode
@@ -226,6 +252,32 @@ export function encodeProject(p) {
     })),
   };
   if (p.automation.length > 0) o.automation = p.automation.map(encodeLane);
+  const sc = encodeScore(p.score);
+  if (Object.keys(sc).length > 0) o.score = sc;
+  return o;
+}
+
+/** The wire form of the score settings; empty fields are left out. */
+/** function encodeScore<R>(s: ScoreSettings) => R */
+function encodeScore(s) {
+  const o = JSON.parse("{}");
+  if (s.key !== "") o.key = s.key;
+  if (s.hidden.length > 0) o.hidden = s.hidden;
+  if (s.hiddenTracks.length > 0) o.hiddenTracks = s.hiddenTracks.map(trackIndex);
+  if (s.clefs.length > 0) o.clefs = encodeStrs(s.clefs);
+  if (s.marks.length > 0) o.marks = s.marks.map(encodeMark);
+  return o;
+}
+
+/** function encodeMark<R>(m: ScoreMark) => R */
+function encodeMark(m) {
+  const o = JSON.parse("{}");
+  o.start = round6(m.start);
+  o.end = round6(m.end);
+  o.color = m.color;
+  if (m.label !== "") o.label = m.label;
+  if (m.pattern !== "") o.pattern = m.pattern;
+  if (m.channels.length > 0) o.channels = m.channels;
   return o;
 }
 
@@ -454,6 +506,7 @@ export function emptyProject() {
     playlist: { tracks: [], clips: [] },
     mixer: { inserts: [{ name: "Master", volume: 1, pan: 0, mute: false, solo: false, effects: [] }] },
     automation: [],
+    score: emptyScore(),
   };
 }
 
@@ -582,7 +635,34 @@ export function describeChange(a, b) {
     laneDiff(old, l, out);
   }
   for (const l of a.automation) if (!b.automation.some((x) => x.id === l.id)) out.push(`removed automation lane "${l.id}"`);
+  scoreDiff(a.score, b.score, out);
   return out.slice(0, 8);
+}
+
+/** function scoreDiff(a: ScoreSettings, b: ScoreSettings, out: String[]) => Undefined */
+function scoreDiff(a, b, out) {
+  if (a.key !== b.key) out.push(`score: key → ${b.key === "" ? "auto" : b.key}`);
+  for (const id of b.hidden) if (!a.hidden.includes(id)) out.push(`score: hid "${id}"`);
+  for (const id of a.hidden) if (!b.hidden.includes(id)) out.push(`score: showed "${id}"`);
+  const ta = a.hiddenTracks.map(trackIndex);
+  const tb = b.hiddenTracks.map(trackIndex);
+  for (const t of tb) if (!ta.includes(t)) out.push(`score: left out track ${t}`);
+  for (const t of ta) if (!tb.includes(t)) out.push(`score: brought back track ${t}`);
+  for (const c of b.clefs) {
+    const old = a.clefs.find((x) => x.key === c.key);
+    if (!old || old.value !== c.value) out.push(`score: "${c.key}" clef → ${c.value}`);
+  }
+  /** const key: (ScoreMark) => String */
+  const key = (m) => `${m.pattern}|${m.start}|${m.end}|${m.color}|${m.label}|${m.channels.join(",")}`;
+  const ka = a.marks.map(key);
+  const kb = b.marks.map(key);
+  for (const m of b.marks) {
+    if (ka.includes(key(m))) continue;
+    const where = m.pattern !== "" ? `pattern "${m.pattern}" beats` : "beats";
+    out.push(`score: colored ${where} ${fmtNum(m.start)}–${fmtNum(m.end)} ${m.color}${m.label !== "" ? ` "${m.label}"` : ""}`);
+  }
+  const gone = a.marks.filter((m) => !kb.includes(key(m))).length;
+  if (gone > 0) out.push(`score: removed ${plural(gone, "colored passage")}`);
 }
 
 /** function plural(n: Int, word: String) => String */

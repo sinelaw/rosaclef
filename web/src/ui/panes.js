@@ -38,6 +38,8 @@ export const layoutState = {
   agent: "open",
   work: "split",
   view: "playlist",
+  /** What the top pane shows: the "playlist" or the "score". */
+  top: "playlist",
   dragging: false,
 };
 
@@ -68,6 +70,8 @@ export function loadLayout() {
   if (aw >= 300 && aw <= 1600) layoutState.agentW = aw;
   const v = loadPref(PREFIX + "view");
   if (isView(v)) layoutState.view = v;
+  const top = loadPref(PREFIX + "top");
+  if (top === "playlist" || top === "score") layoutState.top = top;
 }
 
 export function saveLayout() {
@@ -77,6 +81,15 @@ export function saveLayout() {
   savePref(PREFIX + "dockH", String(Math.round(layoutState.dockH * 10) / 10));
   savePref(PREFIX + "agentW", String(Math.round(layoutState.agentW)));
   savePref(PREFIX + "view", layoutState.view);
+  savePref(PREFIX + "top", layoutState.top);
+}
+
+/** Show the playlist or the score in the top pane (restoring the pane if it was minimized). */
+/** function setTop(v: String) => Undefined */
+export function setTop(v) {
+  layoutState.top = v;
+  if (workMode("playlist") === "min") layoutState.work = "split";
+  changedLayout();
 }
 
 function changedLayout() {
