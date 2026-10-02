@@ -176,9 +176,15 @@
   music stays the same (editing shots re-plans the scenes only).
 - `web/lib/filmgl.js` (WebGL 2, behind the platform boundary) draws a frame:
   the desk, soft page shadows, the pages through a shader that raises the ink
-  off the paper from its height map (slopes lit by the lamp, a glossy
-  highlight where it reflects toward the camera, a short cast shadow), the
-  playing notes in gold (the glow effect, off by default), then a pass for depth of field (from the picture's
+  off the paper and shades it physically: the height map (`inkPart`, a
+  meniscus: steep at the edge, flat where the ink pools, PNG so no JPEG blocks
+  show in the light) gives the normal (Sobel); the lamp's highlight is a GGX
+  microfacet lobe with Schlick's Fresnel; the ink mirrors an analytic room
+  fixed in the world (a mullioned window, a strip light, a dark ceiling) along
+  its reflection vector, blurred by its roughness (wet ink smooth, dry ink
+  satin), so the reflections slide over the ink as the camera moves; the ink
+  casts a soft shadow on the paper. Then the playing notes in gold (the glow
+  effect, off by default), then a pass for depth of field (from the picture's
   mipmaps), motion blur, vignette and grain. `encodeFilm` renders frame after
   frame offscreen and encodes them with WebCodecs (H.264/AAC, or VP9/Opus)
   into an MP4 (`web/vendor/mp4-muxer`), with the mixdown from `/api/render`.

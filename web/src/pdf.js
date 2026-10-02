@@ -521,11 +521,21 @@ function drawPart(lay, p, info, look, scale, box, mask) {
   ];
   for (const i of used) defs.push(`<path id="G${i}" d="${GLYPHS[i].d}"/>`);
   if (mask) {
-    // The height map: white paper, the ink softened by about a tenth of a staff space.
+    // The height map: white paper, black where the ink stands highest. Ink is a
+    // meniscus: it rises steeply at its edge and is nearly flat on top where it
+    // pools (noteheads, beams); fine strokes, narrower than the rise, stay lower.
+    // (Staff spaces: a sharp blur for the edge, a broad one for the dome, then a curve.)
     const glyphs = defs.filter((d) => d.startsWith("<path"));
+    const soft =
+      `<filter id="soft" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">` +
+      `<feGaussianBlur in="SourceAlpha" stdDeviation="0.06" result="edge"/>` +
+      `<feGaussianBlur in="SourceAlpha" stdDeviation="0.2" result="dome"/>` +
+      `<feComposite in="edge" in2="dome" operator="arithmetic" k1="0" k2="0.55" k3="0.45" k4="0" result="h"/>` +
+      `<feComponentTransfer in="h" result="m"><feFuncA type="gamma" amplitude="1" exponent="0.55" offset="0"/></feComponentTransfer>` +
+      `<feFlood flood-color="#000"/><feComposite in2="m" operator="in"/></filter>`;
     return (
       `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(box[2] * scale)}" height="${Math.round(box[3] * scale)}" viewBox="${n(box[0])} ${n(box[1])} ${n(box[2])} ${n(box[3])}">` +
-      `<defs><filter id="soft" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="0.16"/></filter>${glyphs.join("")}</defs><rect width="${n(W)}" height="${n(H)}" fill="#fff"/>${body.join("")}</svg>`
+      `<defs>${soft}${glyphs.join("")}</defs><rect width="${n(W)}" height="${n(H)}" fill="#fff"/>${body.join("")}</svg>`
     );
   }
   const paper = [

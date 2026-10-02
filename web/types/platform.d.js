@@ -56,8 +56,8 @@ export const downloadPdf;
 /** const downloadImagePdf: (String, String, String[], Number, Number, Number) => Promise<Boolean> */
 export const downloadImagePdf;
 
-/** Draw an SVG document into a bitmap of a size in pixels: an object URL of the image (give it back with dropUrl). */
-/** const rasterSvg: (String, Int, Int) => Promise<String> */
+/** Draw an SVG document into a bitmap of a size in pixels, as an image of a type ("image/jpeg", "image/png"): its object URL (give it back with dropUrl). */
+/** const rasterSvg: (String, Int, Int, String) => Promise<String> */
 export const rasterSvg;
 /** Let go of an object URL made by rasterSvg. */
 /** const dropUrl: (String) => Undefined */

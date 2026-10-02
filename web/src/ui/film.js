@@ -340,7 +340,8 @@ async function drawBitmap(fv, f, inp, b) {
     h = Math.round(box[3] * b.scale);
   }
   try {
-    const url = await rasterSvg(svg, w, h);
+    // The ink's height as PNG: a JPEG's blocks would show in the light.
+    const url = await rasterSvg(svg, w, h, color ? "image/jpeg" : "image/png");
     if (color) b.url = url;
     else b.ink = url;
     return true;
@@ -776,8 +777,7 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
       for (const x of [c[0], c[1], r, Math.min(1, s.a * fx.glow)]) glow.push(x);
     }
   }
-  const th = (cam.turn * Math.PI) / 180;
-  // The lamp: up and to the left of what the camera looks at, high above the desk.
+  // The lamp: up and to the left of what the camera looks at, high above the desk (its direction fixed in the room, so the ink's highlights move as the camera turns).
   const lx = -0.55 * cam.span;
   const ly = -0.75 * cam.span;
   const look = inp.look;
@@ -793,9 +793,9 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
     sheets: sheets,
     sparks: glow,
     spot: [cam.rx, cam.ry, Math.max(cam.rw, d.pw * 0.55) * 0.62, cam.rh * 0.72, fx.spotlight],
-    light: [cam.x + lx * Math.cos(th) - ly * Math.sin(th), cam.y + lx * Math.sin(th) + ly * Math.cos(th), 1.15 * cam.span],
+    light: [cam.x + lx, cam.y + ly, 1.15 * cam.span],
     fx: [fx.vignette, fx.focus, fx.glow],
-    ink: [fv.relief, 0, look.shine],
+    ink: [fv.relief, look.wet ? Math.min(1, look.gloss) : 0, look.shine],
     seed: Math.floor(beat * 97) % 1000,
   };
 }

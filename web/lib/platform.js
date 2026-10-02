@@ -682,7 +682,6 @@ async function svgJpeg(svg, pw, ph) {
     const canvas = document.createElement("canvas");
     canvas.width = pw;
     canvas.height = ph;
-    const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, pw, ph);
     ctx.drawImage(img, 0, 0, pw, ph);
@@ -725,8 +724,8 @@ export async function downloadImagePdf(name, info, svgs, w, h, scale) {
   return downloadPdf(name, objs);
 }
 
-/** Draw an SVG document into a bitmap of `w` by `h` pixels: an object URL of a JPEG. */
-export async function rasterSvg(svg, w, h) {
+/** Draw an SVG document into a bitmap of `w` by `h` pixels: an object URL of an image of `type` (image/jpeg, image/png). */
+export async function rasterSvg(svg, w, h, type) {
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
   try {
     const img = new Image();
@@ -736,7 +735,7 @@ export async function rasterSvg(svg, w, h) {
     canvas.width = w;
     canvas.height = h;
     canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-    const blob = await new Promise((done) => canvas.toBlob(done, "image/jpeg", 0.92));
+    const blob = await new Promise((done) => canvas.toBlob(done, type || "image/jpeg", 0.92));
     if (!blob) throw new Error("the image could not be drawn");
     return URL.createObjectURL(blob);
   } finally {
