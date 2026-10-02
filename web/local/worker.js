@@ -172,7 +172,8 @@ async function boot() {
     storageWarning = `This browser gives the studio no storage (${e && e.message ? e.message : e}) — a private window? Your work lasts until the last studio tab closes: download projects (Projects → .zip) to keep them.`;
   }
   const url = new URL("rosaclef-local.wasm", self.location.href);
-  const { instance } = await WebAssembly.instantiate(await (await fetch(url)).arrayBuffer(), {});
+  // Revalidate, so the back end and the audio engine come from the same deploy.
+  const { instance } = await WebAssembly.instantiate(await (await fetch(url, { cache: "no-cache" })).arrayBuffer(), {});
   wasm = instance.exports;
   const r = call({ op: "boot", entries }, null);
   for (const id of r.h.wanted || []) {

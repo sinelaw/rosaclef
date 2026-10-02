@@ -25,7 +25,7 @@ const enc = new TextEncoder();
 async function init() {
   if (wasm) return wasm;
   const url = new URL("rosaclef.wasm", self.location.href);
-  const { instance } = await WebAssembly.instantiate(await (await fetch(url)).arrayBuffer(), {});
+  const { instance } = await WebAssembly.instantiate(await (await fetch(url, { cache: "no-cache" })).arrayBuffer(), {});
   wasm = instance.exports;
   return wasm;
 }
