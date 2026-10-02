@@ -9,7 +9,7 @@
   },
   "scripts": {
     "check": "./check.sh",
-    "test": "node test/tree.test.js && node test/voice.test.js && node test/score.test.js",
+    "test": "node test/tree.test.js && node test/voice.test.js && node test/score.test.js && node test/film.test.js",
     "format": "npx --yes prettier@3.8.1 --write .",
     "format:check": "npx --yes prettier@3.8.1 --check ."
   }

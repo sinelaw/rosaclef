@@ -79,7 +79,182 @@ pub struct Project {
     /// [`crate::form`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub repeats: Vec<Repeat>,
+    /// The film of the song: a camera over the score's pages on a desk,
+    /// moving with the music (the studio's Film view). It changes nothing
+    /// that plays. See [`Animation`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub animation: Option<Animation>,
 }
+
+/// The film of the song (the Score view's Film mode): the score's pages lie
+/// on a desk and a camera in 3D space above them follows the music —
+/// zooming, tilting and turning to frame one part or the whole band.
+///
+/// In `auto` mode the camera directs itself: it finds the lead, the rhythm
+/// section and the background parts and frames whichever carries the music
+/// (a part playing alone, an entry, the full band). In `manual` mode it plays
+/// `shots`, and directs itself wherever no shot covers the song.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Animation {
+    /// `auto` or `manual` (see [`FILM_MODES`]).
+    #[serde(default = "default_film_mode")]
+    pub mode: String,
+    /// What is filmed: `score` (the only view so far).
+    #[serde(default = "default_film_view")]
+    pub view: String,
+    /// The desk the pages lie on (see [`FILM_SURFACES`]).
+    #[serde(default = "default_film_surface")]
+    pub surface: String,
+    /// How much the self-directed camera moves: 0 calm … 1 restless.
+    #[serde(default = "default_energy")]
+    pub energy: f64,
+    /// Effects over the whole film; a shot's own effects override these by
+    /// type. Unlisted effects keep their default amounts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effects: Vec<FilmEffect>,
+    /// The camera's shots (manual mode), in song beats.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shots: Vec<Shot>,
+}
+
+impl Default for Animation {
+    fn default() -> Self {
+        Animation {
+            mode: default_film_mode(),
+            view: default_film_view(),
+            surface: default_film_surface(),
+            energy: default_energy(),
+            effects: vec![],
+            shots: vec![],
+        }
+    }
+}
+
+fn default_film_mode() -> String {
+    "auto".into()
+}
+
+fn default_film_view() -> String {
+    "score".into()
+}
+
+fn default_film_surface() -> String {
+    "walnut".into()
+}
+
+fn default_energy() -> f64 {
+    0.5
+}
+
+/// One shot of the film: from `start` to `end` (song beats) the camera frames
+/// some staves — `focus` channels, or a `role` — at a `frame` size, seen from
+/// `tilt` and `turn`, following the playhead (or looking `at` a fixed beat).
+/// It moves into the shot over `glide` beats, by `transition`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Shot {
+    pub start: f64,
+    pub end: f64,
+    /// A name for the shot (shown on the film's timeline).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub label: String,
+    /// Channel ids whose staves are framed. Empty: `role`, or every staff.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub focus: Vec<String>,
+    /// The part of the band to frame when `focus` is empty (see [`FILM_ROLES`]):
+    /// the camera finds which channels play it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub role: String,
+    /// How much the frame holds (see [`FILM_FRAMES`]); empty: `close`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub frame: String,
+    /// Closer (> 1) or farther (< 1) than the frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<f64>,
+    /// Degrees the camera leans from looking straight down (0..75).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tilt: Option<f64>,
+    /// Degrees the camera turns about the vertical: the music runs
+    /// diagonally across the picture (-180..180).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<f64>,
+    /// Shift of the framed point, as fractions of the frame `[x, y]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offset: Vec<f64>,
+    /// A song beat to look at for the whole shot, instead of following the
+    /// playhead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<f64>,
+    /// Where the camera drifts to by the end of the shot (a push in, a slow
+    /// turn): `zoom`, `tilt`, `turn` and `offset` at `end`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<CameraMove>,
+    /// How the camera comes into the shot (see [`FILM_TRANSITIONS`]); empty: `glide`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub transition: String,
+    /// Beats the move into the shot takes (default: up to a bar).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glide: Option<f64>,
+    /// The curve of the moves (see [`FILM_EASES`]); empty: `smooth`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub ease: String,
+    /// Effects during the shot (they override the film's by type).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effects: Vec<FilmEffect>,
+}
+
+/// The camera at the end of a shot: values left out stay as at its start.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CameraMove {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tilt: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offset: Vec<f64>,
+}
+
+/// A visual effect of the film (see [`FILM_EFFECTS`]), at an `amount` of 0..1
+/// (0 turns it off).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FilmEffect {
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default = "default_amount")]
+    pub amount: f64,
+}
+
+fn default_amount() -> f64 {
+    1.0
+}
+
+/// How the film is directed: `auto` (the camera directs itself) or `manual`
+/// (it plays the shots, and directs itself between them).
+pub const FILM_MODES: &[&str] = &["auto", "manual"];
+/// What the film shows.
+pub const FILM_VIEWS: &[&str] = &["score"];
+/// Desks the pages may lie on.
+pub const FILM_SURFACES: &[&str] = &["walnut", "oak", "slate", "felt", "marble"];
+/// Frame sizes, widest first: every page, the page, the whole line (system),
+/// about four bars, two bars, one bar.
+pub const FILM_FRAMES: &[&str] = &["desk", "page", "system", "medium", "close", "detail"];
+/// Parts of the band a shot can frame without naming channels: the melody,
+/// the drums and bass, the chords and pads, everyone.
+pub const FILM_ROLES: &[&str] = &["lead", "rhythm", "background", "all"];
+/// How the camera enters a shot: a smooth move, a cut, a move that rises
+/// away from the desk and comes down again, a fast blurred whip.
+pub const FILM_TRANSITIONS: &[&str] = &["glide", "cut", "swoop", "whip"];
+/// The curves of camera moves.
+pub const FILM_EASES: &[&str] = &["smooth", "linear", "in", "out", "snap"];
+/// Effects: darkness at the picture's edges, a pool of light on the framed
+/// staves, depth of field (what is far from the framed point blurs), a glow
+/// on the notes as they play.
+pub const FILM_EFFECTS: &[&str] = &["vignette", "spotlight", "focus", "glow"];
 
 /// A repeated passage of the arrangement (`|: … :|`), in song beats.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -601,6 +776,7 @@ impl Project {
             automation: vec![],
             score: Score::default(),
             repeats: vec![],
+            animation: None,
         }
     }
 

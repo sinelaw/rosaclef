@@ -48,6 +48,8 @@ export const state = {
   selection /*: NoteIx[] */: [],
   clipSelection /*: ClipIx[] */: [],
   focus: "playlist",
+  /** The film on screen (Score view, Film mode), for the agent's context: the scene at the playhead. */
+  film: { on: false, mode: "", shot: -1, selected: -1, start: 0, end: 0, frame: "", focus /*: String[] */: [], why: "" },
   viewport: { plStart: 0, plEnd: 0, plTrack0: 0, plTrack1: 0, prStart: 0, prEnd: 0, prLow: 0, prHigh: 0, prOn: false },
   recent /*: { at: String, summary: String }[] */: [],
   hint: "",

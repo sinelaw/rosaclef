@@ -182,7 +182,140 @@ export function decodeProject(raw) {
       times: Math.round(Number(r.times ?? 2)),
       endings: (r.endings ?? []).map((e) => ({ start: Number(e.start), end: Number(e.end), passes: (e.passes ?? []).map((k) => Math.round(Number(k))) })),
     })),
+    animation: decodeAnimation(raw.animation),
   };
+}
+
+// ------------------------------------------------------------------ film
+
+/** An optional number: NaN when absent. */
+/** function optNum<T>(x: T) => Number */
+function optNum(x) {
+  return x === undefined || x === null ? NaN : Number(x);
+}
+
+/** function decodeEffects<T>(list: T) => FilmEffect[] */
+function decodeEffects(list) {
+  return (list ?? []).map((e) => ({ type: String(e.type), amount: Number(e.amount ?? 1) }));
+}
+
+/** function decodeOffset<T>(o: T) => Number[] */
+function decodeOffset(o) {
+  return (o ?? []).map((x) => Number(x));
+}
+
+/** A shot's end camera, as written (or unset). */
+/** function decodeMove<T>(m: T) => CameraMove */
+function decodeMove(m) {
+  if (!m) return noMove();
+  return { zoom: optNum(m.zoom), tilt: optNum(m.tilt), turn: optNum(m.turn), offset: decodeOffset(m.offset) };
+}
+
+/** function noMove() => CameraMove */
+export function noMove() {
+  return { zoom: NaN, tilt: NaN, turn: NaN, offset: [] };
+}
+
+/** A shot from the project JSON. */
+/** function decodeShot<T>(s: T) => Shot */
+export function decodeShot(s) {
+  return {
+    start: Number(s.start),
+    end: Number(s.end),
+    label: String(s.label ?? ""),
+    focus: (s.focus ?? []).map((x) => String(x)),
+    role: String(s.role ?? ""),
+    frame: String(s.frame ?? ""),
+    zoom: optNum(s.zoom),
+    tilt: optNum(s.tilt),
+    turn: optNum(s.turn),
+    offset: decodeOffset(s.offset),
+    at: optNum(s.at),
+    to: decodeMove(s.to),
+    transition: String(s.transition ?? ""),
+    glide: optNum(s.glide),
+    ease: String(s.ease ?? ""),
+    effects: decodeEffects(s.effects),
+  };
+}
+
+/** The film from the project JSON (absent: none, directed automatically). */
+/** function decodeAnimation<T>(a: T) => Animation */
+export function decodeAnimation(a) {
+  if (!a) return noAnimation();
+  return {
+    on: true,
+    mode: String(a.mode ?? "auto"),
+    view: String(a.view ?? "score"),
+    surface: String(a.surface ?? "walnut"),
+    energy: Number(a.energy ?? 0.5),
+    effects: decodeEffects(a.effects),
+    shots: (a.shots ?? []).map(decodeShot),
+  };
+}
+
+/** function noAnimation() => Animation */
+export function noAnimation() {
+  return { on: false, mode: "auto", view: "score", surface: "walnut", energy: 0.5, effects: [], shots: [] };
+}
+
+/** function encodeEffect<R>(e: FilmEffect) => R */
+function encodeEffect(e) {
+  const o = JSON.parse("{}");
+  o.type = e.type;
+  if (e.amount !== 1) o.amount = round6(e.amount);
+  return o;
+}
+
+/** function encodeMove<R>(m: CameraMove) => R */
+function encodeMove(m) {
+  const o = JSON.parse("{}");
+  if (Number.isFinite(m.zoom)) o.zoom = round6(m.zoom);
+  if (Number.isFinite(m.tilt)) o.tilt = round6(m.tilt);
+  if (Number.isFinite(m.turn)) o.turn = round6(m.turn);
+  if (m.offset.length === 2) o.offset = m.offset.map(round6);
+  return o;
+}
+
+/** Whether a shot drifts anywhere by its end. */
+/** function hasMove(m: CameraMove) => Boolean */
+export function hasMove(m) {
+  return Number.isFinite(m.zoom) || Number.isFinite(m.tilt) || Number.isFinite(m.turn) || m.offset.length === 2;
+}
+
+/** The wire form of a shot; unset fields are left out. */
+/** function encodeShot<R>(s: Shot) => R */
+export function encodeShot(s) {
+  const o = JSON.parse("{}");
+  o.start = round6(s.start);
+  o.end = round6(s.end);
+  if (s.label !== "") o.label = s.label;
+  if (s.focus.length > 0) o.focus = s.focus;
+  if (s.role !== "") o.role = s.role;
+  if (s.frame !== "") o.frame = s.frame;
+  if (Number.isFinite(s.zoom)) o.zoom = round6(s.zoom);
+  if (Number.isFinite(s.tilt)) o.tilt = round6(s.tilt);
+  if (Number.isFinite(s.turn)) o.turn = round6(s.turn);
+  if (s.offset.length === 2) o.offset = s.offset.map(round6);
+  if (Number.isFinite(s.at)) o.at = round6(s.at);
+  if (hasMove(s.to)) o.to = encodeMove(s.to);
+  if (s.transition !== "") o.transition = s.transition;
+  if (Number.isFinite(s.glide)) o.glide = round6(s.glide);
+  if (s.ease !== "") o.ease = s.ease;
+  if (s.effects.length > 0) o.effects = s.effects.map(encodeEffect);
+  return o;
+}
+
+/** function encodeAnimation<R>(a: Animation) => R */
+function encodeAnimation(a) {
+  const o = JSON.parse("{}");
+  o.mode = a.mode;
+  if (a.view !== "score") o.view = a.view;
+  o.surface = a.surface;
+  o.energy = round6(a.energy);
+  if (a.effects.length > 0) o.effects = a.effects.map(encodeEffect);
+  if (a.shots.length > 0) o.shots = a.shots.map(encodeShot);
+  return o;
 }
 
 /** function decodeScore<T>(s: T) => ScoreSettings */
@@ -315,6 +448,7 @@ export function encodeProject(p) {
   const sc = encodeScore(p.score);
   if (Object.keys(sc).length > 0) o.score = sc;
   if (p.repeats.length > 0) o.repeats = p.repeats.map(encodeRepeat);
+  if (p.animation.on) o.animation = encodeAnimation(p.animation);
   return o;
 }
 
@@ -376,6 +510,16 @@ function encodeLane(l) {
 /** function projectJson(p: Project) => String */
 export function projectJson(p) {
   return JSON.stringify(encodeProject(p));
+}
+
+/** The project without its film: what the score's pages are made of (the film leaves them as they are). */
+/** function musicJson(p: Project) => String */
+export function musicJson(p) {
+  const film = p.animation;
+  p.animation = noAnimation();
+  const text = projectJson(p);
+  p.animation = film;
+  return text;
 }
 
 /** function cloneProject(p: Project) => Project */
@@ -579,6 +723,7 @@ export function emptyProject() {
     automation: [],
     score: emptyScore(),
     repeats: [],
+    animation: noAnimation(),
   };
 }
 
@@ -713,6 +858,7 @@ export function describeChange(a, b) {
   for (const l of a.automation) if (!b.automation.some((x) => x.id === l.id)) out.push(`removed automation lane "${l.id}"`);
   scoreDiff(a.score, b.score, out);
   repeatsDiff(a.repeats, b.repeats, out);
+  filmDiff(a.animation, b.animation, out);
   return out.slice(0, 8);
 }
 
@@ -734,6 +880,24 @@ function repeatsDiff(a, b, out) {
   for (const r of a) {
     if (!b.some((x) => Math.abs(x.start - r.start) < 1e-6)) out.push(`removed the repeat at beat ${fmtNum(r.start)}`);
   }
+}
+
+/** function filmDiff(a: Animation, b: Animation, out: String[]) => Undefined */
+function filmDiff(a, b, out) {
+  if (a.mode !== b.mode) out.push(`film: ${b.mode} mode`);
+  if (a.surface !== b.surface) out.push(`film: pages on ${b.surface}`);
+  if (Math.abs(a.energy - b.energy) > 1e-9) out.push(`film: energy → ${fmtNum(b.energy)}`);
+  const ka = a.shots.map((x) => JSON.stringify(encodeShot(x)));
+  const kb = b.shots.map((x) => JSON.stringify(encodeShot(x)));
+  const added = kb.filter((k) => !ka.includes(k)).length;
+  const gone = ka.filter((k) => !kb.includes(k)).length;
+  if (added > 0 && gone > 0 && a.shots.length === b.shots.length) out.push(`film: changed ${plural(added, "shot")}`);
+  else {
+    if (added > 0) out.push(`film: added ${plural(added, "shot")}`);
+    if (gone > 0) out.push(`film: removed ${plural(gone, "shot")}`);
+  }
+  const ea = JSON.stringify(a.effects);
+  if (ea !== JSON.stringify(b.effects)) out.push("film: effects changed");
 }
 
 /** function scoreDiff(a: ScoreSettings, b: ScoreSettings, out: String[]) => Undefined */

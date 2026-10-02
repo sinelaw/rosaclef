@@ -519,6 +519,99 @@ mod tests {
     }
 
     #[test]
+    fn animation_round_trips_and_validates() {
+        let mut p = with_pad();
+        // An agent's shot list, as written in project.json.
+        let text = format::to_string(&p).replacen(
+            "\"format\"",
+            r##""animation": {
+                "mode": "manual", "surface": "slate", "energy": 0.7,
+                "effects": [{ "type": "vignette", "amount": 0.6 }],
+                "shots": [
+                  { "start": 0, "end": 8, "frame": "desk", "transition": "cut" },
+                  { "start": 8, "end": 16, "focus": ["pad"], "frame": "close", "tilt": 35, "turn": -20,
+                    "to": { "zoom": 1.4, "turn": -5 }, "glide": 2, "ease": "out",
+                    "effects": [{ "type": "spotlight" }] },
+                  { "start": 16, "end": 24, "role": "rhythm", "frame": "medium", "at": 18, "offset": [0.1, -0.2], "label": "Groove" }
+                ]
+              },
+              "format""##,
+            1,
+        );
+        let checked = validate::parse_and_validate(&text);
+        assert!(checked.is_ok(), "{:?}", checked.issues);
+        let parsed = checked.project.unwrap();
+        let a = parsed.animation.clone().unwrap();
+        assert_eq!(a.mode, "manual");
+        assert_eq!(a.view, "score");
+        assert_eq!(a.shots.len(), 3);
+        assert_eq!(a.shots[1].to.as_ref().unwrap().zoom, Some(1.4));
+        assert_eq!(a.shots[1].effects[0].amount, 1.0);
+        // It survives the formatter.
+        let again = validate::parse_and_validate(&format::to_string(&parsed));
+        assert_eq!(again.project.unwrap(), parsed);
+        // Projects without a film serialize without the key.
+        p.animation = None;
+        assert!(!format::to_string(&p).contains("animation"));
+    }
+
+    #[test]
+    fn animation_errors_have_paths() {
+        let mut p = with_pad();
+        p.animation = Some(model::Animation {
+            mode: "director".into(),
+            surface: "glass".into(),
+            energy: 2.0,
+            effects: vec![model::FilmEffect {
+                kind: "sparkles".into(),
+                amount: 0.5,
+            }],
+            shots: vec![
+                model::Shot {
+                    start: 8.0,
+                    end: 4.0,
+                    focus: vec!["ghost".into()],
+                    frame: "huge".into(),
+                    tilt: Some(90.0),
+                    offset: vec![0.5],
+                    ..Default::default()
+                },
+                model::Shot {
+                    start: 0.0,
+                    end: 16.0,
+                    role: "singer".into(),
+                    transition: "dissolve".into(),
+                    to: Some(model::CameraMove {
+                        zoom: Some(0.0),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        });
+        let issues = validate::validate(&p);
+        let has = |path: &str, needle: &str| {
+            issues
+                .iter()
+                .any(|i| i.path == path && i.message.contains(needle))
+        };
+        assert!(has("animation.mode", "unknown value"), "{issues:?}");
+        assert!(has("animation.surface", "walnut"));
+        assert!(has("animation.energy", "range"));
+        assert!(has("animation.effects[0].type", "vignette"));
+        assert!(has("animation.shots[0].end", "after start"));
+        assert!(has("animation.shots[0].focus[0]", "does not exist"));
+        assert!(has("animation.shots[0].frame", "close"));
+        assert!(has("animation.shots[0].tilt", "range"));
+        assert!(has("animation.shots[0].offset", "[x, y]"));
+        assert!(has("animation.shots[1].role", "rhythm"));
+        assert!(has("animation.shots[1].transition", "swoop"));
+        assert!(has("animation.shots[1].to.zoom", "range"));
+        assert!(has("animation.shots[1].start", "overlaps"));
+    }
+
+    #[test]
     fn typos_are_reported_with_path() {
         let text = r#"{"format":"rosaclef/1","meta":{"title":"x"},"transport":{"bpm":120},
             "patterns":[{"id":"a","name":"A","length":4,"notes":[{"channel":"c","pitch":60,"startTime":0,"length":1}]}],

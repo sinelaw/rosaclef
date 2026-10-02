@@ -463,6 +463,13 @@
 .score-side-h:first-child {
   margin-top: 2px;
 }
+.score-side-h.with-eye {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
 .score-list {
   display: flex;
   flex-direction: column;

@@ -144,7 +144,8 @@ pattern, picked from its menu.
   endings that are not this pass's — and the playlist's ruler shows them.
 - **Colors**: drag across the music to color a passage (on some staves or
   all) and label it; a passage colored in a pattern is colored wherever the
-  pattern plays.
+  pattern plays. The palette button (or the eye beside **Colors** in the
+  sidebar) hides them: everything in plain ink, on screen and in the PDF.
 - **Editing**: click notes to select them (they are the piano roll's
   selection), drag them up or down by step and along the bar, delete or
   transpose them, or switch to **Write** and click notes in with a chosen
@@ -152,6 +153,38 @@ pattern, picked from its menu.
 
 The settings live in `project.json` under `score`, so the agent can set the
 key, hide parts or color a chorus too.
+
+## Film
+
+The score's **Film** button turns the sheet music into a film of the song:
+the pages lie on a desk (walnut, oak, slate, felt or marble) and a camera in
+3D space above them plays the song — zooming in on a part, pulling back to
+the whole band, leaning and turning so the music runs diagonally across the
+picture, gliding to the next line as one ends. The ink stands a little proud
+of the paper and the lamp catches it (wet ink shines); the notes glow as they
+play, and a spotlight, depth of field and a vignette finish the picture.
+
+- **Auto**: the camera directs itself. It finds the lead, the rhythm section
+  (drums and bass) and the background (chords and pads), cuts the song into
+  phrases, and frames whatever carries each one — a part playing alone, a part
+  coming in, the lead, the groove, the whole band. **Energy** sets how much it
+  moves.
+- **Manual**: the camera films your shots, and directs itself between them.
+  A shot is a stretch of the song, what it frames (channels, or a role), how
+  much (from the whole desk to one bar), the angle, a drift (a slow push in or
+  turn), how it comes in (glide, cut, swoop, whip) and its effects. Edit them
+  on the timeline under the picture (double-click to add one, drag to move or
+  stretch), in the panel, or on the picture itself (drag to frame, Shift-drag
+  to turn and lean, wheel to zoom). **Write the director's shots** turns the
+  auto film into shots to refine.
+- **MP4**: the whole film at 1920×1080 with its mixdown (Shift-click: fifteen
+  seconds from the playhead), H.264/AAC where the browser encodes them, VP9/Opus
+  otherwise. **Cinema** shows just the picture, full screen.
+
+The film lives in `project.json` under `animation` (shots in song beats, roles
+and frames by name), so an agent can direct it — or start from the director's
+shots and refine them; the agent guide describes it, and `.rosaclef/context.json`
+names the shot on screen.
 
 ## Sampled instruments
 
@@ -216,6 +249,7 @@ cargo test --workspace                 # Rust tests (engine, validation, CLAP ho
 ./tools/build-wasm.sh                  # rebuild web/engine/rosaclef.wasm and web/local/rosaclef-local.wasm
 node web/test/tree.test.js             # UI tree tests (no browser needed)
 node web/test/voice.test.js            # voice-to-notes logic (quantize, auto-tune, drums)
+node web/test/film.test.js             # the film's director and camera
 node tools/bench-engine.mjs            # real-time load of the WebAssembly engine (demo song)
 web/check.sh                           # type-check the frontend with inty
 cargo fmt --all                        # format Rust
@@ -235,3 +269,4 @@ Known inty rough edges are tracked in [`docs/inty-notes.md`](docs/inty-notes.md)
 
 GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js). `web/soundfonts/gm`
 is MuseScore General (MIT; see its [license](web/soundfonts/gm/LICENSE.md)).
+`web/vendor/mp4-muxer` is MIT (mp4-muxer, by Vanilagy).

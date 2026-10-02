@@ -149,6 +149,39 @@
   page as SVG on the paper of `ink.js` and through its filter;
   `downloadImagePdf` turns each into a JPEG and writes a page per image.
 
+### The film
+
+- `project.animation` (`Animation` in `crates/core/src/model.rs`) directs a
+  film of the score: `mode` (auto or manual), the desk's `surface`, `energy`,
+  `effects` and `shots` (song beats; channels or a role; a frame size; tilt,
+  turn, offset and their values at the end; the transition into the shot).
+  Validation names every mistake by its path; nothing in it plays.
+- `web/src/film.js` is pure data: the score engraved for printed pages
+  (`pdfLayout`) laid on a desk (`layDesk`); each staff's role (`findRoles`:
+  drums and low single lines keep the rhythm, chords and held notes are the
+  background, the busiest high line is the lead); the director (`autoScenes`:
+  phrases cut where a part comes in or is left alone, each framed on what
+  carries it, an opening over the desk and a close on the page); the shots
+  painted over it in manual mode (`plan`); and the camera as a function of the
+  song beat (`cameraAt`): the framed region follows the playhead along its
+  system, glides to the next system in its last bar, drifts to the shot's `to`
+  values, and moves in from the previous scene (glide, swoop, whip, cut).
+  `performance` unrolls the repeats as `form.rs` does, for the video's time.
+- `web/src/ui/film.js` prepares frames (`GlFrame`, plain data) and edits the
+  shots. Pages are bitmaps: `pdf.js` draws a page (`pagePart`) and its ink as a
+  height map (`inkPart`), the platform layer rasterizes them, one at a time,
+  the ones in view first; where the camera comes close, sharper bitmaps of the
+  system's band (`stripBox`) are laid over the page. They are kept while the
+  music stays the same (editing shots re-plans the scenes only).
+- `web/lib/filmgl.js` (WebGL 2, behind the platform boundary) draws a frame:
+  the desk, soft page shadows, the pages through a shader that raises the ink
+  off the paper from its height map (slopes lit by the lamp, a glossy
+  highlight where it reflects toward the camera, a short cast shadow), the
+  playing notes in gold, then a pass for depth of field (from the picture's
+  mipmaps), motion blur, vignette and grain. `encodeFilm` renders frame after
+  frame offscreen and encodes them with WebCodecs (H.264/AAC, or VP9/Opus)
+  into an MP4 (`web/vendor/mp4-muxer`), with the mixdown from `/api/render`.
+
 ### The UI library (`web/src/ui/tree.js`)
 
 A small retained, reconciling tree in the spirit of

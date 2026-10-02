@@ -725,6 +725,40 @@ export async function downloadImagePdf(name, info, svgs, w, h, scale) {
   return downloadPdf(name, objs);
 }
 
+/** Draw an SVG document into a bitmap of `w` by `h` pixels: an object URL of a JPEG. */
+export async function rasterSvg(svg, w, h) {
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((done) => canvas.toBlob(done, "image/jpeg", 0.92));
+    if (!blob) throw new Error("the image could not be drawn");
+    return URL.createObjectURL(blob);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export { filmDraw, filmForget, encodeFilm } from "./filmgl.js";
+
+export function dropUrl(url) {
+  URL.revokeObjectURL(url);
+}
+
+export function toggleFullscreen(selector) {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+    return;
+  }
+  const el = document.querySelector(selector);
+  if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+}
+
 export function textWidth(face, text) {
   if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
   const style = face.includes("Italic") ? "italic " : "";
