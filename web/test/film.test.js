@@ -113,7 +113,10 @@ check(
   "then the bass, as it comes in",
   takeOf(17).staves.includes(staffOf("bass")) && !takeOf(17).staves.includes(staffOf("drums")) && takeOf(17).why === "Bass comes in"
 );
-check("then the lead and the pad", takeOf(33).why.includes("come in") && takeOf(33).staves.includes(staffOf("lead")));
+check(
+  "then the lead, as it comes in with the pad (up close, alone in the frame)",
+  takeOf(33).why === "Lead comes in" && takeOf(33).staves.join() === String(staffOf("lead")) && takeOf(33).frame === "detail"
+);
 const later = scenes.filter((k) => k.start >= 40 && k.why !== "the close");
 check(
   "with the whole band playing it looks at the lead, the groove or everyone",

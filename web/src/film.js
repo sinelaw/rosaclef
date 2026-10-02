@@ -75,16 +75,16 @@ export function defaultTilt(frame) {
   if (frame === "page") return 8;
   if (frame === "system") return 14;
   if (frame === "medium") return 20;
-  if (frame === "detail") return 30;
-  return 24;
+  if (frame === "detail") return 34;
+  return 28;
 }
 
-/** Bars a following frame holds (0: not a following frame). */
+/** Bars a following frame holds (0: not a following frame): two bars, one, or a beat (in 4/4) — close enough to see the ink. */
 /** function frameBars(frame: String) => Number */
 function frameBars(frame) {
-  if (frame === "medium") return 4;
-  if (frame === "close") return 2;
-  if (frame === "detail") return 1;
+  if (frame === "medium") return 2;
+  if (frame === "close") return 1;
+  if (frame === "detail") return 0.25;
   return 0;
 }
 
@@ -537,11 +537,14 @@ export function autoScenes(sc, roles, film, pages, bar) {
       why = "a rest";
     } else if (A.length === 1) {
       focus = [A[0]];
-      frame = energy > 0.6 ? "detail" : "close";
+      frame = "detail";
       why = `${partNames(sc, stavesOf(sc, A))} alone`;
     } else if (E.length > 0 && E.length < A.length && i > 0) {
-      focus = E;
-      why = `${partNames(sc, stavesOf(sc, E))} ${E.length === 1 ? "comes" : "come"} in`;
+      // A part coming in, up close: the lead if it is one of them, else the first.
+      const one = roles.lead >= 0 && E.includes(roles.lead) ? roles.lead : E[0];
+      focus = [one];
+      frame = "detail";
+      why = `${partNames(sc, stavesOf(sc, [one]))} comes in`;
     } else if (A.every((g) => roleOf(g) === "rhythm")) {
       focus = A;
       frame = "medium";
@@ -557,11 +560,11 @@ export function autoScenes(sc, roles, film, pages, bar) {
       full = full + 1;
       if (hasLead && (c === 0 || c === 2)) {
         focus = [roles.lead];
-        frame = c === 0 ? "close" : "medium";
+        frame = c === 0 ? "detail" : "close";
         why = "the lead";
       } else if (c === 3 && rhythm.length > 0) {
-        focus = rhythm;
-        frame = "close";
+        focus = [rhythm[0]];
+        frame = "detail";
         why = "the groove";
       } else {
         frame = energy < 0.34 ? "page" : "system";
@@ -792,8 +795,8 @@ function sysRegion(f, k, si, tick) {
   if (bars > 0) {
     const sysW = s.x1 - s.x0;
     const w = Math.min(sysW + 1, (sysW * bars * barTicks(f.sc, tick)) / Math.max(1, s.end - s.start));
-    // The playhead, smoothed over a bar, a little left of the middle.
-    const b = barTicks(f.sc, tick);
+    // The playhead, smoothed over about what the frame holds, a little left of the middle.
+    const b = barTicks(f.sc, tick) * Math.max(0.5, bars);
     let x = 0;
     for (const d of [-0.5, -0.25, 0, 0.25, 0.5]) x = x + timeX(s.times, clamp(tick + d * b, s.start, s.end));
     const c = clamp(x / 5 + w * 0.1, s.x0 + w / 2 - 1, s.x1 - w / 2 + 0.6);

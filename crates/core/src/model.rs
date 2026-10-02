@@ -241,7 +241,7 @@ pub const FILM_VIEWS: &[&str] = &["score"];
 /// Desks the pages may lie on.
 pub const FILM_SURFACES: &[&str] = &["walnut", "oak", "slate", "felt", "marble"];
 /// Frame sizes, widest first: every page, the page, the whole line (system),
-/// about four bars, two bars, one bar.
+/// about two bars, one bar, a beat (close enough to see the ink).
 pub const FILM_FRAMES: &[&str] = &["desk", "page", "system", "medium", "close", "detail"];
 /// Parts of the band a shot can frame without naming channels: the melody,
 /// the drums and bass, the chords and pads, everyone.

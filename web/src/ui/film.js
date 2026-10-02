@@ -65,7 +65,7 @@ import {
   ease,
   defaultTilt,
 } from "../film.js";
-import { pagePart, inkPart, stripBox } from "../pdf.js";
+import { pagePart, inkPart } from "../pdf.js";
 import { surface, PAPER } from "../ink.js";
 import { decodeShot, musicJson, noMove } from "../model.js";
 import { TPQ } from "../notation.js";
@@ -74,8 +74,8 @@ import { toast } from "./toast.js";
 
 // ------------------------------------------------------------------ state
 
-/** A bitmap pair (made or being made): what it shows, the object URLs of its color and its ink ("" while drawing, "-" if it failed), its scale (pixels a point), when last shown (ms), its system (-1: a whole page). */
-/** type Bitmap = { key: String, url: String, ink: String, scale: Number, used: Number, sys: Int, part: Int, parts: Int } */
+/** A bitmap pair (made or being made): what it shows, the object URLs of its color and its ink ("" while drawing, "-" if it failed), its scale (pixels a point), when last shown (ms), its page (-1: the desk) and the part of the page it shows ([x, y, w, h], points). */
+/** type Bitmap = { key: String, url: String, ink: String, scale: Number, used: Number, page: Int, box: Number[] } */
 /** A change of view made by hand while paused (not part of any shot): moved by fractions of the picture, zoomed, turned, leaned. */
 /** type Look = { dx: Number, dy: Number, zoom: Number, turn: Number, tilt: Number } */
 /** What the film is made of, from the score view: its notation, how it is drawn, its title block, beats in a bar, whether the playhead is this score's, and how to seek and go back to the paper. */
@@ -84,11 +84,11 @@ import { toast } from "./toast.js";
  * A film view: its id and size, panel, selection (`shot`: an index in
  * animation.shots; `auto`: the start of a selected director's scene), the film
  * (0 or 1), what it was made from (`sc`, `sig`: the music; `plan`: the shots
- * and aspect), its bitmaps (pages, sharper strips, the desk), whether one is
+ * and aspect), its bitmaps (pages, sharper tiles, the desk), whether one is
  * being made, the camera last shown (for gliding over jumps), the look by
  * hand, the ink's relief, and an export under way (its progress, 0..1; -1: none).
  */
-/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], strips: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, relief: Number, export: Number } */
+/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], tiles: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, relief: Number, export: Number } */
 
 /** function newFilmView(id: String) => FilmView */
 export function newFilmView(id) {
@@ -107,7 +107,7 @@ export function newFilmView(id) {
     plan: "",
     pageKeys: [],
     pages: [],
-    strips: [],
+    tiles: [],
     desk: [],
     busy: false,
     last: [],
@@ -121,13 +121,13 @@ export function newFilmView(id) {
   };
 }
 
-/** Pixels a point of the pages' bitmaps, and of the sharper strips (the widest bitmap is about 4096 pixels). */
+/** Pixels a point of the pages' bitmaps. */
 const PAGE_SCALE = 1.6;
-const STRIP_STEPS = [2.6, 4, 5.5, 7, 10];
-/** The widest bitmap: a strip wider is drawn in parts. */
-const MAX_PX = 4096;
-/** Sharper strips kept at once. */
-const STRIPS_MAX = 8;
+/** Where the camera comes closer, tiles of TILE_PX pixels square at one of these scales (pixels a point) are drawn over the page: up close, a staff space is a hundred pixels. */
+const TILE_LEVELS = [2.5, 5, 10, 20, 40, 80];
+const TILE_PX = 1024;
+/** Tiles kept at once (the ones shown longest ago go). */
+const TILES_MAX = 40;
 /** The exported video. */
 const VIDEO_W = 1920;
 const VIDEO_H = 1080;
@@ -230,9 +230,10 @@ function done(b) {
 }
 
 /**
- * The next bitmap to draw: the desk, the pages (in view first), then the strips
- * the camera needs (now, then soon); `need` is [page, system, scale, later].
- * Undefined: nothing to do. Bitmaps that no longer show anything go.
+ * The next bitmap to draw: the desk, the pages in view, the tiles wanted now,
+ * the other pages, the tiles wanted soon. `need` is [page, level, tx, ty,
+ * later] (level -1: the whole page). Undefined: nothing to do. Bitmaps that
+ * no longer show anything go.
  */
 /** function nextJob(fv: FilmView, f: Film, inp: FilmInput, need: Number[][], all: Boolean) => Bitmap | Undefined */
 function nextJob(fv, f, inp, need, all) {
@@ -243,30 +244,29 @@ function nextJob(fv, f, inp, need, all) {
       drop(pg.ink);
     }
   fv.pages = fv.pages.filter((pg) => keys.includes(pg.key));
-  for (const st of fv.strips)
-    if (!keys.includes(st.key.split("#")[0])) {
-      drop(st.url);
-      drop(st.ink);
+  for (const t of fv.tiles)
+    if (!keys.includes(t.key.split("#")[0])) {
+      drop(t.url);
+      drop(t.ink);
     }
-  fv.strips = fv.strips.filter((st) => keys.includes(st.key.split("#")[0]));
+  fv.tiles = fv.tiles.filter((t) => keys.includes(t.key.split("#")[0]));
   const surf = state.project.animation.surface;
   if (fv.desk.length === 0 || fv.desk[0].key !== surf) {
     for (const d of fv.desk) drop(d.url);
-    const d = { key: surf, url: "", ink: "-", scale: 1, used: now(), sys: -2, part: 0, parts: 1 };
+    const d = { key: surf, url: "", ink: "-", scale: 1, used: now(), page: -1, box: [] };
     fv.desk = [d];
     return d;
   }
   if (!done(fv.desk[0])) return undefined;
   for (const b of fv.pages) if (!done(b)) return b;
-  for (const b of fv.strips) if (!done(b)) return b;
-  // The pages in view, the strips wanted now, the other pages, the strips wanted soon.
+  for (const b of fv.tiles) if (!done(b)) return b;
   /** function page(pass: Int) => Bitmap | Undefined */
   function page(pass) {
     for (let i = 0; i < f.lay.pages.length; i++) {
       const k = keys[i + 1];
       if (fv.pages.some((pg) => pg.key === k)) continue;
       if (pass === 0 && !need.some((nd) => nd[0] === i)) continue;
-      const b = { key: k, url: "", ink: "", scale: PAGE_SCALE, used: now(), sys: -1, part: 0, parts: 1 };
+      const b = { key: k, url: "", ink: "", scale: PAGE_SCALE, used: now(), page: i, box: [0, 0, f.lay.w, f.lay.h] };
       fv.pages.push(b);
       return b;
     }
@@ -274,60 +274,49 @@ function nextJob(fv, f, inp, need, all) {
   }
   const inView = page(0);
   if (inView) return inView;
-  const now0 = strip(
+  const now0 = tile(
     fv,
     f,
     keys,
-    need.filter((nd) => nd[3] < 0.5),
+    need.filter((nd) => nd[4] < 0.5),
     all
   );
   if (now0) return now0;
   const rest = page(1);
   if (rest) return rest;
-  return strip(fv, f, keys, need, all);
+  return tile(fv, f, keys, need, all);
 }
 
-/** The next sharper strip to draw for some needs (undefined: they are all there). */
-/** function strip(fv: FilmView, f: Film, keys: String[], need: Number[][], all: Boolean) => Bitmap | Undefined */
-function strip(fv, f, keys, need, all) {
+/** The next tile to draw for some needs (undefined: they are all there). */
+/** function tile(fv: FilmView, f: Film, keys: String[], need: Number[][], all: Boolean) => Bitmap | Undefined */
+function tile(fv, f, keys, need, all) {
   for (const nd of need) {
-    const sys = Math.round(nd[1]);
-    if (sys < 0) continue;
-    const page = f.sys[sys].page;
-    const scale = nd[2];
-    const mine = fv.strips.filter((st) => st.sys === sys && st.key.startsWith(`${keys[page + 1]}#`));
-    if (mine.length > 0 && mine.length === mine[0].parts && mine[0].scale >= scale - 1e-6) {
-      for (const st of mine) st.used = now();
+    const level = nd[1];
+    if (level < 0) continue;
+    const page = Math.round(nd[0]);
+    const key = `${keys[page + 1]}#${level}/${nd[2]}/${nd[3]}`;
+    const have = fv.tiles.find((t) => t.key === key);
+    if (have) {
+      have.used = now();
       continue;
     }
     // While playing, only what is needed now.
-    if (!all && state.playing && nd[3] > 0.5) continue;
-    for (const st of mine) {
-      drop(st.url);
-      drop(st.ink);
-    }
-    fv.strips = fv.strips.filter((x) => !mine.includes(x));
-    const parts = Math.ceil((f.lay.w * scale) / MAX_PX);
-    // Keep a few: the ones shown longest ago go.
-    while (fv.strips.length + parts > STRIPS_MAX * 2) {
+    if (!all && state.playing && nd[4] > 0.5) continue;
+    while (fv.tiles.length >= TILES_MAX) {
       let old = 0;
-      for (let i = 1; i < fv.strips.length; i++) if (fv.strips[i].used < fv.strips[old].used) old = i;
-      drop(fv.strips[old].url);
-      drop(fv.strips[old].ink);
-      fv.strips.splice(old, 1);
+      for (let i = 1; i < fv.tiles.length; i++) if (fv.tiles[i].used < fv.tiles[old].used) old = i;
+      drop(fv.tiles[old].url);
+      drop(fv.tiles[old].ink);
+      fv.tiles.splice(old, 1);
     }
-    for (let k = 0; k < parts; k++)
-      fv.strips.push({ key: `${keys[page + 1]}#${sys}`, url: "", ink: "", scale: scale, used: now(), sys: sys, part: k, parts: parts });
-    return fv.strips[fv.strips.length - parts];
+    const size = TILE_PX / level;
+    const x = nd[2] * size;
+    const y = nd[3] * size;
+    const b = { key: key, url: "", ink: "", scale: level, used: now(), page: page, box: [x, y, Math.min(size, f.lay.w - x), Math.min(size, f.lay.h - y)] };
+    fv.tiles.push(b);
+    return b;
   }
   return undefined;
-}
-
-/** Part `k` of `n` of a box, side by side (a strip too wide for one bitmap). */
-/** function partBox(box: Number[], k: Int, n: Int) => Number[] */
-function partBox(box, k, n) {
-  const w = box[2] / Math.max(1, n);
-  return [box[0] + k * w, box[1], w, box[3]];
 }
 
 /** Draw the missing part of a bitmap (its color, then its ink). */
@@ -338,19 +327,14 @@ async function drawBitmap(fv, f, inp, b) {
   let svg = "";
   let w = 0;
   let h = 0;
-  if (b.sys === -2) {
+  if (b.page < 0) {
     const t = surface(b.key);
     svg = t.svg;
     w = t.size;
     h = t.size;
   } else {
-    const page = b.sys >= 0 ? f.sys[b.sys].page : fv.pageKeys.indexOf(b.key) - 1;
-    if (page < 0) {
-      b.url = "-";
-      b.ink = "-";
-      return false;
-    }
-    const box = b.sys >= 0 ? partBox(stripBox(lay, b.sys), b.part, b.parts) : [0, 0, lay.w, lay.h];
+    const page = b.page;
+    const box = b.box;
     svg = color ? pagePart(lay, page, inp.info, paperLook(inp), b.scale, box) : inkPart(lay, page, inp.info, b.scale, box);
     w = Math.round(box[2] * b.scale);
     h = Math.round(box[3] * b.scale);
@@ -389,7 +373,7 @@ function schedule(fv, f, inp, need) {
 /** Make every bitmap a frame needs, now (exporting). */
 /** function ensure(fv: FilmView, f: Film, inp: FilmInput, need: Number[][]) => Promise<Boolean> */
 async function ensure(fv, f, inp, need) {
-  for (let i = 0; i < 64; i++) {
+  for (let i = 0; i < 400; i++) {
     const b = nextJob(fv, f, inp, need, true);
     if (b === undefined) return true;
     await drawBitmap(fv, f, inp, b);
@@ -397,21 +381,75 @@ async function ensure(fv, f, inp, need) {
   return true;
 }
 
-/** The pages and systems a camera looks at, closely enough to want sharper strips: [page, system, scale, later]. */
-/** function wants(f: Film, cam: Cam, beat: Number, w: Number, later: Number, ratio: Number) => Number[][] */
-function wants(f, cam, beat, w, later, ratio) {
+/**
+ * What a camera needs drawn: the pages it sees ([page, -1, 0, 0, later]), and
+ * where it comes closer than the pages' bitmaps, the tiles of each page in
+ * view at the level that matches ([page, level, tx, ty, later]), nearest first.
+ */
+/** function wants(f: Film, cam: Cam, w: Number, h: Number, later: Number, ratio: Number) => Number[][] */
+function wants(f, cam, w, h, later, ratio) {
   /** const out: Number[][] */
   const out = [];
-  const px = (w / cam.span) * ratio;
-  const si = systemAt(f.lay.page, beat * TPQ);
-  if (si < 0) return out;
-  const page = f.sys[si].page;
-  out.push([page, -1, 0, later]);
-  if (page + 1 < f.lay.pages.length) out.push([page + 1, -1, 0, 1]);
-  if (px < PAGE_SCALE * 1.15) return out;
-  let scale = STRIP_STEPS[STRIP_STEPS.length - 1];
-  for (let i = STRIP_STEPS.length - 1; i >= 0; i--) if (STRIP_STEPS[i] >= px * 1.05) scale = STRIP_STEPS[i];
-  for (const j of [si, si + 1, si - 1]) if (j >= 0 && j < f.sys.length) out.push([f.sys[j].page, j, scale, later]);
+  const d = f.desk;
+  // The picture on the desk: a rectangle around the camera's point, longer toward the far side as it leans.
+  const th = (cam.turn * Math.PI) / 180;
+  const hw = (cam.span / 2) * 1.1;
+  const hh = (((cam.span * h) / Math.max(1, w) / 2) * 1.1) / Math.max(0.35, Math.cos((cam.tilt * Math.PI) / 180));
+  /** const corners: Number[][] */
+  const corners = [];
+  for (const c of [
+    [-hw, -hh],
+    [hw, -hh],
+    [hw, hh],
+    [-hw, hh],
+  ])
+    corners.push([cam.x + c[0] * Math.cos(th) - c[1] * Math.sin(th), cam.y + c[0] * Math.sin(th) + c[1] * Math.cos(th)]);
+  const px = (w / cam.span) * ratio * 1.15;
+  let level = -1;
+  if (px > PAGE_SCALE * 1.15) {
+    level = TILE_LEVELS[TILE_LEVELS.length - 1];
+    for (let i = TILE_LEVELS.length - 1; i >= 0; i--) if (TILE_LEVELS[i] >= px) level = TILE_LEVELS[i];
+  }
+  /** const tiles: Number[][] */
+  const tiles = [];
+  for (let p = 0; p < d.pages.length; p++) {
+    const pg = d.pages[p];
+    const a = (-pg.rot * Math.PI) / 180;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const c of corners) {
+      const qx = c[0] - pg.x;
+      const qy = c[1] - pg.y;
+      const lx = qx * Math.cos(a) - qy * Math.sin(a) + d.pw / 2;
+      const ly = qx * Math.sin(a) + qy * Math.cos(a) + d.ph / 2;
+      x0 = Math.min(x0, lx);
+      y0 = Math.min(y0, ly);
+      x1 = Math.max(x1, lx);
+      y1 = Math.max(y1, ly);
+    }
+    x0 = Math.max(0, x0);
+    y0 = Math.max(0, y0);
+    x1 = Math.min(d.pw, x1);
+    y1 = Math.min(d.ph, y1);
+    if (x1 <= x0 || y1 <= y0) continue;
+    out.push([p, -1, 0, 0, later]);
+    if (level < 0) continue;
+    const size = TILE_PX / level;
+    // The camera's point on this page, to draw the nearest tiles first.
+    const qx = cam.x - pg.x;
+    const qy = cam.y - pg.y;
+    const cx = qx * Math.cos(a) - qy * Math.sin(a) + d.pw / 2;
+    const cy = qx * Math.sin(a) + qy * Math.cos(a) + d.ph / 2;
+    for (let ty = Math.floor(y0 / size); ty * size < y1; ty++)
+      for (let tx = Math.floor(x0 / size); tx * size < x1; tx++) {
+        const dist = Math.hypot((tx + 0.5) * size - cx, (ty + 0.5) * size - cy);
+        tiles.push([p, level, tx, ty, later, dist]);
+      }
+  }
+  tiles.sort((x, y) => x[5] - y[5]);
+  for (const t of tiles.slice(0, later > 0.5 ? 6 : 16)) out.push([t[0], t[1], t[2], t[3], t[4]]);
   return out;
 }
 
@@ -668,8 +706,8 @@ export function filmView(b, fv, inp) {
   // Bitmaps: what the camera needs now, then soon.
   /** const need: Number[][] */
   const ratio = Math.min(2, pixelRatio());
-  const need = wants(f, cam, beat, fv.width, 0, ratio);
-  for (const ahead of [f.bar, f.bar * 2]) for (const nd of wants(f, cameraAt(f, beat + ahead), beat + ahead, fv.width, 1, ratio)) need.push(nd);
+  const need = wants(f, cam, fv.width, fv.height, 0, ratio);
+  for (const ahead of [f.bar * 0.5, f.bar]) for (const nd of wants(f, cameraAt(f, beat + ahead), fv.width, fv.height, 1, ratio)) need.push(nd);
   schedule(fv, f, inp, need);
 
   b.open("div", "film", `film surface-${a.surface}${fv.cinema ? " cinema" : ""}${fv.side && !fv.cinema ? " with-side" : ""}`);
@@ -719,13 +757,14 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
       page: true,
     });
   }
-  for (const st of fv.strips) {
-    if (st.url === "" || st.url === "-" || st.sys >= f.sys.length) continue;
-    const p = f.sys[st.sys].page;
-    if (!st.key.startsWith(`${fv.pageKeys.length > p + 1 ? fv.pageKeys[p + 1] : "?"}#`)) continue;
-    const box = partBox(stripBox(f.lay, st.sys), st.part, st.parts);
-    st.used = now();
-    sheets.push({ quad: corners(p, box[0], box[1], box[2], box[3]), color: st.url, height: url(st.ink), scale: st.scale, rot: d.pages[p].rot, page: false });
+  // The sharper tiles over the pages, the finest last.
+  const tiles = fv.tiles.filter(
+    (t) => t.url !== "" && t.url !== "-" && t.page < f.lay.pages.length && fv.pageKeys.length > t.page + 1 && t.key.startsWith(`${fv.pageKeys[t.page + 1]}#`)
+  );
+  tiles.sort((x, y) => x.scale - y.scale);
+  for (const t of tiles) {
+    const b = t.box;
+    sheets.push({ quad: corners(t.page, b[0], b[1], b[2], b[3]), color: t.url, height: url(t.ink), scale: t.scale, rot: d.pages[t.page].rot, page: false });
   }
   /** const glow: Number[] */
   const glow = [];
@@ -895,13 +934,13 @@ async function filmVideo(fv, f, inp, clip) {
   // Share the bitmaps the view has made (and the ones made now stay for it).
   vf.pageKeys = fv.pageKeys;
   vf.pages = fv.pages;
-  vf.strips = fv.strips;
+  vf.tiles = fv.tiles;
   vf.desk = fv.desk;
   /** function frameAt(i: Int) => Promise<GlFrame> */
   async function frameAt(i) {
     const beat = writtenAt(spans, start + ((i / VIDEO_FPS) * bpm) / 60);
     const cam = cameraAt(ef, beat);
-    await ensure(vf, ef, inp, wants(ef, cam, beat, VIDEO_W, 0, 1));
+    await ensure(vf, ef, inp, wants(ef, cam, VIDEO_W, VIDEO_H, 0, 1));
     const si = sceneAt(ef.scenes, beat);
     fv.export = i / frames;
     if (i % 15 === 0) invalidate();
@@ -909,7 +948,7 @@ async function filmVideo(fv, f, inp, clip) {
   }
   const keep = () => {
     fv.pages = vf.pages;
-    fv.strips = vf.strips;
+    fv.tiles = vf.tiles;
     fv.desk = vf.desk;
   };
   const out = await encodeFilm(VIDEO_W, VIDEO_H, VIDEO_FPS, frames, frameAt, sound, offset, (x) => {
@@ -1286,7 +1325,7 @@ function shotPanel(b, fv, f, inp, s) {
     "",
     s.frame === "" ? "close" : s.frame,
     FRAMES,
-    ["Desk", "Page", "System", "Medium (4 bars)", "Close (2 bars)", "Detail (1 bar)"],
+    ["Desk", "Page", "System", "Medium (2 bars)", "Close (1 bar)", "Detail (a beat)"],
     "How much the picture holds",
     (val) => commit(() => (s.frame = val))
   );

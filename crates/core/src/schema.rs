@@ -218,7 +218,7 @@ pub fn schema() -> Value {
                     "label": {"type": "string", "description": "Shown on the film's timeline."},
                     "focus": {"type": "array", "items": {"type": "string"}, "description": "Channel ids whose staves are framed. Empty: role, or every staff."},
                     "role": {"enum": FILM_ROLES, "description": "The part of the band to frame when focus is empty: lead (melody), rhythm (drums and bass), background (chords, pads), all."},
-                    "frame": {"enum": FILM_FRAMES, "default": "close", "description": "How much the picture holds: desk (every page), page, system (the whole line), medium (~4 bars), close (~2 bars), detail (~1 bar)."},
+                    "frame": {"enum": FILM_FRAMES, "default": "close", "description": "How much the picture holds: desk (every page), page, system (the whole line), medium (~2 bars), close (~1 bar), detail (~a beat, close enough to see the ink)."},
                     "zoom": num(0.1, 10.0, "Closer (> 1) or farther (< 1) than the frame (default 1)."),
                     "tilt": num(0.0, 75.0, "Degrees the camera leans from looking straight down."),
                     "turn": num(-180.0, 180.0, "Degrees the camera turns about the vertical: the music runs diagonally across the picture."),

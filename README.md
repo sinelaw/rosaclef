@@ -171,7 +171,7 @@ field and a vignette finish the picture (the notes can glow as they play too).
   moves.
 - **Manual**: the camera films your shots, and directs itself between them.
   A shot is a stretch of the song, what it frames (channels, or a role), how
-  much (from the whole desk to one bar), the angle, a drift (a slow push in or
+  much (from the whole desk down to a single beat, the ink up close), the angle, a drift (a slow push in or
   turn), how it comes in (glide, cut, swoop, whip) and its effects. Edit them
   on the timeline under the picture (double-click to add one, drag to move or
   stretch), in the panel, or on the picture itself (drag to frame, Shift-drag

@@ -170,8 +170,9 @@
 - `web/src/ui/film.js` prepares frames (`GlFrame`, plain data) and edits the
   shots. Pages are bitmaps: `pdf.js` draws a page (`pagePart`) and its ink as a
   height map (`inkPart`), the platform layer rasterizes them, one at a time,
-  the ones in view first; where the camera comes close, sharper bitmaps of the
-  system's band (`stripBox`) are laid over the page. They are kept while the
+  the ones in view first; where the camera comes closer, tiles of the page in
+  view (1024 pixels square, 2.5 to 80 pixels a point) are laid over it, the
+  nearest first, so a beat can fill the picture with the ink sharp. They are kept while the
   music stays the same (editing shots re-plans the scenes only).
 - `web/lib/filmgl.js` (WebGL 2, behind the platform boundary) draws a frame:
   the desk, soft page shadows, the pages through a shader that raises the ink
