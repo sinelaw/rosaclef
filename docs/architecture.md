@@ -177,7 +177,7 @@
   the desk, soft page shadows, the pages through a shader that raises the ink
   off the paper from its height map (slopes lit by the lamp, a glossy
   highlight where it reflects toward the camera, a short cast shadow), the
-  playing notes in gold, then a pass for depth of field (from the picture's
+  playing notes in gold (the glow effect, off by default), then a pass for depth of field (from the picture's
   mipmaps), motion blur, vignette and grain. `encodeFilm` renders frame after
   frame offscreen and encodes them with WebCodecs (H.264/AAC, or VP9/Opus)
   into an MP4 (`web/vendor/mp4-muxer`), with the mixdown from `/api/render`.

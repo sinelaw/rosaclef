@@ -161,8 +161,8 @@ the pages lie on a desk (walnut, oak, slate, felt or marble) and a camera in
 3D space above them plays the song — zooming in on a part, pulling back to
 the whole band, leaning and turning so the music runs diagonally across the
 picture, gliding to the next line as one ends. The ink stands a little proud
-of the paper and the lamp catches it (wet ink shines); the notes glow as they
-play, and a spotlight, depth of field and a vignette finish the picture.
+of the paper and the lamp catches it (wet ink shines); a spotlight, depth of
+field and a vignette finish the picture (the notes can glow as they play too).
 
 - **Auto**: the camera directs itself. It finds the lead, the rhythm section
   (drums and bass) and the background (chords and pads), cuts the song into

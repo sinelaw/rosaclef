@@ -201,7 +201,7 @@ pub fn schema() -> Value {
                     "view": {"enum": FILM_VIEWS, "default": "score", "description": "What is filmed."},
                     "surface": {"enum": FILM_SURFACES, "default": "walnut", "description": "The desk the pages lie on."},
                     "energy": num(0.0, 1.0, "How much the self-directed camera moves: 0 calm, 1 restless (default 0.5)."),
-                    "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects over the whole film; unlisted ones keep their defaults (vignette 0.5, focus 0.4, glow 0.6, spotlight 0)."},
+                    "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects over the whole film; unlisted ones keep their defaults (vignette 0.5, focus 0.4, spotlight 0, glow 0)."},
                     "shots": {"type": "array", "items": {"$ref": "#/$defs/shot"}}
                 }
             }
