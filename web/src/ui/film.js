@@ -198,10 +198,10 @@ function lookKey(inp) {
   return `${inp.look.wet}|${fmt(inp.look.gloss, 2)}|${fmt(inp.look.shine, 2)}`;
 }
 
-/** The pages' color: as on the paper view (its ink, wet or dry, with its gloss and shine). */
+/** The pages' color: the paper view's ink, without its painted gloss (the film's ink is lit in 3D instead). */
 /** function paperLook(inp: FilmInput) => PageLook */
 function paperLook(inp) {
-  return inp.look;
+  return { wet: inp.look.wet, gloss: 0, shine: inp.look.shine };
 }
 
 /** What each page shows (its SVG's hash): bitmaps are kept while it stays the same. */
@@ -756,7 +756,7 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
     spot: [cam.rx, cam.ry, Math.max(cam.rw, d.pw * 0.55) * 0.62, cam.rh * 0.72, fx.spotlight],
     light: [cam.x + lx * Math.cos(th) - ly * Math.sin(th), cam.y + lx * Math.sin(th) + ly * Math.cos(th), 1.15 * cam.span],
     fx: [fx.vignette, fx.focus, fx.glow],
-    ink: [fv.relief, look.wet ? 0.25 * look.gloss : 0.05, look.shine],
+    ink: [fv.relief, 0, look.shine],
     seed: Math.floor(beat * 97) % 1000,
   };
 }
