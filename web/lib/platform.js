@@ -353,7 +353,9 @@ export async function audioStart(workletUrl, wasmUrl, onMsg) {
   await ctx.audioWorklet.addModule(workletUrl);
   node = new AudioWorkletNode(ctx, "rosaclef", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
   node.connect(ctx.destination);
-  const wasm = await (await fetch(wasmUrl)).arrayBuffer();
+  // Revalidate: an engine cached from an older deploy rejects what a newer
+  // importer writes (an effect type it doesn't know yet).
+  const wasm = await (await fetch(wasmUrl, { cache: "no-cache" })).arrayBuffer();
   const ready = new Promise((resolve) => {
     node.port.onmessage = (e) => {
       const m = e.data;
