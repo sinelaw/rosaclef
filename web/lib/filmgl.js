@@ -82,6 +82,14 @@ void main() {
   o = vec4(0.0, 0.0, 0.0, 0.5 * a);
 }`;
 
+// The page: paper (its color bitmap, lit by the lamp) and ink raised off it.
+// The ink is shaded physically: its height map gives the surface's normal
+// (Sobel); the lamp's highlight is a GGX microfacet lobe with Schlick's
+// Fresnel; and the ink mirrors the room — a large window behind and to the
+// left, a strip light on the right, a warm ceiling, a dark floor — along its
+// reflection vector, blurred by its roughness. The room is fixed in the
+// world, so the reflections slide over the ink as the camera moves, as they
+// would on a wet page. Wet ink is smooth (a sharp mirror), dry ink satin.
 const PAGE_FS = `#version 300 es
 precision highp float;
 in vec2 vWorld;
@@ -100,35 +108,69 @@ uniform float uGloss;
 uniform float uShine;
 ${LIGHT}
 out vec4 o;
+const float PI = 3.14159265;
+const float F0 = 0.045;
 float ink(vec2 uv) { return 1.0 - texture(uInkTex, uv).r; }
+// The room the ink reflects, by direction (z up), its edges softened by roughness.
+vec3 room(vec3 r, float rough) {
+  float w = 0.02 + rough * 0.75;
+  vec3 c = mix(vec3(0.004, 0.0035, 0.003), vec3(0.05, 0.045, 0.04), smoothstep(-0.15, 0.85, r.z));
+  // The window: a tall soft rectangle up behind the desk, to the left.
+  vec3 wd = normalize(vec3(-0.35, -0.62, 0.70));
+  vec3 wx = normalize(cross(wd, vec3(0.0, 0.0, 1.0)));
+  vec3 wy = cross(wx, wd);
+  float wz = dot(r, wd);
+  vec2 q = vec2(dot(r, wx), dot(r, wy)) / max(wz, 1e-3);
+  float win = smoothstep(0.2 + w, 0.2 - w * 0.5, abs(q.x)) * smoothstep(0.3 + w, 0.3 - w * 0.5, abs(q.y)) * step(0.0, wz);
+  // Its mullions: a cross of darker bars.
+  float bars = 1.0 - 0.8 * (1.0 - smoothstep(0.0, 0.015 + w * 0.3, abs(q.x))) - 0.8 * (1.0 - smoothstep(0.0, 0.015 + w * 0.3, abs(q.y - 0.05)));
+  c += vec3(5.0, 4.85, 4.5) * win * clamp(bars, 0.0, 1.0);
+  // A long strip light on the right, cooler.
+  vec3 sd = normalize(vec3(0.75, 0.05, 0.66));
+  float sp = dot(r, sd);
+  float along = abs(dot(r, vec3(0.0, 1.0, 0.0)));
+  c += vec3(2.0, 2.1, 2.3) * smoothstep(0.985 - w * 0.5, 0.985 + w * 0.1, sp + along * 0.012) * step(along, 0.6);
+  return c;
+}
+float ggx(float nh, float a) {
+  float a2 = a * a;
+  float d = nh * nh * (a2 - 1.0) + 1.0;
+  return a2 / (PI * d * d);
+}
+float smith(float nv, float nl, float a) {
+  float k = a * a * 0.5;
+  return (nv / (nv * (1.0 - k) + k)) * (nl / (nl * (1.0 - k) + k));
+}
 void main() {
   vec3 base = uHasColor > 0.5 ? texture(uColorTex, vUv).rgb : uPaper;
   float lamp = paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6);
   vec3 c = base * lamp;
-  // The relief only where the bitmap is sharp enough to show it (the closer bands).
+  // The relief only where the bitmap is sharp enough to show it (the tiles over the page).
   float relief = uRelief * smoothstep(1.8, 3.5, uScale);
   if (uHasInk > 0.5 && relief > 0.0) {
-    // The ink's height (points) and its slope, from its bitmap.
+    // The ink's height and its slope (Sobel), in points of height a point.
+    vec2 t = uTexel;
     float h0 = ink(vUv);
-    float hx = ink(vUv + vec2(uTexel.x, 0.0)) - ink(vUv - vec2(uTexel.x, 0.0));
-    float hy = ink(vUv + vec2(0.0, uTexel.y)) - ink(vUv - vec2(0.0, uTexel.y));
-    float lift = 0.34 * relief;
-    vec2 g = vec2(hx, hy) * 0.5 * uScale * lift;
+    float a00 = ink(vUv + vec2(-t.x, -t.y)), a10 = ink(vUv + vec2(0.0, -t.y)), a20 = ink(vUv + vec2(t.x, -t.y));
+    float a01 = ink(vUv + vec2(-t.x, 0.0)), a21 = ink(vUv + vec2(t.x, 0.0));
+    float a02 = ink(vUv + vec2(-t.x, t.y)), a12 = ink(vUv + vec2(0.0, t.y)), a22 = ink(vUv + vec2(t.x, t.y));
+    float gx = (a20 + 2.0 * a21 + a22) - (a00 + 2.0 * a01 + a02);
+    float gy = (a02 + 2.0 * a12 + a22) - (a00 + 2.0 * a10 + a20);
+    float lift = 0.26 * relief;
+    vec2 g = vec2(gx, gy) / 8.0 * uScale * lift;
     float cr = cos(uRot), sr = sin(uRot);
     g = vec2(cr * g.x - sr * g.y, sr * g.x + cr * g.y);
     vec3 n = normalize(vec3(-g, 1.0));
     vec3 p = vec3(vWorld, h0 * lift);
     vec3 l = normalize(uLight - p);
     vec3 v = normalize(uEye - p);
-    vec3 hv = normalize(l + v);
-    float onInk = smoothstep(0.2, 0.6, h0);
-    // On the ink: slopes toward the lamp catch more light, the others less.
-    float shade = clamp(dot(n, l) / max(l.z, 0.25), 0.55, 1.35);
-    c *= mix(1.0, shade, 0.6 * onInk);
-    // On the paper: the raised ink casts a short shadow, away from the lamp.
+    // Where the ink lies: dark in the color bitmap (the height map's soft skirt is paper).
+    float lum = dot(base, vec3(0.299, 0.587, 0.114));
+    float onInk = smoothstep(0.62, 0.3, lum) * smoothstep(0.02, 0.12, h0);
+
+    // On the paper: the raised ink casts a short soft shadow, away from the lamp.
     vec2 toward = normalize(l.xy + 1e-5);
     vec2 tl = vec2(cr * toward.x + sr * toward.y, -sr * toward.x + cr * toward.y);
-    // A soft penumbra: the ink toward the lamp, sampled blurred at a few distances.
     vec2 st = tl * uTexel * uScale;
     float blur = log2(max(1.0, uScale * 0.12));
     float occl = 0.0;
@@ -136,12 +178,24 @@ void main() {
     occl += textureLod(uInkTex, vUv + st * 0.24, blur + 0.5).r;
     occl += textureLod(uInkTex, vUv + st * 0.38, blur + 1.0).r;
     occl = clamp((1.0 - occl / 3.0) - h0, 0.0, 1.0) * (1.0 - onInk);
-    c *= 1.0 - 0.28 * occl * relief;
-    // Gloss: a sharp highlight and a broad sheen where the lamp reflects toward the camera.
+    c *= 1.0 - 0.26 * occl * relief;
+
+    // On the ink: a dark, faintly lit body…
+    float nl = max(dot(n, l), 0.0);
+    float nv = max(dot(n, v), 1e-3);
+    c = mix(c, base * (0.55 + 0.6 * nl) * lamp, onInk);
+    // …and its gloss: the lamp's highlight and the room's reflection.
+    float rough = mix(0.5, mix(0.2, 0.055, uShine), clamp(uGloss, 0.0, 1.0));
+    float a = rough * rough;
+    vec3 hv = normalize(l + v);
     float nh = max(dot(n, hv), 0.0);
-    float fres = 0.4 + 0.6 * pow(1.0 - max(dot(n, v), 0.0), 3.0);
-    float spec = pow(nh, mix(30.0, 240.0, uShine)) * 2.4 + pow(nh, 10.0) * 0.16;
-    c += vec3(1.0, 0.97, 0.9) * spec * fres * smoothstep(0.25, 0.7, h0) * uGloss * lamp * (0.4 + 0.6 * relief);
+    float vh = max(dot(v, hv), 0.0);
+    float fl = F0 + (1.0 - F0) * pow(1.0 - vh, 5.0);
+    float spec = ggx(nh, a) * smith(nv, nl, a) * fl / (4.0 * nv * max(nl, 1e-3)) * nl;
+    vec3 r = reflect(-v, n);
+    float fe = F0 + (max(1.0 - rough, F0) - F0) * pow(1.0 - nv, 5.0);
+    vec3 gloss = vec3(1.0, 0.95, 0.86) * spec * 1.6 * lamp + room(r, rough) * fe;
+    c += gloss * onInk * max(uGloss, 0.25);
   }
   o = vec4(c, 1.0);
 }`;
@@ -201,6 +255,8 @@ void main() {
   c += vec3(1.0, 0.92, 0.78) * 0.03 * smoothstep(1.1, 0.0, length(q));
   vec2 v = (vUv - 0.5) * vec2(uAspect, 1.0) / max(1.0, uAspect * 0.85);
   c *= mix(1.0, smoothstep(1.2, 0.35, length(v)), uVignette * 0.75);
+  // Highlights roll off instead of clipping (the paper, below 0.98, is left alone).
+  c = mix(c, 0.98 + 0.3 * (1.0 - exp(-(c - 0.98) / 0.3)), step(0.98, c));
   c += (rnd(vUv * 731.0) - 0.5) * 0.008;
   o = vec4(c, 1.0);
 }`;
