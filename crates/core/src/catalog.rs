@@ -611,6 +611,23 @@ pub static DEVICES: &[DeviceSpec] = &[
         open_params: false,
     },
     DeviceSpec {
+        kind: "phaser",
+        label: "Moiré Phaser",
+        category: Category::Effect,
+        doc: "Phaser: a chain of all-pass stages whose frequency an LFO sweeps, mixed with the dry signal, so moving notches comb the sound. No delay, so fast notes stay crisp.",
+        params: &[
+            pe("rate", "Rate", 0.01, 10.0, 0.4, "Hz", "Sweep speed."),
+            p("depth", "Depth", 0.0, 1.0, 0.6, "", "Sweep range (1 = six octaves above the base)."),
+            pe("freq", "Freq", 50.0, 5000.0, 400.0, "Hz", "Lowest frequency of the sweep."),
+            p("feedback", "Feedback", -0.9, 0.9, 0.0, "", "Resonance of the notches."),
+            pi("stages", "Stages", 2.0, 12.0, 6.0, "", "All-pass stages (more = more notches)."),
+            p("stereo", "Stereo", 0.0, 1.0, 0.5, "", "LFO phase offset between left and right (1 = opposite)."),
+            p("mix", "Mix", 0.0, 1.0, 1.0, "", "Dry/wet (1 = equal dry and phased: the deepest notches)."),
+        ],
+        options: &[],
+        open_params: false,
+    },
+    DeviceSpec {
         kind: "drive",
         label: "Velours Drive",
         category: Category::Effect,

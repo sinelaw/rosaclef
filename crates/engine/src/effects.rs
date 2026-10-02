@@ -19,6 +19,7 @@ pub fn create(dev: &Device, ctx: &Ctx) -> Option<Box<dyn Effect>> {
         "delay" => Box::new(Delay::new(sr)),
         "reverb" => Box::new(Reverb::new(sr)),
         "chorus" => Box::new(Chorus::new(sr)),
+        "phaser" => Box::new(Phaser::new(sr)),
         "drive" => Box::new(Drive::default()),
         "compressor" => Box::new(Compressor::default()),
         "limiter" => Box::new(Limiter::new(sr)),
@@ -422,6 +423,101 @@ impl Effect for Chorus {
             self.phase = (self.phase + inc).fract();
             left[i] = mix(xl, wl, self.mix * 0.5) * (1.0 + self.mix * 0.2);
             right[i] = mix(xr, wr, self.mix * 0.5) * (1.0 + self.mix * 0.2);
+        }
+    }
+}
+
+// -------------------------------------------------------------------- Phaser
+
+/// All-pass stages swept by an LFO, summed with the dry signal.
+pub struct Phaser {
+    sr: f32,
+    phase: f32,
+    rate: f32,
+    depth: f32,
+    freq: f32,
+    feedback: f32,
+    stages: usize,
+    stereo: f32,
+    mix: f32,
+    /// Per channel: each stage's previous input and output, and the
+    /// fed-back output.
+    x1: [[f32; 12]; 2],
+    y1: [[f32; 12]; 2],
+    last: [f32; 2],
+    coef: [f32; 2],
+    counter: usize,
+}
+
+impl Phaser {
+    fn new(sr: f32) -> Phaser {
+        Phaser {
+            sr,
+            phase: 0.0,
+            rate: 0.4,
+            depth: 0.6,
+            freq: 400.0,
+            feedback: 0.0,
+            stages: 6,
+            stereo: 0.5,
+            mix: 1.0,
+            x1: [[0.0; 12]; 2],
+            y1: [[0.0; 12]; 2],
+            last: [0.0; 2],
+            coef: [0.0; 2],
+            counter: 0,
+        }
+    }
+
+    /// First-order all-pass coefficient for a break frequency.
+    fn coefficient(&self, f: f32) -> f32 {
+        let t = (std::f32::consts::PI * f.clamp(20.0, self.sr * 0.45) / self.sr).tan();
+        (t - 1.0) / (t + 1.0)
+    }
+}
+
+impl Effect for Phaser {
+    fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
+        self.rate = d.param("rate") as f32;
+        self.depth = d.param("depth") as f32;
+        self.freq = d.param("freq") as f32;
+        self.feedback = d.param("feedback") as f32;
+        self.stages = (d.param("stages").round() as usize).clamp(2, 12);
+        self.stereo = d.param("stereo") as f32;
+        self.mix = d.param("mix") as f32;
+    }
+    fn reset(&mut self) {
+        self.x1 = [[0.0; 12]; 2];
+        self.y1 = [[0.0; 12]; 2];
+        self.last = [0.0; 2];
+    }
+    fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
+        let inc = self.rate / self.sr;
+        let octaves = self.depth * 6.0;
+        let (dry, wet) = (1.0 - self.mix * 0.5, self.mix * 0.5);
+        for i in 0..left.len() {
+            if self.counter % 16 == 0 {
+                for ch in 0..2 {
+                    let ph = self.phase + ch as f32 * self.stereo * 0.5;
+                    let lfo = 0.5 - 0.5 * (ph * TAU).cos();
+                    self.coef[ch] = self.coefficient(self.freq * 2f32.powf(octaves * lfo));
+                }
+            }
+            self.counter += 1;
+            self.phase = (self.phase + inc).fract();
+            for (ch, buf) in [&mut *left, &mut *right].into_iter().enumerate() {
+                let x = buf[i];
+                let mut s = x + self.last[ch] * self.feedback;
+                let a = self.coef[ch];
+                for k in 0..self.stages {
+                    let y = a * s + self.x1[ch][k] - a * self.y1[ch][k];
+                    self.x1[ch][k] = s;
+                    self.y1[ch][k] = y;
+                    s = y;
+                }
+                self.last[ch] = s;
+                buf[i] = x * dry + s * wet;
+            }
         }
     }
 }
