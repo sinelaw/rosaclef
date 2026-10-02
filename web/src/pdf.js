@@ -404,21 +404,10 @@ export function pageSvg(lay, p, info, look, scale) {
   return pagePart(lay, p, info, look, scale, [0, 0, lay.w, lay.h]);
 }
 
-/** The band of its page a system takes (with room for what sticks out): [x, y, w, h] in points. */
-/** function stripBox(lay: PdfLayout, sys: Int) => Number[] */
-export function stripBox(lay, sys) {
-  let top = 0;
-  for (const list of lay.pages) for (const on of list) if (on.sys === sys) top = on.top;
-  const s = lay.page.systems[sys];
-  const y0 = Math.max(0, top - 3.5 * lay.sp);
-  const y1 = Math.min(lay.h, top + (s.height + 3.5) * lay.sp);
-  return [0, y0, lay.w, y1 - y0];
-}
-
 /**
  * Part of page `p` as SVG: the points of `box` ([x, y, w, h]) drawn at `scale`
- * pixels a point — the whole page (pageSvg), or one system's band of it, sharp
- * enough to look at closely (the film's close-ups).
+ * pixels a point — the whole page (pageSvg), or a tile of it, sharp enough to
+ * look at closely (the film's close-ups).
  */
 /** function pagePart(lay: PdfLayout, p: Int, info: PdfInfo, look: PageLook, scale: Number, box: Number[]) => String */
 export function pagePart(lay, p, info, look, scale, box) {

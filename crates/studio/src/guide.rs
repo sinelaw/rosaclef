@@ -349,8 +349,8 @@ it; it changes nothing that plays.
   one is filmed; in manual mode the gaps are filmed by the director.
 - **What**: `focus` (channel ids whose staves are framed), or `role` — `lead` (the main melody,
   found by the camera), `rhythm` (drums and bass), `background` (chords, pads), `all`.
-- **How much** (`frame`): `desk` (every page), `page`, `system` (the whole line), `medium` (~4
-  bars), `close` (~2 bars, the default), `detail` (~1 bar). `zoom` multiplies it (2 = twice as
+- **How much** (`frame`): `desk` (every page), `page`, `system` (the whole line), `medium` (~2
+  bars), `close` (~1 bar, the default), `detail` (~a beat: a note or chord filling the picture, the ink up close). `zoom` multiplies it (2 = twice as
   close). Following frames track the playhead along the line and glide to the next line as it ends;
   `at` (a beat) holds the camera on one place instead.
 - **Angle**: `tilt` 0–75° (default by frame: the closer, the more), `turn` −180–180° (diagonals:
