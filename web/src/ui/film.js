@@ -75,7 +75,7 @@ import { toast } from "./toast.js";
 // ------------------------------------------------------------------ state
 
 /** A bitmap pair (made or being made): what it shows, the object URLs of its color and its ink ("" while drawing, "-" if it failed), its scale (pixels a point), when last shown (ms), its system (-1: a whole page). */
-/** type Bitmap = { key: String, url: String, ink: String, scale: Number, used: Number, sys: Int } */
+/** type Bitmap = { key: String, url: String, ink: String, scale: Number, used: Number, sys: Int, part: Int, parts: Int } */
 /** A change of view made by hand while paused (not part of any shot): moved by fractions of the picture, zoomed, turned, leaned. */
 /** type Look = { dx: Number, dy: Number, zoom: Number, turn: Number, tilt: Number } */
 /** What the film is made of, from the score view: its notation, how it is drawn, its title block, beats in a bar, whether the playhead is this score's, and how to seek and go back to the paper. */
@@ -116,14 +116,16 @@ export function newFilmView(id) {
     fromAt: 0,
     look: { dx: 0, dy: 0, zoom: 1, turn: 0, tilt: 0 },
     gesture: false,
-    relief: r !== "" && Number(r) >= 0 && Number(r) <= 1 ? Number(r) : 0.6,
+    relief: r !== "" && Number(r) >= 0 && Number(r) <= 1 ? Number(r) : 0.5,
     export: -1,
   };
 }
 
 /** Pixels a point of the pages' bitmaps, and of the sharper strips (the widest bitmap is about 4096 pixels). */
 const PAGE_SCALE = 1.6;
-const STRIP_STEPS = [2.6, 4, 5.5, 6.85];
+const STRIP_STEPS = [2.6, 4, 5.5, 7, 10];
+/** The widest bitmap: a strip wider is drawn in parts. */
+const MAX_PX = 4096;
 /** Sharper strips kept at once. */
 const STRIPS_MAX = 8;
 /** The exported video. */
@@ -196,10 +198,10 @@ function lookKey(inp) {
   return `${inp.look.wet}|${fmt(inp.look.gloss, 2)}|${fmt(inp.look.shine, 2)}`;
 }
 
-/** The pages' color: drawn dry (the renderer adds the wet ink's gloss, lit as the camera moves). */
+/** The pages' color: as on the paper view (its ink, wet or dry, with its gloss and shine). */
 /** function paperLook(inp: FilmInput) => PageLook */
 function paperLook(inp) {
-  return { wet: false, gloss: inp.look.gloss, shine: inp.look.shine };
+  return inp.look;
 }
 
 /** What each page shows (its SVG's hash): bitmaps are kept while it stays the same. */
@@ -250,7 +252,7 @@ function nextJob(fv, f, inp, need, all) {
   const surf = state.project.animation.surface;
   if (fv.desk.length === 0 || fv.desk[0].key !== surf) {
     for (const d of fv.desk) drop(d.url);
-    const d = { key: surf, url: "", ink: "-", scale: 1, used: now(), sys: -2 };
+    const d = { key: surf, url: "", ink: "-", scale: 1, used: now(), sys: -2, part: 0, parts: 1 };
     fv.desk = [d];
     return d;
   }
@@ -264,7 +266,7 @@ function nextJob(fv, f, inp, need, all) {
       const k = keys[i + 1];
       if (fv.pages.some((pg) => pg.key === k)) continue;
       if (pass === 0 && !need.some((nd) => nd[0] === i)) continue;
-      const b = { key: k, url: "", ink: "", scale: PAGE_SCALE, used: now(), sys: -1 };
+      const b = { key: k, url: "", ink: "", scale: PAGE_SCALE, used: now(), sys: -1, part: 0, parts: 1 };
       fv.pages.push(b);
       return b;
     }
@@ -293,31 +295,39 @@ function strip(fv, f, keys, need, all) {
     if (sys < 0) continue;
     const page = f.sys[sys].page;
     const scale = nd[2];
-    const have = fv.strips.find((st) => st.sys === sys && st.key.startsWith(`${keys[page + 1]}#`));
-    if (have && have.scale >= scale - 1e-6) {
-      have.used = now();
+    const mine = fv.strips.filter((st) => st.sys === sys && st.key.startsWith(`${keys[page + 1]}#`));
+    if (mine.length > 0 && mine.length === mine[0].parts && mine[0].scale >= scale - 1e-6) {
+      for (const st of mine) st.used = now();
       continue;
     }
     // While playing, only what is needed now.
     if (!all && state.playing && nd[3] > 0.5) continue;
-    if (have) {
-      drop(have.url);
-      drop(have.ink);
-      fv.strips = fv.strips.filter((x) => x !== have);
+    for (const st of mine) {
+      drop(st.url);
+      drop(st.ink);
     }
+    fv.strips = fv.strips.filter((x) => !mine.includes(x));
+    const parts = Math.ceil((f.lay.w * scale) / MAX_PX);
     // Keep a few: the ones shown longest ago go.
-    while (fv.strips.length >= STRIPS_MAX) {
+    while (fv.strips.length + parts > STRIPS_MAX * 2) {
       let old = 0;
       for (let i = 1; i < fv.strips.length; i++) if (fv.strips[i].used < fv.strips[old].used) old = i;
       drop(fv.strips[old].url);
       drop(fv.strips[old].ink);
       fv.strips.splice(old, 1);
     }
-    const b = { key: `${keys[page + 1]}#${sys}`, url: "", ink: "", scale: scale, used: now(), sys: sys };
-    fv.strips.push(b);
-    return b;
+    for (let k = 0; k < parts; k++)
+      fv.strips.push({ key: `${keys[page + 1]}#${sys}`, url: "", ink: "", scale: scale, used: now(), sys: sys, part: k, parts: parts });
+    return fv.strips[fv.strips.length - parts];
   }
   return undefined;
+}
+
+/** Part `k` of `n` of a box, side by side (a strip too wide for one bitmap). */
+/** function partBox(box: Number[], k: Int, n: Int) => Number[] */
+function partBox(box, k, n) {
+  const w = box[2] / Math.max(1, n);
+  return [box[0] + k * w, box[1], w, box[3]];
 }
 
 /** Draw the missing part of a bitmap (its color, then its ink). */
@@ -340,7 +350,7 @@ async function drawBitmap(fv, f, inp, b) {
       b.ink = "-";
       return false;
     }
-    const box = b.sys >= 0 ? stripBox(lay, b.sys) : [0, 0, lay.w, lay.h];
+    const box = b.sys >= 0 ? partBox(stripBox(lay, b.sys), b.part, b.parts) : [0, 0, lay.w, lay.h];
     svg = color ? pagePart(lay, page, inp.info, paperLook(inp), b.scale, box) : inkPart(lay, page, inp.info, b.scale, box);
     w = Math.round(box[2] * b.scale);
     h = Math.round(box[3] * b.scale);
@@ -713,7 +723,7 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
     if (st.url === "" || st.url === "-" || st.sys >= f.sys.length) continue;
     const p = f.sys[st.sys].page;
     if (!st.key.startsWith(`${fv.pageKeys.length > p + 1 ? fv.pageKeys[p + 1] : "?"}#`)) continue;
-    const box = stripBox(f.lay, st.sys);
+    const box = partBox(stripBox(f.lay, st.sys), st.part, st.parts);
     st.used = now();
     sheets.push({ quad: corners(p, box[0], box[1], box[2], box[3]), color: st.url, height: url(st.ink), scale: st.scale, rot: d.pages[p].rot, page: false });
   }
@@ -746,7 +756,7 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
     spot: [cam.rx, cam.ry, Math.max(cam.rw, d.pw * 0.55) * 0.62, cam.rh * 0.72, fx.spotlight],
     light: [cam.x + lx * Math.cos(th) - ly * Math.sin(th), cam.y + lx * Math.sin(th) + ly * Math.cos(th), 1.15 * cam.span],
     fx: [fx.vignette, fx.focus, fx.glow],
-    ink: [fv.relief, look.wet ? 0.55 * look.gloss + 0.15 : 0.08, look.shine],
+    ink: [fv.relief, look.wet ? 0.25 * look.gloss : 0.05, look.shine],
     seed: Math.floor(beat * 97) % 1000,
   };
 }
@@ -1189,9 +1199,9 @@ function effectSliders(b, fv, list, onSet) {
     "Vignette: the picture darkens toward its edges",
     "Spotlight: a pool of light on the framed staves, the rest of the desk dimmed",
     "Focus: depth of field — the near and far edges of a leaning picture blur",
-    "Glow: notes light up as they play",
+    "Glow: notes light up as they play (off unless set)",
   ];
-  const fx = [0.5, 0, 0.4, 0.6];
+  const fx = [0.5, 0, 0.4, 0];
   for (let i = 0; i < EFFECTS.length; i++) {
     const e = list.find((x) => x.type === EFFECTS[i]);
     const v = e ? e.amount : fx[i];

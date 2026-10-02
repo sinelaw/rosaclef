@@ -65,7 +65,7 @@ export const SURFACES = ["walnut", "oak", "slate", "felt", "marble"];
 /** The effects' amounts when the film does not set them. */
 /** function defaultFx() => Fx */
 export function defaultFx() {
-  return { vignette: 0.5, spotlight: 0, focus: 0.4, glow: 0.6 };
+  return { vignette: 0.5, spotlight: 0, focus: 0.4, glow: 0 };
 }
 
 /** The camera's lean for a frame when the shot does not set it: the closer, the more. */

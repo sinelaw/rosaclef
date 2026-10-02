@@ -41,10 +41,16 @@ float lampOn(vec2 p) {
   float c = uLight.z / length(d);
   return 0.62 + 0.5 * c * c * c;
 }
+// The paper keeps its color under the lamp: only a gentle falloff toward the dark.
+float paperLamp(vec2 p) {
+  vec3 d = uLight - vec3(p, 0.0);
+  float c = uLight.z / length(d);
+  return 0.86 + 0.16 * c * c * c;
+}
 float spotOn(vec2 p) {
   if (uSpotAmt <= 0.0) return 1.0;
   float s = length((p - uSpot.xy) / uSpot.zw);
-  return mix(1.0, mix(0.45, 1.0, smoothstep(1.35, 0.8, s)), uSpotAmt);
+  return mix(1.0, mix(0.5, 1.0, smoothstep(1.4, 0.85, s)), uSpotAmt);
 }`;
 
 const DESK_FS = `#version 300 es
@@ -97,7 +103,7 @@ out vec4 o;
 float ink(vec2 uv) { return 1.0 - texture(uInkTex, uv).r; }
 void main() {
   vec3 base = uHasColor > 0.5 ? texture(uColorTex, vUv).rgb : uPaper;
-  float lamp = lampOn(vWorld) * spotOn(vWorld);
+  float lamp = paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6);
   vec3 c = base * lamp;
   // The relief only where the bitmap is sharp enough to show it (the closer bands).
   float relief = uRelief * smoothstep(1.8, 3.5, uScale);
@@ -122,8 +128,15 @@ void main() {
     // On the paper: the raised ink casts a short shadow, away from the lamp.
     vec2 toward = normalize(l.xy + 1e-5);
     vec2 tl = vec2(cr * toward.x + sr * toward.y, -sr * toward.x + cr * toward.y);
-    float occl = clamp(ink(vUv + tl * uTexel * uScale * 0.55) - h0, 0.0, 1.0) * (1.0 - onInk);
-    c *= 1.0 - 0.3 * occl * relief;
+    // A soft penumbra: the ink toward the lamp, sampled blurred at a few distances.
+    vec2 st = tl * uTexel * uScale;
+    float blur = log2(max(1.0, uScale * 0.12));
+    float occl = 0.0;
+    occl += textureLod(uInkTex, vUv + st * 0.12, blur).r;
+    occl += textureLod(uInkTex, vUv + st * 0.24, blur + 0.5).r;
+    occl += textureLod(uInkTex, vUv + st * 0.38, blur + 1.0).r;
+    occl = clamp((1.0 - occl / 3.0) - h0, 0.0, 1.0) * (1.0 - onInk);
+    c *= 1.0 - 0.28 * occl * relief;
     // Gloss: a sharp highlight and a broad sheen where the lamp reflects toward the camera.
     float nh = max(dot(n, hv), 0.0);
     float fres = 0.4 + 0.6 * pow(1.0 - max(dot(n, v), 0.0), 3.0);
@@ -171,7 +184,7 @@ void main() {
   // Depth of field: the far (top) and near (bottom) edges blur; a whip blurs it all.
   float far_ = smoothstep(0.55, 1.0, vUv.y);
   float near_ = smoothstep(0.42, 0.0, vUv.y) * 0.7;
-  float lod = uFocus * 3.2 * max(far_, near_) + uBlur * 4.0;
+  float lod = uFocus * 2.4 * max(far_, near_) + uBlur * 4.0;
   vec3 c;
   if (lod < 0.05) c = texture(uScene, vUv).rgb;
   else {
@@ -185,10 +198,10 @@ void main() {
   // The lamp's warmth from the upper left, the corners falling into shadow.
   vec2 q = vUv - vec2(0.28, 0.92);
   q.x *= uAspect;
-  c += vec3(1.0, 0.92, 0.78) * 0.07 * smoothstep(1.1, 0.0, length(q));
+  c += vec3(1.0, 0.92, 0.78) * 0.03 * smoothstep(1.1, 0.0, length(q));
   vec2 v = (vUv - 0.5) * vec2(uAspect, 1.0) / max(1.0, uAspect * 0.85);
-  c *= mix(1.0, smoothstep(1.05, 0.25, length(v)), uVignette * 0.9);
-  c += (rnd(vUv * 731.0) - 0.5) * 0.018;
+  c *= mix(1.0, smoothstep(1.2, 0.35, length(v)), uVignette * 0.75);
+  c += (rnd(vUv * 731.0) - 0.5) * 0.008;
   o = vec4(c, 1.0);
 }`;
 
