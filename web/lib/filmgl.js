@@ -1,0 +1,736 @@
+// The film's renderer (WebGL 2): the desk, the pages and the camera of
+// web/src/film.js, drawn as a real 3D scene — for the screen, and frame by
+// frame for a video (exportVideo).
+//
+// The scene is the plane of the desk (desk units: points, x right, y down,
+// the camera above it). Each page is a quad with two bitmaps: its color (the
+// printed page on paper) and its ink (black where ink lies, softened), from
+// which the page shader raises the ink a little off the paper: it lights
+// the ink's slopes from the lamp, puts a glossy highlight where the lamp
+// reflects toward the camera (wet ink shines, dry ink barely), and lets the
+// ink cast a short shadow on the paper. Closer up, sharper bitmaps of a
+// system's band are drawn over the page. The picture is drawn into a texture
+// and finished in a last pass: depth of field (the far and near edges of a
+// leaning picture blurred, from the texture's mipmaps), motion blur for a
+// whip, the vignette, the lamp's warmth and a fine grain.
+//
+// Not type-checked (WebGL is outside inty's library); web/types/platform.d.js
+// types what it exports, and GlFrame / GlSheet in web/types/globals.d.js
+// describe a frame.
+
+const VS = `#version 300 es
+in vec2 aPos;
+in vec2 aUv;
+uniform mat4 uVP;
+out vec2 vWorld;
+out vec2 vUv;
+void main() {
+  vWorld = aPos;
+  vUv = aUv;
+  gl_Position = uVP * vec4(aPos, 0.0, 1.0);
+}`;
+
+// Light shared by the desk and the pages: the lamp's pool (a point light
+// above the desk) and the spotlight on the framed staves.
+const LIGHT = `
+uniform vec3 uLight;
+uniform vec4 uSpot;
+uniform float uSpotAmt;
+float lampOn(vec2 p) {
+  vec3 d = uLight - vec3(p, 0.0);
+  float c = uLight.z / length(d);
+  return 0.62 + 0.5 * c * c * c;
+}
+float spotOn(vec2 p) {
+  if (uSpotAmt <= 0.0) return 1.0;
+  float s = length((p - uSpot.xy) / uSpot.zw);
+  return mix(1.0, mix(0.45, 1.0, smoothstep(1.35, 0.8, s)), uSpotAmt);
+}`;
+
+const DESK_FS = `#version 300 es
+precision highp float;
+in vec2 vWorld;
+in vec2 vUv;
+uniform sampler2D uTex;
+uniform float uHasTex;
+uniform float uTile;
+uniform vec3 uColor;
+${LIGHT}
+out vec4 o;
+void main() {
+  vec3 c = uHasTex > 0.5 ? texture(uTex, vWorld / uTile).rgb : uColor;
+  c *= lampOn(vWorld) * 0.82 * spotOn(vWorld);
+  o = vec4(c, 1.0);
+}`;
+
+// A soft shadow under a page: the quad grown a little, its alpha falling off toward its edges.
+const SHADOW_FS = `#version 300 es
+precision highp float;
+in vec2 vWorld;
+in vec2 vUv;
+uniform float uSoft;
+out vec4 o;
+void main() {
+  vec2 d = min(vUv, 1.0 - vUv) / uSoft;
+  float a = smoothstep(0.0, 1.0, min(d.x, d.y));
+  o = vec4(0.0, 0.0, 0.0, 0.5 * a);
+}`;
+
+const PAGE_FS = `#version 300 es
+precision highp float;
+in vec2 vWorld;
+in vec2 vUv;
+uniform sampler2D uColorTex;
+uniform sampler2D uInkTex;
+uniform float uHasColor;
+uniform float uHasInk;
+uniform vec2 uTexel;
+uniform float uScale;
+uniform float uRot;
+uniform vec3 uPaper;
+uniform vec3 uEye;
+uniform float uRelief;
+uniform float uGloss;
+uniform float uShine;
+${LIGHT}
+out vec4 o;
+float ink(vec2 uv) { return 1.0 - texture(uInkTex, uv).r; }
+void main() {
+  vec3 base = uHasColor > 0.5 ? texture(uColorTex, vUv).rgb : uPaper;
+  float lamp = lampOn(vWorld) * spotOn(vWorld);
+  vec3 c = base * lamp;
+  // The relief only where the bitmap is sharp enough to show it (the closer bands).
+  float relief = uRelief * smoothstep(1.8, 3.5, uScale);
+  if (uHasInk > 0.5 && relief > 0.0) {
+    // The ink's height (points) and its slope, from its bitmap.
+    float h0 = ink(vUv);
+    float hx = ink(vUv + vec2(uTexel.x, 0.0)) - ink(vUv - vec2(uTexel.x, 0.0));
+    float hy = ink(vUv + vec2(0.0, uTexel.y)) - ink(vUv - vec2(0.0, uTexel.y));
+    float lift = 0.34 * relief;
+    vec2 g = vec2(hx, hy) * 0.5 * uScale * lift;
+    float cr = cos(uRot), sr = sin(uRot);
+    g = vec2(cr * g.x - sr * g.y, sr * g.x + cr * g.y);
+    vec3 n = normalize(vec3(-g, 1.0));
+    vec3 p = vec3(vWorld, h0 * lift);
+    vec3 l = normalize(uLight - p);
+    vec3 v = normalize(uEye - p);
+    vec3 hv = normalize(l + v);
+    float onInk = smoothstep(0.2, 0.6, h0);
+    // On the ink: slopes toward the lamp catch more light, the others less.
+    float shade = clamp(dot(n, l) / max(l.z, 0.25), 0.55, 1.35);
+    c *= mix(1.0, shade, 0.6 * onInk);
+    // On the paper: the raised ink casts a short shadow, away from the lamp.
+    vec2 toward = normalize(l.xy + 1e-5);
+    vec2 tl = vec2(cr * toward.x + sr * toward.y, -sr * toward.x + cr * toward.y);
+    float occl = clamp(ink(vUv + tl * uTexel * uScale * 0.55) - h0, 0.0, 1.0) * (1.0 - onInk);
+    c *= 1.0 - 0.3 * occl * relief;
+    // Gloss: a sharp highlight and a broad sheen where the lamp reflects toward the camera.
+    float nh = max(dot(n, hv), 0.0);
+    float fres = 0.4 + 0.6 * pow(1.0 - max(dot(n, v), 0.0), 3.0);
+    float spec = pow(nh, mix(30.0, 240.0, uShine)) * 2.4 + pow(nh, 10.0) * 0.16;
+    c += vec3(1.0, 0.97, 0.9) * spec * fres * smoothstep(0.25, 0.7, h0) * uGloss * lamp * (0.4 + 0.6 * relief);
+  }
+  o = vec4(c, 1.0);
+}`;
+
+// A note as it plays: golden light on it and around it (added to the picture).
+const SPARK_FS = `#version 300 es
+precision highp float;
+in vec2 vWorld;
+in vec2 vUv;
+uniform float uA;
+out vec4 o;
+void main() {
+  float r = length(vUv * 2.0 - 1.0);
+  float core = pow(clamp(1.0 - r * 1.6, 0.0, 1.0), 1.5);
+  float halo = pow(clamp(1.0 - r, 0.0, 1.0), 2.5);
+  o = vec4(vec3(1.0, 0.68, 0.22) * uA * (0.55 * core + 0.22 * halo), 1.0);
+}`;
+
+const POST_VS = `#version 300 es
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+const POST_FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uScene;
+uniform float uFocus;
+uniform float uBlur;
+uniform float uVignette;
+uniform float uAspect;
+uniform float uSeed;
+uniform vec2 uPx;
+out vec4 o;
+float rnd(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uSeed) * 43758.5453); }
+void main() {
+  // Depth of field: the far (top) and near (bottom) edges blur; a whip blurs it all.
+  float far_ = smoothstep(0.55, 1.0, vUv.y);
+  float near_ = smoothstep(0.42, 0.0, vUv.y) * 0.7;
+  float lod = uFocus * 3.2 * max(far_, near_) + uBlur * 4.0;
+  vec3 c;
+  if (lod < 0.05) c = texture(uScene, vUv).rgb;
+  else {
+    vec2 r = uPx * exp2(lod) * 0.75;
+    c = textureLod(uScene, vUv, lod).rgb * 0.4;
+    c += textureLod(uScene, vUv + vec2(r.x, r.y), lod).rgb * 0.15;
+    c += textureLod(uScene, vUv + vec2(-r.x, r.y), lod).rgb * 0.15;
+    c += textureLod(uScene, vUv + vec2(r.x, -r.y), lod).rgb * 0.15;
+    c += textureLod(uScene, vUv + vec2(-r.x, -r.y), lod).rgb * 0.15;
+  }
+  // The lamp's warmth from the upper left, the corners falling into shadow.
+  vec2 q = vUv - vec2(0.28, 0.92);
+  q.x *= uAspect;
+  c += vec3(1.0, 0.92, 0.78) * 0.07 * smoothstep(1.1, 0.0, length(q));
+  vec2 v = (vUv - 0.5) * vec2(uAspect, 1.0) / max(1.0, uAspect * 0.85);
+  c *= mix(1.0, smoothstep(1.05, 0.25, length(v)), uVignette * 0.9);
+  c += (rnd(vUv * 731.0) - 0.5) * 0.018;
+  o = vec4(c, 1.0);
+}`;
+
+// ------------------------------------------------------------------ matrices
+
+function mul(a, b) {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++)
+    for (let r = 0; r < 4; r++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+      o[c * 4 + r] = s;
+    }
+  return o;
+}
+
+function perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2);
+  const o = new Float32Array(16);
+  o[0] = f / aspect;
+  o[5] = f;
+  o[10] = (far + near) / (near - far);
+  o[11] = -1;
+  o[14] = (2 * far * near) / (near - far);
+  return o;
+}
+
+function lookAt(eye, at, up) {
+  let zx = eye[0] - at[0],
+    zy = eye[1] - at[1],
+    zz = eye[2] - at[2];
+  let l = Math.hypot(zx, zy, zz);
+  zx /= l;
+  zy /= l;
+  zz /= l;
+  let xx = up[1] * zz - up[2] * zy,
+    xy = up[2] * zx - up[0] * zz,
+    xz = up[0] * zy - up[1] * zx;
+  l = Math.hypot(xx, xy, xz);
+  xx /= l;
+  xy /= l;
+  xz /= l;
+  const yx = zy * xz - zz * xy,
+    yy = zz * xx - zx * xz,
+    yz = zx * xy - zy * xx;
+  const o = new Float32Array(16);
+  o[0] = xx;
+  o[4] = xy;
+  o[8] = xz;
+  o[1] = yx;
+  o[5] = yy;
+  o[9] = yz;
+  o[2] = zx;
+  o[6] = zy;
+  o[10] = zz;
+  o[12] = -(xx * eye[0] + xy * eye[1] + xz * eye[2]);
+  o[13] = -(yx * eye[0] + yy * eye[1] + yz * eye[2]);
+  o[14] = -(zx * eye[0] + zy * eye[1] + zz * eye[2]);
+  o[15] = 1;
+  return o;
+}
+
+const FOV = (32 * Math.PI) / 180;
+
+/**
+ * The camera of a frame: in the desk's space (x right, y down, z *into* the
+ * desk, so the camera's height is negative z), looking at (x, y), seeing
+ * `span` points across, leaning back by `tilt` toward the bottom of the
+ * picture, turned by `turn`. Returns the view-projection and the eye in the
+ * shading space (z up).
+ */
+function camera(cam, aspect) {
+  const [x, y, span, tilt, turn] = cam;
+  const t = (tilt * Math.PI) / 180;
+  const r = (turn * Math.PI) / 180;
+  const d = span / 2 / Math.tan(FOV / 2) / aspect;
+  // The picture's "down" on the desk, and the camera leaning back along it.
+  const dx = -Math.sin(r),
+    dy = Math.cos(r);
+  const eye = [x + dx * d * Math.sin(t), y + dy * d * Math.sin(t), -d * Math.cos(t)];
+  const up = [-dx, -dy, 0];
+  if (t < 1e-3) {
+    up[0] = -dx;
+    up[1] = -dy;
+  }
+  const view = lookAt(eye, [x, y, 0], up);
+  const proj = perspective(FOV, aspect, d * 0.02, d * 20);
+  return { vp: mul(proj, view), eye: [eye[0], eye[1], -eye[2]] };
+}
+
+// ------------------------------------------------------------------ renderer
+
+function compile(gl, vs, fs) {
+  const p = gl.createProgram();
+  for (const [type, src] of [
+    [gl.VERTEX_SHADER, vs],
+    [gl.FRAGMENT_SHADER, fs],
+  ]) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.bindAttribLocation(p, 0, "aPos");
+  gl.bindAttribLocation(p, 1, "aUv");
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) {
+    const info = gl.getActiveUniform(p, i);
+    u[info.name] = gl.getUniformLocation(p, info.name);
+  }
+  return { p, u };
+}
+
+function hexRgb(hex) {
+  const h = hex.replace("#", "");
+  const v = parseInt(h, 16);
+  return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
+}
+
+/** A renderer on a canvas (on screen or not). */
+function renderer(canvas) {
+  const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, preserveDrawingBuffer: true });
+  if (!gl) return null;
+  const progs = {
+    desk: compile(gl, VS, DESK_FS),
+    shadow: compile(gl, VS, SHADOW_FS),
+    page: compile(gl, VS, PAGE_FS),
+    spark: compile(gl, VS, SPARK_FS),
+    post: compile(gl, POST_VS, POST_FS),
+  };
+  const buf = gl.createBuffer();
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.enableVertexAttribArray(0);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+  gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+  const aniso = gl.getExtension("EXT_texture_filter_anisotropic");
+  // Textures by URL: loading, loaded (with their size) or failed.
+  const textures = new Map();
+  let target = null;
+
+  function texture(url, repeat) {
+    if (!url) return null;
+    let t = textures.get(url);
+    if (!t) {
+      t = { tex: null, w: 0, h: 0, failed: false, promise: null };
+      textures.set(url, t);
+      const img = new Image();
+      img.src = url;
+      t.promise = img
+        .decode()
+        .then(() => {
+          const tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          const wrap = repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+          if (aniso) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+          t.tex = tex;
+          t.w = img.naturalWidth;
+          t.h = img.naturalHeight;
+          if (api.onLoad) api.onLoad();
+        })
+        .catch(() => {
+          t.failed = true;
+        });
+    }
+    return t.tex ? t : null;
+  }
+
+  function quad(pts, uvs) {
+    // Two triangles: corners 0 1 2, 0 2 3.
+    const d = new Float32Array(24);
+    const order = [0, 1, 2, 0, 2, 3];
+    for (let i = 0; i < 6; i++) {
+      const k = order[i];
+      d[i * 4] = pts[k * 2];
+      d[i * 4 + 1] = pts[k * 2 + 1];
+      d[i * 4 + 2] = uvs[k * 2];
+      d[i * 4 + 3] = uvs[k * 2 + 1];
+    }
+    gl.bufferData(gl.ARRAY_BUFFER, d, gl.STREAM_DRAW);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  function ensureTarget(w, h) {
+    if (target && target.w === w && target.h === h) return target;
+    if (target) {
+      gl.deleteTexture(target.tex);
+      gl.deleteFramebuffer(target.fb);
+    }
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texStorage2D(gl.TEXTURE_2D, Math.floor(Math.log2(Math.max(w, h))) + 1, gl.RGBA8, w, h);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    target = { w, h, tex, fb };
+    return target;
+  }
+
+  function common(prog, f, vp) {
+    gl.useProgram(prog.p);
+    gl.uniformMatrix4fv(prog.u.uVP, false, vp);
+    if (prog.u.uLight) gl.uniform3f(prog.u.uLight, f.light[0], f.light[1], f.light[2]);
+    if (prog.u.uSpot) {
+      gl.uniform4f(prog.u.uSpot, f.spot[0], f.spot[1], Math.max(1, f.spot[2]), Math.max(1, f.spot[3]));
+      gl.uniform1f(prog.u.uSpotAmt, f.spot[4]);
+    }
+  }
+
+  /** Draw a frame; returns whether every bitmap it names was there. */
+  function draw(f) {
+    const w = Math.max(1, Math.round(f.width));
+    const h = Math.max(1, Math.round(f.height));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    let complete = true;
+    const aspect = w / h;
+    const { vp, eye } = camera(f.cam, aspect);
+    const tg = ensureTarget(w, h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fb);
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0.03, 0.025, 0.02, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.disable(gl.DEPTH_TEST);
+
+    // The desk.
+    const dk = f.desk;
+    const deskTex = texture(f.deskTex, true);
+    if (f.deskTex && !deskTex) complete = false;
+    common(progs.desk, f, vp);
+    gl.uniform1f(progs.desk.u.uHasTex, deskTex ? 1 : 0);
+    gl.uniform1f(progs.desk.u.uTile, f.deskTile);
+    const dc = hexRgb(f.deskColor);
+    gl.uniform3f(progs.desk.u.uColor, dc[0], dc[1], dc[2]);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, deskTex ? deskTex.tex : null);
+    gl.uniform1i(progs.desk.u.uTex, 0);
+    gl.disable(gl.BLEND);
+    quad([dk[0], dk[1], dk[2], dk[1], dk[2], dk[3], dk[0], dk[3]], [0, 0, 1, 0, 1, 1, 0, 1]);
+
+    // The pages' shadows: away from the lamp, soft.
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    common(progs.shadow, f, vp);
+    for (const s of f.sheets) {
+      if (!s.page) continue;
+      const q = s.quad;
+      const cx = (q[0] + q[4]) / 2,
+        cy = (q[1] + q[5]) / 2;
+      const grow = 1.06;
+      const ox = (cx - f.light[0]) * 0.012,
+        oy = (cy - f.light[1]) * 0.012 + 6;
+      const pts = [];
+      for (let i = 0; i < 4; i++) pts.push(cx + (q[i * 2] - cx) * grow + ox, cy + (q[i * 2 + 1] - cy) * grow + oy);
+      gl.uniform1f(progs.shadow.u.uSoft, 0.06);
+      quad(pts, [0, 0, 1, 0, 1, 1, 0, 1]);
+    }
+
+    // The pages, then the sharper bands over them.
+    gl.disable(gl.BLEND);
+    common(progs.page, f, vp);
+    const pu = progs.page.u;
+    const paper = hexRgb(f.paper);
+    gl.uniform3f(pu.uPaper, paper[0], paper[1], paper[2]);
+    gl.uniform3f(pu.uEye, eye[0], eye[1], eye[2]);
+    gl.uniform1f(pu.uRelief, f.ink[0]);
+    gl.uniform1f(pu.uGloss, f.ink[1]);
+    gl.uniform1f(pu.uShine, f.ink[2]);
+    gl.uniform1i(pu.uColorTex, 0);
+    gl.uniform1i(pu.uInkTex, 1);
+    for (const s of f.sheets) {
+      const ct = texture(s.color, false);
+      const it = texture(s.height, false);
+      if ((s.color && !ct) || (s.height && !it)) complete = false;
+      if (!s.page && !ct) continue;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, ct ? ct.tex : null);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, it ? it.tex : null);
+      gl.uniform1f(pu.uHasColor, ct ? 1 : 0);
+      gl.uniform1f(pu.uHasInk, it ? 1 : 0);
+      gl.uniform2f(pu.uTexel, it ? 1 / it.w : 0.001, it ? 1 / it.h : 0.001);
+      gl.uniform1f(pu.uScale, s.scale);
+      gl.uniform1f(pu.uRot, (s.rot * Math.PI) / 180);
+      quad(s.quad, [0, 0, 1, 0, 1, 1, 0, 1]);
+    }
+
+    // Notes as they play, multiplied into the paper.
+    if (f.sparks.length > 0) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      common(progs.spark, f, vp);
+      for (let i = 0; i + 3 < f.sparks.length; i += 4) {
+        const [x, y, r, a] = f.sparks.slice(i, i + 4);
+        gl.uniform1f(progs.spark.u.uA, a);
+        quad([x - r, y - r, x + r, y - r, x + r, y + r, x - r, y + r], [0, 0, 1, 0, 1, 1, 0, 1]);
+      }
+      gl.disable(gl.BLEND);
+    }
+
+    // The finish, onto the canvas.
+    gl.bindTexture(gl.TEXTURE_2D, tg.tex);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, w, h);
+    const po = progs.post;
+    gl.useProgram(po.p);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tg.tex);
+    gl.uniform1i(po.u.uScene, 0);
+    gl.uniform1f(po.u.uFocus, f.fx[1] * Math.min(1.6, 0.35 + f.cam[3] / 28));
+    gl.uniform1f(po.u.uBlur, f.cam[5]);
+    gl.uniform1f(po.u.uVignette, f.fx[0]);
+    gl.uniform1f(po.u.uAspect, aspect);
+    gl.uniform1f(po.u.uSeed, f.seed);
+    gl.uniform2f(po.u.uPx, 1 / w, 1 / h);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 0, 0, 1, -1, 0, 0, 1, 1, 0, 0, -1, -1, 0, 0, 1, 1, 0, 0, -1, 1, 0, 0]), gl.STREAM_DRAW);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    return complete;
+  }
+
+  /** Wait for the bitmaps a frame names. */
+  async function ready(f) {
+    const urls = [f.deskTex];
+    for (const s of f.sheets) urls.push(s.color, s.height);
+    for (const u of urls) {
+      if (!u) continue;
+      texture(u, u === f.deskTex);
+      const t = textures.get(u);
+      if (t && t.promise) await t.promise;
+    }
+  }
+
+  function forget(url) {
+    const t = textures.get(url);
+    if (t && t.tex) gl.deleteTexture(t.tex);
+    textures.delete(url);
+  }
+
+  const api = { draw, ready, forget, onLoad: null, canvas };
+  return api;
+}
+
+// ------------------------------------------------------------------ on screen
+
+const screens = new Map();
+const pending = new Map();
+let scheduled = false;
+
+/** Draw a frame on the canvas matching `selector` (at the next animation frame; the latest frame wins). */
+export function filmDraw(selector, frame) {
+  pending.set(selector, frame);
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => {
+    scheduled = false;
+    for (const [sel, f] of pending) {
+      const canvas = document.querySelector(sel);
+      if (!canvas) continue;
+      let r = screens.get(sel);
+      if (!r || r.canvas !== canvas) {
+        try {
+          r = renderer(canvas);
+        } catch (e) {
+          console.error("film renderer", e);
+          r = null;
+        }
+        if (!r) continue;
+        screens.set(sel, r);
+      }
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      f.width = Math.round(canvas.clientWidth * dpr);
+      f.height = Math.round(canvas.clientHeight * dpr);
+      r.onLoad = () => filmDraw(sel, f);
+      r.draw(f);
+    }
+    pending.clear();
+  });
+}
+
+/** Forget a bitmap's texture everywhere (its object URL is being let go). */
+export function filmForget(url) {
+  for (const r of screens.values()) r.forget(url);
+  if (offscreen) offscreen.forget(url);
+}
+
+// ------------------------------------------------------------------ video
+
+let offscreen = null;
+
+/** The best codecs this browser encodes to MP4: H.264 and AAC where it can, VP9 and Opus otherwise. */
+async function codecs(w, h, fps) {
+  const video = [
+    { codec: "avc1.640033", mux: "avc" },
+    { codec: "avc1.4d0033", mux: "avc" },
+    { codec: "vp09.00.41.08", mux: "vp9" },
+    { codec: "av01.0.08M.08", mux: "av1" },
+  ];
+  let v = null;
+  for (const c of video) {
+    const cfg = { codec: c.codec, width: w, height: h, bitrate: Math.round(w * h * fps * 0.1), framerate: fps };
+    if (c.mux === "avc") cfg.avc = { format: "avc" };
+    try {
+      if ((await VideoEncoder.isConfigSupported(cfg)).supported) {
+        v = { cfg, mux: c.mux };
+        break;
+      }
+    } catch (e) {}
+  }
+  let a = null;
+  for (const c of [
+    { codec: "mp4a.40.2", mux: "aac" },
+    { codec: "opus", mux: "opus" },
+  ]) {
+    const cfg = { codec: c.codec, sampleRate: 48000, numberOfChannels: 2, bitrate: 192000 };
+    try {
+      if (typeof AudioEncoder !== "undefined" && (await AudioEncoder.isConfigSupported(cfg)).supported) {
+        a = { cfg, mux: c.mux };
+        break;
+      }
+    } catch (e) {}
+  }
+  return { v, a };
+}
+
+/** Resample decoded audio (one or two channels) to 48 kHz stereo. */
+function resample(audio) {
+  const n = Math.round((audio.channels[0].length * 48000) / audio.sampleRate);
+  const out = [new Float32Array(n), new Float32Array(n)];
+  const k = audio.sampleRate / 48000;
+  for (let c = 0; c < 2; c++) {
+    const src = audio.channels[Math.min(c, audio.channels.length - 1)];
+    for (let i = 0; i < n; i++) {
+      const x = i * k;
+      const j = Math.floor(x);
+      const f = x - j;
+      out[c][i] = (src[j] ?? 0) * (1 - f) + (src[j + 1] ?? 0) * f;
+    }
+  }
+  return out;
+}
+
+/**
+ * Encode a film to an MP4: `frames` frames of `w` by `h` at `fps`, each made
+ * by `frameAt(i)` (a promise, so its bitmaps can be drawn first), with the
+ * decoded mixdown from `offset` seconds as its sound (or none: an empty
+ * channel list). `progress`
+ * hears the fraction done. Resolves to the file's object URL and its codecs.
+ */
+export async function encodeFilm(w, h, fps, frames, frameAt, audio, offset, progress) {
+  if (typeof VideoEncoder === "undefined") throw new Error("this browser cannot encode video (WebCodecs)");
+  const { Muxer, ArrayBufferTarget } = await import("../vendor/mp4-muxer/mp4-muxer.mjs");
+  const W = Math.round(w / 2) * 2;
+  const H = Math.round(h / 2) * 2;
+  const { v, a } = await codecs(W, H, fps);
+  if (!v) throw new Error("this browser has no video encoder for MP4");
+  const sound = audio.channels.length > 0 && a !== null;
+  const target = new ArrayBufferTarget();
+  const muxer = new Muxer({
+    target,
+    video: { codec: v.mux, width: W, height: H, frameRate: fps },
+    audio: sound ? { codec: a.mux, numberOfChannels: 2, sampleRate: 48000 } : undefined,
+    fastStart: "in-memory",
+    firstTimestampBehavior: "offset",
+  });
+  let failure = null;
+  const venc = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: (e) => (failure = e),
+  });
+  venc.configure(v.cfg);
+  if (!offscreen) {
+    const canvas = document.createElement("canvas");
+    offscreen = renderer(canvas);
+    if (!offscreen) throw new Error("WebGL 2 is not available");
+  }
+  for (let i = 0; i < frames; i++) {
+    if (failure) throw failure;
+    const f = await frameAt(i);
+    f.width = W;
+    f.height = H;
+    await offscreen.ready(f);
+    offscreen.draw(f);
+    const frame = new VideoFrame(offscreen.canvas, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
+    venc.encode(frame, { keyFrame: i % (fps * 2) === 0 });
+    frame.close();
+    while (venc.encodeQueueSize > 4) await new Promise((r) => setTimeout(r, 1));
+    if (progress) progress((i + 1) / frames);
+  }
+  await venc.flush();
+  venc.close();
+  if (sound) {
+    const pcm = resample(audio);
+    const aenc = new AudioEncoder({
+      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+      error: (e) => (failure = e),
+    });
+    aenc.configure(a.cfg);
+    const step = 4800;
+    const skip = Math.max(0, Math.round(offset * 48000));
+    const total = Math.max(0, Math.min(pcm[0].length - skip, Math.round((frames / fps) * 48000)));
+    for (let s = 0; s < total; s += step) {
+      const n = Math.min(step, total - s);
+      const data = new Float32Array(n * 2);
+      data.set(pcm[0].subarray(skip + s, skip + s + n), 0);
+      data.set(pcm[1].subarray(skip + s, skip + s + n), n);
+      const ad = new AudioData({
+        format: "f32-planar",
+        sampleRate: 48000,
+        numberOfFrames: n,
+        numberOfChannels: 2,
+        timestamp: Math.round((s * 1e6) / 48000),
+        data,
+      });
+      aenc.encode(ad);
+      ad.close();
+    }
+    await aenc.flush();
+    aenc.close();
+  }
+  if (failure) throw failure;
+  muxer.finalize();
+  const blob = new Blob([target.buffer], { type: "video/mp4" });
+  return { url: URL.createObjectURL(blob), codecs: `${v.mux.toUpperCase()}${sound ? ` + ${a.mux.toUpperCase()}` : ""}` };
+}

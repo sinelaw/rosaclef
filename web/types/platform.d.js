@@ -56,6 +56,26 @@ export const downloadPdf;
 /** const downloadImagePdf: (String, String, String[], Number, Number, Number) => Promise<Boolean> */
 export const downloadImagePdf;
 
+/** Draw an SVG document into a bitmap of a size in pixels: an object URL of the image (give it back with dropUrl). */
+/** const rasterSvg: (String, Int, Int) => Promise<String> */
+export const rasterSvg;
+/** Let go of an object URL made by rasterSvg. */
+/** const dropUrl: (String) => Undefined */
+export const dropUrl;
+/** Show the element matching a CSS selector full screen, or leave full screen. */
+/** const toggleFullscreen: (String) => Undefined */
+export const toggleFullscreen;
+
+/** Draw a frame of the film (WebGL) on the canvas matching a CSS selector, at the next animation frame. */
+/** const filmDraw: (String, GlFrame) => Undefined */
+export const filmDraw;
+/** Forget the texture made from an object URL (before letting it go). */
+/** const filmForget: (String) => Undefined */
+export const filmForget;
+/** Encode a film as MP4: width, height, frames a second, frames, each frame (made when asked), the mixdown (no channels: silent), where in it the film starts (seconds) and progress (0..1). */
+/** const encodeFilm: (Int, Int, Int, Int, (Int) => Promise<GlFrame>, Decoded, Number, (Number) => Undefined) => Promise<Encoded> */
+export const encodeFilm;
+
 /** Width of a text in a PDF standard font ("Times-Italic", …) at size 1, measured with a metric-compatible face. */
 /** const textWidth: (String, String) => Number */
 export const textWidth;

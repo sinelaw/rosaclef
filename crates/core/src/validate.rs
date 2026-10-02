@@ -6,7 +6,10 @@
 
 use crate::automation::AutomationTarget;
 use crate::catalog::{self, Category, DeviceSpec};
-use crate::model::{Device, Project, FORMAT, SCORE_CLEFS, SCORE_KEYS};
+use crate::model::{
+    CameraMove, Device, FilmEffect, Project, FILM_EASES, FILM_EFFECTS, FILM_FRAMES, FILM_MODES,
+    FILM_ROLES, FILM_SURFACES, FILM_TRANSITIONS, FILM_VIEWS, FORMAT, SCORE_CLEFS, SCORE_KEYS,
+};
 use serde::Serialize;
 use std::collections::HashSet;
 
@@ -387,7 +390,132 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     check_automation(&mut v, p);
     check_score(&mut v, p);
     check_repeats(&mut v, p);
+    check_animation(&mut v, p);
     v.issues
+}
+
+/// `value` must be one of `choices` (empty allowed when `blank` is).
+fn one_of(v: &mut V, path: String, value: &str, choices: &[&str], blank: bool) {
+    if (blank && value.is_empty()) || choices.contains(&value) {
+        return;
+    }
+    v.err(
+        path,
+        format!("unknown value {value:?}: use one of {}", choices.join(", ")),
+    );
+}
+
+fn check_film_effects(v: &mut V, path: &str, effects: &[FilmEffect]) {
+    for (i, e) in effects.iter().enumerate() {
+        let at = format!("{path}[{i}]");
+        one_of(v, format!("{at}.type"), &e.kind, FILM_EFFECTS, false);
+        v.range(&format!("{at}.amount"), e.amount, 0.0, 1.0);
+    }
+}
+
+fn check_offset(v: &mut V, path: String, offset: &[f64]) {
+    if offset.is_empty() {
+        return;
+    }
+    if offset.len() != 2 {
+        v.err(path, "offset is [x, y], fractions of the frame");
+        return;
+    }
+    v.range(&format!("{path}[0]"), offset[0], -2.0, 2.0);
+    v.range(&format!("{path}[1]"), offset[1], -2.0, 2.0);
+}
+
+fn check_camera(
+    v: &mut V,
+    path: &str,
+    zoom: Option<f64>,
+    tilt: Option<f64>,
+    turn: Option<f64>,
+    offset: &[f64],
+) {
+    if let Some(z) = zoom {
+        v.range(&format!("{path}.zoom"), z, 0.1, 10.0);
+    }
+    if let Some(t) = tilt {
+        v.range(&format!("{path}.tilt"), t, 0.0, 75.0);
+    }
+    if let Some(t) = turn {
+        v.range(&format!("{path}.turn"), t, -180.0, 180.0);
+    }
+    check_offset(v, format!("{path}.offset"), offset);
+}
+
+fn check_animation(v: &mut V, p: &Project) {
+    let Some(a) = &p.animation else {
+        return;
+    };
+    one_of(v, "animation.mode".into(), &a.mode, FILM_MODES, false);
+    one_of(v, "animation.view".into(), &a.view, FILM_VIEWS, false);
+    one_of(
+        v,
+        "animation.surface".into(),
+        &a.surface,
+        FILM_SURFACES,
+        false,
+    );
+    v.range("animation.energy", a.energy, 0.0, 1.0);
+    check_film_effects(v, "animation.effects", &a.effects);
+    let mut spans: Vec<(f64, f64, usize)> = vec![];
+    for (i, s) in a.shots.iter().enumerate() {
+        let path = format!("animation.shots[{i}]");
+        if !(s.start >= 0.0 && s.start.is_finite()) {
+            v.err(format!("{path}.start"), "start must be >= 0");
+        }
+        if !(s.end > s.start && s.end.is_finite()) {
+            v.err(format!("{path}.end"), "end must come after start");
+        }
+        for (j, id) in s.focus.iter().enumerate() {
+            if p.channel(id).is_none() {
+                v.err(
+                    format!("{path}.focus[{j}]"),
+                    format!("channel {id:?} does not exist"),
+                );
+            }
+        }
+        one_of(v, format!("{path}.role"), &s.role, FILM_ROLES, true);
+        one_of(v, format!("{path}.frame"), &s.frame, FILM_FRAMES, true);
+        one_of(
+            v,
+            format!("{path}.transition"),
+            &s.transition,
+            FILM_TRANSITIONS,
+            true,
+        );
+        one_of(v, format!("{path}.ease"), &s.ease, FILM_EASES, true);
+        check_camera(v, &path, s.zoom, s.tilt, s.turn, &s.offset);
+        if let Some(CameraMove {
+            zoom,
+            tilt,
+            turn,
+            offset,
+        }) = &s.to
+        {
+            check_camera(v, &format!("{path}.to"), *zoom, *tilt, *turn, offset);
+        }
+        if let Some(at) = s.at {
+            if !(at >= 0.0 && at.is_finite()) {
+                v.err(format!("{path}.at"), "at must be a song beat >= 0");
+            }
+        }
+        if let Some(g) = s.glide {
+            v.range(&format!("{path}.glide"), g, 0.0, 64.0);
+        }
+        check_film_effects(v, &format!("{path}.effects"), &s.effects);
+        for &(a0, a1, j) in &spans {
+            if s.start < a1 - 1e-9 && s.end > a0 + 1e-9 {
+                v.warn(
+                    format!("{path}.start"),
+                    format!("overlaps animation.shots[{j}]: where shots overlap, the later one is filmed"),
+                );
+            }
+        }
+        spans.push((s.start, s.end, i));
+    }
 }
 
 fn check_repeats(v: &mut V, p: &Project) {

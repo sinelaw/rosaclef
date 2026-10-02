@@ -121,6 +121,26 @@ pub struct SelectedClip {
 pub struct Visible {
     pub playlist: Option<PlaylistView>,
     pub piano_roll: Option<PianoRollView>,
+    pub film: Option<FilmView>,
+}
+
+/// The film shown in the Score view's Film mode: the scene at the playhead.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FilmView {
+    /// `auto` or `manual` (`animation.mode`).
+    pub mode: String,
+    /// The shot filmed, as an index in `animation.shots`; none: the director's own scene.
+    pub shot: Option<u32>,
+    /// The shot selected in the film's timeline, if any.
+    pub selected_shot: Option<u32>,
+    pub start_beat: f64,
+    pub end_beat: f64,
+    pub frame: String,
+    /// Channels whose staves are framed (empty: every staff).
+    pub focus: Vec<String>,
+    /// What the director saw ("Bass comes in", "the lead") or the shot's label.
+    pub why: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -238,6 +258,19 @@ pub fn schema() -> Value {
                             "pattern": {"type": "string"}, "channel": {"type": "string"},
                             "startBeat": beats, "endBeat": beats,
                             "lowPitch": {"type": "integer"}, "highPitch": {"type": "integer"}
+                        }
+                    },
+                    "film": {
+                        "type": ["object", "null"],
+                        "description": "The Score view's Film mode, when shown: the scene at the playhead. `shot` indexes animation.shots (null: the director's own scene); `selectedShot` is the shot selected in the film's timeline.",
+                        "properties": {
+                            "mode": {"enum": ["auto", "manual"]},
+                            "shot": {"type": ["integer", "null"]},
+                            "selectedShot": {"type": ["integer", "null"]},
+                            "startBeat": beats, "endBeat": beats,
+                            "frame": {"type": "string"},
+                            "focus": {"type": "array", "items": {"type": "string"}},
+                            "why": {"type": "string"}
                         }
                     }
                 }

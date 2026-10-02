@@ -947,6 +947,24 @@ export function buildScore(p, scope, grid) {
   };
 }
 
+/** The score in plain ink: its colored passages left out (the view's "hide colors"). */
+/** function withoutColors(sc: Score) => Score */
+export function withoutColors(sc) {
+  return {
+    repeats: sc.repeats,
+    staves: sc.staves,
+    measures: sc.measures,
+    fifths: sc.fifths,
+    minor: sc.minor,
+    keyName: sc.keyName,
+    notes: sc.notes,
+    marks: [],
+    bpm: sc.bpm,
+    end: sc.end,
+    empty: sc.empty,
+  };
+}
+
 /** Endings' passes as written over them: "1.", "1.–2.", "1., 3.". */
 /** function passesText(passes: Int[]) => String */
 export function passesText(passes) {

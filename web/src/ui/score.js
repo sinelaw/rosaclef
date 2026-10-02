@@ -36,6 +36,7 @@ import {
   channelKind,
   bottomStep,
   passesText,
+  withoutColors,
 } from "../notation.js";
 import { engrave, timeX, xTick, GLOSS, SHEEN } from "../engrave.js";
 import { inkFilter, glintOpacity, PAPER, LACQUER, GLOSS_DEFAULT, GLOSS_MAX, SHINE_DEFAULT } from "../ink.js";
@@ -45,6 +46,7 @@ import { select, iconButton, glyph, textInput } from "./widgets.js";
 import { followButton } from "./playlist.js";
 import { revealDock } from "./panes.js";
 import { toast } from "./toast.js";
+import { filmView, newFilmView } from "./film.js";
 import { trackIx, trackIndex, noteIx, noteIndex } from "#brands";
 
 // ------------------------------------------------------------------ state
@@ -54,9 +56,12 @@ import { trackIx, trackIndex, noteIx, noteIndex } from "#brands";
 /** Where Write would put a note: a system, a staff row, a step and a tick (-1: nowhere). */
 /** type Ghost = { sys: Int, row: Int, step: Int, tick: Number, x: Number } */
 /** The engraved score of the last flush, and what it was built from. */
-/** type Cached = { key: String, score: Score, page: Page } */
+/** `score` keeps its colored passages (the sidebar lists them); `ink` is what is engraved and printed (without them when colors are hidden). */
+/** type Cached = { key: String, score: Score, ink: Score, page: Page } */
+/** The notation the film is made of, and what it was built from. */
+/** type FilmScore = { key: String, score: Score } */
 /** `size`: a staff space in pixels at 100% (the music's size, laid out to fit); `zoom`: magnification of that page. */
-/** type ScoreView = { id: String, scope: String, size: Number, zoom: Number, width: Number, height: Number, scrollTop: Number, scrollLeft: Number, panning: Boolean, pdfMenu: Boolean, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, ink: String, gloss: Number, shine: Number, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, cache: Cached[] } */
+/** type ScoreView = { id: String, scope: String, size: Number, zoom: Number, width: Number, height: Number, scrollTop: Number, scrollLeft: Number, panning: Boolean, pdfMenu: Boolean, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, colors: Boolean, ink: String, gloss: Number, shine: Number, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, cache: Cached[], film: Boolean, fv: FilmView, filmCache: FilmScore[] } */
 
 /** function newView(id: String, scope: String) => ScoreView */
 function newView(id, scope) {
@@ -76,6 +81,7 @@ function newView(id, scope) {
     dot: false,
     grid: 12,
     night: false,
+    colors: true,
     ink: "wet",
     gloss: GLOSS_DEFAULT,
     shine: SHINE_DEFAULT,
@@ -84,6 +90,9 @@ function newView(id, scope) {
     range: { on: false, t0: 0, t1: 0, s0: 0, s1: 0 },
     ghost: { sys: -1, row: -1, step: 0, tick: -1, x: 0 },
     cache: [],
+    film: false,
+    fv: newFilmView(id),
+    filmCache: [],
   };
 }
 
@@ -108,12 +117,14 @@ export function loadScorePrefs() {
     const z = Number(loadPref(`${PREF}${v.id}.magnify`));
     if (z >= ZOOMS[0] && z <= ZOOMS[ZOOMS.length - 1]) v.zoom = z;
     v.night = loadPref(`${PREF}${v.id}.night`) === "1";
+    v.colors = loadPref(`${PREF}${v.id}.colors`) !== "0";
     if (loadPref(`${PREF}${v.id}.ink`) === "dry") v.ink = "dry";
     const gl = loadPref(`${PREF}${v.id}.gloss`);
     if (gl !== "" && Number(gl) >= 0 && Number(gl) <= GLOSS_MAX) v.gloss = Number(gl);
     const sh = loadPref(`${PREF}${v.id}.shine`);
     if (sh !== "" && Number(sh) >= 0 && Number(sh) <= 1) v.shine = Number(sh);
     if (loadPref(`${PREF}${v.id}.side`) === "0") v.side = false;
+    v.film = loadPref(`${PREF}${v.id}.film`) === "1";
     const sc = loadPref(`${PREF}${v.id}.scope`);
     if (sc !== "") v.scope = sc;
   }
@@ -124,10 +135,12 @@ function savePrefs(v) {
   savePref(`${PREF}${v.id}.size`, String(v.size));
   savePref(`${PREF}${v.id}.magnify`, fmt(v.zoom, 2));
   savePref(`${PREF}${v.id}.night`, v.night ? "1" : "0");
+  savePref(`${PREF}${v.id}.colors`, v.colors ? "1" : "0");
   savePref(`${PREF}${v.id}.ink`, v.ink);
   savePref(`${PREF}${v.id}.gloss`, fmt(v.gloss, 2));
   savePref(`${PREF}${v.id}.shine`, fmt(v.shine, 2));
   savePref(`${PREF}${v.id}.side`, v.side ? "1" : "0");
+  savePref(`${PREF}${v.id}.film`, v.film ? "1" : "0");
   savePref(`${PREF}${v.id}.scope`, v.scope);
 }
 
@@ -194,12 +207,13 @@ function pageGeo(v, sc) {
 /** The engraved page for this view (rebuilt only when the project, scope, grid or width changed). */
 /** function cached(v: ScoreView, sc: Scope, geo: PageGeo) => Cached */
 function cached(v, sc, geo) {
-  const key = `${state.edits}|${sc.kind}|${sc.track}|${sc.pattern}|${v.grid}|${Math.round(geo.widthSp * 4)}|${v.condense}`;
+  const key = `${state.edits}|${sc.kind}|${sc.track}|${sc.pattern}|${v.grid}|${Math.round(geo.widthSp * 4)}|${v.condense}|${v.colors}`;
   const hit = v.cache.find((c) => c.key === key);
   if (hit) return hit;
   const score = buildScore(state.project, sc, v.grid);
-  const page = engrave(score, { width: geo.widthSp, hideEmpty: v.condense && sc.kind !== "pattern" });
-  const c = { key: key, score: score, page: page };
+  const ink = v.colors ? score : withoutColors(score);
+  const page = engrave(ink, { width: geo.widthSp, hideEmpty: v.condense && sc.kind !== "pattern" });
+  const c = { key: key, score: score, ink: ink, page: page };
   v.cache.length = 0;
   v.cache.push(c);
   return c;
@@ -490,6 +504,11 @@ function colorRange(v, sc, color) {
     });
   });
   v.range.on = false;
+  // A passage just colored is meant to be seen.
+  if (!v.colors) {
+    v.colors = true;
+    savePrefs(v);
+  }
 }
 
 /** Remove the colors of marks that overlap the chosen passage. */
@@ -920,7 +939,7 @@ function exportPdf(v, asShown) {
   const name = `${fileName(title)}.pdf`;
   const size = paperSize() === "letter" ? "US Letter" : "A4";
   if (asShown) {
-    const lay = pdfLayout(c.score, paperSize(), hide);
+    const lay = pdfLayout(c.ink, paperSize(), hide);
     const look = { wet: v.ink === "wet", gloss: v.gloss, shine: v.shine };
     /** const svgs: String[] */
     const svgs = [];
@@ -937,7 +956,7 @@ function exportPdf(v, asShown) {
       });
     return undefined;
   }
-  const objs = scorePdf(c.score, info, paperSize(), hide, textWidth);
+  const objs = scorePdf(c.ink, info, paperSize(), hide, textWidth);
   downloadPdf(name, objs)
     .then((ok) => {
       toast("Score exported", `${name} — vector, ${size}.`, "info");
@@ -1293,7 +1312,14 @@ function sideView(b, v, c, sc, geo) {
   if (sc.kind !== "pattern") repeatsSide(b, v, c, geo);
 
   // Colored passages.
-  b.leaf("div", "h3", "score-side-h", "Colors");
+  b.open("div", "h3", "score-side-h with-eye");
+  b.leaf("span", "t", "", "Colors");
+  eye(b, "eye", v.colors, v.colors ? "Hide the colors: write everything in plain ink" : "Show the colored passages", () => {
+    v.colors = !v.colors;
+    savePrefs(v);
+    invalidate();
+  });
+  b.close();
   b.open("div", "marks", "score-list");
   const marks = settings.marks;
   let any = false;
@@ -1552,10 +1578,53 @@ function pan(e, v, geo, total) {
   );
 }
 
+/** The notation the film is made of (no page is engraved for the view's width). */
+/** function filmScore(v: ScoreView, sc: Scope) => Score */
+function filmScore(v, sc) {
+  const key = `${state.edits}|${sc.kind}|${sc.track}|${sc.pattern}|${v.grid}|${v.colors}`;
+  for (const c of v.filmCache) if (c.key === key) return c.score;
+  const score = buildScore(state.project, sc, v.grid);
+  const ink = v.colors ? score : withoutColors(score);
+  v.filmCache.length = 0;
+  v.filmCache.push({ key: key, score: ink });
+  return ink;
+}
+
+/** The film of what the view shows (film.js, ui/film.js). */
+/** function filmOf(b: Builder, v: ScoreView, sc: Scope) => Undefined */
+function filmOf(b, v, sc) {
+  const p = state.project;
+  const score = filmScore(v, sc);
+  const m = score.measures.length > 0 ? score.measures[0] : undefined;
+  filmView(b, v.fv, {
+    sc: score,
+    hide: v.condense && sc.kind !== "pattern",
+    look: { wet: v.ink === "wet", gloss: v.gloss, shine: v.shine },
+    info: { title: scopeTitle(sc), subtitle: subtitle(score, sc), author: sc.kind === "song" ? p.meta.author : "", bpm: p.transport.bpm },
+    bar: m ? m.length / Math.max(1, m.count) / TPQ : p.transport.beatsPerBar,
+    showing: sc.kind === "pattern" ? state.mode === "pattern" && state.pattern === sc.pattern : state.mode === "song",
+    seek: (beat) => seekScore(v, beat),
+    back: () => {
+      v.film = false;
+      state.film.on = false;
+      reportContext();
+      savePrefs(v);
+      invalidate();
+    },
+  });
+}
+
 /** The score in a pane: `id` "top" (beside the playlist) or "dock". */
 /** function scoreView(b: Builder, v: ScoreView) => Undefined */
 export function scoreView(b, v) {
   const sc = scopeOf(v);
+  if (v.film) {
+    b.open("div", `score-${v.id}`, `score score-${v.id} filming`);
+    b.on("pointerdown", (e) => setFocus("score"));
+    filmOf(b, v, sc);
+    b.close();
+    return undefined;
+  }
   b.open("div", `score-${v.id}`, `score score-${v.id}${v.night ? " night" : ""}${v.side ? " with-side" : ""}`);
   // The paper's textures (ink.js).
   const paper = v.night ? LACQUER : PAPER;
@@ -1741,6 +1810,18 @@ function ribbon(b, v) {
   b.close();
   iconButton(
     b,
+    "colors",
+    v.colors ? "small on" : "small",
+    "palette",
+    v.colors ? "Colors: shown — click to write everything in plain ink" : "Colors: hidden (plain ink) — click to show the colored passages",
+    () => {
+      v.colors = !v.colors;
+      savePrefs(v);
+      invalidate();
+    }
+  );
+  iconButton(
+    b,
     "ink",
     v.ink === "wet" ? "small on" : "small",
     "drop",
@@ -1759,6 +1840,12 @@ function ribbon(b, v) {
       v.shine = x;
     });
   }
+  iconButton(b, "film", "small", "film", "Film: the camera plays the song over the pages on a desk, zooming in on the parts that carry it", () => {
+    v.film = true;
+    v.range.on = false;
+    savePrefs(v);
+    invalidate();
+  });
   iconButton(b, "pdf", v.pdfMenu ? "small on" : "small", "export", "Download as PDF…", () => {
     v.pdfMenu = !v.pdfMenu;
     invalidate();

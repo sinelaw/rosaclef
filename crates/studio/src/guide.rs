@@ -80,6 +80,9 @@ song without naming it.** Fields (full schema in `.rosaclef/context.schema.json`
   `valueAtPlayhead` — or null).
 - `visible` — what is on screen: the playlist's beat range and tracks, and (when the piano roll is
   open) its pattern, channel, beat range and pitch range. "This part" usually means this range.
+  With the Score view's **Film** open, `film` is the scene at the playhead: `shot` (its index in
+  `animation.shots`, or null for the director's own), `selectedShot`, its beats, `frame`, framed
+  channels (`focus`) and `why` — "this shot" is `selectedShot`, else `shot`.
 - `recentEdits` — the producer's latest manual edits in plain words, newest last
   (e.g. `pattern "groove": +1 note on "snare" (D3 at beat 2.5)`, `channel "bass": cutoff 1200 → 900`).
   Your own edits to `project.json` are not listed.
@@ -314,6 +317,56 @@ optional top-level `score` object says how it reads; it changes nothing that pla
   passage is then colored wherever the pattern plays. `channels` limits it to some staves.
 - When the producer asks to "highlight", "color" or "label" a passage, add a mark; to show or
   hide an instrument in the score, edit `hidden`.
+
+### The film (`animation`)
+
+The Score view's **Film** mode plays the song as a film: the score's pages lie on a desk and a
+camera in 3D space above them follows the music — zooming in on a part, pulling back to the
+whole band, leaning (`tilt`) and turning (`turn`) so the music runs diagonally across the
+picture. The producer can export it as an MP4. The optional top-level `animation` object directs
+it; it changes nothing that plays.
+
+```jsonc
+"animation": {
+  "mode": "manual",                 // "auto" (default): the camera directs itself; "manual": it films `shots`,
+                                    //   and directs itself wherever no shot covers the song
+  "surface": "walnut",              // the desk: walnut, oak, slate, felt, marble
+  "energy": 0.6,                    // auto: 0 calm, long shots … 1 restless, close ones
+  "effects": [{ "type": "vignette", "amount": 0.6 }],   // vignette, spotlight, focus (depth of field), glow
+  "shots": [
+    { "start": 0, "end": 8, "frame": "desk", "label": "Opening" },
+    { "start": 8, "end": 24, "focus": ["drums", "bass"], "frame": "medium", "tilt": 30, "turn": -18,
+      "transition": "swoop", "glide": 4, "label": "Groove" },
+    { "start": 24, "end": 40, "role": "lead", "frame": "close", "tilt": 40, "turn": 22,
+      "to": { "zoom": 1.4, "turn": 10 }, "effects": [{ "type": "spotlight", "amount": 0.7 }], "label": "Melody" },
+    { "start": 40, "end": 44, "frame": "detail", "at": 41, "transition": "cut" },
+    { "start": 120, "end": 128, "frame": "page", "to": { "zoom": 0.7 }, "label": "Curtain" }
+  ]
+}
+```
+
+- A shot covers `start`–`end` (song beats; put them on bar lines). Where shots overlap, the later
+  one is filmed; in manual mode the gaps are filmed by the director.
+- **What**: `focus` (channel ids whose staves are framed), or `role` — `lead` (the main melody,
+  found by the camera), `rhythm` (drums and bass), `background` (chords, pads), `all`.
+- **How much** (`frame`): `desk` (every page), `page`, `system` (the whole line), `medium` (~4
+  bars), `close` (~2 bars, the default), `detail` (~1 bar). `zoom` multiplies it (2 = twice as
+  close). Following frames track the playhead along the line and glide to the next line as it ends;
+  `at` (a beat) holds the camera on one place instead.
+- **Angle**: `tilt` 0–75° (default by frame: the closer, the more), `turn` −180–180° (diagonals:
+  ±10–35° reads well), `offset` [x, y] moves the camera by fractions of the picture.
+- **Movement**: `to` gives `zoom`, `tilt`, `turn` or `offset` at the shot's end — a slow push in
+  (`"to": {"zoom": 1.3}`), a pull back, a turn. **Coming in**: `transition` `glide` (default),
+  `cut`, `swoop` (rises away from the desk and comes down), `whip` (fast, blurred); `glide` is the
+  move's length in beats (default up to a bar), `ease` `smooth`, `linear`, `in`, `out`, `snap`.
+- **Effects** (each `{ "type", "amount": 0..1 }`, 0 turns one off): `vignette` (0.5),
+  `spotlight` (0; a pool of light on the framed staves), `focus` (0.4; depth of field), `glow`
+  (0.6; notes light up as they play). A shot's effects override the film's by type.
+- Directing well: change shots with the music's sections (8 or 16 bars), frame the part that
+  carries each moment (an entry, a solo, a part playing alone), alternate close and wide shots,
+  alternate the sign of `turn`, and save `swoop` and `cut` for big moments. To start from what the
+  camera would do on its own, the producer can press **Write the director's shots** (it fills
+  `shots` from auto mode), then you refine them.
 
 ## Musical craft
 
