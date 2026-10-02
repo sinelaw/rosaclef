@@ -589,7 +589,6 @@ export function autoScenes(sc, roles, film, pages, bar) {
       glide = Math.min(0.75, len * 0.3);
     }
     const fx = fxOf([film.effects]);
-    if (!wide && staves.length > 0 && staves.length < sc.staves.length) fx.spotlight = Math.max(fx.spotlight, 0.3 + 0.4 * energy);
     out.push({
       start: start,
       end: end,

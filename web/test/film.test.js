@@ -120,7 +120,7 @@ check(
   later.length > 0 && later.every((k) => ["the lead", "the groove", "the whole band"].includes(k.why))
 );
 check("close shots lean and turn (diagonals), and push in as they go", takeOf(8).tilt > 5 && Math.abs(takeOf(8).turn) > 1 && takeOf(8).zoom1 > takeOf(8).zoom);
-check("a close shot on some staves lights them", takeOf(8).fx.spotlight > 0 && scenes[0].fx.spotlight === 0);
+check("the director leaves the paper evenly lit (no spotlight unless the film sets one)", takeOf(8).fx.spotlight === 0);
 const calm = autoScenes(sc, roles, filmOf(`{ "energy": 0 }`), 1, 4);
 const busy = autoScenes(sc, roles, filmOf(`{ "energy": 1 }`), 1, 4);
 check("energy: a calm film has fewer, longer shots", calm.length < scenes.length && scenes.length < busy.length);
