@@ -2,7 +2,7 @@
   "$schema": "./project.schema.json",
   "format": "rosaclef/1",
   "meta": {
-    "title": "Arietta",
+    "title": "Arietta in J",
     "author": "after Beethoven, Op. 111",
     "description": "A jazz waltz on the Arietta of Beethoven's last piano sonata (Op. 111, 1822): its theme, and changes from its third variation. Tenor sax, piano, double bass and a drum part. A demo of the Rosaclef studio."
   },

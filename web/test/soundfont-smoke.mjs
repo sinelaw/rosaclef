@@ -22,7 +22,7 @@ page.on("requestfinished", (r) => {
 const ok = (s) => console.log("ok  ", s);
 
 await page.goto(base);
-await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
 
 // The longest gap between animation frames: how long the page was blocked.
 await page.evaluate(() => {

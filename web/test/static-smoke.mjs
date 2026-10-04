@@ -18,7 +18,7 @@ const ok = (s) => console.log("ok  ", s);
 const hasText = (p, t) => p.waitForFunction((x) => document.body.textContent.includes(x), t, { timeout: 30000 });
 
 await page.goto(base);
-await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
 ok("the first visit opens the demo song");
 if (await page.isVisible('.seg button:has-text("Studio")')) throw new Error("the Studio output needs a server");
 
@@ -86,8 +86,8 @@ await page.waitForFunction(() => document.querySelector(".song-title")?.textCont
 ok("a new project is created and opened");
 
 await page.keyboard.press("Control+o");
-await page.waitForSelector('.pm-card:has-text("Demo")');
-const [zip] = await Promise.all([page.waitForEvent("download"), page.click('.pm-card:has-text("Demo") button[title*=".zip"]')]);
+await page.waitForSelector('.pm-card:has-text("Arietta in J")');
+const [zip] = await Promise.all([page.waitForEvent("download"), page.click('.pm-card:has-text("Arietta in J") button[title*=".zip"]')]);
 ok(`a project downloads as ${zip.suggestedFilename()}`);
 await page.keyboard.press("Escape");
 const [wav] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click("button.btn.gold:has-text('Export')")]);

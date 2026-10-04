@@ -22,6 +22,13 @@ pub const RENDERS_DIR: &str = "renders";
 
 pub const DEMO_PROJECT: &str = include_str!("../assets/demo/project.json");
 
+/// The name a project made from the demo song starts with: the song's own
+/// title (`meta.title` in its project.json).
+pub fn demo_title() -> String {
+    let project: Project = serde_json::from_str(DEMO_PROJECT).expect("bundled demo is valid");
+    crate::library::sanitize_name(&project.meta.title)
+}
+
 #[derive(Clone)]
 pub struct Folder {
     pub fs: SharedFs,

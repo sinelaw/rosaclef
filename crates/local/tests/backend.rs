@@ -197,7 +197,9 @@ fn first_run_sync_and_persistence() {
     let list = w.json("GET", "/api/projects", json!(null));
     let projects = list["projects"].as_array().unwrap();
     assert_eq!(projects.len(), 1, "the first run starts from the demo song");
-    assert_eq!(projects[0]["name"], "Demo");
+    // Named after the demo song's title (meta.title), as copies of it start.
+    assert_eq!(projects[0]["name"], "Arietta in J");
+    assert_eq!(list["demoTitle"], "Arietta in J");
     assert!(projects[0]["current"].as_bool().unwrap());
 
     // A page connects and edits the song.

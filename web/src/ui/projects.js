@@ -40,6 +40,8 @@ const pm = {
   current: "",
   loaded: false,
   projects /*: ProjectInfo[] */: [],
+  /** The name a copy of the demo song starts with (its title). */
+  demoTitle: "Demo",
   files /*: FileInfo[] */: [],
   filesLoaded: false,
   filter: "",
@@ -170,6 +172,7 @@ function refreshProjects() {
       pm.library = String(r.library);
       pm.current = String(r.current);
       pm.projects = r.projects;
+      if (typeof r.demoTitle === "string" && r.demoTitle !== "") pm.demoTitle = r.demoTitle;
       pm.loaded = true;
       invalidate();
       return true;
@@ -594,7 +597,7 @@ function projectsView(b) {
   glyph(b, "plus");
   b.leaf("span", "t", "", "New project");
   b.close();
-  button(b, "demo", "", "New from demo", "Create a project from the bundled demo song", () => compose("demo", "", uniqueName("Demo", pm.projects)));
+  button(b, "demo", "", "New from demo", "Create a project from the bundled demo song", () => compose("demo", "", uniqueName(pm.demoTitle, pm.projects)));
   b.open("button", "import", "btn");
   b.attr("title", "Import an LMMS project (.mmp, .mmpz), a MIDI file (.mid) or a project .zip as a new project");
   b.on("click", (e) => importProject());

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the bundled demo song "Arietta".
+"""Generate the bundled demo song "Arietta in J".
 
 A jazz waltz on the Arietta of Beethoven's last piano sonata (Op. 111, second
 movement, 1822): its theme, note for note, with Beethoven's 9/16 lilt (a
@@ -44,16 +44,46 @@ L, S = 2 / 3, 1 / 3  # a swung beat: long, short
 rng = random.Random(1822)
 
 GOLD, ROSE, CHAMPAGNE, BURGUNDY, EMERALD, SAPPHIRE, AMETHYST, BRONZE = (
-    "#d4af37", "#c97b84", "#e8d5b0", "#8e3b46", "#3f8f7a", "#4a6fa5", "#8a6bb0", "#b08d57")
+    "#d4af37",
+    "#c97b84",
+    "#e8d5b0",
+    "#8e3b46",
+    "#3f8f7a",
+    "#4a6fa5",
+    "#8a6bb0",
+    "#b08d57",
+)
 
 # ------------------------------------------------------------------ chords
 
-PC = {"C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "F": 5, "F#": 6, "Gb": 6,
-      "G": 7, "G#": 8, "Ab": 8, "A": 9, "A#": 10, "Bb": 10, "B": 11}
+PC = {
+    "C": 0,
+    "C#": 1,
+    "Db": 1,
+    "D": 2,
+    "D#": 3,
+    "Eb": 3,
+    "E": 4,
+    "F": 5,
+    "F#": 6,
+    "Gb": 6,
+    "G": 7,
+    "G#": 8,
+    "Ab": 8,
+    "A": 9,
+    "A#": 10,
+    "Bb": 10,
+    "B": 11,
+}
 MAJOR, LYDIAN = [0, 2, 4, 5, 7, 9, 11], [0, 2, 4, 6, 7, 9, 11]
 MIXO, LYD_DOM = [0, 2, 4, 5, 7, 9, 10], [0, 2, 4, 6, 7, 9, 10]
 HALF_WHOLE, ALTERED = [0, 1, 3, 4, 6, 7, 9, 10], [0, 1, 3, 4, 6, 8, 10]
-DORIAN, MEL_MINOR, LOCRIAN2, WHOLE_HALF = [0, 2, 3, 5, 7, 9, 10], [0, 2, 3, 5, 7, 9, 11], [0, 2, 3, 5, 6, 8, 10], [0, 2, 3, 5, 6, 8, 9, 11]
+DORIAN, MEL_MINOR, LOCRIAN2, WHOLE_HALF = (
+    [0, 2, 3, 5, 7, 9, 10],
+    [0, 2, 3, 5, 7, 9, 11],
+    [0, 2, 3, 5, 6, 8, 10],
+    [0, 2, 3, 5, 6, 8, 9, 11],
+)
 # quality -> (chord tones for lines, rootless voicing for the piano, scale)
 QUALITY = {
     "6/9": ([0, 4, 7, 9, 2], [4, 9, 2, 7], MAJOR),
@@ -83,7 +113,7 @@ def parse(sym):
     if "/" not in sym or not bass[:1].isalpha():  # "6/9" is a quality, not a bass note
         name, bass = sym, ""
     root = name[:2] if len(name) > 1 and name[1] in "#b" else name[:1]
-    q = name[len(root):]
+    q = name[len(root) :]
     return PC[root], q, PC[bass] if bass else PC[root]
 
 
@@ -195,7 +225,14 @@ def note(pid, ch, pitch, start, length, vel, human=0.012):
     t = max(0.0, start + rng.uniform(-human, human))
     v = min(1.0, max(0.08, vel + rng.uniform(-0.04, 0.04)))
     patterns[pid]["notes"].append(
-        {"channel": ch, "pitch": int(pitch), "start": round(t, 4), "length": round(max(0.05, length), 4), "velocity": round(v, 3)})
+        {
+            "channel": ch,
+            "pitch": int(pitch),
+            "start": round(t, 4),
+            "length": round(max(0.05, length), 4),
+            "velocity": round(v, 3),
+        }
+    )
 
 
 def timeline(bars):
@@ -383,8 +420,11 @@ def solo(pid, tl, t_end, lo_int, hi_int, t0=0.0):
                 if p <= lo + 2:
                     direction = 1
                 step = rng.choice([1, 1, 2, 2, 3]) if on_beat else rng.choice([1, 1, 2])
-                cands = [q for q in range(p + direction, p + direction * (step + 4), direction)
-                         if q % 12 in pcs and lo <= q <= hi]
+                cands = [
+                    q
+                    for q in range(p + direction, p + direction * (step + 4), direction)
+                    if q % 12 in pcs and lo <= q <= hi
+                ]
                 q = cands[0] if cands else p + direction
                 # A chromatic approach into the next beat's chord tone.
                 if not on_beat and off + d >= 1 - 1e-6 and rng.random() < 0.35:
@@ -465,7 +505,7 @@ t_trade = section("Trading fours", 16)
 trade_bars = CHORUS[16:]
 tl = timeline(trade_bars)
 for k in range(0, 16, 8):
-    sub = timeline(trade_bars[k:k + 4])
+    sub = timeline(trade_bars[k : k + 4])
     p = pattern(f"sax-trade-{k}", f"Sax · Fours {k // 8 + 1}", GOLD, 4 * BAR)
     solo(p, sub, 4 * BAR, 0.9, 1.0)
     clip(p, T_SAX, t_trade + k * BAR)
@@ -501,14 +541,19 @@ t_coda = section("Coda", 6)
 tl = timeline(CODA)
 p = pattern("sax-coda", "Sax · Coda", GOLD, 6 * BAR)
 # The motif, twice, slower each time, and home.
-melody(p, [
-    [(0, 1, 75), (1, L, 72), (1 + L, S, 67)],
-    [(0, 3, 67)],
-    [(0, 1, 74), (1, L, 72), (1 + L, S, 67)],
-    [(0, 3, 64)],
-    [(0, 6, 60)],
-    [],
-], 0, vel=0.68)
+melody(
+    p,
+    [
+        [(0, 1, 75), (1, L, 72), (1 + L, S, 67)],
+        [(0, 3, 67)],
+        [(0, 1, 74), (1, L, 72), (1 + L, S, 67)],
+        [(0, 3, 64)],
+        [(0, 6, 60)],
+        [],
+    ],
+    0,
+    vel=0.68,
+)
 clip(p, T_SAX, t_coda)
 p = pattern("piano-coda", "Piano · Coda", CHAMPAGNE, 6 * BAR)
 for i, (t, d, sym) in enumerate(tl):
@@ -570,22 +615,88 @@ def ins(name, volume=1.0, effects=None):
 
 
 MIXER = [
-    ins("Master", 1.0, [fx("compressor", {"threshold": -16, "ratio": 2, "attack": 20, "release": 200, "makeup": 2}),
-                        fx("limiter", {"gain": 2, "ceiling": -0.5})]),
-    ins("Sax", 0.95, [fx("eq", {"low": -6, "lowFreq": 140, "mid": 1.5, "midFreq": 2200, "high": -1, "highFreq": 9000}),
-                      fx("reverb", {"size": 0.62, "damping": 0.45, "predelay": 0.03, "mix": 0.2})]),
-    ins("Piano", 1.0, [fx("eq", {"low": -3, "lowFreq": 160, "high": 1, "highFreq": 7000}),
-                        fx("reverb", {"size": 0.6, "damping": 0.5, "mix": 0.18})]),
-    ins("Bass", 1.0, [fx("eq", {"low": 2, "lowFreq": 90, "mid": -2, "midFreq": 300}),
-                      fx("compressor", {"threshold": -20, "ratio": 3, "attack": 15, "release": 150, "makeup": 0})]),
-    ins("Drums", 0.9, [fx("eq", {"low": -2, "lowFreq": 100, "high": 1.5, "highFreq": 8000}),
-                       fx("reverb", {"size": 0.45, "damping": 0.5, "mix": 0.14})]),
+    ins(
+        "Master",
+        1.0,
+        [
+            fx("compressor", {"threshold": -16, "ratio": 2, "attack": 20, "release": 200, "makeup": 2}),
+            fx("limiter", {"gain": 2, "ceiling": -0.5}),
+        ],
+    ),
+    ins(
+        "Sax",
+        0.95,
+        [
+            fx("eq", {"low": -6, "lowFreq": 140, "mid": 1.5, "midFreq": 2200, "high": -1, "highFreq": 9000}),
+            fx("reverb", {"size": 0.62, "damping": 0.45, "predelay": 0.03, "mix": 0.2}),
+        ],
+    ),
+    ins(
+        "Piano",
+        1.0,
+        [
+            fx("eq", {"low": -3, "lowFreq": 160, "high": 1, "highFreq": 7000}),
+            fx("reverb", {"size": 0.6, "damping": 0.5, "mix": 0.18}),
+        ],
+    ),
+    ins(
+        "Bass",
+        1.0,
+        [
+            fx("eq", {"low": 2, "lowFreq": 90, "mid": -2, "midFreq": 300}),
+            fx("compressor", {"threshold": -20, "ratio": 3, "attack": 15, "release": 150, "makeup": 0}),
+        ],
+    ),
+    ins(
+        "Drums",
+        0.9,
+        [
+            fx("eq", {"low": -2, "lowFreq": 100, "high": 1.5, "highFreq": 8000}),
+            fx("reverb", {"size": 0.45, "damping": 0.5, "mix": 0.14}),
+        ],
+    ),
 ]
 CHANNELS = [
-    {"id": "sax", "name": "Tenor Sax", "color": GOLD, "instrument": {"type": "soundfont", "params": {"gain": 1.0}, "options": {"program": "Tenor Sax"}}, "volume": 0.82, "pan": 0.12, "mute": False, "mixer": 1},
-    {"id": "piano", "name": "Piano", "color": CHAMPAGNE, "instrument": {"type": "soundfont", "params": {"gain": 1.8}, "options": {"program": "Acoustic Grand Piano"}}, "volume": 0.9, "pan": -0.22, "mute": False, "mixer": 2},
-    {"id": "bass", "name": "Double Bass", "color": BURGUNDY, "instrument": {"type": "soundfont", "params": {"gain": 1.0}, "options": {"program": "Acoustic Bass"}}, "volume": 0.7, "pan": 0.04, "mute": False, "mixer": 3},
-    {"id": "drums", "name": "Drums", "color": BRONZE, "instrument": {"type": "soundfont", "params": {"gain": 0.95}, "options": {"program": "Jazz Kit"}}, "volume": 0.78, "pan": 0, "mute": False, "mixer": 4},
+    {
+        "id": "sax",
+        "name": "Tenor Sax",
+        "color": GOLD,
+        "instrument": {"type": "soundfont", "params": {"gain": 1.0}, "options": {"program": "Tenor Sax"}},
+        "volume": 0.82,
+        "pan": 0.12,
+        "mute": False,
+        "mixer": 1,
+    },
+    {
+        "id": "piano",
+        "name": "Piano",
+        "color": CHAMPAGNE,
+        "instrument": {"type": "soundfont", "params": {"gain": 1.8}, "options": {"program": "Acoustic Grand Piano"}},
+        "volume": 0.9,
+        "pan": -0.22,
+        "mute": False,
+        "mixer": 2,
+    },
+    {
+        "id": "bass",
+        "name": "Double Bass",
+        "color": BURGUNDY,
+        "instrument": {"type": "soundfont", "params": {"gain": 1.0}, "options": {"program": "Acoustic Bass"}},
+        "volume": 0.7,
+        "pan": 0.04,
+        "mute": False,
+        "mixer": 3,
+    },
+    {
+        "id": "drums",
+        "name": "Drums",
+        "color": BRONZE,
+        "instrument": {"type": "soundfont", "params": {"gain": 0.95}, "options": {"program": "Jazz Kit"}},
+        "volume": 0.78,
+        "pan": 0,
+        "mute": False,
+        "mixer": 4,
+    },
 ]
 
 
@@ -614,7 +725,7 @@ project = {
     "$schema": "./project.schema.json",
     "format": "rosaclef/1",
     "meta": {
-        "title": "Arietta",
+        "title": "Arietta in J",
         "author": "after Beethoven, Op. 111",
         "description": "A jazz waltz on the Arietta of Beethoven's last piano sonata (Op. 111, 1822): its theme, "
         "and changes from its third variation. Tenor sax, piano, double bass and a drum part. "
@@ -623,14 +734,21 @@ project = {
     "transport": {"bpm": BPM, "beatsPerBar": 3, "swing": 0},
     "channels": CHANNELS,
     "patterns": [
-        {"id": pid, "name": patterns[pid]["name"], "color": patterns[pid]["color"], "length": patterns[pid]["length"],
-         "notes": sorted(patterns[pid]["notes"], key=lambda n: (n["start"], n["channel"], n["pitch"]))}
+        {
+            "id": pid,
+            "name": patterns[pid]["name"],
+            "color": patterns[pid]["color"],
+            "length": patterns[pid]["length"],
+            "notes": sorted(patterns[pid]["notes"], key=lambda n: (n["start"], n["channel"], n["pitch"])),
+        }
         for pid in order
     ],
     "playlist": {
         "tracks": [{"name": t, "mute": False} for t in TRACKS],
-        "clips": [{"pattern": p, "track": tr, "start": s, "length": ln}
-                  for (p, tr, s, ln) in sorted(clips, key=lambda c: (c[2], c[1]))],
+        "clips": [
+            {"pattern": p, "track": tr, "start": s, "length": ln}
+            for (p, tr, s, ln) in sorted(clips, key=lambda c: (c[2], c[1]))
+        ],
     },
     "mixer": {"inserts": MIXER},
     "automation": AUTOMATION,

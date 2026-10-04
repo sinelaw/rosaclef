@@ -240,7 +240,9 @@ impl Host {
             .map(|p| p.name.clone());
         let name = match pick {
             Some(n) => n,
-            None => library.create(&library.unique_name("Demo"), true)?.name(),
+            None => library
+                .create(&library.unique_name(&folder::demo_title()), true)?
+                .name(),
         };
         let folder = library.folder(&name);
         let (project, issues) = Self::load(&folder)?;
@@ -563,6 +565,7 @@ impl Host {
                 "current": self.folder.name(),
                 "currentFolder": self.folder.dir.display().to_string(),
                 "projects": self.library.list(&self.folder.dir),
+                "demoTitle": folder::demo_title(),
             })),
             ("POST", "/api/projects") => {
                 let v = body_json(body)?;
