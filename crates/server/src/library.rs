@@ -71,6 +71,7 @@ async fn list_projects(State(app): State<Shared>) -> Response {
                 "current": cur.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
                 "currentFolder": cur.display().to_string(),
                 "projects": projects,
+                "demoTitle": rosaclef_studio::folder::demo_title(),
             }))
             .into_response()
         }

@@ -21,6 +21,9 @@ export const now;
 /** const connectRaw: (String, SockHandlers) => RawSock */
 export const connectRaw;
 
+/** const siteText: (String) => Promise<String> */
+export const siteText;
+
 /** const getJson: <T>(String) => Promise<T> */
 export const getJson;
 

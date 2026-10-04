@@ -94,6 +94,26 @@ enum Command {
     Schema,
     /// Print the device catalog (instruments, effects and their parameters).
     Catalog,
+    /// List the drum grooves a project's drum part can play.
+    Grooves,
+    /// Write the project's drum part (`drums` in project.json) into drum
+    /// patterns and clips on a Drums track.
+    Drums {
+        /// Project folder or project.json (default: current folder).
+        path: Option<PathBuf>,
+        /// Use this groove (starts a drum part if there is none).
+        #[arg(long)]
+        groove: Option<String>,
+        /// Use this kit: a General MIDI drum kit or Ebony.
+        #[arg(long)]
+        kit: Option<String>,
+        /// Guess the sections from the playlist (also when the part has none).
+        #[arg(long)]
+        guess: bool,
+        /// Forget the hand edits (kept patterns and changed grooves) first.
+        #[arg(long)]
+        reset_edits: bool,
+    },
     /// List factory presets (optionally for one instrument type), or print one as JSON.
     Presets {
         /// Instrument type (e.g. additive) or a preset name.
@@ -299,6 +319,68 @@ fn main() -> Result<()> {
         }
         Command::Catalog => {
             print!("{}", rosaclef_core::catalog_markdown());
+            Ok(())
+        }
+        Command::Grooves => {
+            print!("{}", rosaclef_core::drums::grooves_text());
+            Ok(())
+        }
+        Command::Drums {
+            path,
+            groove,
+            kit,
+            guess,
+            reset_edits,
+        } => {
+            use rosaclef_core::drums;
+            let file = project_file(path)?;
+            let mut p = load_project(&file)?;
+            let Some(first) = groove
+                .clone()
+                .or_else(|| p.drums.as_ref().map(|d| d.groove.clone()))
+            else {
+                bail!("the project has no drum part: pass --groove (see `rosaclef grooves`)");
+            };
+            let part = p.drums.get_or_insert_with(|| drums::DrumPart::new(&first));
+            if let Some(g) = groove {
+                part.groove = g;
+            }
+            if let Some(k) = kit {
+                part.kit = k;
+            }
+            if guess || part.sections.is_empty() {
+                let (start, sections) = drums::guess_sections(&p);
+                let part = p.drums.as_mut().expect("drum part");
+                part.start = start;
+                part.sections = sections;
+            }
+            if reset_edits {
+                drums::reset_edits(&mut p);
+            }
+            let report = drums::write(&mut p).map_err(anyhow::Error::msg)?;
+            let checked = validate::validate(&p);
+            if let Some(e) = checked
+                .iter()
+                .find(|i| i.severity == validate::Severity::Error)
+            {
+                bail!("the written project is invalid: {e}");
+            }
+            std::fs::write(&file, format::to_string(&p))?;
+            println!(
+                "wrote {} drum patterns in {} clips on track {} ({}){}",
+                report.patterns,
+                report.clips,
+                report.track + 1,
+                p.playlist.tracks[report.track].name,
+                if report.kept > 0 {
+                    format!(
+                        "; kept {} edited by hand (--reset-edits forgets them)",
+                        report.kept
+                    )
+                } else {
+                    String::new()
+                }
+            );
             Ok(())
         }
         Command::Presets { filter } => {

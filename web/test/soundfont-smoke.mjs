@@ -1,5 +1,5 @@
 // End-to-end test of soundfont instruments in the browser-only studio, in a
-// real browser: a General MIDI piano loads (only the pieces it needs), plays
+// real browser: the demo's General MIDI instruments load (only the pieces they need), plays
 // through the audio worklet, and loading it never stalls the page. Not part
 // of `npm test`: it needs Playwright and a served build.
 //
@@ -22,7 +22,7 @@ page.on("requestfinished", (r) => {
 const ok = (s) => console.log("ok  ", s);
 
 await page.goto(base);
-await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
 
 // The longest gap between animation frames: how long the page was blocked.
 await page.evaluate(() => {
@@ -36,12 +36,8 @@ await page.evaluate(() => {
   requestAnimationFrame(tick);
 });
 
-// The demo's harp (it plays from the first bar) becomes a grand piano, the
-// largest General MIDI preset.
-await page.click(".agent-choice");
-await page.click("#agent-term");
-await page.keyboard.type(`set /channels/14/instrument '{"type": "soundfont", "options": {"program": "Acoustic Grand Piano"}}'\r`);
-await page.waitForFunction(() => document.querySelector("#agent-term")?.textContent.includes("ok (rev"), null, { timeout: 20000 });
+// The demo plays the soundfont: tenor sax, grand piano, double bass and the
+// jazz kit; the piano plays from the first bar.
 await page.click("text=Channel Rack");
 const t0 = Date.now();
 await page.click('[title="Play / pause (Space)"]');
@@ -49,7 +45,7 @@ await page.click('[title="Play / pause (Space)"]');
 // Sound: the channel's meter moves.
 await page.waitForFunction(
   () => {
-    const row = [...document.querySelectorAll(".rack-row")].find((r) => r.textContent.includes("Sapphire Harp"));
+    const row = [...document.querySelectorAll(".rack-row")].find((r) => r.textContent.includes("Piano"));
     const fill = row && row.querySelector(".led-fill");
     const m = fill && /scaleX\(([\d.]+)\)/.exec(fill.style.transform);
     return m && Number(m[1]) > 0.3;
@@ -62,7 +58,7 @@ await page.click('[title="Play / pause (Space)"]');
 
 const pieces = fetched.filter((f) => f.includes("smpl-"));
 if (!fetched.includes("gm/index.sf2")) throw new Error(`the index was not fetched: ${fetched}`);
-if (pieces.length === 0 || pieces.length > 20) throw new Error(`fetched ${pieces.length} pieces`);
+if (pieces.length === 0 || pieces.length > 30) throw new Error(`fetched ${pieces.length} pieces`);
 ok(`fetched the index and ${pieces.length} of 38 pieces`);
 
 const gap = await page.evaluate(() => window.__gap);

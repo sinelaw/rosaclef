@@ -72,6 +72,8 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef note --channel ID --pitch 60 --out samples/x.wav` | synthesize a note into a sample |
 | `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
 | `rosaclef import-midi FILE.mid [--name N] [--library LIB] [--synth]` | import a Standard MIDI File as a new project: tempo and time signature changes, sustain pedal, program changes, volume/pan automation; played on the sampled General MIDI instruments (`--synth`: on Rosaclef's synthesizers) |
+| `rosaclef grooves` | list the drum grooves |
+| `rosaclef drums [DIR] [--groove G] [--kit K] [--guess] [--reset-edits]` | write the project's drum part into drum patterns and clips |
 | `rosaclef fmt`, `schema`, `catalog`, `guide` | formatting, JSON schema, device catalog, agent guides |
 
 ## Voice to notes
@@ -112,6 +114,29 @@ It works in three steps:
 The analysis runs in Rust
 (`crates/studio/src/transcribe.rs`, `GET /api/transcribe?path=…&mode=melody|drums`),
 natively or in the browser-only build.
+
+## Drums
+
+The **Drums** tab in the bottom dock (F4) is a drummer for the song: pick a
+groove from a library of 25 (rock, pop, funk, soul, shuffle, jazz, hip-hop,
+house, techno, disco, drum & bass, reggae, Latin, country, metal, 3/4 and
+6/8), a kit (a General MIDI kit or the Ebony drum machine) and a feel, then
+say what each section of the song plays — groove A in the verse, the bigger
+groove B in the chorus, hits, a count-in or rest — with a fill into the next
+section and a crash on its first downbeat. The sections are guessed from the
+playlist. **▶** plays the song with the drums before anything changes (the
+arrows step through grooves while it plays); **Write drums** turns the part
+into ordinary patterns and clips on a Drums track, in one undoable step, with
+a turnaround every 4th bar and fills that do not repeat. Edit the written
+patterns in the piano roll as you like (a drum kit's keys are named for their
+drums), or click the groove's step grid in the tab: writing again keeps your
+edits, follows them into the groove's crash and fill bars, and moves them to
+a new kit.
+
+The part lives in `project.json` under `drums`, so the agent can edit it
+too; `rosaclef grooves` lists the library and `rosaclef drums` writes it from
+the command line. The design and its trade-offs are in
+[`docs/drums.md`](docs/drums.md).
 
 ## Sheet music
 
@@ -273,6 +298,11 @@ Known inty rough edges are tracked in [`docs/inty-notes.md`](docs/inty-notes.md)
 
 ## License
 
-GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js). `web/soundfonts/gm`
-is MuseScore General (MIT; see its [license](web/soundfonts/gm/LICENSE.md)).
+GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js). `web/fonts` holds
+Bravura (SIL Open Font License). `web/soundfonts/gm` is MuseScore General
+0.2 (MIT; see its [license](web/soundfonts/gm/LICENSE.md), and who recorded
+each instrument in [`SOURCES.csv`](web/soundfonts/gm/SOURCES.csv)). The studio
+shows this where the samples are used: the ⓘ button beside Grand Orchestra in
+the browser, and the **Credits & license** line on a Grand Orchestra
+channel, which names the source of the chosen instrument's samples.
 `web/vendor/mp4-muxer` is MIT (mp4-muxer, by Vanilagy).

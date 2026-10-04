@@ -7,6 +7,7 @@ import { preview } from "../audio.js";
 import { knobAt, paramKnobAt, select, button, iconButton, led, textInput, glyph } from "./widgets.js";
 import { shownValue, retargetLanes } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
+import { sampleCredit } from "./credits.js";
 
 const STEP = 0.25;
 const EPS = 0.000001;
@@ -255,6 +256,9 @@ export function deviceControls(b, dev, spec, target) {
       b.close();
     }
     b.close();
+    // A sampled instrument names its samples and their license.
+    const prog = spec.options.find((o) => o.key === "program");
+    sampleCredit(b, dev.type, prog ? getOption(dev, prog) : "");
   }
   const params = spec.openParams ? pluginSpecs(dev) : spec.params;
   // Parameters named opN… (FM operators) are grouped per operator.

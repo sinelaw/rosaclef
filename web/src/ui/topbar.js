@@ -1,7 +1,7 @@
 // The top bar: brand, song title, transport, tempo, output and export.
 
 import { drag, fmt, sendJson, download } from "#platform";
-import { state, begin, changed, commit, undo, redo, hint } from "../store.js";
+import { state, begin, changed, commit, undo, redo, hint, invalidate } from "../store.js";
 import { barBeat, semitonesText } from "../model.js";
 import { togglePlay, stop, record, setMode, setOutput, toggleMetronome } from "../audio.js";
 import { iconButton, button, knobAt, meter } from "./widgets.js";
@@ -9,6 +9,7 @@ import { isAutomated, shownValue, openMenu } from "../automation.js";
 import { toast } from "./toast.js";
 import { projectsButton } from "./projects.js";
 import { keyboard, toggleKeyboard } from "./keyboard.js";
+import { meterLcd } from "./meter.js";
 
 /** function lcd(b: Builder, key: String, label: String, value: String, unit: String) => Undefined */
 function lcd(b, key, label, value, unit) {
@@ -16,6 +17,89 @@ function lcd(b, key, label, value, unit) {
   b.open("span", "value", "lcd-value");
   b.text(value);
   if (unit !== "") b.leaf("small", "unit", "", unit);
+  b.close();
+}
+
+/** The tempo LCD turns into a text field on a click (a drag still sets it). */
+const tempoField = { editing: false };
+
+/** Set the tempo to what was typed (anything that is not a number: no change). */
+/** function typeTempo(text: String) => Undefined */
+function typeTempo(text) {
+  if (!tempoField.editing) return undefined;
+  tempoField.editing = false;
+  const v = Number(text.trim().replace(",", "."));
+  if (text.trim() !== "" && Number.isFinite(v)) {
+    const bpm = Math.max(20, Math.min(400, Math.round(v * 100) / 100));
+    if (bpm !== state.project.transport.bpm)
+      commit(() => {
+        state.project.transport.bpm = bpm;
+      });
+  }
+  invalidate();
+}
+
+/** function tempoLcd(b: Builder) => Undefined */
+function tempoLcd(b) {
+  const p = state.project;
+  const cls = isAutomated("tempo") ? "lcd tempo automated" : "lcd tempo";
+  b.open("div", "bpm", tempoField.editing ? `${cls} editing` : cls);
+  if (tempoField.editing) {
+    b.leaf("span", "label", "lcd-label", "Tempo");
+    b.open("span", "value", "lcd-value");
+    b.leaf("input", "in", "lcd-input", "");
+    b.attr("aria-label", "Tempo in BPM");
+    b.attr("inputmode", "decimal");
+    b.attr("spellcheck", "false");
+    b.prop("value", fmt(p.transport.bpm, 2));
+    b.prop("select", "true");
+    b.on("keydown", (e) => {
+      if (e.key === "Enter") typeTempo(e.value);
+      else if (e.key === "Escape") {
+        tempoField.editing = false;
+        invalidate();
+      }
+    });
+    b.on("blur", (e) => typeTempo(e.value));
+    b.leaf("small", "unit", "", "BPM");
+    b.close();
+    b.close();
+    return undefined;
+  }
+  b.attr("title", "Tempo — click to type it, drag up/down (Shift for fine), right-click to automate");
+  b.on("pointerenter", (e) => hint("Tempo — click to type a tempo · drag up/down (Shift: fine steps) · right-click to automate it"));
+  b.on("contextmenu", (e) => {
+    e.preventDefault();
+    openMenu("tempo", e.clientX, e.clientY);
+  });
+  b.on("pointerdown", (e) => {
+    e.preventDefault();
+    if (e.button === 2) return undefined;
+    const y0 = e.clientY;
+    const bpm0 = p.transport.bpm;
+    let moved = false;
+    drag(
+      e,
+      (m) => {
+        if (!moved && Math.abs(m.clientY - y0) < 3) return undefined;
+        if (!moved) begin();
+        moved = true;
+        const step = m.shiftKey ? 0.05 : 0.5;
+        const v = Math.round((bpm0 + (y0 - m.clientY) * step) * 100) / 100;
+        state.project.transport.bpm = Math.max(20, Math.min(400, v));
+        changed(true);
+      },
+      (u) => {
+        // A click without a drag: type the tempo.
+        if (!moved) {
+          tempoField.editing = true;
+          invalidate();
+        }
+      }
+    );
+  });
+  lcd(b, "bpm", "Tempo", fmt(shownValue("tempo", p.transport.bpm), 2), "BPM");
+  if (isAutomated("tempo")) b.leaf("i", "auto", "auto-dot", "");
   b.close();
 }
 
@@ -116,7 +200,7 @@ export function topbar(b) {
   b.open("div", "mark", "brand-mark");
   b.leaf("span", "r", "", "R");
   b.close();
-  b.open("div", "text", "");
+  b.open("div", "text", "brand-text");
   b.leaf("div", "name", "brand-name", "Rosaclef");
   b.leaf("span", "sub", "brand-sub", "Studio · AI edition");
   b.close();
@@ -151,33 +235,8 @@ export function topbar(b) {
   else lcd(b, "pos", state.mode === "song" ? "Song" : "Pattern", barBeat(state.position, p.transport), "");
   b.close();
 
-  b.open("div", "bpm", isAutomated("tempo") ? "lcd automated" : "lcd");
-  b.attr("title", "Tempo — drag up/down (Shift for fine), right-click to automate");
-  b.on("pointerenter", (e) => hint("Tempo — drag up/down (Shift: fine steps) · right-click to automate it"));
-  b.on("contextmenu", (e) => {
-    e.preventDefault();
-    openMenu("tempo", e.clientX, e.clientY);
-  });
-  b.on("pointerdown", (e) => {
-    e.preventDefault();
-    if (e.button === 2) return undefined;
-    begin();
-    const y0 = e.clientY;
-    const bpm0 = p.transport.bpm;
-    drag(
-      e,
-      (m) => {
-        const step = m.shiftKey ? 0.05 : 0.5;
-        const v = Math.round((bpm0 + (y0 - m.clientY) * step) * 100) / 100;
-        state.project.transport.bpm = Math.max(20, Math.min(400, v));
-        changed(true);
-      },
-      (u) => undefined
-    );
-  });
-  lcd(b, "bpm", "Tempo", fmt(shownValue("tempo", p.transport.bpm), 2), "BPM");
-  if (isAutomated("tempo")) b.leaf("i", "auto", "auto-dot", "");
-  b.close();
+  tempoLcd(b);
+  meterLcd(b);
 
   transposeLcd(b);
 

@@ -51,6 +51,20 @@ export function decodeCatalog(raw) {
           octavesMax: Math.round(Number(a.octavesMax)),
         }
       : defaultArpCatalog(),
+    collections: (raw.collections ?? []).map((c) => ({
+      id: String(c.id),
+      name: String(c.name),
+      version: String(c.version),
+      license: String(c.license),
+      authors: String(c.authors),
+      summary: String(c.summary),
+      source: String(c.source),
+      licenseFile: String(c.licenseFile),
+      readmeFile: String(c.readmeFile),
+      sourcesFile: String(c.sourcesFile),
+      instrument: String(c.instrument),
+      presets: (c.presets ?? []).map((p) => ({ name: String(p[0]), bank: Math.round(Number(p[1])), program: Math.round(Number(p[2])) })),
+    })),
     presets: (raw.presets ?? []).map((p) => ({
       name: String(p.name),
       type: String(p.type),
@@ -176,6 +190,7 @@ export function decodeProject(raw) {
       points: (l.points ?? []).map((pt) => ({ beat: Number(pt.beat), value: Number(pt.value), curve: Number(pt.curve ?? 0) })),
     })),
     score: decodeScore(raw.score),
+    drums: decodeDrums(raw.drums),
     repeats: (raw.repeats ?? []).map((r) => ({
       start: Number(r.start),
       end: Number(r.end),
@@ -318,6 +333,61 @@ function encodeAnimation(a) {
   return o;
 }
 
+/** function decodeDrums<T>(d: T) => DrumPart */
+export function decodeDrums(d) {
+  if (!d) return noDrums();
+  return {
+    on: true,
+    groove: String(d.groove),
+    kit: String(d.kit ?? ""),
+    feel: String(d.feel ?? "natural"),
+    swing: Number(d.swing ?? 0),
+    start: Math.round(Number(d.start ?? 1)),
+    ending: String(d.ending ?? "hit"),
+    variations: d.variations !== false,
+    seed: Math.round(Number(d.seed ?? 1)),
+    sections: (d.sections ?? []).map((x) => ({
+      name: String(x.name ?? ""),
+      bars: Math.round(Number(x.bars)),
+      play: String(x.play ?? "a"),
+      fill: String(x.fill ?? "none"),
+      crash: x.crash === true,
+      groove: String(x.groove ?? ""),
+    })),
+    grooves: Object.keys(d.grooves ?? {}).map((k) => ({
+      groove: k,
+      a: (d.grooves[k].a ?? []).map((r) => [String(r[0]), String(r[1])]),
+      b: (d.grooves[k].b ?? []).map((r) => [String(r[0]), String(r[1])]),
+    })),
+    kept: Object.keys(d.kept ?? {}).map((k) => ({
+      slot: k,
+      name: String(d.kept[k].name ?? k),
+      notes: (d.kept[k].notes ?? []).map((n) => ({ role: String(n.role), start: Number(n.start), length: Number(n.length), velocity: Number(n.velocity) })),
+    })),
+    written: Object.keys(d.written ?? {}).map((k) => ({ id: k, slot: String(d.written[k].slot ?? ""), print: String(d.written[k].print ?? "") })),
+  };
+}
+
+/** A project without a drum part. */
+/** function noDrums() => DrumPart */
+export function noDrums() {
+  return {
+    on: false,
+    groove: "",
+    kit: "",
+    feel: "natural",
+    swing: 0,
+    start: 1,
+    ending: "hit",
+    variations: true,
+    seed: 1,
+    sections: [],
+    grooves: [],
+    kept: [],
+    written: [],
+  };
+}
+
 /** function decodeScore<T>(s: T) => ScoreSettings */
 export function decodeScore(s) {
   if (!s) return emptyScore();
@@ -449,6 +519,49 @@ export function encodeProject(p) {
   if (Object.keys(sc).length > 0) o.score = sc;
   if (p.repeats.length > 0) o.repeats = p.repeats.map(encodeRepeat);
   if (p.animation.on) o.animation = encodeAnimation(p.animation);
+  if (p.drums.on) o.drums = encodeDrums(p.drums);
+  return o;
+}
+
+/** The wire form of the drum part; defaults are left out. */
+/** function encodeDrums<R>(d: DrumPart) => R */
+function encodeDrums(d) {
+  const o = JSON.parse("{}");
+  o.groove = d.groove;
+  if (d.kit !== "") o.kit = d.kit;
+  o.feel = d.feel;
+  if (d.swing !== 0) o.swing = round6(d.swing);
+  o.start = d.start;
+  o.ending = d.ending;
+  o.variations = d.variations;
+  o.seed = d.seed;
+  o.sections = d.sections.map((x) => {
+    const sec = JSON.parse("{}");
+    if (x.name !== "") sec.name = x.name;
+    sec.bars = x.bars;
+    sec.play = x.play;
+    if (x.fill !== "none") sec.fill = x.fill;
+    if (x.crash) sec.crash = true;
+    if (x.groove !== "") sec.groove = x.groove;
+    return sec;
+  });
+  if (d.grooves.length > 0) {
+    o.grooves = JSON.parse("{}");
+    for (const e of d.grooves) o.grooves[e.groove] = { a: e.a, b: e.b };
+  }
+  if (d.kept.length > 0) {
+    o.kept = JSON.parse("{}");
+    for (const k of d.kept) {
+      o.kept[k.slot] = {
+        name: k.name,
+        notes: k.notes.map((n) => ({ role: n.role, start: round6(n.start), length: round6(n.length), velocity: round6(n.velocity) })),
+      };
+    }
+  }
+  if (d.written.length > 0) {
+    o.written = JSON.parse("{}");
+    for (const w of d.written) o.written[w.id] = { slot: w.slot, print: w.print };
+  }
   return o;
 }
 
@@ -569,6 +682,67 @@ export function newDevice(type) {
 // ------------------------------------------------------------------ music
 
 const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+
+/** General MIDI drum sounds, from key 35. */
+const GM_DRUMS = [
+  "Kick 2",
+  "Kick",
+  "Side Stick",
+  "Snare",
+  "Clap",
+  "Snare 2",
+  "Floor Tom 2",
+  "Closed Hat",
+  "Floor Tom",
+  "Pedal Hat",
+  "Low Tom",
+  "Open Hat",
+  "Low-Mid Tom",
+  "Mid Tom",
+  "Crash",
+  "High Tom",
+  "Ride",
+  "China",
+  "Ride Bell",
+  "Tambourine",
+  "Splash",
+  "Cowbell",
+  "Crash 2",
+  "Vibraslap",
+  "Ride 2",
+  "High Bongo",
+  "Low Bongo",
+  "Mute Conga",
+  "High Conga",
+  "Low Conga",
+  "High Timbale",
+  "Low Timbale",
+  "High Agogo",
+  "Low Agogo",
+  "Cabasa",
+  "Maracas",
+  "Whistle",
+  "Long Whistle",
+  "Guiro",
+  "Long Guiro",
+  "Claves",
+  "High Block",
+  "Low Block",
+  "Mute Cuica",
+  "Open Cuica",
+  "Mute Triangle",
+  "Open Triangle",
+];
+
+/** The drum a key plays on a General MIDI drum kit channel, or "" (not a kit, or no drum there). */
+/** function drumName(ch: Channel, pitch: Number) => String */
+export function drumName(ch, pitch) {
+  if (ch.instrument.type !== "soundfont") return "";
+  // The General MIDI kits ("Jazz Kit") and their variations ("Jazz Kit 2").
+  if (!/ Kit( \d+)?$/.test(optionValue(ch.instrument, "program"))) return "";
+  const i = Math.round(pitch) - 35;
+  return i >= 0 && i < GM_DRUMS.length ? GM_DRUMS[i] : "";
+}
 
 /** function noteName(pitch: Number) => String */
 export function noteName(pitch) {
@@ -724,6 +898,7 @@ export function emptyProject() {
     score: emptyScore(),
     repeats: [],
     animation: noAnimation(),
+    drums: noDrums(),
   };
 }
 

@@ -1,0 +1,382 @@
+/* The Drums dock (drums.js): the groove, the sections, and Write drums.
+
+   Laid out by the room the dock gives it (container queries):
+   - wide: groove | sections | write, side by side, each scrolling on its own;
+   - medium: the groove on the left, the sections over Write on the right;
+   - narrow (a phone): one column, in order, the panel scrolling. */
+
+.drums {
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  container-type: size;
+  container-name: drums;
+}
+.drums-flow {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr) 240px;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "groove sections write";
+  height: 100%;
+  min-height: 0;
+}
+.drums-groove {
+  grid-area: groove;
+}
+.drums-sections {
+  grid-area: sections;
+}
+.drums-write {
+  grid-area: write;
+}
+.drums-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 12px 14px;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.drums-step:last-child {
+  border-right: none;
+}
+.drums-groove {
+  background: linear-gradient(180deg, #17141b, #0f0d12);
+}
+
+.drums-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.drums-title {
+  font: italic 600 17px/1.1 var(--serif);
+  color: var(--gold-hi);
+}
+.drums-sub {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.drums-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.drums-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.drums-label {
+  font: 600 9.5px/1 var(--sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.drums-field .select {
+  max-width: 100%;
+}
+.drums-opts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+}
+.drums-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.drums-num {
+  min-width: 2.6em;
+  text-align: center;
+  font: 600 12px/1 var(--mono);
+  color: var(--champagne);
+}
+
+/* ---------------------------------------------------------------- groove */
+
+.drums-pick {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.drums-pick .drums-field {
+  flex: 1;
+}
+.drums-nav {
+  display: flex;
+  gap: 4px;
+}
+.drums-info {
+  font: 500 10.5px/1.3 var(--mono);
+  color: var(--champagne);
+}
+.drums-info.warn {
+  color: var(--rose);
+}
+.drums-grids {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.drums-grid-title {
+  font: 600 9.5px/1 var(--sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold-mid);
+  margin-bottom: 4px;
+}
+.drums-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 14px;
+}
+.drums-role {
+  flex: none;
+  width: 68px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drums-cells {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+.drums-cell {
+  flex: 1;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--ob-3);
+}
+.drums-cell {
+  cursor: pointer;
+}
+.drums-cell:hover {
+  outline: 1px solid var(--line-3);
+}
+.drums-cell.beat {
+  margin-left: 3px;
+  background: var(--ob-4);
+}
+.drums-cell.acc {
+  background: var(--gold);
+  box-shadow: 0 0 6px rgba(212, 175, 55, 0.4);
+}
+.drums-cell.hit {
+  background: var(--gold-mid);
+}
+.drums-cell.ghost {
+  background: var(--gold-lo);
+}
+.drums-cell.feather {
+  background: #4a3c1d;
+}
+
+.drums-edited {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--rose-deep);
+  color: var(--ivory);
+  letter-spacing: 0.06em;
+}
+.select.drums-add {
+  margin-top: 4px;
+  max-width: 140px;
+  height: 22px;
+  font-size: 10.5px;
+}
+
+/* ---------------------------------------------------------------- sections */
+
+.drums-strip {
+  flex: none;
+  display: flex;
+  gap: 3px;
+  min-height: 54px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.drums-sec {
+  min-width: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 6px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--lacquer);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+.drums-sec.play-b {
+  background: linear-gradient(180deg, #2a2213, #17130b);
+}
+.drums-sec.play-hits,
+.drums-sec.play-count {
+  background: linear-gradient(180deg, #2a1820, #170e12);
+}
+.drums-sec.play-rest {
+  background: var(--ob-1);
+  color: var(--dim);
+}
+.drums-sec.on {
+  border-color: var(--gold);
+  box-shadow: var(--glow);
+}
+.drums-sec-name {
+  font: 600 11px/1.1 var(--sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drums-sec-meta {
+  font: 500 10px/1 var(--mono);
+  color: var(--champagne);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drums-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ob-2);
+}
+.drums-name {
+  width: 120px;
+}
+.drums-sec-acts {
+  margin-left: auto;
+}
+
+/* ---------------------------------------------------------------- write */
+
+.drums-kept {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drums-kept-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--champagne);
+}
+.drums-kept-row.gone {
+  color: var(--dim);
+}
+.drums-status {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.drums-status.warn {
+  color: var(--rose);
+}
+.btn.drums-writebtn {
+  height: 36px;
+}
+.btn.drums-remove {
+  align-self: flex-start;
+  opacity: 0.75;
+}
+
+/* ---------------------------------------------------------------- start */
+
+.drums-start {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  max-width: 980px;
+}
+.drums-styles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+.drums-style {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.drums-style-grooves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+/* A groove in another time signature than the song's: greyed out, its
+   tooltip says why. */
+.drums-style-grooves .btn.misfit,
+.drums-style-grooves .btn.misfit:hover {
+  opacity: 0.38;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+.drums-field option.misfit {
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- medium */
+
+@container drums (max-width: 1299px) and (min-width: 760px) {
+  .drums-flow {
+    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "groove sections"
+      "groove write";
+  }
+  .drums-sections {
+    border-right: none;
+  }
+  .drums-write {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    border-top: 1px solid var(--line);
+  }
+  .drums-write .drums-status {
+    flex: 1;
+    min-width: 160px;
+  }
+}
+
+/* ---------------------------------------------------------------- narrow */
+
+@container drums (max-width: 759px) {
+  .drums-flow {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas: "groove" "sections" "write";
+    height: auto;
+  }
+  .drums-step {
+    overflow: visible;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+}

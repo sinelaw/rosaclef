@@ -1,0 +1,177 @@
+/* Credits and licenses (credits.js): the dialog, and the credit line on a
+   channel's instrument panel. */
+
+.cr-overlay {
+  z-index: 75;
+}
+.cr-scrim {
+  position: absolute;
+  inset: 0;
+}
+.cr {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(820px, calc(100vh - 48px));
+  border-radius: 18px;
+  background: linear-gradient(180deg, #1c1821, #0f0d12);
+  border: 1px solid var(--line-3);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.cr-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cr-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--metal-soft);
+  color: #231804;
+}
+.cr-mark .glyph {
+  width: 18px;
+  height: 18px;
+}
+.cr-title {
+  flex: 1;
+  min-width: 0;
+}
+.cr-title h2 {
+  margin: 0;
+  font: italic 600 22px/1.1 var(--serif);
+  color: var(--gold-hi);
+}
+.cr-version {
+  font-size: 11px;
+  color: var(--muted);
+}
+.cr-license {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--emerald);
+  color: var(--emerald);
+  font: 700 11px/1 var(--sans);
+  letter-spacing: 0.06em;
+}
+.cr-body {
+  overflow-y: auto;
+  padding: 14px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cr-summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.cr-by {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--champagne);
+}
+.cr-label {
+  display: block;
+  font: 600 9.5px/1 var(--sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.cr-inst {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: var(--ob-2);
+}
+.cr-inst-name {
+  font: 600 14px/1.3 var(--sans);
+  color: var(--gold-hi);
+}
+.cr-inst-credit {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: pre-line;
+}
+.cr-inst-details {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  white-space: pre-line;
+}
+.cr-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.cr-link {
+  font-size: 12px;
+  color: var(--gold);
+}
+.cr-text {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ob-1);
+  border: 1px solid var(--line);
+  font: 11px/1.45 var(--mono);
+  color: var(--champagne);
+  white-space: pre-wrap;
+}
+.cr-others {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/* The credit line under a sampled instrument's controls. */
+.sample-credit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 6px 0 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.sample-credit .glyph {
+  width: 14px;
+  height: 14px;
+  color: var(--gold-mid);
+}
+.sample-credit-text {
+  display: inline-flex;
+  gap: 4px;
+}
+.sample-credit b {
+  color: var(--champagne);
+  font-weight: 600;
+}
+/* The licence button on the instrument list. */
+.b-item .btn.b-credit {
+  margin-left: 2px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+}
+.b-item .btn.b-credit .glyph {
+  width: 13px;
+  height: 13px;
+}

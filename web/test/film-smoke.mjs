@@ -23,11 +23,13 @@ const ok = (s) => console.log("ok  ", s);
 const count = (sel) => page.locator(sel).count();
 
 await page.goto(base);
-await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
 await page.click("button.tab:has-text('Score')");
 await page.waitForSelector(".score-top .score-sys", { timeout: 20000 });
 
-// Colors: color a passage, hide the colors, show them again.
+// Colors: color a passage, hide the colors, show them again. (The demo
+// colors its own sections: `bands0` of them are in view.)
+const bands0 = await count(".score-top rect.score-band");
 const s = await page.locator(".score-top .score-sys").first().boundingBox();
 await page.mouse.move(s.x + s.width * 0.3, s.y + s.height * 0.4);
 await page.mouse.down();
@@ -36,16 +38,16 @@ await page.mouse.move(s.x + s.width * 0.7, s.y + s.height * 0.5, { steps: 6 });
 await page.mouse.up();
 await page.waitForSelector(".score-top .score-rangebar");
 await page.click(".score-top .score-rangebar .score-swatch.big >> nth=2");
-await page.waitForSelector(".score-top rect.score-band");
-ok(`a passage is colored (${await count(".score-top rect.score-band")} band)`);
+await page.waitForFunction((n) => document.querySelectorAll(".score-top rect.score-band").length > n, bands0);
+ok(`a passage is colored (${(await count(".score-top rect.score-band")) - bands0} band)`);
 await page.click(".score-top button[title^='Colors: shown']");
 await page.waitForFunction(() => document.querySelectorAll(".score-top rect.score-band").length === 0);
 ok("hiding the colors writes everything in plain ink");
 await page.click(".score-top button[title^='Colors: hidden']");
-await page.waitForSelector(".score-top rect.score-band");
+await page.waitForFunction((n) => document.querySelectorAll(".score-top rect.score-band").length > n, bands0);
 ok("showing them brings the colored passage back");
 await page.keyboard.press("Control+z");
-await page.waitForFunction(() => document.querySelectorAll(".score-top rect.score-band").length === 0);
+await page.waitForFunction((n) => document.querySelectorAll(".score-top rect.score-band").length === n, bands0);
 
 // The film: the pages on the desk, drawn by WebGL.
 await page.click(".score-top button[title^='Film']");

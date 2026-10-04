@@ -19,7 +19,7 @@ const ok = (s) => console.log("ok  ", s);
 const count = (sel) => page.locator(sel).count();
 
 await page.goto(base);
-await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
 
 // The whole song beside the playlist.
 await page.click("button.tab:has-text('Score')");
@@ -80,6 +80,8 @@ const heads = () => page.evaluate(HEADS);
 await page.waitForFunction(`${HEADS} > 0`);
 const before = await heads();
 await page.click(".score-dock .score-ribbon button[title^='Write']");
+// Notices (the browser studio's welcome) pass in a few seconds; they would cover the staff.
+await page.waitForFunction(() => document.querySelector(".toast") === null, null, { timeout: 15000 });
 // On the middle line of the first staff, a little into the first bar: Write shows a ghost note there.
 const lines = await page.locator(".score-dock .score-sys").first().locator("path.staff").boundingBox();
 const at = { x: lines.x + lines.width * 0.42, y: lines.y + lines.height / 2 };

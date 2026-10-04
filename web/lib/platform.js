@@ -149,6 +149,13 @@ export function connectRaw(url, h) {
   };
 }
 
+/** A file of the site itself (a license, a readme), in either back end. */
+export async function siteText(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r.text();
+}
+
 export async function getJson(url) {
   const r = await request("GET", url);
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
@@ -865,8 +872,13 @@ export function domBackend(rootId) {
     setProp: (h, k, v) => {
       const el = nodes[h];
       if (k === "checked" || k === "disabled") el[k] = v === "true";
-      else if (k === "focus") {
-        if (v === "true") setTimeout(() => el.focus(), 0);
+      else if (k === "focus" || k === "select") {
+        // "select": focus a text field with its text selected, to type over.
+        if (v === "true")
+          setTimeout(() => {
+            el.focus();
+            if (k === "select" && el instanceof HTMLInputElement) el.select();
+          }, 0);
       } else if (k === "scrollLeft" || k === "scrollTop") {
         // Scrolling a node that is not in the document yet is ignored.
         if (el.isConnected) el[k] = Number(v);

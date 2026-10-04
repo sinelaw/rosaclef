@@ -36,7 +36,7 @@ async function open(opts) {
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto(base);
-  await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
   // The store module, to wait on the app's state.
   await page.evaluate(async () => {
     window.__store = await import("/src/store.js");
@@ -105,7 +105,7 @@ const keysDown = (sel, n) => [(a) => document.querySelectorAll(a.sel).length ===
   await page.click(".nav-item[aria-label=Browser]");
   await page
     .locator(".b-item, .b-row")
-    .filter({ hasText: "Pad · Prologue" })
+    .filter({ hasText: "Piano · Intro" })
     .first()
     .dblclick()
     .catch(() => {});
@@ -263,7 +263,7 @@ const keysDown = (sel, n) => [(a) => document.querySelectorAll(a.sel).length ===
   await page.click(".kb-toggle");
   await until(page, () => document.querySelectorAll(".keyboard").length === 0, null, "the toggle hides the keys");
   await page.reload();
-  await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
   assert((await page.locator(".keyboard").count()) === 0, "hidden keys stay hidden after a reload");
   await page.click(".kb-toggle");
   await page.close();

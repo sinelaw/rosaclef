@@ -1,10 +1,14 @@
 //! Rosaclef core: the project document model shared by every part of the
 //! system (native server, WebAssembly engine, command line tools).
 
+// The project schema (schema.rs) is one large json! literal.
+#![recursion_limit = "256"]
+
 pub mod arp;
 pub mod automation;
 pub mod catalog;
 pub mod context;
+pub mod drums;
 pub mod form;
 pub mod format;
 pub mod gm;

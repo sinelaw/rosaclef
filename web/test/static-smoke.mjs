@@ -18,7 +18,7 @@ const ok = (s) => console.log("ok  ", s);
 const hasText = (p, t) => p.waitForFunction((x) => document.body.textContent.includes(x), t, { timeout: 30000 });
 
 await page.goto(base);
-await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
 ok("the first visit opens the demo song");
 if (await page.isVisible('.seg button:has-text("Studio")')) throw new Error("the Studio output needs a server");
 
@@ -67,6 +67,40 @@ await page.dblclick(".lcd.transpose .lcd-label");
 await transposed(page, "0");
 ok("the song transposes by semitones, and stays transposed");
 
+// The Drums tab: the demo's drum part is a jazz waltz; writing it again
+// keeps it in the song.
+await page.keyboard.press("F4");
+await page.waitForSelector(".drums-sec");
+await hasText(page, "Jazz waltz");
+await page.click(".drums-writebtn");
+await hasText(page, "Drums written");
+await hasText(page, "Drums · Jazz waltz A");
+ok("the Drums tab writes a drum part into the song");
+
+// Grooves in another time signature are greyed out, saying why; changing the
+// song's time signature (the Time LCD) opens them up.
+const greyed = () => page.locator(".drums-groove option[disabled]").count();
+const inWaltz = await greyed();
+const why = await page.locator(".drums-groove option[disabled]").first().getAttribute("title");
+if (inWaltz === 0 || !why.includes("the song is in 3/4")) throw new Error(`greyed grooves: ${inWaltz} (${why})`);
+await page.locator(".lcd.timesig select").selectOption("4/4");
+await page.waitForFunction(() => document.querySelector(".drums-info.warn")?.textContent.includes("4/4"));
+if ((await greyed()) >= inWaltz) throw new Error("4/4 grooves stay greyed out in a 4/4 song");
+await page.keyboard.press("Control+z");
+await page.waitForFunction(() => document.querySelector(".lcd.timesig select")?.value === "3/4");
+ok(`grooves that do not fit the time signature are greyed out (${inWaltz} in 3/4)`);
+
+// A click on the tempo makes it a field to type into.
+const tempo0 = await page.textContent(".lcd.tempo .lcd-value");
+await page.click(".lcd.tempo");
+await page.waitForSelector(".lcd.tempo input.lcd-input");
+await page.keyboard.type("90");
+await page.keyboard.press("Enter");
+await page.waitForFunction(() => document.querySelector(".lcd.tempo .lcd-value")?.textContent.startsWith("90.00"));
+await page.keyboard.press("Control+z");
+await page.waitForFunction((t) => document.querySelector(".lcd.tempo .lcd-value")?.textContent === t, tempo0);
+ok("the tempo can be typed");
+
 await page.keyboard.press("Control+o");
 await page.waitForSelector(".pm-card");
 await page.click("text=New project");
@@ -76,8 +110,8 @@ await page.waitForFunction(() => document.querySelector(".song-title")?.textCont
 ok("a new project is created and opened");
 
 await page.keyboard.press("Control+o");
-await page.waitForSelector('.pm-card:has-text("Demo")');
-const [zip] = await Promise.all([page.waitForEvent("download"), page.click('.pm-card:has-text("Demo") button[title*=".zip"]')]);
+await page.waitForSelector('.pm-card:has-text("Arietta in J")');
+const [zip] = await Promise.all([page.waitForEvent("download"), page.click('.pm-card:has-text("Arietta in J") button[title*=".zip"]')]);
 ok(`a project downloads as ${zip.suggestedFilename()}`);
 await page.keyboard.press("Escape");
 const [wav] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click("button.btn.gold:has-text('Export')")]);

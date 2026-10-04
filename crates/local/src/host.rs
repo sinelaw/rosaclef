@@ -240,7 +240,9 @@ impl Host {
             .map(|p| p.name.clone());
         let name = match pick {
             Some(n) => n,
-            None => library.create(&library.unique_name("Demo"), true)?.name(),
+            None => library
+                .create(&library.unique_name(&folder::demo_title()), true)?
+                .name(),
         };
         let folder = library.folder(&name);
         let (project, issues) = Self::load(&folder)?;
@@ -511,7 +513,7 @@ impl Host {
                 rosaclef_core::schema::schema_text().into_bytes(),
             ),
             ("GET", "/api/catalog") => Response::json(
-                json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": [], "arp": rosaclef_core::arp::catalog()}),
+                json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": [], "arp": rosaclef_core::arp::catalog(), "collections": [rosaclef_core::gm::collection()]}),
             ),
             ("GET", "/api/plugins") => Response::json(json!({"plugins": []})),
             ("GET", "/api/plugins/params") => {
@@ -534,6 +536,17 @@ impl Host {
             }
             ("GET", "/api/peaks") => self.peaks(&qs("path"), qs("n").parse().unwrap_or(1024))?,
             ("GET", "/api/transcribe") => self.transcribe(&qs("path"), &qs("mode"))?,
+            ("GET", "/api/grooves") => Response::json(rosaclef_core::drums::catalog()),
+            ("POST", "/api/drums") => {
+                match rosaclef_core::drums::api_write(
+                    &String::from_utf8_lossy(body),
+                    qs("guess") == "true",
+                    qs("write") != "false",
+                ) {
+                    Ok(v) => Response::json(v),
+                    Err(e) => Response::text(422, e),
+                }
+            }
             ("POST", "/api/render") => {
                 let v = body_json(body)?;
                 let r = self.render(
@@ -552,6 +565,7 @@ impl Host {
                 "current": self.folder.name(),
                 "currentFolder": self.folder.dir.display().to_string(),
                 "projects": self.library.list(&self.folder.dir),
+                "demoTitle": folder::demo_title(),
             })),
             ("POST", "/api/projects") => {
                 let v = body_json(body)?;

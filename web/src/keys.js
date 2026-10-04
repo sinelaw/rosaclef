@@ -96,6 +96,9 @@ export function installKeys() {
       else if (voice.status === "recording") stopTake();
       else if (keyboard.armed) toggleRecordKeys();
       else stop();
+    } else if (k === "F4") {
+      e.preventDefault();
+      openDock("drums");
     } else if (k === "F6") {
       e.preventDefault();
       openDock("rack");

@@ -197,7 +197,9 @@ fn first_run_sync_and_persistence() {
     let list = w.json("GET", "/api/projects", json!(null));
     let projects = list["projects"].as_array().unwrap();
     assert_eq!(projects.len(), 1, "the first run starts from the demo song");
-    assert_eq!(projects[0]["name"], "Demo");
+    // Named after the demo song's title (meta.title), as copies of it start.
+    assert_eq!(projects[0]["name"], "Arietta in J");
+    assert_eq!(list["demoTitle"], "Arietta in J");
     assert!(projects[0]["current"].as_bool().unwrap());
 
     // A page connects and edits the song.
@@ -492,4 +494,35 @@ fn renders_soundfont_instruments_with_files_from_the_site() {
         "note --channel bass --pitch 40 --seconds 0.5 --out samples/b.wav\r",
     );
     assert!(out.contains("wrote samples/b.wav"), "{out}");
+}
+
+#[test]
+fn writes_a_drum_part() {
+    let mut w = Worker::boot(Store::default());
+    let grooves = w.json("GET", "/api/grooves", json!(null));
+    assert!(grooves["grooves"].as_array().unwrap().len() > 10);
+    let mut p: Value = serde_json::from_slice(&w.req("GET", "/api/project", b"").1).unwrap();
+    // The demo is a jazz waltz with a drum part: write it again from scratch.
+    assert_eq!(p["drums"]["groove"], json!("jazz-waltz"));
+    p["drums"] = json!({"groove": "jazz-waltz-brushes"});
+    let g = w.json("POST", "/api/drums?guess=true&write=false", p.clone());
+    assert!(g["report"].is_null());
+    assert!(g["project"]["drums"]["written"].is_null());
+    let r = w.json("POST", "/api/drums?guess=true", p.clone());
+    let sections = r["project"]["drums"]["sections"].as_array().unwrap();
+    assert!(!sections.is_empty(), "{r}");
+    assert!(r["report"]["patterns"].as_u64().unwrap() > 0);
+    assert_eq!(r["edited"], json!([]));
+    // The written project is a valid edit.
+    let (status, body, _) = w.req("PUT", "/api/project", r["project"].to_string().as_bytes());
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    // A part that cannot be written says why.
+    p["drums"] = json!({"groove": "rock-8ths", "sections": [{"bars": 4}]});
+    let (status, body, _) = w.req("POST", "/api/drums", p.to_string().as_bytes());
+    assert_eq!(status, 422);
+    assert!(
+        String::from_utf8_lossy(&body).contains("4/4"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
 }

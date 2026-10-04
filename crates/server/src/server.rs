@@ -184,6 +184,14 @@ pub async fn run(cfg: Config) -> Result<()> {
         )
         .route("/api/peaks", get(get_peaks))
         .route("/api/transcribe", get(get_transcription))
+        .route(
+            "/api/grooves",
+            get(|| async { Json(rosaclef_core::drums::catalog()) }),
+        )
+        .route(
+            "/api/drums",
+            post(write_drums).layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
+        )
         .route("/api/render", post(render))
         .route("/api/agents", get(get_agents))
         .route("/api/info", get(get_info))
@@ -705,7 +713,7 @@ async fn get_catalog(State(app): State<Shared>) -> impl IntoResponse {
     .await
     .unwrap_or_default();
     Json(
-        json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": plugins, "arp": rosaclef_core::arp::catalog()}),
+        json!({"devices": rosaclef_core::catalog::DEVICES, "presets": rosaclef_core::presets::all(), "plugins": plugins, "arp": rosaclef_core::arp::catalog(), "collections": [rosaclef_core::gm::collection()]}),
     )
 }
 
@@ -825,6 +833,28 @@ async fn get_transcription(
     match res {
         Ok(Ok(t)) => Json(t).into_response(),
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct DrumsQuery {
+    guess: Option<bool>,
+    write: Option<bool>,
+}
+
+/// Write a drum part: the project in the body, the written project out (the
+/// studio commits it as one undoable edit).
+async fn write_drums(headers: HeaderMap, Query(q): Query<DrumsQuery>, body: String) -> Response {
+    if !same_origin(&headers) {
+        return forbidden();
+    }
+    let (guess, write) = (q.guess.unwrap_or(false), q.write.unwrap_or(true));
+    match tokio::task::spawn_blocking(move || rosaclef_core::drums::api_write(&body, guess, write))
+        .await
+    {
+        Ok(Ok(v)) => Json(v).into_response(),
+        Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

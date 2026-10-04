@@ -7,6 +7,7 @@
 import { drag, getJson, promptBox, pressOrTap } from "#platform";
 import { state, commit, begin, changed, invalidate, selectPattern, selectChannel, showDock, currentPattern, hint, reportContext } from "../store.js";
 import { snapTo, snapDown, songLength, barAt, barLines, meterChangeAt } from "../model.js";
+import { openMeterMenu } from "./meter.js";
 import { passesText } from "../notation.js";
 import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
@@ -359,10 +360,17 @@ export function playlist(b) {
 
   // Ruler.
   b.open("div", "ruler", "ruler");
+  b.attr("title", "Click to play from a bar · right-click to change the time signature from it");
   b.on("pointerdown", (e) => {
+    if (e.button === 2) return undefined;
     const beat = (e.clientX - e.targetLeft + view.scrollLeft) / g.zoom;
     if (state.mode !== "song") setMode("song");
     seek(barAt(p.transport, Math.max(0, beat)).start);
+  });
+  b.on("contextmenu", (e) => {
+    e.preventDefault();
+    const beat = (e.clientX - e.targetLeft + view.scrollLeft) / g.zoom;
+    openMeterMenu(barAt(p.transport, Math.max(0, beat)).bar, e.clientX, e.clientY);
   });
   b.open("div", "in", "");
   b.style("transform", `translateX(${-view.scrollLeft}px)`);

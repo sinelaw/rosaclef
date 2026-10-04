@@ -387,7 +387,7 @@ pub static DEVICES: &[DeviceSpec] = &[
         kind: "soundfont",
         label: "Grand Orchestra",
         category: Category::Instrument,
-        doc: "Sampled General MIDI instruments from the built-in soundfont (MuseScore General): pianos, strings, brass, winds, guitars, basses, choirs and drum kits. options.program names a GM program (\"Acoustic Grand Piano\", \"String Ensemble 1\", ...) or a drum kit (\"Standard Kit\", ...; notes follow the GM drum map: 36 kick, 38 snare, 42 closed hat, 46 open hat, 49 crash). Velocity shapes loudness and tone as on the real instrument. The sounds load on first use.",
+        doc: "Sampled General MIDI instruments from the built-in soundfont (MuseScore General): pianos, strings, brass, winds, guitars, basses, choirs and drum kits. options.program names a GM program (\"Acoustic Grand Piano\", \"String Ensemble 1\", ...) or a drum kit (\"Standard Kit\", \"Jazz Kit 2\", ...; notes follow the GM drum map: 36 kick, 38 snare, 42 closed hat, 46 open hat, 49 crash); variations too (\"Mellow Grand Piano\", \"Celli Pizzicato\", \"Violins Tremolo\", \"Mandolin\", ...). The samples are MuseScore General 0.2 (MIT license; credits in web/soundfonts/gm). Velocity shapes loudness and tone as on the real instrument. The sounds load on first use.",
         best_for: "Real instruments: acoustic and electric pianos, guitars, basses, strings, brass, woodwinds, choirs, organs, orchestral and band drum kits.",
         params: &[
             p("gain", "Gain", 0.0, 2.0, 1.0, "", "Output level."),

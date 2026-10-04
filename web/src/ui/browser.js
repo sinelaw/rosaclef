@@ -6,6 +6,7 @@ import { newDevice, setOption, uniqueId, paletteColor, presetDevice, noArp } fro
 import { followPattern } from "../audio.js";
 import { glyph, iconButton, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
+import { collectionFor, showCredits } from "./credits.js";
 import { paneHeader, paneControls, revealDock } from "./panes.js";
 import { insertIx } from "#brands";
 
@@ -156,6 +157,20 @@ export function browser(b) {
     });
     glyph(b, icon);
     b.leaf("span", "n", "b-name", d.label);
+    const coll = collectionFor(d.type);
+    if (coll) {
+      // Sampled instruments: who made the samples, and their license.
+      const tip = `${coll.name} samples — credits and ${coll.license} license`;
+      b.open("button", "credit", "btn icon small ghost b-credit");
+      b.attr("title", tip);
+      b.attr("aria-label", tip);
+      b.on("click", (e) => {
+        e.stopPropagation();
+        showCredits(coll.id, "");
+      });
+      glyph(b, "info");
+      b.close();
+    }
     b.leaf("span", "s", "b-sub", presets.length > 0 ? `${presets.length}` : d.type);
     if (presets.length > 0) {
       b.leaf("span", "caret", "b-caret", open ? "▾" : "▸");
@@ -213,6 +228,20 @@ export function browser(b) {
     b.on("click", (e) => {
       selectPattern(pat.id);
       followPattern();
+      // Show its notes: the channel playing most of them, unless the
+      // selected one plays some.
+      if (pat.notes.length > 0 && !pat.notes.some((n) => n.channel === state.channel)) {
+        let best = "";
+        let bestCount = 0;
+        for (const ch of state.project.channels) {
+          const n = pat.notes.filter((x) => x.channel === ch.id).length;
+          if (n > bestCount) {
+            best = ch.id;
+            bestCount = n;
+          }
+        }
+        if (best !== "") selectChannel(best);
+      }
     });
     b.on("dblclick", (e) => {
       revealDock("piano");

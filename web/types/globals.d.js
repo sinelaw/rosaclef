@@ -80,9 +80,29 @@
 /** type GlFrame = { width: Number, height: Number, cam: Number[], desk: Number[], deskColor: String, deskTex: String, deskTile: Number, paper: String, paperTex: String[], paperSize: Number[], pageSize: Number[], sheets: GlSheet[], sparks: Number[], spot: Number[], light: Number[], fx: Number[], seed: Number, finish: Boolean, ratio: Number } */
 /** An encoded film: its object URL and its codecs ("AVC + AAC"). */
 /** type Encoded = { url: String, codecs: String } */
-/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[], animation: Animation } */
+// The drum part (crates/core/src/drums): `on` false = the project has none.
+/** type DrumSection = { name: String, bars: Number, play: String, fill: String, crash: Boolean, groove: String } */
+
+// A groove changed for the song: its parts' [drum, steps] rows.
+/** type GrooveEdit = { groove: String, a: String[][], b: String[][] } */
+
+// A pattern edited by hand, kept note for note: notes by drum role.
+/** type KeptNote = { role: String, start: Number, length: Number, velocity: Number } */
+
+/** type KeptPattern = { slot: String, name: String, notes: KeptNote[] } */
+
+/** type WrittenRef = { id: String, slot: String, print: String } */
+
+/** type DrumPart = { on: Boolean, groove: String, kit: String, feel: String, swing: Number, start: Number, ending: String, variations: Boolean, seed: Number, sections: DrumSection[], grooves: GrooveEdit[], kept: KeptPattern[], written: WrittenRef[] } */
+
+/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[], animation: Animation, drums: DrumPart } */
 
 /** type Issue = { severity: String, path: String, message: String } */
+
+// The groove library (GET /api/grooves): rows are [role, steps] pairs.
+/** type GrooveInfo = { id: String, style: String, name: String, meter: String, barBeats: Int, steps: Int, tempo: Int[], kit: String, swing: Number, a: String[][], b: String[][] } */
+
+/** type GrooveCatalog = { grooves: GrooveInfo[], kits: String[] } */
 
 // ------------------------------------------------------------ voice to notes
 // A take analyzed by GET /api/transcribe (crates/studio/src/transcribe.rs):
@@ -103,7 +123,12 @@
 /** type PluginInfo = { format: String, path: String, id: String, name: String, vendor: String, version: String, description: String, features: String[], instrument: Boolean, effect: Boolean } */
 /** type PresetInfo = { name: String, type: String, tags: String, doc: String, params: KV[], options: KS[] } */
 /** type ArpCatalog = { chords: String[], directions: String[], modes: String[], rateMin: Number, rateMax: Number, gateMin: Number, gateMax: Number, octavesMax: Int } */
-/** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[], arp: ArpCatalog } */
+// A sample collection the instruments play (the soundfont): its provenance and license.
+/** type GmPreset = { name: String, bank: Int, program: Int } */
+
+/** type SampleCollection = { id: String, name: String, version: String, license: String, authors: String, summary: String, source: String, licenseFile: String, readmeFile: String, sourcesFile: String, instrument: String, presets: GmPreset[] } */
+
+/** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[], arp: ArpCatalog, collections: SampleCollection[] } */
 /** A resolved automation target (web/src/automation.js). `kind`: tempo, swing, gain, pan or param; `open`: plugin parameter without a known range. */
 /** type TargetInfo = { ok: Boolean, kind: String, spec: ParamSpec, base: Number, label: String, color: String, open: Boolean } */
 /** type AgentPreset = { id: String, name: String, command: String[], available: Boolean, hint: String } */

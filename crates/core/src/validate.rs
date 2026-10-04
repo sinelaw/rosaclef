@@ -407,6 +407,7 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     check_score(&mut v, p);
     check_repeats(&mut v, p);
     check_animation(&mut v, p);
+    check_drums(&mut v, p);
     v.issues
 }
 
@@ -531,6 +532,135 @@ fn check_animation(v: &mut V, p: &Project) {
             }
         }
         spans.push((s.start, s.end, i));
+    }
+}
+
+fn check_drums(v: &mut V, p: &Project) {
+    use crate::drums;
+    let Some(d) = &p.drums else {
+        return;
+    };
+    let one_of = |v: &mut V, path: &str, value: &str, list: &[&str]| {
+        if !list.contains(&value) {
+            v.err(
+                path,
+                format!("unknown value {value:?}: use one of {}", list.join(", ")),
+            );
+        }
+    };
+    if drums::groove(&d.groove).is_none() {
+        v.err(
+            "drums.groove",
+            format!("unknown groove {:?} (see `rosaclef grooves`)", d.groove),
+        );
+    }
+    if !d.kit.is_empty() && !drums::valid_kit(&d.kit) {
+        v.err(
+            "drums.kit",
+            format!(
+                "unknown kit {:?}: use a General MIDI drum kit (\"Standard Kit\", ...) or \"Ebony\"",
+                d.kit
+            ),
+        );
+    }
+    one_of(v, "drums.feel", &d.feel, drums::FEELS);
+    one_of(v, "drums.ending", &d.ending, drums::ENDINGS);
+    v.range("drums.swing", d.swing, 0.0, 1.0);
+    if d.start < 1 {
+        v.err("drums.start", "bars are counted from 1");
+    } else if d.start > drums::MAX_START {
+        v.err(
+            "drums.start",
+            format!("the part starts by bar {}", drums::MAX_START),
+        );
+    }
+    if d.sections.len() > 999 {
+        v.err("drums.sections", "at most 999 sections");
+    }
+    for (gid, e) in &d.grooves {
+        let path = format!("drums.grooves.{gid}");
+        let Some(g) = drums::groove(gid) else {
+            v.err(&path, format!("unknown groove {gid:?}"));
+            continue;
+        };
+        for (part, rows) in [("a", &e.a), ("b", &e.b)] {
+            for (k, [role, row]) in rows.iter().enumerate() {
+                let rp = format!("{path}.{part}[{k}]");
+                if !drums::ROLES.contains(&role.as_str()) {
+                    v.err(
+                        &rp,
+                        format!(
+                            "unknown drum {role:?}: use one of {}",
+                            drums::ROLES.join(", ")
+                        ),
+                    );
+                }
+                let st = drums::steps(row);
+                let bars = drums::groove_bars(g);
+                if st.is_empty() || st.len() % g.steps as usize != 0 {
+                    v.err(
+                        &rp,
+                        format!("{} steps: a row has {} steps a bar", st.len(), g.steps),
+                    );
+                } else if bars % (st.len() / g.steps as usize) != 0 {
+                    // (A shorter row repeats; a longer one would never play its end.)
+                    v.err(
+                        &rp,
+                        format!(
+                            "{} bars: the groove is {bars} bar{} long",
+                            st.len() / g.steps as usize,
+                            if bars == 1 { "" } else { "s" }
+                        ),
+                    );
+                }
+                if let Some(c) = st
+                    .iter()
+                    .find(|c| **c != '.' && drums::level(**c).is_none())
+                {
+                    v.err(&rp, format!("{c:?} is not a stroke: use X, x, g, f or ."));
+                }
+            }
+        }
+    }
+    for (slot, k) in &d.kept {
+        for (j, n) in k.notes.iter().enumerate() {
+            let np = format!("drums.kept.{slot}.notes[{j}]");
+            let r = n.role.as_str();
+            let ok = drums::ROLES.contains(&r)
+                || r.strip_prefix("gm:")
+                    .is_some_and(|x| x.parse::<u8>().is_ok())
+                || r.strip_prefix("channel:").is_some_and(|x| {
+                    x.rsplit_once(':')
+                        .is_some_and(|(_, p)| p.parse::<i32>().is_ok())
+                });
+            if !ok {
+                v.err(
+                    format!("{np}.role"),
+                    format!("{r:?}: use a drum, gm:<key> or channel:<id>:<pitch>"),
+                );
+            }
+            if !(n.start >= 0.0 && n.start.is_finite()) {
+                v.err(format!("{np}.start"), "start must be >= 0");
+            }
+            if !(n.length > 0.0 && n.length.is_finite()) {
+                v.err(format!("{np}.length"), "length must be > 0");
+            }
+            v.range(&format!("{np}.velocity"), n.velocity, 0.0, 1.0);
+        }
+    }
+    for (i, s) in d.sections.iter().enumerate() {
+        let path = format!("drums.sections[{i}]");
+        if !(1..=999).contains(&s.bars) {
+            v.err(format!("{path}.bars"), "bars must be 1 to 999");
+        }
+        one_of(v, &format!("{path}.play"), &s.play, drums::PLAYS);
+        one_of(v, &format!("{path}.fill"), &s.fill, drums::FILL_SIZES);
+        if !s.groove.is_empty() && drums::groove(&s.groove).is_none() {
+            v.err(
+                format!("{path}.groove"),
+                format!("unknown groove {:?} (see `rosaclef grooves`)", s.groove),
+            );
+        }
     }
 }
 

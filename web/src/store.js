@@ -14,7 +14,7 @@ export const state = {
   /** Counts changes to the project (edits, undo, remote versions): views cache what they derive from it by this. */
   edits: 0,
   loaded: false,
-  catalog /*: Catalog */: { devices: [], plugins: [], presets: [], arp: defaultArpCatalog() },
+  catalog /*: Catalog */: { devices: [], plugins: [], presets: [], arp: defaultArpCatalog(), collections: [] },
   agents /*: AgentPreset[] */: [],
   samples /*: String[] */: [],
   folder: "",
@@ -77,6 +77,11 @@ export const hooks = {
   sync: null,
   /** @type {(String) => Undefined} */
   engine: null,
+  /** While a preview plays its own version of the song (the Drums tab's,
+   * `previewing`), project changes go to it instead of the engine. */
+  /** @type {() => Undefined} */
+  preview: null,
+  previewing: false,
   /** @type {() => Undefined} */
   context: null,
 };
@@ -114,7 +119,8 @@ function pushToEngine() {
   engineQueued = true;
   setTimeout(() => {
     engineQueued = false;
-    if (hooks.engine) hooks.engine(projectJson(state.project));
+    if (hooks.previewing && hooks.preview) hooks.preview();
+    else if (hooks.engine) hooks.engine(projectJson(state.project));
   }, 30);
 }
 
@@ -249,6 +255,7 @@ export function dockName(dock) {
   if (dock === "piano") return "piano roll";
   if (dock === "mixer") return "mixer";
   if (dock === "voice") return "voice to notes";
+  if (dock === "drums") return "drums";
   if (dock === "score") return "score";
   return "channel rack";
 }

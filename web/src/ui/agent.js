@@ -223,7 +223,9 @@ export function agentPanel(b) {
         ? `Mixer · ${insertIndex(state.insert)}`
         : state.dock === "voice"
           ? "Voice to notes"
-          : "Channel rack"
+          : state.dock === "drums"
+            ? "Drums"
+            : "Channel rack"
   );
   b.close();
   if (state.selection.length > 0) {
