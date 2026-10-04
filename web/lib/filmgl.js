@@ -1103,7 +1103,8 @@ export async function encodeWith(painter, w, h, fps, frames, frameAt, audio, off
     f.width = W;
     f.height = H;
     await painter.ready(f);
-    painter.draw(f);
+    // A painter may take its time over a frame (the path tracer's samples).
+    await painter.draw(f);
     const frame = new VideoFrame(painter.canvas, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
     venc.encode(frame, { keyFrame: i % (fps * 2) === 0 });
     frame.close();

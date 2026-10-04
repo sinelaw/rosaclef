@@ -25,8 +25,13 @@ let THREE = null;
 let HDRLoader = null;
 let loading = null;
 
+/** three.js, loaded the first time a film is drawn this way (its module, once loaded). */
+export function three() {
+  return THREE;
+}
+
 /** three.js, loaded the first time a film is drawn this way. */
-function load() {
+export function load() {
   if (!loading)
     loading = Promise.all([import("../vendor/three/three.module.js"), import("../vendor/three/HDRLoader.js")]).then(([t, h]) => {
       THREE = t;
@@ -84,8 +89,8 @@ function roomGain(img) {
   return sum > 0 ? Math.PI / sum : 1;
 }
 
-/** A renderer on a canvas: { ready(frame), draw(frame), forget(url), canvas, onLoad }. */
-function renderer(canvas) {
+/** A renderer on a canvas: { ready(frame), draw(frame), forget(url), canvas, onLoad }, and the scene it drew (for web/lib/filmpath.js). */
+export function renderer(canvas) {
   const gl = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   gl.outputColorSpace = THREE.SRGBColorSpace;
   gl.toneMapping = THREE.NeutralToneMapping;
@@ -98,6 +103,8 @@ function renderer(canvas) {
   scene.add(lamp);
   // The room: the HDR image, prefiltered for every roughness (PMREM).
   let envReady = null;
+  // The room's image as it is (equirectangular): the path tracer samples it (web/lib/filmpath.js).
+  let roomImage = null;
   const room = new Promise((done) => {
     new HDRLoader().load(new URL("../vendor/hdri/artist_workshop_1k.hdr", import.meta.url).href, (tex) => {
       tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -107,7 +114,7 @@ function renderer(canvas) {
       // The room's light in the paper's units (as web/lib/filmgl.js has it): a
       // white page lit by the room alone shows as bright as 1.
       scene.environmentIntensity = roomGain(tex.image);
-      tex.dispose();
+      roomImage = tex;
       pm.dispose();
       envReady = true;
       if (api.onLoad) api.onLoad();
@@ -323,6 +330,7 @@ function renderer(canvas) {
       mat.normalScale.set(f.ink[0], f.ink[0]);
       place(m, s.quad, [0, 0, 1, 0, 1, 1, 0, 1], 0);
       m.renderOrder = order++;
+      m.userData = { sheet: s, ink: f.ink };
     }
     gl.clear();
     gl.render(scene, camera);
@@ -360,7 +368,23 @@ function renderer(canvas) {
       }
   }
 
-  const api = { draw, ready, forget, onLoad: null, canvas };
+  const api = {
+    draw,
+    ready,
+    forget,
+    onLoad: null,
+    canvas,
+    // For the path tracer: what the last frame drew.
+    gl,
+    scene,
+    camera,
+    lamp,
+    over,
+    overCam,
+    vignette,
+    meshes,
+    room: () => roomImage,
+  };
   return api;
 }
 
