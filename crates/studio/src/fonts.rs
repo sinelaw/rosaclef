@@ -134,11 +134,24 @@ impl Fonts {
 
     /// Give the engine every preset its project plays; returns the problems.
     pub fn provide(&self, engine: &mut Engine) -> Vec<String> {
+        self.provide_with(engine, |_, _| {})
+    }
+
+    /// [`Fonts::provide`], calling `progress(done, total)` as presets load.
+    pub fn provide_with(
+        &self,
+        engine: &mut Engine,
+        mut progress: impl FnMut(usize, usize),
+    ) -> Vec<String> {
         let mut warnings = vec![];
-        for key in engine.required_presets() {
-            if engine.has_preset(&key) {
-                continue;
-            }
+        let keys: Vec<PresetKey> = engine
+            .required_presets()
+            .into_iter()
+            .filter(|k| !engine.has_preset(k))
+            .collect();
+        let total = keys.len();
+        for (i, key) in keys.into_iter().enumerate() {
+            progress(i, total);
             match self.preset(&key) {
                 Ok(p) => engine.set_preset(key, p),
                 Err(e) => warnings.push(format!("{e:#}")),
