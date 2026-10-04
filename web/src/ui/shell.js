@@ -15,6 +15,7 @@ import { agentPanel, agentDot } from "./agent.js";
 import { toastView } from "./toast.js";
 import { automationMenu } from "./lanes.js";
 import { projectsOverlay } from "./projects.js";
+import { creditsOverlay } from "./credits.js";
 import { glyph } from "./widgets.js";
 import { keyboard, keyboardStrip, keysHelp } from "./keyboard.js";
 import {
@@ -242,6 +243,7 @@ export function studio(b) {
   else hintBar(b);
 
   projectsOverlay(b);
+  creditsOverlay(b);
   toastView(b);
   automationMenu(b);
   b.close();

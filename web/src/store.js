@@ -14,7 +14,7 @@ export const state = {
   /** Counts changes to the project (edits, undo, remote versions): views cache what they derive from it by this. */
   edits: 0,
   loaded: false,
-  catalog /*: Catalog */: { devices: [], plugins: [], presets: [], arp: defaultArpCatalog() },
+  catalog /*: Catalog */: { devices: [], plugins: [], presets: [], arp: defaultArpCatalog(), collections: [] },
   agents /*: AgentPreset[] */: [],
   samples /*: String[] */: [],
   folder: "",

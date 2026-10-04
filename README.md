@@ -298,6 +298,11 @@ Known inty rough edges are tracked in [`docs/inty-notes.md`](docs/inty-notes.md)
 
 ## License
 
-GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js). `web/soundfonts/gm`
-is MuseScore General (MIT; see its [license](web/soundfonts/gm/LICENSE.md)).
+GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js). `web/fonts` holds
+Bravura (SIL Open Font License). `web/soundfonts/gm` is MuseScore General
+0.2 (MIT; see its [license](web/soundfonts/gm/LICENSE.md), and who recorded
+each instrument in [`SOURCES.csv`](web/soundfonts/gm/SOURCES.csv)). The studio
+shows this where the samples are used: the ⓘ button beside Grand Orchestra in
+the browser, and the **Credits & license** line on a Grand Orchestra
+channel, which names the source of the chosen instrument's samples.
 `web/vendor/mp4-muxer` is MIT (mp4-muxer, by Vanilagy).

@@ -123,7 +123,12 @@
 /** type PluginInfo = { format: String, path: String, id: String, name: String, vendor: String, version: String, description: String, features: String[], instrument: Boolean, effect: Boolean } */
 /** type PresetInfo = { name: String, type: String, tags: String, doc: String, params: KV[], options: KS[] } */
 /** type ArpCatalog = { chords: String[], directions: String[], modes: String[], rateMin: Number, rateMax: Number, gateMin: Number, gateMax: Number, octavesMax: Int } */
-/** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[], arp: ArpCatalog } */
+// A sample collection the instruments play (the soundfont): its provenance and license.
+/** type GmPreset = { name: String, bank: Int, program: Int } */
+
+/** type SampleCollection = { id: String, name: String, version: String, license: String, authors: String, summary: String, source: String, licenseFile: String, readmeFile: String, sourcesFile: String, instrument: String, presets: GmPreset[] } */
+
+/** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[], arp: ArpCatalog, collections: SampleCollection[] } */
 /** A resolved automation target (web/src/automation.js). `kind`: tempo, swing, gain, pan or param; `open`: plugin parameter without a known range. */
 /** type TargetInfo = { ok: Boolean, kind: String, spec: ParamSpec, base: Number, label: String, color: String, open: Boolean } */
 /** type AgentPreset = { id: String, name: String, command: String[], available: Boolean, hint: String } */

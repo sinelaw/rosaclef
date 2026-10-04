@@ -149,6 +149,13 @@ export function connectRaw(url, h) {
   };
 }
 
+/** A file of the site itself (a license, a readme), in either back end. */
+export async function siteText(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r.text();
+}
+
 export async function getJson(url) {
   const r = await request("GET", url);
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);

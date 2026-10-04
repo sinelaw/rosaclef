@@ -51,6 +51,20 @@ export function decodeCatalog(raw) {
           octavesMax: Math.round(Number(a.octavesMax)),
         }
       : defaultArpCatalog(),
+    collections: (raw.collections ?? []).map((c) => ({
+      id: String(c.id),
+      name: String(c.name),
+      version: String(c.version),
+      license: String(c.license),
+      authors: String(c.authors),
+      summary: String(c.summary),
+      source: String(c.source),
+      licenseFile: String(c.licenseFile),
+      readmeFile: String(c.readmeFile),
+      sourcesFile: String(c.sourcesFile),
+      instrument: String(c.instrument),
+      presets: (c.presets ?? []).map((p) => ({ name: String(p[0]), bank: Math.round(Number(p[1])), program: Math.round(Number(p[2])) })),
+    })),
     presets: (raw.presets ?? []).map((p) => ({
       name: String(p.name),
       type: String(p.type),
