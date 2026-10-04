@@ -157,6 +157,7 @@ uniform sampler2D uScene;
 uniform float uVignette;
 uniform float uAspect;
 uniform float uSeed;
+uniform float uFinish;
 out vec4 o;
 float rnd(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uSeed) * 43758.5453); }
 void main() {
@@ -164,12 +165,12 @@ void main() {
   // The lamp's warmth from the upper left, the corners falling into shadow.
   vec2 q = vUv - vec2(0.28, 0.92);
   q.x *= uAspect;
-  c += vec3(1.0, 0.92, 0.78) * 0.03 * smoothstep(1.1, 0.0, length(q));
+  c += vec3(1.0, 0.92, 0.78) * 0.03 * smoothstep(1.1, 0.0, length(q)) * uFinish;
   vec2 v = (vUv - 0.5) * vec2(uAspect, 1.0) / max(1.0, uAspect * 0.85);
   c *= mix(1.0, smoothstep(1.2, 0.35, length(v)), uVignette * 0.75);
   // Highlights roll off instead of clipping (the paper, below 0.98, is left alone).
-  c = mix(c, 0.98 + 0.3 * (1.0 - exp(-(c - 0.98) / 0.3)), step(0.98, c));
-  c += (rnd(vUv * 731.0) - 0.5) * 0.008;
+  c = mix(c, mix(c, 0.98 + 0.3 * (1.0 - exp(-(c - 0.98) / 0.3)), step(0.98, c)), uFinish);
+  c += (rnd(vUv * 731.0) - 0.5) * 0.008 * uFinish;
   o = vec4(c, 1.0);
 }`;
 
@@ -405,8 +406,9 @@ function renderer(canvas) {
     let complete = true;
     const aspect = w / h;
     const vp = camera(f.cam, aspect);
-    const tg = ensureTarget(w, h);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fb);
+    // Without the finish or a vignette: straight onto the canvas.
+    const tg = f.finish || f.fx[0] > 0 ? ensureTarget(w, h) : null;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, tg ? tg.fb : null);
     gl.viewport(0, 0, w, h);
     gl.clearColor(0.03, 0.025, 0.02, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -453,10 +455,10 @@ function renderer(canvas) {
     const pu = progs.page.u;
     const paper = hexRgb(f.paper);
     gl.uniform3f(pu.uPaper, paper[0], paper[1], paper[2]);
-    // The paper's texture (tooth, formation, grain), tiled.
+    // The paper's texture (tooth, formation, grain), tiled (none: plain paper).
     const paperTex = f.paperTex.map((u) => texture(u, true));
-    const hasPaper = paperTex.every((t) => t);
-    if (!hasPaper) complete = false;
+    const hasPaper = paperTex.length > 0 && paperTex.every((t) => t);
+    if (paperTex.length > 0 && !hasPaper) complete = false;
     paperTex.forEach((t, i) => {
       gl.activeTexture(gl.TEXTURE1 + i);
       gl.bindTexture(gl.TEXTURE_2D, t ? t.tex : null);
@@ -482,6 +484,7 @@ function renderer(canvas) {
       gl.uniform4f(pu.uBox, s.box[0], s.box[1], s.box[2], s.box[3]);
       quad(s.quad, [0, 0, 1, 0, 1, 1, 0, 1]);
     }
+    if (!tg) return complete;
 
     // The finish, onto the canvas.
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -494,6 +497,7 @@ function renderer(canvas) {
     gl.uniform1f(po.u.uVignette, f.fx[0]);
     gl.uniform1f(po.u.uAspect, aspect);
     gl.uniform1f(po.u.uSeed, f.seed);
+    gl.uniform1f(po.u.uFinish, f.finish ? 1 : 0);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 0, 0, 1, -1, 0, 0, 1, 1, 0, 0, -1, -1, 0, 0, 1, 1, 0, 0, -1, 1, 0, 0]), gl.STREAM_DRAW);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     return complete;
@@ -549,7 +553,7 @@ export function filmDraw(selector, frame) {
         if (!r) continue;
         screens.set(sel, r);
       }
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const dpr = Math.min(f.ratio, window.devicePixelRatio || 1);
       f.width = Math.round(canvas.clientWidth * dpr);
       f.height = Math.round(canvas.clientHeight * dpr);
       r.onLoad = () => filmDraw(sel, f);

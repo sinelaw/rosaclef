@@ -39,6 +39,9 @@ import {
   sendJson,
   decodeAudioUrl,
   download,
+  loadPref,
+  savePref,
+  fastGraphics,
 } from "#platform";
 import { state, commit, begin, changed, invalidate, hint, reportContext } from "../store.js";
 import { livePosition, togglePlay } from "../audio.js";
@@ -85,9 +88,10 @@ import { toast } from "./toast.js";
  * (0 or 1), what it was made from (`sc`, `sig`: the music; `plan`: the shots
  * and aspect), its bitmaps (pages, sharper tiles, the desk), whether one is
  * being made, the camera last shown (for gliding over jumps), the look by
- * hand, and an export under way (its progress, 0..1; -1: none).
+ * hand, an export under way (its progress, 0..1; -1: none), and what the
+ * picture on screen leaves out to draw faster (DRAWING keys).
  */
-/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], tiles: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, export: Number } */
+/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], tiles: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, export: Number, off: String[] } */
 
 /** function newFilmView(id: String) => FilmView */
 export function newFilmView(id) {
@@ -115,7 +119,34 @@ export function newFilmView(id) {
     look: { dx: 0, dy: 0, zoom: 1, turn: 0, tilt: 0 },
     gesture: false,
     export: -1,
+    off: drawingOff(),
   };
+}
+
+/**
+ * What the picture on screen draws, each of which can be left out to draw
+ * faster: [key, name, what it is]. Quality draws them all, Performance none.
+ * Only the screen, in this browser: the film, its frames and its exports keep
+ * everything.
+ */
+const DRAWING = [
+  ["glow", "Note glow", "The notes playing light up"],
+  ["spotlight", "Spotlight", "The pool of light on the framed staves"],
+  ["vignette", "Vignette", "The picture darkening toward its edges"],
+  ["finish", "Finish", "The lamp's warmth, soft highlights and film grain over the picture"],
+  ["paper", "Paper texture", "The paper's tooth, formation, grain and toned edges (off: plain paper)"],
+  ["sharp", "Full resolution", "As many pixels as the screen has (off: one a CSS pixel — a quarter of them on a high-density screen)"],
+  ["detail", "Sharp close-ups", "Close up, the page as sharp as the screen shows it (off: half as sharp, a quarter of the drawing)"],
+];
+/** Where what the screen leaves out is remembered: DRAWING keys, by commas ("none": nothing). */
+const DRAWING_PREF = "rosaclef.film.off";
+
+/** What the screen leaves out: as chosen in this browser; until then, everything (Performance) unless the film draws smoothly here (Chrome on a GPU). */
+/** function drawingOff() => String[] */
+function drawingOff() {
+  const saved = loadPref(DRAWING_PREF);
+  if (saved === "") return fastGraphics() ? [] : DRAWING.map((x) => x[0]);
+  return saved.split(",").filter((k) => DRAWING.some((x) => x[0] === k));
 }
 
 /** Pixels a point of the pages' bitmaps. */
@@ -791,7 +822,7 @@ export function filmView(b, fv, inp) {
 
   // Bitmaps: what the camera needs now, then soon.
   /** const need: Number[][] */
-  const ratio = Math.min(2, pixelRatio());
+  const ratio = (fv.off.includes("sharp") ? 1 : Math.min(2, pixelRatio())) * (fv.off.includes("detail") ? 0.5 : 1);
   const need = wants(f, cam, fv.width, fv.height, 0, ratio);
   for (const ahead of [f.bar * 0.5, f.bar]) for (const nd of wants(f, cameraAt(f, beat + ahead), fv.width, fv.height, 1, ratio)) need.push(nd);
   schedule(fv, f, inp, need);
@@ -811,8 +842,8 @@ export function filmView(b, fv, inp) {
 }
 
 /** A frame of the film for the renderer: the camera, the desk, the pages and their bands, the notes lit, the light. */
-/** function glFrame(fv: FilmView, f: Film, inp: FilmInput, cam: Cam, beat: Number, scene: Scene | Undefined, lit: Boolean) => GlFrame */
-function glFrame(fv, f, inp, cam, beat, scene, lit) {
+/** function glFrame(fv: FilmView, f: Film, inp: FilmInput, cam: Cam, beat: Number, scene: Scene | Undefined, lit: Boolean, off: String[]) => GlFrame */
+function glFrame(fv, f, inp, cam, beat, scene, lit, off) {
   const d = f.desk;
   const m = Math.max(d.pw, d.ph) * 3;
   const surf = surface(state.project.animation.surface);
@@ -854,7 +885,11 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
   }
   /** const glow: Number[] */
   const glow = [];
-  const fx = cam.fx;
+  const fx = {
+    vignette: off.includes("vignette") ? 0 : cam.fx.vignette,
+    spotlight: off.includes("spotlight") ? 0 : cam.fx.spotlight,
+    glow: off.includes("glow") ? 0 : cam.fx.glow,
+  };
   if (lit && fx.glow > 0.01) {
     // The notes playing (the brightest first, as many as the renderer lights).
     const playing = sparks(f, beat, scene ? scene.staves : []);
@@ -877,7 +912,7 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
     deskTile: d.pw * 0.9,
     paper: PAPER.color,
     // The paper's texture, laid over the plain paper of the bitmaps: its tiles, each this many points across.
-    paperTex: [PAPER.tooth.url, PAPER.mottle.url, PAPER.grain.url],
+    paperTex: off.includes("paper") ? [] : [PAPER.tooth.url, PAPER.mottle.url, PAPER.grain.url],
     paperSize: [PAPER.tooth.size, PAPER.mottle.size, PAPER.grain.size].map((x) => (x * f.lay.sp) / 7),
     pageSize: [d.pw, d.ph, f.lay.sp],
     sheets: sheets,
@@ -886,6 +921,8 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
     light: [cam.x + lx, cam.y + ly, 1.15 * cam.span],
     fx: [fx.vignette, fx.glow],
     seed: Math.floor(beat * 97) % 1000,
+    finish: !off.includes("finish"),
+    ratio: off.includes("sharp") ? 1 : 2,
   };
 }
 
@@ -931,7 +968,7 @@ function stage(b, fv, f, inp, cam, beat, scene) {
   });
   b.leaf("canvas", "gl", "film-canvas", "");
   b.attr("data-film", fv.id);
-  filmDraw(`canvas[data-film="${fv.id}"]`, glFrame(fv, f, inp, cam, beat, scene, inp.showing && (state.playing || state.position > 0)));
+  filmDraw(`canvas[data-film="${fv.id}"]`, glFrame(fv, f, inp, cam, beat, scene, inp.showing && (state.playing || state.position > 0), fv.off));
 
   // What is filmed.
   if (scene) {
@@ -1006,7 +1043,7 @@ async function filmStill(fv, f, inp) {
   fv.tiles = vf.tiles;
   fv.desk = vf.desk;
   const si = sceneAt(ef.scenes, beat);
-  const frame = glFrame(vf, ef, inp, cam, beat, si >= 0 ? ef.scenes[si] : undefined, beat > 0);
+  const frame = glFrame(vf, ef, inp, cam, beat, si >= 0 ? ef.scenes[si] : undefined, beat > 0, []);
   return await renderStill(frame);
 }
 
@@ -1080,7 +1117,7 @@ async function filmVideo(fv, f, inp, clip) {
     const si = sceneAt(ef.scenes, beat);
     fv.export = i / frames;
     if (i % 15 === 0) invalidate();
-    return glFrame(vf, ef, inp, cam, beat, si >= 0 ? ef.scenes[si] : undefined, beat > 0);
+    return glFrame(vf, ef, inp, cam, beat, si >= 0 ? ef.scenes[si] : undefined, beat > 0, []);
   }
   const keep = () => {
     fv.pages = vf.pages;
@@ -1341,6 +1378,7 @@ function filmPanel(b, fv, f) {
   b.close();
   b.leaf("div", "eh", "score-side-h", "Effects");
   effectSliders(b, fv, a.effects, (type, x) => setEffect(anim().effects, type, x));
+  drawingPanel(b, fv);
   b.leaf("div", "kh", "score-side-h", "Keys");
   b.leaf(
     "div",
@@ -1363,8 +1401,47 @@ function effectSliders(b, fv, list, onSet) {
   for (let i = 0; i < EFFECTS.length; i++) {
     const e = list.find((x) => x.type === EFFECTS[i]);
     const v = e ? e.amount : fx[i];
+    // Left out on screen: dimmed (the film keeps it).
+    b.open("div", EFFECTS[i], fv.off.includes(EFFECTS[i]) ? "film-fx off" : "film-fx");
     slider(b, fv, EFFECTS[i], names[i], tips[i], v, 0, 1, 0.05, fx[i], e ? fmt(v, 2) : `${fmt(v, 2)}`, (x) => onSet(EFFECTS[i], x));
+    b.close();
   }
+}
+
+/** What the screen draws: Quality (everything), Performance (nothing extra) or Custom, and each thing on its own. */
+/** function drawingPanel(b: Builder, fv: FilmView) => Undefined */
+function drawingPanel(b, fv) {
+  /** function set(off: String[]) => Undefined */
+  function set(off) {
+    fv.off = off;
+    savePref(DRAWING_PREF, off.length > 0 ? off.join(",") : "none");
+    invalidate();
+  }
+  const preset = fv.off.length === 0 ? "quality" : fv.off.length === DRAWING.length ? "performance" : "custom";
+  b.leaf("div", "dh", "score-side-h", "On screen");
+  b.open("div", "dm", "film-modes film-presets");
+  for (const p of ["quality", "performance", "custom"]) {
+    b.leaf("button", p, preset === p ? "film-mode on" : "film-mode", p === "quality" ? "Quality" : p === "performance" ? "Performance" : "Custom");
+    b.attr(
+      "title",
+      p === "quality"
+        ? "Draw everything on screen"
+        : p === "performance"
+          ? "Leave out every effect and draw fewer pixels: smoother on slow machines (exports keep everything)"
+          : "Some things left out: pick them below"
+    );
+    if (p === "quality") b.on("click", (e) => set([]));
+    else if (p === "performance") b.on("click", (e) => set(DRAWING.map((x) => x[0])));
+  }
+  b.close();
+  b.open("div", "dc", "film-chips film-drawing");
+  for (const x of DRAWING) {
+    const on = !fv.off.includes(x[0]);
+    b.leaf("button", x[0], on ? "film-chip on" : "film-chip", `${on ? "✓ " : ""}${x[1]}`);
+    b.attr("title", `${x[2]} — ${on ? "on; click to leave it out" : "left out; click to draw it"}`);
+    b.on("click", (e) => set(on ? fv.off.concat([x[0]]) : fv.off.filter((k) => k !== x[0])));
+  }
+  b.close();
 }
 
 /** The selected shot: when, what, how it is framed, how it comes in, its effects. */

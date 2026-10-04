@@ -163,7 +163,11 @@ the whole band, leaning and turning so the music runs diagonally across the
 picture, gliding to the next line as one ends — down to a single beat filling
 the picture. The pages look as they do on the paper view, lit by a lamp, and
 the notes light up as they play, their ink glowing warm; a spotlight and a
-vignette finish the picture. It draws fast, with or without a GPU.
+vignette finish the picture. It draws fast, with or without a GPU. **On
+screen** picks how it draws in this browser: *Quality* (everything),
+*Performance* (no effects, plain paper, fewer pixels: for slower machines,
+chosen at first everywhere but Chrome on a GPU) or *Custom*, each part on or
+off; exports always draw everything.
 
 - **Auto**: the camera directs itself. It finds the lead, the rhythm section
   (drums and bass) and the background (chords and pads), cuts the song into

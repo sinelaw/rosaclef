@@ -741,6 +741,16 @@ function softwareGraphics() {
   return softwareGl;
 }
 
+/** Whether the film draws smoothly here as it is: Chrome (or another Chromium browser) on a GPU. */
+export function fastGraphics() {
+  if (typeof navigator === "undefined") return false;
+  const brands = navigator.userAgentData && navigator.userAgentData.brands;
+  const chromium = Array.isArray(brands)
+    ? brands.some((b) => b.brand === "Chromium")
+    : /Chrome\//.test(navigator.userAgent) && !/Firefox\//.test(navigator.userAgent);
+  return chromium && !softwareGraphics();
+}
+
 /** Draw an SVG document into a bitmap of `w` by `h` pixels: an object URL of an image of `type` (image/jpeg, image/png). */
 export async function rasterSvg(svg, w, h, type) {
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));

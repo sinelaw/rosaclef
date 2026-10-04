@@ -59,6 +59,9 @@ export const downloadImagePdf;
 /** Draw an SVG document into a bitmap of a size in pixels, as an image of a type ("image/jpeg", "image/png"): its object URL (give it back with dropUrl). */
 /** const rasterSvg: (String, Int, Int, String) => Promise<String> */
 export const rasterSvg;
+/** Whether the film draws smoothly here as it is: Chrome (or another Chromium browser) on a GPU. */
+/** const fastGraphics: () => Boolean */
+export const fastGraphics;
 /** Let go of an object URL made by rasterSvg. */
 /** const dropUrl: (String) => Undefined */
 export const dropUrl;

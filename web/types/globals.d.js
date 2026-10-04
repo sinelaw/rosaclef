@@ -73,9 +73,11 @@
  * (tooth, formation, grain: image URLs) and their sizes (points), and the
  * page [width, height, staff space] (points); the sheets; the notes playing
  * [x, y, notehead half-width, brightness]… (up to 48); the spotlight [x, y, rx, ry, amount]; the lamp
- * [x, y, height]; effects [vignette, glow]; a seed for the grain. Desk units are points.
+ * [x, y, height]; effects [vignette, glow]; a seed for the grain; whether to
+ * lay the finish over it (warmth, soft highlights, grain); and the most pixels a
+ * CSS pixel on screen. No paper tiles: plain paper. Desk units are points.
  */
-/** type GlFrame = { width: Number, height: Number, cam: Number[], desk: Number[], deskColor: String, deskTex: String, deskTile: Number, paper: String, paperTex: String[], paperSize: Number[], pageSize: Number[], sheets: GlSheet[], sparks: Number[], spot: Number[], light: Number[], fx: Number[], seed: Number } */
+/** type GlFrame = { width: Number, height: Number, cam: Number[], desk: Number[], deskColor: String, deskTex: String, deskTile: Number, paper: String, paperTex: String[], paperSize: Number[], pageSize: Number[], sheets: GlSheet[], sparks: Number[], spot: Number[], light: Number[], fx: Number[], seed: Number, finish: Boolean, ratio: Number } */
 /** An encoded film: its object URL and its codecs ("AVC + AAC"). */
 /** type Encoded = { url: String, codecs: String } */
 /** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[], animation: Animation } */
