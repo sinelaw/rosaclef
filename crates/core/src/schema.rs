@@ -3,7 +3,10 @@
 
 use crate::automation;
 use crate::catalog::{self, Category, DeviceSpec};
-use crate::model::{FORMAT, SCORE_CLEFS, SCORE_KEYS};
+use crate::model::{
+    FILM_EASES, FILM_EFFECTS, FILM_FRAMES, FILM_MODES, FILM_ROLES, FILM_SURFACES, FILM_TRANSITIONS,
+    FILM_VIEWS, FORMAT, SCORE_CLEFS, SCORE_KEYS,
+};
 use serde_json::{json, Map, Value};
 
 pub const SCHEMA_ID: &str = "https://rosaclef.dev/schema/project-v1.json";
@@ -188,9 +191,66 @@ pub fn schema() -> Value {
                     },
                     "marks": {"type": "array", "items": {"$ref": "#/$defs/scoreMark"}}
                 }
+            },
+            "animation": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "The film of the song (the Score view's Film mode): the score's pages lie on a desk and a camera above them follows the music, zooming, tilting and turning to frame some staves. auto: the camera directs itself (it frames the lead, the rhythm section or the background, whichever carries the music). manual: it plays `shots`, and directs itself where no shot covers the song. Changes nothing that plays.",
+                "properties": {
+                    "mode": {"enum": FILM_MODES, "default": "auto"},
+                    "view": {"enum": FILM_VIEWS, "default": "score", "description": "What is filmed."},
+                    "surface": {"enum": FILM_SURFACES, "default": "walnut", "description": "The desk the pages lie on."},
+                    "energy": num(0.0, 1.0, "How much the self-directed camera moves: 0 calm, 1 restless (default 0.5)."),
+                    "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects over the whole film; unlisted ones keep their defaults (vignette 0.5, spotlight 0, glow 1)."},
+                    "shots": {"type": "array", "items": {"$ref": "#/$defs/shot"}}
+                }
             }
         },
         "$defs": {
+            "shot": {
+                "type": "object",
+                "required": ["start", "end"],
+                "additionalProperties": false,
+                "description": "A shot of the film, in song beats: the camera frames the staves of `focus` (or of a `role`, or all) at a `frame` size, following the playhead (or looking `at` one beat), and moves into the shot over `glide` beats.",
+                "properties": {
+                    "start": {"type": "number", "minimum": 0},
+                    "end": {"type": "number", "description": "After start."},
+                    "label": {"type": "string", "description": "Shown on the film's timeline."},
+                    "focus": {"type": "array", "items": {"type": "string"}, "description": "Channel ids whose staves are framed. Empty: role, or every staff."},
+                    "role": {"enum": FILM_ROLES, "description": "The part of the band to frame when focus is empty: lead (melody), rhythm (drums and bass), background (chords, pads), all."},
+                    "frame": {"enum": FILM_FRAMES, "default": "close", "description": "How much the picture holds: desk (every page), page, system (the whole line), medium (~2 bars), close (~1 bar), detail (~a beat, close enough to see the ink)."},
+                    "zoom": num(0.1, 10.0, "Closer (> 1) or farther (< 1) than the frame (default 1)."),
+                    "tilt": num(0.0, 75.0, "Degrees the camera leans from looking straight down."),
+                    "turn": num(-180.0, 180.0, "Degrees the camera turns about the vertical: the music runs diagonally across the picture."),
+                    "offset": {"type": "array", "items": {"type": "number", "minimum": -2, "maximum": 2}, "minItems": 2, "maxItems": 2, "description": "Shift of the framed point, [x, y] as fractions of the frame."},
+                    "at": {"type": "number", "minimum": 0, "description": "A song beat to look at for the whole shot instead of following the playhead."},
+                    "to": {"$ref": "#/$defs/cameraMove"},
+                    "transition": {"enum": FILM_TRANSITIONS, "default": "glide", "description": "How the camera comes into the shot: glide (a smooth move), cut, swoop (rises away from the desk and comes down again), whip (fast)."},
+                    "glide": num(0.0, 64.0, "Beats the move into the shot takes (default: up to a bar)."),
+                    "ease": {"enum": FILM_EASES, "default": "smooth"},
+                    "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects during the shot; they override the film's by type."}
+                }
+            },
+            "cameraMove": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Where the camera drifts to by the end of the shot (a slow push in, a turn); values left out stay as at the start.",
+                "properties": {
+                    "zoom": num(0.1, 10.0, "Zoom at the end of the shot."),
+                    "tilt": num(0.0, 75.0, "Tilt at the end of the shot."),
+                    "turn": num(-180.0, 180.0, "Turn at the end of the shot."),
+                    "offset": {"type": "array", "items": {"type": "number", "minimum": -2, "maximum": 2}, "minItems": 2, "maxItems": 2}
+                }
+            },
+            "filmEffect": {
+                "type": "object",
+                "required": ["type"],
+                "additionalProperties": false,
+                "properties": {
+                    "type": {"enum": FILM_EFFECTS, "description": "vignette (dark edges), spotlight (a pool of light on the framed staves), glow (the notes playing light up, their ink glowing warm; 0 turns it off)."},
+                    "amount": num(0.0, 1.0, "Strength; 0 turns the effect off (default 1).")
+                }
+            },
             "channel": {
                 "type": "object",
                 "required": ["id", "name", "instrument"],

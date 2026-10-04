@@ -163,6 +163,7 @@ export function sendContext() {
       if (ch) roll.push({ pattern: pat.id, channel: ch.id, startBeat: vp.prStart, endBeat: vp.prEnd, lowPitch: vp.prLow, highPitch: vp.prHigh });
     }
   }
+  const fm = state.film;
   send({
     t: "context",
     context: {
@@ -197,6 +198,18 @@ export function sendContext() {
       visible: {
         playlist: { startBeat: vp.plStart, endBeat: vp.plEnd, firstTrack: vp.plTrack0, lastTrack: vp.plTrack1 },
         pianoRoll: roll.length > 0 ? roll[0] : null,
+        film: fm.on
+          ? {
+              mode: fm.mode,
+              shot: fm.shot >= 0 ? fm.shot : null,
+              selectedShot: fm.selected >= 0 ? fm.selected : null,
+              startBeat: Math.round(fm.start * 1000) / 1000,
+              endBeat: Math.round(fm.end * 1000) / 1000,
+              frame: fm.frame,
+              focus: fm.focus,
+              why: fm.why,
+            }
+          : null,
       },
       recentEdits: state.recent,
     },

@@ -234,3 +234,68 @@ export function glintOpacity(run, gloss, shine) {
   const o = run === "sheen" ? 0.16 * Math.min(1, shine / SHINE_DEFAULT) : 0.62;
   return Math.min(1, o * gloss);
 }
+
+// ------------------------------------------------------------------ desks
+
+/** A desk's surface: its color, and a tile (SVG, `size` pixels square) of its grain to repeat over it. */
+/** type Surface = { color: String, svg: String, size: Int } */
+
+/** Turbulence colored `rgb`, its opacity from the noise (a color matrix row `alpha`). */
+/** function grainLayer(id: String, type: String, freq: String, octaves: Int, seed: Int, rgb: String, alpha: String, size: Int) => String */
+function grainLayer(id, type, freq, octaves, seed, rgb, alpha, size) {
+  const ch = rgb.split(" ");
+  return (
+    `<filter id='${id}' x='0' y='0' width='1' height='1'>` +
+    `<feTurbulence type='${type}' baseFrequency='${freq}' numOctaves='${octaves}' seed='${seed}' stitchTiles='stitch'/>` +
+    `<feColorMatrix values='0 0 0 0 ${ch[0]} 0 0 0 0 ${ch[1]} 0 0 0 0 ${ch[2]} ${alpha}'/></filter>` +
+    `<rect width='${size}' height='${size}' filter='url(#${id})'/>`
+  );
+}
+
+/** The desk a film's pages lie on: walnut, oak, slate, felt or marble. */
+/** function surface(name: String) => Surface */
+export function surface(name) {
+  const size = 512;
+  /** function tile(color: String, layers: String) => Surface */
+  function tile(color, layers) {
+    return {
+      color: color,
+      svg: `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'><rect width='${size}' height='${size}' fill='${color}'/>${layers}</svg>`,
+      size: size,
+    };
+  }
+  if (name === "oak")
+    return tile(
+      "#9a6d3f",
+      grainLayer("a", "fractalNoise", "0.004 0.08", 4, 11, "0.33 0.2 0.09", "1.6 0 0 0 -0.55", size) +
+        grainLayer("b", "fractalNoise", "0.012 0.35", 3, 5, "0.85 0.66 0.42", "0 1.2 0 0 -0.6", size) +
+        grainLayer("c", "fractalNoise", "0.9", 2, 2, "0.2 0.12 0.05", "0 0 0 0.12 0", size)
+    );
+  if (name === "slate")
+    return tile(
+      "#2b2f35",
+      grainLayer("a", "fractalNoise", "0.012", 5, 3, "0.5 0.54 0.58", "0.5 0 0 0 -0.15", size) +
+        grainLayer("b", "fractalNoise", "0.004 0.03", 3, 9, "0.08 0.09 0.1", "1.2 0 0 0 -0.45", size) +
+        grainLayer("c", "fractalNoise", "1.1", 1, 4, "0.75 0.78 0.8", "0 0 0 0.1 0", size)
+    );
+  if (name === "felt")
+    return tile(
+      "#1d4634",
+      grainLayer("a", "fractalNoise", "0.02", 3, 6, "0.06 0.2 0.13", "0.8 0 0 0 -0.25", size) +
+        grainLayer("b", "fractalNoise", "1.2", 2, 1, "0.35 0.6 0.45", "0 0 0 0.16 0", size)
+    );
+  if (name === "marble")
+    return tile(
+      "#e8e3db",
+      grainLayer("a", "turbulence", "0.006 0.009", 5, 17, "0.45 0.42 0.4", "-6 0 0 0 1.05", size) +
+        grainLayer("b", "fractalNoise", "0.01", 4, 8, "0.72 0.66 0.58", "0.6 0 0 0 -0.2", size) +
+        grainLayer("c", "turbulence", "0.02 0.03", 4, 23, "0.55 0.5 0.46", "-8 0 0 0 0.9", size)
+    );
+  // Walnut: dark, with long figured grain.
+  return tile(
+    "#3a2416",
+    grainLayer("a", "fractalNoise", "0.003 0.07", 4, 7, "0.12 0.06 0.03", "1.8 0 0 0 -0.6", size) +
+      grainLayer("b", "fractalNoise", "0.01 0.3", 3, 3, "0.62 0.4 0.22", "0 1.3 0 0 -0.62", size) +
+      grainLayer("c", "fractalNoise", "0.9", 2, 2, "0.1 0.05 0.02", "0 0 0 0.14 0", size)
+  );
+}

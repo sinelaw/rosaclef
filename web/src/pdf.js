@@ -401,6 +401,23 @@ function faceAttrs(face, size) {
  */
 /** function pageSvg(lay: PdfLayout, p: Int, info: PdfInfo, look: PageLook, scale: Number) => String */
 export function pageSvg(lay, p, info, look, scale) {
+  return pagePart(lay, p, info, look, scale, [0, 0, lay.w, lay.h], true);
+}
+
+/**
+ * Part of page `p` as SVG: the points of `box` ([x, y, w, h]) drawn at `scale`
+ * pixels a point — the whole page (pageSvg), or a tile of it, sharp enough to
+ * look at closely (the film's close-ups). `textured`: the paper's tooth,
+ * formation, grain and toned edges; else plain paper (the film lays its
+ * texture over the bitmap as it draws, web/lib/filmgl.js).
+ */
+/** function pagePart(lay: PdfLayout, p: Int, info: PdfInfo, look: PageLook, scale: Number, box: Number[], textured: Boolean) => String */
+export function pagePart(lay, p, info, look, scale, box, textured) {
+  /** The color of a mark. */
+  /** function fillOf(c: String) => String */
+  function fillOf(c) {
+    return css(c);
+  }
   const W = lay.w;
   const H = lay.h;
   const sp = lay.sp;
@@ -417,23 +434,27 @@ export function pageSvg(lay, p, info, look, scale) {
   /** const body: String[] */
   const body = [];
   for (const t of pageTexts(lay, p, info)) {
-    body.push(`<text x="${n(t.x)}" y="${n(t.y)}" text-anchor="${t.anchor}" fill="${css(t.color)}" ${faceAttrs(t.face, t.size)}>${esc(t.text)}</text>`);
+    body.push(`<text x="${n(t.x)}" y="${n(t.y)}" text-anchor="${t.anchor}" fill="${fillOf(t.color)}" ${faceAttrs(t.face, t.size)}>${esc(t.text)}</text>`);
   }
   if (p === 0 && info.bpm > 0) {
-    body.push(`<g transform="translate(${n(lay.left)} ${n(lay.top + 22 * MM)}) scale(${MET})" fill="${css(INK)}">${use(G.metNoteQuarterUp.c, "0", "0")}</g>`);
+    body.push(
+      `<g transform="translate(${n(lay.left)} ${n(lay.top + 22 * MM)}) scale(${MET})" fill="${fillOf(INK)}">${use(G.metNoteQuarterUp.c, "0", "0")}</g>`
+    );
   }
   for (const pl of lay.pages[p]) {
     const s = lay.page.systems[pl.sys];
+    // Systems outside the box are left out (and their filters not run).
+    if (pl.top > box[1] + box[3] || pl.top + s.height * sp < box[1]) continue;
     // System coordinates are staff spaces, y down, like the page's.
     body.push(`<g transform="translate(${n(lay.left)} ${n(pl.top)}) scale(${n(sp)})">`);
     for (const b of s.bands)
       body.push(`<rect x="${n(b.x)}" y="${n(b.y)}" width="${n(b.w)}" height="${n(b.h)}" rx="0.8" fill="${css(rgb(b.color, 1))}" fill-opacity="0.16"/>`);
     // Staff lines are hairlines: drawn plainly, as on screen.
-    for (const ink of s.inks) if (ink.color === "staff" && ink.d !== "") body.push(`<path d="${ink.d}" fill="${css(STAFF)}"/>`);
+    for (const ink of s.inks) if (ink.color === "staff" && ink.d !== "") body.push(`<path d="${ink.d}" fill="${fillOf(STAFF)}"/>`);
     body.push(`<g filter="url(#ink)">`);
     for (const ink of s.inks) {
       if (ink.color === GLOSS || ink.color === SHEEN || ink.color === "staff") continue;
-      const fill = css(inkRgb(ink.color));
+      const fill = fillOf(inkRgb(ink.color));
       if (ink.d !== "") body.push(`<path d="${ink.d}" fill="${fill}"/>`);
       if (ink.text === "") continue;
       const xs = ink.xs.split(" ");
@@ -444,11 +465,11 @@ export function pageSvg(lay, p, info, look, scale) {
       body.push("</g>");
     }
     for (const br of s.braces)
-      body.push(`<g transform="translate(${n(br.x)} ${n(br.y)}) scale(${n(br.s)})" fill="${css(INK)}">${use(G.brace.c, "0", "0")}</g>`);
+      body.push(`<g transform="translate(${n(br.x)} ${n(br.y)}) scale(${n(br.s)})" fill="${fillOf(INK)}">${use(G.brace.c, "0", "0")}</g>`);
     for (const l of s.labels) {
       const color = l.cls === "mnum" ? SOFT : INK;
       body.push(
-        `<text x="${n(l.x)}" y="${n(l.y)}" text-anchor="${l.anchor}" fill="${css(color)}" ${faceAttrs(labelFace(l.cls), labelSize(l.cls))}>${esc(l.text)}</text>`
+        `<text x="${n(l.x)}" y="${n(l.y)}" text-anchor="${l.anchor}" fill="${fillOf(color)}" ${faceAttrs(labelFace(l.cls), labelSize(l.cls))}>${esc(l.text)}</text>`
       );
     }
     for (const b of s.bands) {
@@ -485,16 +506,19 @@ export function pageSvg(lay, p, info, look, scale) {
     tile("grain", PAPER.grain),
   ];
   for (const i of used) defs.push(`<path id="G${i}" d="${GLYPHS[i].d}"/>`);
-  const paper = [
-    `<rect width="${n(W)}" height="${n(H)}" fill="${PAPER.color}"/>`,
-    `<rect width="${n(W)}" height="${n(H)}" fill="url(#tooth)"/>`,
-    `<rect width="${n(W)}" height="${n(H)}" fill="url(#mottle)"/>`,
-    `<rect width="${n(W)}" height="${n(H)}" fill="url(#grain)"/>`,
-    // Edges warmed a little, as paper tones with age.
-    `<rect width="${n(W)}" height="${n(H)}" fill="none" stroke="rgb(150,106,38)" stroke-opacity="0.22" stroke-width="${n(6 * sp)}" filter="url(#edge)"/>`,
-  ];
+  /** const paper: String[] */
+  const paper = [`<rect width="${n(W)}" height="${n(H)}" fill="${PAPER.color}"/>`];
+  if (textured) for (const tex of ["tooth", "mottle", "grain"]) paper.push(`<rect width="${n(W)}" height="${n(H)}" fill="url(#${tex})"/>`);
+  // Edges warmed a little, as paper tones with age. The toning reaches about a
+  // dozen staff spaces in: a tile inside that leaves it out (its blur, wide at
+  // a close-up's scale, is most of what drawing the tile costs).
+  const band = 14 * sp;
+  if (textured && (box[0] < band || box[1] < band || box[0] + box[2] > W - band || box[1] + box[3] > H - band))
+    paper.push(
+      `<rect width="${n(W)}" height="${n(H)}" fill="none" stroke="rgb(150,106,38)" stroke-opacity="0.22" stroke-width="${n(6 * sp)}" filter="url(#edge)"/>`
+    );
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(W * scale)}" height="${Math.round(H * scale)}" viewBox="0 0 ${n(W)} ${n(H)}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(box[2] * scale)}" height="${Math.round(box[3] * scale)}" viewBox="${n(box[0])} ${n(box[1])} ${n(box[2])} ${n(box[3])}">` +
     `<defs>${defs.join("")}</defs>${paper.join("")}${body.join("")}</svg>`
   );
 }

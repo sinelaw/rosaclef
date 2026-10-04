@@ -149,6 +149,49 @@
   page as SVG on the paper of `ink.js` and through its filter;
   `downloadImagePdf` turns each into a JPEG and writes a page per image.
 
+### The film
+
+- `project.animation` (`Animation` in `crates/core/src/model.rs`) directs a
+  film of the score: `mode` (auto or manual), the desk's `surface`, `energy`,
+  `effects` and `shots` (song beats; channels or a role; a frame size; tilt,
+  turn, offset and their values at the end; the transition into the shot).
+  Validation names every mistake by its path; nothing in it plays.
+- `web/src/film.js` is pure data: the score engraved for printed pages
+  (`pdfLayout`) laid on a desk (`layDesk`); each staff's role (`findRoles`:
+  drums and low single lines keep the rhythm, chords and held notes are the
+  background, the busiest high line is the lead); the director (`autoScenes`:
+  phrases cut where a part comes in or is left alone, each framed on what
+  carries it, an opening over the desk and a close on the page); the shots
+  painted over it in manual mode (`plan`); and the camera as a function of the
+  song beat (`cameraAt`): the framed region follows the playhead along its
+  system, glides to the next system in its last bar, drifts to the shot's `to`
+  values, and moves in from the previous scene (glide, swoop, whip, cut).
+  `performance` unrolls the repeats as `form.rs` does, for the video's time.
+- `web/src/ui/film.js` prepares frames (`GlFrame`, plain data) and edits the
+  shots. Pages are bitmaps: `pdf.js` draws a page (`pagePart`, on plain
+  paper), the platform layer rasterizes them, one at a time, the ones in view
+  first; where the camera comes closer, tiles of the page are laid over it
+  (1024 pixels square, 2.5 to 80 pixels a point), each at the sharpness its
+  own part of the picture calls for (through the renderer's camera: leaning
+  back, the near part is closer than the far), the coarser first. They are
+  kept while the music stays the same (editing shots re-plans the scenes only).
+- `web/lib/filmgl.js` (WebGL 2, behind the platform boundary) draws a frame,
+  kept light so it is fast with or without a GPU: the desk, soft page
+  shadows, the pages — each bitmap under the paper's texture (its tooth,
+  formation and grain, tiled as on the paper view, and its toned edges, laid
+  over in the shader, so tiles are drawn on plain paper and cost little) and
+  lit by the lamp, the notes playing lit up (their noteheads' ink glowing
+  warm amber, a soft glow on the paper around: the glow effect, on by
+  default) — then a last pass: vignette, warmth and grain. The frame says
+  what the screen leaves out (the panel's *On screen*: Performance drops the
+  effects, the paper's texture, the last pass and half the pixels, and draws
+  close-ups half as sharp; exports and stills draw everything). `renderStill` draws
+  one frame offscreen (the camera button: a PNG); `encodeFilm` renders frame
+  after frame offscreen and encodes them with WebCodecs (H.264/AAC, or
+  VP9/Opus) into an MP4 (`web/vendor/mp4-muxer`), with the mixdown from
+  `/api/render`. (Raised, glossy ink, a three.js renderer and a path tracer
+  were tried on the branch `claude/film-heavy-rendering`.)
+
 ### The UI library (`web/src/ui/tree.js`)
 
 A small retained, reconciling tree in the spirit of

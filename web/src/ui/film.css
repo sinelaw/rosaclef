@@ -1,0 +1,363 @@
+/* The Film view (film.js): the score's pages on a desk, filmed by a camera in 3D. */
+
+.film {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: #0b0907;
+}
+.film-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.film.cinema {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+/* ---------------------------------------------------------------- ribbon */
+
+.film-title {
+  margin: 0 4px 0 2px;
+  font: italic 600 17px/1 var(--serif);
+  color: var(--champagne);
+  letter-spacing: 0.02em;
+}
+.film-modes {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+  flex: none;
+}
+.film-mode {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 11px/1 var(--sans);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.film-mode:hover {
+  color: var(--gold-hi);
+}
+.film-mode.on {
+  background: var(--metal-soft);
+  color: #1b1408;
+  box-shadow: var(--glow);
+}
+
+/* ---------------------------------------------------------------- the picture */
+
+.film-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #0b0907;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.film-stage:active {
+  cursor: grabbing;
+}
+/* The picture, drawn by the WebGL renderer (web/lib/filmgl.js). */
+.film-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.film-hud {
+  position: absolute;
+  left: 18px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+  color: rgba(255, 244, 222, 0.92);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.75);
+}
+.film-why {
+  font: italic 600 20px/1.05 var(--serif);
+  letter-spacing: 0.01em;
+}
+.film-what {
+  font: 600 9.5px/1 var(--sans);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.film-loading,
+.film-empty {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(10, 8, 6, 0.7);
+  border: 1px solid var(--line-2);
+  color: var(--champagne);
+  font: 500 12px/1.2 var(--sans);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.film-loading {
+  top: 12px;
+}
+.film-empty {
+  top: 45%;
+}
+.btn.film-exit {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.film-stage:hover .btn.film-exit {
+  opacity: 0.85;
+}
+
+/* ---------------------------------------------------------------- timeline */
+
+.film-timeline {
+  position: relative;
+  flex: none;
+  height: 46px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #17141b, #0f0d12);
+  border-top: 1px solid var(--line-2);
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.film-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding: 2px 0 0 3px;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  font: 500 8.5px/1 var(--mono);
+  color: var(--dim);
+  pointer-events: none;
+}
+.film-scene {
+  position: absolute;
+  top: 14px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted);
+}
+.film-scene + .film-scene {
+  margin-left: 1px;
+}
+.film-scene.now {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+}
+.film-scene.shot {
+  border-color: rgba(212, 175, 55, 0.55);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.3), rgba(212, 175, 55, 0.14));
+  color: var(--gold-hi);
+  cursor: grab;
+}
+.film-scene.shot.now {
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.45), rgba(212, 175, 55, 0.22));
+}
+.film-scene.sel {
+  box-shadow:
+    inset 0 0 0 1.5px var(--gold-hi),
+    0 0 12px rgba(212, 175, 55, 0.35);
+}
+.film-scene-label {
+  font: 500 10px/1 var(--sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.film-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+.film-edge.start {
+  left: 0;
+}
+.film-edge.end {
+  right: 0;
+}
+.film-edge:hover {
+  background: rgba(245, 226, 166, 0.35);
+}
+.film-ph {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--gold-hi);
+  box-shadow: 0 0 8px rgba(245, 226, 166, 0.8);
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- panel */
+
+.score-side.film-side {
+  width: 262px;
+  border-right: none;
+  border-left: 1px solid var(--line);
+}
+.film-side-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.film-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+}
+.film-card-t {
+  font: italic 600 17px/1.1 var(--serif);
+  color: var(--champagne);
+}
+.film-card-s {
+  font: 400 11.5px/1.45 var(--sans);
+  color: var(--muted);
+}
+.film-tip {
+  padding: 0 4px;
+}
+.film-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.film-knob {
+  display: grid;
+  grid-template-columns: 62px 1fr 40px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  font: 500 11px/1 var(--sans);
+  color: var(--muted);
+}
+.film-presets {
+  display: flex;
+  margin: 0 2px 6px;
+}
+.film-presets .film-mode {
+  flex: 1 1 auto;
+  padding: 4px 2px;
+  letter-spacing: 0.02em;
+}
+.film-drawing {
+  margin-bottom: 4px;
+}
+.film-fx.off {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.film-knob .score-slider {
+  width: 100%;
+}
+.film-knob-v {
+  text-align: right;
+  font: 500 10.5px/1 var(--mono);
+  color: var(--champagne);
+}
+.film-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 4px;
+}
+.film-row .select {
+  max-width: 120px;
+}
+.film-when {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 8px 4px 2px;
+}
+.film-when-t {
+  font: 500 11px/1 var(--mono);
+  color: var(--champagne);
+  margin: 0 2px 0 6px;
+}
+.film-when-t:first-child {
+  margin-left: 0;
+}
+.btn.film-nudge {
+  min-width: 22px;
+  padding: 2px 6px;
+}
+.text-input.film-label {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+}
+.film-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 2px;
+}
+.film-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: 500 11px/1 var(--sans);
+  cursor: pointer;
+}
+.film-chip:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+}
+.film-chip.on {
+  color: var(--gold-hi);
+  border-color: var(--line-3);
+  background: rgba(212, 175, 55, 0.12);
+}
+
+.compact .film-side {
+  display: none;
+}
+
+.score.filming > .film {
+  flex: 1;
+  min-width: 0;
+}

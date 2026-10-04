@@ -56,7 +56,31 @@
 /** type Ending = { start: Number, end: Number, passes: Int[] } */
 /** A repeated passage of the arrangement: song beats, played `times` times in all. */
 /** type Repeat = { start: Number, end: Number, times: Int, endings: Ending[] } */
-/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[] } */
+/** A visual effect of the film (vignette, spotlight, glow) at an amount of 0..1. */
+/** type FilmEffect = { type: String, amount: Number } */
+/** Where the camera drifts to by the end of a shot: NaN (an empty offset) = as at its start. */
+/** type CameraMove = { zoom: Number, tilt: Number, turn: Number, offset: Number[] } */
+/** A shot of the film (project.animation.shots), in song beats: unset numbers are NaN and unset names "", so their defaults apply. */
+/** type Shot = { start: Number, end: Number, label: String, focus: String[], role: String, frame: String, zoom: Number, tilt: Number, turn: Number, offset: Number[], at: Number, to: CameraMove, transition: String, glide: Number, ease: String, effects: FilmEffect[] } */
+/** The film of the song (project.animation): a camera over the score's pages; `on` false = none written. */
+/** type Animation = { on: Boolean, mode: String, view: String, surface: String, energy: Number, effects: FilmEffect[], shots: Shot[] } */
+/** A sheet of the film's 3D scene: a page (or a sharper band over one) as four desk points (top left, top right, bottom right, bottom left), its bitmap (an object URL; "" while missing), the part of its page it shows ([x, y, w, h], points), the bitmap's pixels a point and the page's turn (degrees). */
+/** type GlSheet = { quad: Number[], color: String, box: Number[], scale: Number, rot: Number, page: Boolean } */
+/**
+ * A frame of the film for the renderer (web/lib/filmgl.js): its size in pixels;
+ * the camera [x, y, span, tilt, turn]; the desk's bounds [x0, y0, x1, y1],
+ * color, texture and tile size (points); the paper's color, its texture's tiles
+ * (tooth, formation, grain: image URLs) and their sizes (points), and the
+ * page [width, height, staff space] (points); the sheets; the notes playing
+ * [x, y, notehead half-width, brightness]… (up to 48); the spotlight [x, y, rx, ry, amount]; the lamp
+ * [x, y, height]; effects [vignette, glow]; a seed for the grain; whether to
+ * lay the finish over it (warmth, soft highlights, grain); and the most pixels a
+ * CSS pixel on screen. No paper tiles: plain paper. Desk units are points.
+ */
+/** type GlFrame = { width: Number, height: Number, cam: Number[], desk: Number[], deskColor: String, deskTex: String, deskTile: Number, paper: String, paperTex: String[], paperSize: Number[], pageSize: Number[], sheets: GlSheet[], sparks: Number[], spot: Number[], light: Number[], fx: Number[], seed: Number, finish: Boolean, ratio: Number } */
+/** An encoded film: its object URL and its codecs ("AVC + AAC"). */
+/** type Encoded = { url: String, codecs: String } */
+/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[], animation: Animation } */
 
 /** type Issue = { severity: String, path: String, message: String } */
 

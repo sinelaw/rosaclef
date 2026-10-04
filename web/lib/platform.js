@@ -725,6 +725,67 @@ export async function downloadImagePdf(name, info, svgs, w, h, scale) {
   return downloadPdf(name, objs);
 }
 
+let softwareGl = null;
+
+/** Whether the browser's graphics are emulated on the CPU (SwiftShader, llvmpipe): no GPU to draw on. */
+function softwareGraphics() {
+  if (softwareGl === null) {
+    softwareGl = false;
+    try {
+      const gl = document.createElement("canvas").getContext("webgl");
+      const info = gl && gl.getExtension("WEBGL_debug_renderer_info");
+      if (info) softwareGl = /swiftshader|llvmpipe|softpipe|software/i.test(String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)));
+      gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch (e) {}
+  }
+  return softwareGl;
+}
+
+/** Whether the film draws smoothly here as it is: Chrome (or another Chromium browser) on a GPU. */
+export function fastGraphics() {
+  if (typeof navigator === "undefined") return false;
+  const brands = navigator.userAgentData && navigator.userAgentData.brands;
+  const chromium = Array.isArray(brands)
+    ? brands.some((b) => b.brand === "Chromium")
+    : /Chrome\//.test(navigator.userAgent) && !/Firefox\//.test(navigator.userAgent);
+  return chromium && !softwareGraphics();
+}
+
+/** Draw an SVG document into a bitmap of `w` by `h` pixels: an object URL of an image of `type` (image/jpeg, image/png). */
+export async function rasterSvg(svg, w, h, type) {
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    // Without a GPU, the canvas's own software drawing is several times faster than an emulated GPU's.
+    canvas.getContext("2d", softwareGraphics() ? { willReadFrequently: true } : undefined).drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((done) => canvas.toBlob(done, type || "image/jpeg", 0.92));
+    if (!blob) throw new Error("the image could not be drawn");
+    return URL.createObjectURL(blob);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export { filmDraw, filmForget, encodeFilm, renderStill } from "./filmgl.js";
+
+export function dropUrl(url) {
+  URL.revokeObjectURL(url);
+}
+
+export function toggleFullscreen(selector) {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+    return;
+  }
+  const el = document.querySelector(selector);
+  if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+}
+
 export function textWidth(face, text) {
   if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
   const style = face.includes("Italic") ? "italic " : "";
