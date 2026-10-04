@@ -85,13 +85,13 @@ void main() {
 }`;
 
 // The page: paper (its color bitmap, lit by the lamp) and ink raised off it.
-// The ink is shaded physically: its height map gives the surface's normal
-// (Sobel); the lamp's highlight is a GGX microfacet lobe with Schlick's
-// Fresnel; and the ink mirrors the room — a large window behind and to the
-// left, a strip light on the right, a warm ceiling, a dark floor — along its
-// reflection vector, blurred by its roughness. The room is fixed in the
-// world, so the reflections slide over the ink as the camera moves, as they
-// would on a wet page. Wet ink is smooth (a sharp mirror), dry ink satin.
+// The ink's height map gives the surface's normal (Sobel); the ink mirrors,
+// along its reflection vector, a simple room: one broad window (a smooth lobe
+// by angle, widened by the ink's roughness), a dim ceiling, and below the
+// horizon the lit paper around the drop — weighed by Fresnel (the split-sum
+// BRDF). The window is fixed in the world, so its glints slide over the ink
+// as the camera moves; it also casts each drop's soft shadow on the paper.
+// Wet ink is smooth (a sharp glint), dry ink satin.
 const PAGE_FS = `#version 300 es
 precision highp float;
 in vec2 vWorld;
@@ -108,42 +108,41 @@ uniform vec3 uEye;
 uniform float uRelief;
 uniform float uGloss;
 uniform float uShine;
-uniform sampler2D uEnv;
-uniform float uHasEnv;
-uniform float uEnvRot;
-uniform float uEnvGain;
 ${LIGHT}
 out vec4 o;
 const float PI = 3.14159265;
 const float F0 = 0.045;
+// The light, as simple rules: a wide window behind the page — a band of light
+// 40° up, brightest straight behind, gone by the sides — where the beads'
+// rounded tops, seen from a leaning camera turned either way, mirror it;
+// fixed in the world (its glints slide over the ink as the camera moves);
+// and a warm ceiling. The lamp lights the paper.
+const vec3 WINDOW = vec3(0.0, -0.77, 0.64);
+// The window's height, as seen (radians): its glint on wet ink is that tall.
+const float WINDOW_SIZE = 0.3;
+// How bright the window is, mirrored, against the paper (1).
+const vec3 WINDOW_LIGHT = vec3(14.0, 13.7, 13.0);
+// The paper's light (the lamp's, brightened a touch by the room), how much of it
+// comes from the window (what its shadow takes away), and how fast the
+// window's shadow softens with distance (the window's breadth).
+const float PAPER_LIGHT = 1.06;
+// How steeply the window's light comes down where it casts the drops' shadows
+// (tan of 25°, its band's lower edge).
+const float SHADOW_RISE = 0.47;
+const float SUN_SHARE = 0.45;
+const float SUN_SPREAD = 0.45;
 float ink(vec2 uv) { return 1.0 - texture(uInkTex, uv).r; }
-// The photographed room (an equirectangular HDR image), by direction (z up),
-// blurrier the rougher the ink; the made-up one until it has loaded.
-vec3 roomOf(vec3 r, float rough);
-vec3 env(vec3 r, float rough) {
-  if (uHasEnv < 0.5) return roomOf(r, rough);
-  // Turned about the vertical: its windows to the left of the page.
-  float cr = cos(uEnvRot), sr = sin(uEnvRot);
-  vec3 d = vec3(cr * r.x - sr * r.y, sr * r.x + cr * r.y, r.z);
-  float u = atan(d.y, d.x) / (2.0 * PI) + 0.5;
-  float v = 0.5 - asin(clamp(d.z, -1.0, 1.0)) / PI;
-  return textureLod(uEnv, vec2(u, v), rough * 9.0).rgb * uEnvGain;
-}
-// The room the ink reflects, by direction (z up), its edges softened by roughness.
-vec3 roomOf(vec3 r, float rough) {
-  float w = 0.03 + rough * 0.6;
-  // A dim room: a dark floor, a faintly warm ceiling.
-  vec3 c = mix(vec3(0.006, 0.005, 0.004), vec3(0.16, 0.15, 0.13), smoothstep(-0.1, 0.9, r.z));
-  // The far wall is a broad window (beyond the top of the page, low in the
-  // sky): what a drop of ink mirrors across its top, as a soft band of light.
-  vec2 h = normalize(r.xy + vec2(1e-5));
-  float facing = smoothstep(0.2 - w, 0.45 + w, -h.y);
-  float band = smoothstep(0.02 - w * 0.3, 0.1 + w * 0.3, r.z) * smoothstep(0.62 + w, 0.48 - w * 0.5, r.z);
-  c += vec3(14.0, 13.6, 12.8) * facing * band;
-  // A smaller, cooler window on the right.
-  float side = smoothstep(0.75 - w, 0.85 + w * 0.3, h.x) * smoothstep(0.1 - w * 0.3, 0.2 + w * 0.3, r.z) * smoothstep(0.55 + w, 0.4 - w * 0.5, r.z);
-  c += vec3(4.0, 4.3, 4.9) * side;
-  return c;
+// What the ink mirrors in direction r (z up): the window, a smooth lobe that
+// widens with the ink's roughness (its glint weighed by glint), over a
+// ceiling growing warmer upward.
+vec3 sky(vec3 r, float rough, float glint) {
+  vec3 c = mix(vec3(0.12, 0.11, 0.1), vec3(0.6, 0.56, 0.5), smoothstep(-0.05, 0.8, r.z));
+  vec3 win = normalize(WINDOW);
+  float w = WINDOW_SIZE + rough;
+  float rise = asin(clamp(r.z, -1.0, 1.0)) - asin(win.z);
+  float across = smoothstep(0.0, 0.75, dot(normalize(r.xy + 1e-5), normalize(win.xy)));
+  float band = exp(-(rise * rise) / (w * w)) * across;
+  return c + WINDOW_LIGHT * band * glint;
 }
 // How much of the room a rough dielectric mirrors, seen at nv (Fresnel, with
 // the masking and shadowing of its microfacets): Karis's fit of the split-sum
@@ -154,15 +153,6 @@ vec2 envBrdf(float nv, float rough) {
   vec4 r = rough * c0 + c1;
   float a004 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
   return vec2(-1.04, 1.04) * a004 + r.zw;
-}
-float ggx(float nh, float a) {
-  float a2 = a * a;
-  float d = nh * nh * (a2 - 1.0) + 1.0;
-  return a2 / (PI * d * d);
-}
-float smith(float nv, float nl, float a) {
-  float k = a * a * 0.5;
-  return (nv / (nv * (1.0 - k) + k)) * (nl / (nl * (1.0 - k) + k));
 }
 void main() {
   vec2 uv = vUv;
@@ -219,10 +209,15 @@ void main() {
     float paperish = smoothstep(0.55, 0.8, dot(base, vec3(0.299, 0.587, 0.114))) * smoothstep(0.55, 0.8, dot(smooth_, vec3(0.299, 0.587, 0.114)));
     base = mix(base, smooth_, paperish);
   }
-  float lamp = paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6);
+  // Under a room's soft light the paper's tooth reads faint (its blotches half
+  // as strong), and the page is a touch brighter than the lamp alone makes it.
+  float paperly = smoothstep(0.55, 0.8, dot(base, vec3(0.299, 0.587, 0.114)));
+  base = mix(base, uPaper, 0.45 * paperly * uHasColor);
+  float lamp = paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6) * PAPER_LIGHT;
   vec3 c = base * lamp;
   if (uHasInk > 0.5 && relief > 0.0) {
-    vec2 t = uTexel;
+    // The slope is read a pixel and a half apart: smooth, not choppy, in the light.
+    vec2 t = uTexel * 1.5;
     float h0 = ink(uv);
     vec3 p = vec3(vWorld, h0 * lift);
     vec3 l = normalize(uLight - p);
@@ -230,17 +225,29 @@ void main() {
     float lum = dot(base, vec3(0.299, 0.587, 0.114));
     float onInk = smoothstep(0.62, 0.3, lum) * smoothstep(0.002, 0.02, h0);
 
-    // On the paper: the raised ink casts a short soft shadow, away from the light.
-    vec2 toward = normalize(l.xy + 1e-5);
+    // The window's shadow: walk from here toward the window over the heights.
+    // A drop standing above the line from here to the window blocks it; the
+    // window is large, so the farther the drop, the softer its shadow.
+    vec3 sun = normalize(WINDOW);
+    vec2 toward = normalize(sun.xy);
     vec2 tl = vec2(cr * toward.x + sr * toward.y, -sr * toward.x + cr * toward.y);
-    vec2 st = tl * uTexel * uScale;
-    float blur = log2(max(1.0, uScale * 0.12));
-    float occl = 0.0;
-    occl += textureLod(uInkTex, uv + st * 0.12, blur).r;
-    occl += textureLod(uInkTex, uv + st * 0.24, blur + 0.5).r;
-    occl += textureLod(uInkTex, uv + st * 0.38, blur + 1.0).r;
-    occl = clamp((1.0 - occl / 3.0) - h0, 0.0, 1.0) * (1.0 - onInk);
-    c *= 1.0 - 0.42 * occl * relief;
+    vec2 stPt = tl * uTexel * uScale;
+    // From the window's lower edge (a band of light reaches lower than its middle): long, soft shadows.
+    float rise = SHADOW_RISE;
+    float blocked = 0.0;
+    // No ink along the way (its mipmap white there): no shadow to look for.
+    float ahead = textureLod(uInkTex, uv + stPt * 1.2, log2(max(1.0, 2.4 * uScale)) + 1.0).r;
+    for (int i = 1; i <= 8 && ahead < 0.998; i++) {
+      float dPt = float(i) * 0.3;
+      float hq = ink(uv + stPt * dPt);
+      float over = (hq - h0) * lift - dPt * rise;
+      blocked = max(blocked, over / (0.06 + dPt * SUN_SPREAD));
+    }
+    float shade = clamp(blocked, 0.0, 1.0) * (1.0 - onInk);
+    // Where the paper meets the foot of a drop, less of the room reaches it.
+    float around = 1.0 - textureLod(uInkTex, uv, log2(max(1.0, uScale * 0.35))).r;
+    float nook = clamp((around - h0) * lift / 0.25, 0.0, 1.0) * (1.0 - onInk);
+    c *= (1.0 - SUN_SHARE * shade) * (1.0 - 0.18 * nook);
 
     // The ink itself (none here: what follows would be weighed by nothing).
     if (onInk > 0.0) {
@@ -250,7 +257,7 @@ void main() {
       float a02 = ink(uv + vec2(-t.x, t.y)), a12 = ink(uv + vec2(0.0, t.y)), a22 = ink(uv + vec2(t.x, t.y));
       float gx = (a20 + 2.0 * a21 + a22) - (a00 + 2.0 * a01 + a02);
       float gy = (a02 + 2.0 * a12 + a22) - (a00 + 2.0 * a10 + a20);
-      vec2 g = vec2(gx, gy) / 8.0 * uScale * lift;
+      vec2 g = vec2(gx, gy) / 8.0 / 1.5 * uScale * lift;
       g = vec2(cr * g.x - sr * g.y, sr * g.x + cr * g.y);
       vec3 n = normalize(vec3(-g, 1.0));
       vec3 v = normalize(uEye - p);
@@ -259,22 +266,19 @@ void main() {
       float nl = max(dot(n, l), 0.0);
       float nv = max(dot(n, v), 1e-3);
       c = mix(c, base * (0.5 + 0.5 * nl) * lamp, onInk);
-      // …and its gloss: a dielectric's reflection of the room (blurred by
-      // roughness, weighed by the split-sum BRDF), and the lamp's GGX highlight
-      // when there is no room yet. Wet ink is smooth, dry ink satin.
+      // …and its gloss: a dielectric's reflection of the simple room (sky()),
+      // weighed by the split-sum BRDF. Wet ink is smooth, dry ink satin.
       float rough = mix(0.45, mix(0.12, 0.04, uShine), clamp(uGloss, 0.0, 1.0));
-      float a = rough * rough;
       vec3 r = reflect(-v, n);
       vec2 ab = envBrdf(nv, rough);
-      vec3 gloss = env(r, rough) * (F0 * ab.x + ab.y);
-      if (uHasEnv < 0.5) {
-        vec3 hv = normalize(l + v);
-        float nh = max(dot(n, hv), 0.0);
-        float vh = max(dot(v, hv), 0.0);
-        float fl = F0 + (1.0 - F0) * pow(1.0 - vh, 5.0);
-        gloss += vec3(1.0, 0.95, 0.86) * ggx(nh, a) * smith(nv, nl, a) * fl / (4.0 * nv * max(nl, 1e-3)) * nl * 4.0 * lamp;
-      }
-      c += gloss * onInk;
+      // Reflected down, the ray meets the page around the drop: it mirrors the
+      // lit paper there, not the room's floor (the back of a bead seen low
+      // down is pale with it).
+      // The window's glint where the ink is large on the screen; where a stroke
+      // is a few pixels wide, its glint would cover it (silver): it fades.
+      float glint = smoothstep(2.5, 7.0, onScreen);
+      vec3 room = mix(sky(r, rough, glint), uPaper * paperLamp(vWorld) * PAPER_LIGHT, smoothstep(0.04, -0.04, r.z));
+      c += room * (F0 * ab.x + ab.y) * onInk;
     }
   }
   o = vec4(c, 1.0);
@@ -444,13 +448,6 @@ function lookAt(eye, at, up) {
 }
 
 const FOV = (32 * Math.PI) / 180;
-/**
- * The room's turn about the vertical (radians): its windows to the left of the
- * page, on the lamp's side. Glossy ink lit from the side glints where a bead
- * leans toward the light; lit from behind, every wet stroke seen low down
- * mirrors the window along its length (silver).
- */
-const ENV_ROT = 0.83;
 
 /**
  * The camera of a frame: in the desk's space (x right, y down, z *into* the
@@ -479,55 +476,7 @@ function camera(cam, aspect) {
   return { vp, inv: invert(vp), eyeGL: eye, d, eye: [eye[0], eye[1], -eye[2]] };
 }
 
-// ------------------------------------------------------------------ the room
-
-/** Decode a Radiance .hdr (RGBE, run-length encoded scanlines): its size and linear RGB floats. */
-function parseHdr(buf) {
-  const bytes = new Uint8Array(buf);
-  let pos = 0;
-  const line = () => {
-    let s = "";
-    while (pos < bytes.length && bytes[pos] !== 10) s += String.fromCharCode(bytes[pos++]);
-    pos++;
-    return s;
-  };
-  let l = line();
-  while (l !== "") l = line();
-  const dims = line().match(/-Y (\d+) \+X (\d+)/);
-  if (!dims) throw new Error("unsupported HDR image");
-  const h = Number(dims[1]);
-  const w = Number(dims[2]);
-  const out = new Float32Array(w * h * 3);
-  const scan = new Uint8Array(w * 4);
-  for (let y = 0; y < h; y++) {
-    if (bytes[pos] === 2 && bytes[pos + 1] === 2 && (bytes[pos + 2] & 0x80) === 0) {
-      pos += 4;
-      for (let c = 0; c < 4; c++) {
-        let x = 0;
-        while (x < w) {
-          let n = bytes[pos++];
-          if (n > 128) {
-            n -= 128;
-            const v = bytes[pos++];
-            for (let i = 0; i < n; i++) scan[x++ * 4 + c] = v;
-          } else for (let i = 0; i < n; i++) scan[x++ * 4 + c] = bytes[pos++];
-        }
-      }
-    } else {
-      for (let x = 0; x < w; x++) for (let c = 0; c < 4; c++) scan[x * 4 + c] = bytes[pos++];
-    }
-    for (let x = 0; x < w; x++) {
-      const e = scan[x * 4 + 3];
-      const f = e === 0 ? 0 : Math.pow(2, e - 136);
-      const o = (y * w + x) * 3;
-      out[o] = scan[x * 4] * f;
-      out[o + 1] = scan[x * 4 + 1] * f;
-      out[o + 2] = scan[x * 4 + 2] * f;
-    }
-  }
-  return { w, h, data: out };
-}
-
+/** A float as a half float's bits (for the heights' texture). */
 const halfBuf = new Float32Array(1);
 const halfInt = new Uint32Array(halfBuf.buffer);
 function toHalf(v) {
@@ -539,57 +488,6 @@ function toHalf(v) {
   if (e <= 0) return sign;
   if (e >= 31) return sign | 0x7bff;
   return sign | (e << 10) | (m >> 13);
-}
-
-let roomPromise = null;
-/** The room's image, decoded once, with its mipmaps (each half the last), for any renderer. */
-function roomImage() {
-  if (!roomPromise)
-    roomPromise = fetch(new URL("../vendor/hdri/artist_workshop_1k.hdr", import.meta.url))
-      .then((r) => r.arrayBuffer())
-      .then((buf) => {
-        let img = parseHdr(buf);
-        const levels = [img];
-        while (img.w > 1 || img.h > 1) {
-          const w = Math.max(1, img.w >> 1);
-          const h = Math.max(1, img.h >> 1);
-          const d = new Float32Array(w * h * 3);
-          for (let y = 0; y < h; y++)
-            for (let x = 0; x < w; x++)
-              for (let c = 0; c < 3; c++) {
-                const x0 = Math.min(img.w - 1, x * 2),
-                  x1 = Math.min(img.w - 1, x * 2 + 1);
-                const y0 = Math.min(img.h - 1, y * 2),
-                  y1 = Math.min(img.h - 1, y * 2 + 1);
-                d[(y * w + x) * 3 + c] =
-                  (img.data[(y0 * img.w + x0) * 3 + c] +
-                    img.data[(y0 * img.w + x1) * 3 + c] +
-                    img.data[(y1 * img.w + x0) * 3 + c] +
-                    img.data[(y1 * img.w + x1) * 3 + c]) /
-                  4;
-              }
-          img = { w, h, data: d };
-          levels.push(img);
-        }
-        // The room's light in the paper's units: a white page lit by the room
-        // alone shows as bright as the lamp shows the paper (1). Its window,
-        // mirrored in the ink, is then as much brighter than the paper as it
-        // would be in that room, not by a free gain.
-        const L = levels[Math.min(levels.length - 1, 3)];
-        let sum = 0;
-        for (let y = 0; y < L.h; y++) {
-          const el = (0.5 - (y + 0.5) / L.h) * Math.PI;
-          const up = Math.sin(el);
-          if (up <= 0) continue;
-          const dA = ((2 * Math.PI) / L.w) * (Math.PI / L.h) * Math.cos(el);
-          for (let x = 0; x < L.w; x++) {
-            const k = (y * L.w + x) * 3;
-            sum += (0.2126 * L.data[k] + 0.7152 * L.data[k + 1] + 0.0722 * L.data[k + 2]) * up * dA;
-          }
-        }
-        return { levels, gain: sum > 0 ? Math.PI / sum : 1 };
-      });
-  return roomPromise;
 }
 
 // ------------------------------------------------------------------ renderer
@@ -647,30 +545,6 @@ function renderer(canvas) {
   const aniso = gl.getExtension("EXT_texture_filter_anisotropic");
   // Textures by URL: loading, loaded (with their size) or failed.
   const textures = new Map();
-  // The room the ink reflects (none until it has loaded).
-  let envTex = null;
-  let envGain = 1;
-  roomImage()
-    .then(({ levels, gain }) => {
-      envGain = gain;
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
-      for (let i = 0; i < levels.length; i++) {
-        const L = levels[i];
-        const half = new Uint16Array(L.w * L.h * 3);
-        for (let k = 0; k < half.length; k++) half[k] = toHalf(L.data[k]);
-        gl.texImage2D(gl.TEXTURE_2D, i, gl.RGB16F, L.w, L.h, 0, gl.RGB, gl.HALF_FLOAT, half);
-      }
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      envTex = tex;
-      if (api.onLoad) api.onLoad();
-    })
-    .catch((e) => console.warn("film: no room to reflect", e));
   let target = null;
 
   /** The ink's heights (web/lib/inkdrops.js), at 16 bits: a half-float texture, its mipmaps made here. */
@@ -859,13 +733,6 @@ function renderer(canvas) {
     gl.uniform1f(pu.uShine, f.ink[2]);
     gl.uniform1i(pu.uColorTex, 0);
     gl.uniform1i(pu.uInkTex, 1);
-    gl.uniform1i(pu.uEnv, 2);
-    gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, envTex);
-    gl.uniform1f(pu.uHasEnv, envTex ? 1 : 0);
-    // The room turned so its windows are to the left of the page.
-    gl.uniform1f(pu.uEnvRot, ENV_ROT);
-    gl.uniform1f(pu.uEnvGain, envGain);
     for (const s of f.sheets) {
       const ct = texture(s.color, false);
       const it = texture(s.height, false);
