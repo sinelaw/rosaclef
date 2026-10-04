@@ -113,6 +113,9 @@ pub struct KeptNote {
 #[serde(deny_unknown_fields)]
 pub struct Written {
     pub slot: String,
+    /// Fingerprint of the pattern as written; a pattern that no longer
+    /// matches it was edited by hand. Empty: whatever the pattern holds is
+    /// not an edit (its edits were reset, or a grid edit replaced them).
     pub print: String,
 }
 
@@ -528,7 +531,7 @@ impl SongBar {
     }
 }
 
-fn groove_bars(g: &Groove) -> usize {
+pub(crate) fn groove_bars(g: &Groove) -> usize {
     g.a.iter()
         .chain(g.b.iter())
         .map(|(_, r)| steps(r).len() / g.steps as usize)
@@ -573,7 +576,9 @@ pub fn edited(p: &Project) -> Vec<String> {
     };
     part.written
         .iter()
-        .filter(|(id, w)| p.pattern(id).is_some_and(|pat| fingerprint(pat) != w.print))
+        .filter(|(id, w)| {
+            !w.print.is_empty() && p.pattern(id).is_some_and(|pat| fingerprint(pat) != w.print)
+        })
         .map(|(id, _)| id.clone())
         .collect()
 }
@@ -849,8 +854,11 @@ fn push_channel(p: &mut Project, name: &str, instrument: Device) -> String {
     id
 }
 
-/// Find or make the channels for the roles used, on `kit`.
-fn kit(p: &mut Project, kit: &str, roles: &[&'static str]) -> Kit {
+/// Find or make the channels for the roles used, on `kit`. A General MIDI
+/// kit plays on a channel with that kit, or on the kit channel the last write
+/// played (`ours`), switched over; never on another of the song's kits, whose
+/// own patterns would change sound.
+fn kit(p: &mut Project, kit: &str, roles: &[&'static str], ours: &[String]) -> Kit {
     let mut map = HashMap::new();
     if kit == EBONY {
         for &role in roles {
@@ -890,7 +898,11 @@ fn kit(p: &mut Project, kit: &str, roles: &[&'static str]) -> Kit {
             .channels
             .iter()
             .position(|c| is_kit(c) && c.instrument.option("program") == kit)
-            .or_else(|| p.channels.iter().position(is_kit));
+            .or_else(|| {
+                p.channels
+                    .iter()
+                    .position(|c| is_kit(c) && ours.contains(&c.id))
+            });
         let id = match found {
             Some(i) => {
                 p.channels[i]
@@ -1020,6 +1032,20 @@ pub struct Report {
 /// each edited pattern is kept note for note; an edited plain groove also
 /// becomes the song's version of that groove, so its crash, fill and
 /// turnaround bars follow. Returns the slots taken.
+/// Forget the producer's edits (`rosaclef drums --reset-edits`): the kept
+/// patterns and groove edits go, and what the last write made counts as the
+/// drummer's own, so the next write replaces it (instead of keeping it as an
+/// edit, or leaving it in the song beside the new patterns).
+pub fn reset_edits(p: &mut Project) {
+    if let Some(part) = p.drums.as_mut() {
+        part.kept.clear();
+        part.grooves.clear();
+        for w in part.written.values_mut() {
+            w.print.clear();
+        }
+    }
+}
+
 pub fn capture(p: &mut Project) -> Vec<String> {
     let Some(part) = p.drums.clone() else {
         return vec![];
@@ -1030,7 +1056,7 @@ pub fn capture(p: &mut Project) -> Vec<String> {
         let Some(pat) = p.pattern(id) else {
             continue;
         };
-        if fingerprint(pat) == w.print {
+        if w.print.is_empty() || fingerprint(pat) == w.print {
             continue;
         }
         let notes: Vec<KeptNote> = pat
@@ -1206,7 +1232,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
             }
         }
     }
-    let kit = kit(p, &kit_name, &roles);
+    let kit = kit(p, &kit_name, &roles, &old_channels);
 
     // The track: the one the drums were on, else one named "Drums", else
     // the first empty one, else a new one.
@@ -1381,6 +1407,16 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
 /// since the last write (replaced now), and what the write did.
 pub fn api_write(text: &str, guess: bool, write_it: bool) -> Result<serde_json::Value, String> {
     let mut p: Project = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    // A valid project in, a valid project out (and no request sizes the
+    // work beyond what validation allows).
+    let invalid = |p: &Project| {
+        crate::validate::validate(p)
+            .into_iter()
+            .find(|i| i.severity == crate::validate::Severity::Error)
+    };
+    if let Some(e) = invalid(&p) {
+        return Err(format!("the project is invalid: {e}"));
+    }
     if guess {
         let (start, sections) = guess_sections(&p);
         let part = p.drums.get_or_insert_with(|| DrumPart::new(GROOVES[0].id));
@@ -1389,6 +1425,9 @@ pub fn api_write(text: &str, guess: bool, write_it: bool) -> Result<serde_json::
     }
     let edited = edited(&p);
     let report = if write_it { Some(write(&mut p)?) } else { None };
+    if let Some(e) = invalid(&p) {
+        return Err(format!("the written project is invalid: {e}"));
+    }
     Ok(serde_json::json!({"project": p, "edited": edited, "report": report}))
 }
 
@@ -1397,6 +1436,9 @@ pub fn is_drum_channel(c: &Channel) -> bool {
     c.instrument.kind == "drum"
         || (c.instrument.kind == "soundfont" && crate::gm::is_kit(c.instrument.option("program")))
 }
+
+/// Latest bar a drum part may start on (counted from 1).
+pub const MAX_START: u32 = 9999;
 
 /// Shortest section a guess makes, in bars: shorter changes join the
 /// section before.
@@ -1421,6 +1463,13 @@ fn drop_unused(p: &mut Project, ids: &[String]) {
                     .automation
                     .iter()
                     .any(|l| l.target.starts_with(&format!("channel/{id}/")))
+                // The score's colored passages and the film's shots name it.
+                && !p.score.marks.iter().any(|m| m.channels.contains(id))
+                && !p
+                    .animation
+                    .iter()
+                    .flat_map(|a| a.shots.iter())
+                    .any(|s| s.focus.contains(id))
         })
         .cloned()
         .collect();
@@ -1466,6 +1515,8 @@ pub fn guess_sections(p: &Project) -> (u32, Vec<DrumSection>) {
     }
     let t = &p.transport;
     let (last_bar, _, _) = t.bar_at(end - 1e-6);
+    // (A part starts by bar MAX_START; a clip far beyond does not stretch the guess.)
+    let last_bar = last_bar.min(MAX_START + 999);
     let playing = |bar: u32| -> Vec<&str> {
         let (s, e) = (t.bar_start(bar), t.bar_start(bar + 1));
         let mut v: Vec<&str> = clips

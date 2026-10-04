@@ -1,6 +1,6 @@
 // Tests for the project model's wire format (model.js), run with:
 // node web/test/model.test.js (also type-checked by inty via web/check.sh).
-import { emptyProject, decodeProject, projectJson } from "../src/model.js";
+import { emptyProject, decodeProject, projectJson, drumName } from "../src/model.js";
 
 let failures = 0;
 /** function check(name: String, ok: Boolean) => Undefined */
@@ -62,6 +62,18 @@ check(
     d.sections[0].play === "a" &&
     d.sections[0].fill === "none"
 );
+
+// The piano roll names the drums of every General MIDI kit, numbered variations too.
+const withKits = JSON.parse(projectJson(emptyProject()));
+withKits.channels = ["Jazz Kit", "Jazz Kit 2", "Tenor Sax"].map((program, i) => ({
+  id: `c${i}`,
+  name: program,
+  instrument: { type: "soundfont", options: { program: program } },
+}));
+const chans = decodeProject(withKits).channels;
+check("a kit names its drums", drumName(chans[0], 38) === "Snare");
+check("so does a kit variation", drumName(chans[1], 38) === "Snare");
+check("an instrument does not", drumName(chans[2], 38) === "");
 
 if (failures > 0) {
   console.log(`${failures} model test(s) failed`);

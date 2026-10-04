@@ -265,6 +265,8 @@ export function writeDrums() {
         p.channels = np.channels;
         p.patterns = np.patterns;
         p.playlist = np.playlist;
+        // (Channels the write removed leave the score's settings too.)
+        p.score = np.score;
         p.drums = np.drums;
       });
       toast(
@@ -426,9 +428,18 @@ function copyRows(rows) {
   return rows.map((r) => [r[0], r[1]]);
 }
 
+/** Hand edits in the written patterns of the slots `which` picks are given
+ * back to the drummer: what those patterns hold now is no longer taken as an
+ * edit (an empty print, see Written in crates/core/src/drums), so the next
+ * write makes them afresh instead of keeping them. */
+/** function forgetEdits(d: DrumPart, which: (String) => Boolean) => Undefined */
+function forgetEdits(d, which) {
+  for (const w of d.written) if (which(w.slot)) w.print = "";
+}
+
 /** Change a groove part's rows for this song (copied from the library on the
  * first change). The grid is then the groove's source: a hand-kept copy of
- * its plain pattern goes (its edits are already in the grid). */
+ * its plain pattern goes, and so does an edit to it not yet written. */
 /** function editRows(g: GrooveInfo, isB: Boolean, fn: (String[][]) => Undefined) => Undefined */
 function editRows(g, isB, fn) {
   edit((d) => {
@@ -441,6 +452,7 @@ function editRows(g, isB, fn) {
     fn(isB ? e.b : e.a);
     const slot = `${g.id}/${isB ? "b" : "a"}`;
     d.kept = d.kept.filter((k) => k.slot !== slot);
+    forgetEdits(d, (s) => s === slot);
   });
 }
 
@@ -613,6 +625,7 @@ function grooveView(b, d) {
         edit((x) => {
           x.grooves = x.grooves.filter((e) => e.groove !== g.id);
           x.kept = x.kept.filter((k) => !k.slot.startsWith(`${g.id}/`));
+          forgetEdits(x, (s) => s.startsWith(`${g.id}/`));
         })
       );
     }
@@ -841,6 +854,7 @@ function writeView(b, d) {
       button(b, "reset", "small", "Reset", "Give this pattern back to the drummer: the next write makes it from the groove again", () =>
         edit((x) => {
           x.kept = x.kept.filter((e) => e.slot !== k.slot);
+          forgetEdits(x, (s) => s === k.slot);
         })
       );
       b.close();

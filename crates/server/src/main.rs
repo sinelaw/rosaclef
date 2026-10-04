@@ -355,10 +355,7 @@ fn main() -> Result<()> {
                 part.sections = sections;
             }
             if reset_edits {
-                let part = p.drums.as_mut().expect("drum part");
-                part.kept.clear();
-                part.grooves.clear();
-                part.written.clear();
+                drums::reset_edits(&mut p);
             }
             let report = drums::write(&mut p).map_err(anyhow::Error::msg)?;
             let checked = validate::validate(&p);

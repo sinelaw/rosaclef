@@ -461,11 +461,11 @@ fn drums_schema() -> Value {
             "kit": {"type": "string", "enum": kits, "description": "A General MIDI drum kit, or Ebony (one Ebony Drum Machine channel per drum). Missing: the groove's suggestion."},
             "feel": {"type": "string", "enum": crate::drums::FEELS, "default": "natural", "description": "tight: on the grid; natural: the backbeat a little late, small differences; loose: more of both."},
             "swing": num(0.0, 1.0, "Delays the off 16ths of straight grooves (1 = triplet swing)."),
-            "start": {"type": "integer", "minimum": 1, "default": 1, "description": "Bar the first section starts on, counted from 1."},
+            "start": {"type": "integer", "minimum": 1, "maximum": 9999, "default": 1, "description": "Bar the first section starts on, counted from 1."},
             "ending": {"type": "string", "enum": crate::drums::ENDINGS, "default": "hit", "description": "hit: a crash and kick on the downbeat after the last section."},
             "variations": {"type": "boolean", "default": true, "description": "A small turnaround every 4th bar."},
             "seed": {"type": "integer", "minimum": 0, "default": 1, "description": "Picks the fills and the small timing and velocity differences."},
-            "sections": {"type": "array", "items": {"$ref": "#/$defs/drumSection"}},
+            "sections": {"type": "array", "maxItems": 999, "items": {"$ref": "#/$defs/drumSection"}},
             "grooves": {
                 "type": "object",
                 "description": "Grooves changed for this song (the Drums tab's grid, or hand edits of a groove's pattern): groove id -> its parts' rows, replacing the library's. Every bar of the groove follows, its crash, fill and turnaround bars too.",

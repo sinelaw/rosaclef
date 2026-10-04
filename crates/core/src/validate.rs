@@ -568,6 +568,14 @@ fn check_drums(v: &mut V, p: &Project) {
     v.range("drums.swing", d.swing, 0.0, 1.0);
     if d.start < 1 {
         v.err("drums.start", "bars are counted from 1");
+    } else if d.start > drums::MAX_START {
+        v.err(
+            "drums.start",
+            format!("the part starts by bar {}", drums::MAX_START),
+        );
+    }
+    if d.sections.len() > 999 {
+        v.err("drums.sections", "at most 999 sections");
     }
     for (gid, e) in &d.grooves {
         let path = format!("drums.grooves.{gid}");
@@ -588,10 +596,21 @@ fn check_drums(v: &mut V, p: &Project) {
                     );
                 }
                 let st = drums::steps(row);
+                let bars = drums::groove_bars(g);
                 if st.is_empty() || st.len() % g.steps as usize != 0 {
                     v.err(
                         &rp,
                         format!("{} steps: a row has {} steps a bar", st.len(), g.steps),
+                    );
+                } else if bars % (st.len() / g.steps as usize) != 0 {
+                    // (A shorter row repeats; a longer one would never play its end.)
+                    v.err(
+                        &rp,
+                        format!(
+                            "{} bars: the groove is {bars} bar{} long",
+                            st.len() / g.steps as usize,
+                            if bars == 1 { "" } else { "s" }
+                        ),
                     );
                 }
                 if let Some(c) = st

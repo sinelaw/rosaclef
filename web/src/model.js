@@ -738,7 +738,8 @@ const GM_DRUMS = [
 /** function drumName(ch: Channel, pitch: Number) => String */
 export function drumName(ch, pitch) {
   if (ch.instrument.type !== "soundfont") return "";
-  if (!optionValue(ch.instrument, "program").endsWith(" Kit")) return "";
+  // The General MIDI kits ("Jazz Kit") and their variations ("Jazz Kit 2").
+  if (!/ Kit( \d+)?$/.test(optionValue(ch.instrument, "program"))) return "";
   const i = Math.round(pitch) - 35;
   return i >= 0 && i < GM_DRUMS.length ? GM_DRUMS[i] : "";
 }

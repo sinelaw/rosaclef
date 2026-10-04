@@ -579,3 +579,86 @@ fn short_changes_join_a_section() {
     let bars: Vec<u32> = s.iter().map(|x| x.bars).collect();
     assert_eq!(bars, vec![9, 9]);
 }
+
+#[test]
+fn reset_edits_replaces_the_written_drums() {
+    let mut p = song("rock-8ths", "");
+    write(&mut p).unwrap();
+    let patterns = p.patterns.len();
+    let clips = p.playlist.clips.len();
+    let id = written_id(&p, "rock-8ths/a");
+    let ch = p.pattern(&id).unwrap().notes[0].channel.clone();
+    pattern_mut(&mut p, &id).notes.push(Note {
+        channel: ch,
+        pitch: 56,
+        start: 0.0,
+        length: 0.25,
+        velocity: 0.7,
+    });
+    write(&mut p).unwrap();
+    assert!(!p.drums.as_ref().unwrap().kept.is_empty());
+    // Forgetting the edits writes the drummer's patterns in place of the old
+    // ones: none kept, none twice.
+    reset_edits(&mut p);
+    let r = write(&mut p).unwrap();
+    assert_eq!(r.kept, 0);
+    assert!(p.drums.as_ref().unwrap().kept.is_empty());
+    assert_eq!(
+        (p.patterns.len(), p.playlist.clips.len()),
+        (patterns, clips)
+    );
+    let id = written_id(&p, "rock-8ths/a");
+    assert!(p.pattern(&id).unwrap().notes.iter().all(|n| n.pitch != 56));
+}
+
+#[test]
+fn the_songs_own_kit_keeps_its_sound() {
+    // The producer's own drums, on a Brush Kit.
+    let mut p = song("rock-8ths", "Standard Kit");
+    let mut dev = crate::model::Device::new("soundfont");
+    dev.options.insert("program".into(), "Brush Kit".into());
+    let mine = push_channel(&mut p, "My kit", dev);
+    write(&mut p).unwrap();
+    let program = |p: &Project, id: &str| {
+        p.channel(id)
+            .unwrap()
+            .instrument
+            .option("program")
+            .to_string()
+    };
+    assert_eq!(program(&p, &mine), "Brush Kit");
+    // The drummer plays a channel of its own on the Standard Kit…
+    let ours = p.pattern(&written_id(&p, "rock-8ths/a")).unwrap().notes[0]
+        .channel
+        .clone();
+    assert_ne!(ours, mine);
+    assert_eq!(program(&p, &ours), "Standard Kit");
+    // …and a kit change switches that one over, not the producer's.
+    p.drums.as_mut().unwrap().kit = "Jazz Kit".into();
+    write(&mut p).unwrap();
+    assert_eq!(program(&p, &ours), "Jazz Kit");
+    assert_eq!(program(&p, &mine), "Brush Kit");
+}
+
+#[test]
+fn a_kit_change_keeps_channels_the_score_names() {
+    let mut p = song("rock-8ths", "Standard Kit");
+    write(&mut p).unwrap();
+    let ours = p.pattern(&written_id(&p, "rock-8ths/a")).unwrap().notes[0]
+        .channel
+        .clone();
+    p.score.marks.push(crate::model::ScoreMark {
+        start: 0.0,
+        end: 4.0,
+        color: "#d4af37".into(),
+        label: String::new(),
+        pattern: String::new(),
+        channels: vec![ours.clone()],
+    });
+    p.drums.as_mut().unwrap().kit = "Ebony".into();
+    write(&mut p).unwrap();
+    assert!(p.channel(&ours).is_some());
+    assert!(crate::validate::validate(&p)
+        .iter()
+        .all(|i| i.severity != crate::validate::Severity::Error));
+}
