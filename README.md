@@ -29,10 +29,17 @@ can undo it with Ctrl+Z.
 ## Quick start
 
 ```sh
+rustup target add wasm32-unknown-unknown         # once: the browser's audio engine is WebAssembly
 cargo build --release
 ./target/release/rosaclef serve my-song --demo   # creates my-song/ with the demo song
 # open http://127.0.0.1:7470
 ```
+
+The build also makes the browser's audio engine, `web/engine/rosaclef.wasm`
+(it is not kept in git): `cargo build` and `cargo run` rebuild it when the
+engine changes. Without the WebAssembly target the server still builds, with a
+warning, but audio in the browser does not start (`ROSACLEF_SKIP_WASM=1` skips
+it on purpose).
 
 Pick an agent in the right-hand panel (it must be installed and on your
 `PATH`), then ask it for music: *"write a 4-bar bassline for the selected
@@ -278,7 +285,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 
 ```sh
 cargo test --workspace                 # Rust tests (engine, validation, CLAP host)
-./tools/build-wasm.sh                  # rebuild web/engine/rosaclef.wasm and web/local/rosaclef-local.wasm
+./tools/build-wasm.sh                  # build web/engine/rosaclef.wasm and web/local/rosaclef-local.wasm (generated, not in git)
 node web/test/tree.test.js             # UI tree tests (no browser needed)
 node web/test/voice.test.js            # voice-to-notes logic (quantize, auto-tune, drums)
 node web/test/film.test.js             # the film's director and camera

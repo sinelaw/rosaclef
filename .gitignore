@@ -26,3 +26,7 @@ target
 # Static builds (tools/build-static.sh)
 /dist/
 /_site/
+
+# Generated WebAssembly: tools/build-wasm.sh, and the server build (crates/server/build.rs)
+/web/engine/rosaclef.wasm
+/web/local/rosaclef-local.wasm

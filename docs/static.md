@@ -99,9 +99,11 @@ projects — download the ones you care about.
 ## Deploying
 
 `tools/build-static.sh DIR` writes the site into `DIR` (default `dist/`).
-It needs a Rust toolchain with the `wasm32-unknown-unknown` target; with
-`SKIP_WASM=1` it uses the modules already in `web/engine` and `web/local`
-(both are committed). Serve the folder as it is: all URLs are relative, and
+It needs a Rust toolchain with the `wasm32-unknown-unknown` target: it builds
+both WebAssembly modules, which are generated and not kept in git. With
+`SKIP_WASM=1` it uses the ones already built in `web/engine` and `web/local`
+(by `tools/build-wasm.sh`, or an earlier build). The GitHub Pages workflow
+builds them on every deploy. Serve the folder as it is: all URLs are relative, and
 `.nojekyll` keeps GitHub Pages from filtering files.
 
 ### GitHub Pages
