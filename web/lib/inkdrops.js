@@ -13,17 +13,19 @@
 //     farthest in, each one takes the largest half-width of its neighbours
 //     farther in) — so a stem joining a notehead rises into it.
 //  3. The cap over that half-width at that distance from the edge: low and
-//     beaded for a stem, a dome for a notehead; very wide pools flatten (the
-//     ink is only so deep).
+//     beaded for a stem, a dome for a notehead. A wide mark's cap would stand
+//     taller than a bead of ink does: the whole cap is lowered to the height it
+//     can stand, still rounded to its top (a flat top would mirror the room as
+//     one sheet seen low down; a dome catches the light as a glint).
 //
 // Not type-checked (canvas pixels are outside inty's library);
 // web/types/platform.d.js types what it exports.
 
 /** Contact angle of the ink on the paper (radians). */
 const CONTACT = (58 * Math.PI) / 180;
-/** The deepest the ink stands (points), and the height a full 255 encodes. */
-const DEEPEST = 0.42;
-export const INK_UNIT = 0.7;
+/** The tallest a bead of ink stands (points), and the height a full 255 encodes (web/lib/filmgl.js reads it so). */
+const DEEPEST = 0.8;
+export const INK_UNIT = 1;
 
 /** Squared distance transform of one line (Felzenszwalb & Huttenlocher), in place over `f` read through `get`/`set`. */
 function dt1(f, n, v, z, d) {
@@ -129,7 +131,8 @@ export function drops(cover, w, h, ppt) {
     const t = R - d;
     const hpx = Math.sqrt(Math.max(0, rho * rho - t * t)) - rho * cosC;
     const hpt = Math.max(0, hpx) / ppt;
-    out[i] = DEEPEST * Math.tanh(hpt / DEEPEST);
+    const peak = (rho * (1 - cosC)) / ppt;
+    out[i] = peak > 0 ? hpt * ((DEEPEST * Math.tanh(peak / DEEPEST)) / peak) : 0;
   }
   return out;
 }
