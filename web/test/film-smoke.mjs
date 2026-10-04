@@ -23,7 +23,7 @@ const ok = (s) => console.log("ok  ", s);
 const count = (sel) => page.locator(sel).count();
 
 await page.goto(base);
-await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Demo", null, { timeout: 30000 });
+await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
 await page.click("button.tab:has-text('Score')");
 await page.waitForSelector(".score-top .score-sys", { timeout: 20000 });
 
