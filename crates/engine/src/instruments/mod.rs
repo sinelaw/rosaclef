@@ -4,26 +4,22 @@ mod comete;
 mod cuivre;
 mod dedale;
 mod drum;
-mod fm;
 mod nebula;
 mod prisme;
 mod sampler;
 mod sextant;
 mod soundfont;
-mod synth;
 mod tessera;
 
 pub use comete::Comete;
 pub use cuivre::Cuivre;
 pub use dedale::Dedale;
 pub use drum::Drum;
-pub use fm::Fm;
 pub use nebula::Nebula;
 pub use prisme::Prisme;
 pub use sampler::Sampler;
 pub use sextant::Sextant;
 pub use soundfont::SoundFontInst;
-pub use synth::Synth;
 pub use tessera::Tessera;
 
 use crate::samples::SampleBank;
@@ -107,8 +103,6 @@ pub(crate) fn pick_voice<V>(
 /// Create a built-in instrument for a device type.
 pub fn create(dev: &Device, ctx: &Ctx) -> Option<Box<dyn Instrument>> {
     let mut inst: Box<dyn Instrument> = match dev.kind.as_str() {
-        "synth" => Box::new(Synth::new(ctx.sr)),
-        "fm" => Box::new(Fm::new(ctx.sr)),
         "drum" => Box::new(Drum::new(ctx.sr)),
         "sampler" => Box::new(Sampler::new(ctx.sr)),
         "prisme" => Box::new(Prisme::new(ctx.sr)),

@@ -251,7 +251,7 @@ mod tests {
             name: "Lead".into(),
             color: "#ffffff".into(),
             instrument: Device {
-                kind: "synth".into(),
+                kind: "cuivre".into(),
                 enabled: true,
                 params: [("cutoff".into(), 99999.0)].into(),
                 options: Default::default(),
@@ -325,7 +325,7 @@ mod tests {
             id: "pad".into(),
             name: "Pad".into(),
             color: "#ffffff".into(),
-            instrument: Device::new("synth"),
+            instrument: Device::new("cuivre"),
             volume: 0.8,
             pan: 0.0,
             mute: false,

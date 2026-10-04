@@ -616,7 +616,7 @@ impl SawSection {
         let (mut l, mut r) = (0.0, 0.0);
         for i in 0..self.freq.len() {
             let dt = self.dt[i];
-            let s = osc(Wave::Saw, self.phase[i], dt, rng);
+            let s = blep_saw(self.phase[i], dt);
             self.phase[i] += dt;
             if self.phase[i] >= 1.0 {
                 self.phase[i] -= 1.0;

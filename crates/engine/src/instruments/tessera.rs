@@ -449,14 +449,6 @@ impl Voice {
     }
 }
 
-/// Fast tanh (Padé), exact at 0 and saturating at ±1 beyond ±3.
-#[inline]
-fn fast_tanh(x: f32) -> f32 {
-    let x = x.clamp(-3.0, 3.0);
-    let x2 = x * x;
-    x * (27.0 + x2) / (27.0 + 9.0 * x2)
-}
-
 /// Read one sample at phase `ph`, crossfading frames `a` and `b` by `ff`.
 #[inline]
 fn read(a: &[f32], b: &[f32], n: usize, ff: f32, ph: f32) -> f32 {
@@ -559,7 +551,7 @@ impl Tessera {
         let fold_gain = 1.0 + 5.0 * amt;
         let drive_g = p.drive * 8.0;
         let drive_norm = if drive_g > 0.0 {
-            1.0 / fast_tanh(drive_g)
+            1.0 / ftanh(drive_g)
         } else {
             1.0
         };
@@ -660,8 +652,8 @@ impl Tessera {
                     let mut yl = v.svf_l.process(l, p.mode);
                     let mut yr = v.svf_r.process(r, p.mode);
                     if drive_g > 0.0 {
-                        yl = fast_tanh(yl * drive_g) * drive_norm;
-                        yr = fast_tanh(yr * drive_g) * drive_norm;
+                        yl = ftanh(yl * drive_g) * drive_norm;
+                        yr = ftanh(yr * drive_g) * drive_norm;
                     }
                     let g = v.env.next() * vel_gain * v.fade;
                     bl[i] += yl * g;

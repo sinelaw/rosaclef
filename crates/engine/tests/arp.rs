@@ -36,9 +36,18 @@ fn song(arp: Option<Arpeggio>) -> Project {
     let mut p = Project::empty("t");
     p.transport.bpm = 120.0;
     p.mixer.inserts[0].effects.clear();
-    let mut synth = Device::new("synth");
+    let mut synth = Device::new("cuivre");
     synth.options.insert("wave1".into(), "sine".into());
-    synth.params.insert("osc2Mix".into(), 0.0);
+    synth.options.insert("filter".into(), "lowpass".into());
+    for (k, v) in [
+        ("mix2", 0.0),
+        ("sub", 0.0),
+        ("drift", 0.0),
+        ("drive", 0.0),
+        ("cutoff", 20000.0),
+    ] {
+        synth.params.insert(k.into(), v);
+    }
     synth.params.insert("sustain".into(), 1.0);
     p.channels.push(Channel {
         id: "x".into(),

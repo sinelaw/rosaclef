@@ -30,8 +30,8 @@
 //!   clip on the channel's own track. Each channel gets its own mixer insert.
 
 use crate::{
-    beats, clamp, color, ensure_valid, has_instrument, pad_tracks, set_option, set_param, Ids,
-    Imported, Warnings, MAX_INSERTS,
+    beats, clamp, clean_va, color, ensure_valid, has_instrument, pad_tracks, set_option, set_param,
+    va_gain, Ids, Imported, Warnings, MAX_INSERTS,
 };
 use anyhow::{bail, Result};
 use rosaclef_core::presets;
@@ -392,28 +392,24 @@ fn choice(program: u8) -> Choice {
     match program / 8 {
         0 => c(
             &["Rhodes Lumière"],
-            &["sextant", "fm", "prisme"],
+            &["sextant", "prisme"],
             &["electric piano", "piano", "keys"],
         ),
         1 => c(
             &["Crystal Mallet", "Rosée de Cristal"],
-            &["fm", "sextant", "prisme"],
+            &["sextant", "prisme"],
             &["mallet", "bell"],
         ),
-        2 => c(
-            &["Nef d'Ivoire"],
-            &["prisme", "sextant", "synth"],
-            &["organ"],
-        ),
+        2 => c(&["Nef d'Ivoire"], &["prisme", "sextant"], &["organ"]),
         3 => c(
             &["Harpe de Saphir"],
-            &["tessera", "prisme", "synth"],
+            &["tessera", "prisme"],
             &["guitar", "pluck", "harp"],
         ),
-        4 => c(&["Velvet Sub Bass"], &["cuivre", "synth"], &["bass"]),
+        4 => c(&["Velvet Sub Bass"], &["cuivre"], &["bass"]),
         5 => c(
             &["Cordes Givrées", "Silk Unison Pad"],
-            &["nebula", "prisme", "synth"],
+            &["nebula", "prisme"],
             &["strings", "pad"],
         ),
         6 if (52..=54).contains(&program) => c(
@@ -423,19 +419,15 @@ fn choice(program: u8) -> Choice {
         ),
         6 => c(
             &["Cordes Givrées", "Silk Unison Pad"],
-            &["nebula", "prisme", "synth"],
+            &["nebula", "prisme"],
             &["strings", "pad"],
         ),
-        7 => c(&[], &["cuivre", "synth"], &["brass"]),
-        8 | 9 => c(
-            &[],
-            &["tessera", "cuivre", "synth"],
-            &["reed", "flute", "lead"],
-        ),
-        10 => c(&["Gilded Lead"], &["tessera", "cuivre", "synth"], &["lead"]),
+        7 => c(&[], &["cuivre"], &["brass"]),
+        8 | 9 => c(&[], &["tessera", "cuivre"], &["reed", "flute", "lead"]),
+        10 => c(&["Gilded Lead"], &["tessera", "cuivre"], &["lead"]),
         11 => c(
             &["Silk Unison Pad", "Opaline Veil"],
-            &["prisme", "nebula", "synth"],
+            &["prisme", "nebula"],
             &["pad"],
         ),
         12 => c(
@@ -443,14 +435,10 @@ fn choice(program: u8) -> Choice {
             &["nebula", "prisme"],
             &["texture", "cinematic", "pad"],
         ),
-        13 => c(
-            &["Harpe de Saphir"],
-            &["tessera", "prisme", "synth"],
-            &["pluck"],
-        ),
+        13 => c(&["Harpe de Saphir"], &["tessera", "prisme"], &["pluck"]),
         14 => c(
             &["Crystal Mallet"],
-            &["fm", "sextant"],
+            &["sextant"],
             &["mallet", "perc", "bell"],
         ),
         _ => c(&[], &["nebula"], &["texture"]),
@@ -459,7 +447,8 @@ fn choice(program: u8) -> Choice {
 
 /// Pick an instrument for a GM program: a named factory preset if it exists
 /// in this build, else a preset of a preferred engine with a matching tag,
-/// else a configured Aurum (`synth`). Returns the device and the preset name.
+/// else a clean Cuivre patch shaped like the family. Returns the device and
+/// the preset name.
 pub fn gm_instrument(program: u8) -> (Device, Option<&'static str>) {
     let ch = choice(program);
     let usable = |p: &&presets::Preset| has_instrument(p.kind);
@@ -487,18 +476,18 @@ pub fn gm_instrument(program: u8) -> (Device, Option<&'static str>) {
     (fallback_synth(program), None)
 }
 
-/// An Aurum patch shaped roughly like the GM family.
+/// A clean Cuivre patch shaped roughly like the GM family.
 fn fallback_synth(program: u8) -> Device {
-    let mut d = Device::new("synth");
+    let mut d = clean_va();
     let (w1, w2, cutoff, attack, decay, sustain, release) = match program / 8 {
         0 | 1 | 14 => ("triangle", "sine", 3500.0, 0.002, 0.9, 0.2, 0.4),
-        2 => ("square", "sine", 5000.0, 0.005, 0.2, 1.0, 0.08),
-        3 | 13 => ("saw", "square", 2600.0, 0.002, 0.35, 0.1, 0.2),
-        4 => ("saw", "square", 700.0, 0.003, 0.25, 0.6, 0.08),
+        2 => ("pulse", "sine", 5000.0, 0.005, 0.2, 1.0, 0.08),
+        3 | 13 => ("saw", "pulse", 2600.0, 0.002, 0.35, 0.1, 0.2),
+        4 => ("saw", "pulse", 700.0, 0.003, 0.25, 0.6, 0.08),
         5 | 6 | 11 | 12 => ("saw", "saw", 1800.0, 0.35, 1.0, 0.85, 0.9),
         7 => ("saw", "saw", 2400.0, 0.04, 0.3, 0.8, 0.15),
         8 | 9 => ("triangle", "sine", 3000.0, 0.03, 0.3, 0.85, 0.15),
-        _ => ("saw", "square", 3200.0, 0.005, 0.3, 0.8, 0.2),
+        _ => ("saw", "pulse", 3200.0, 0.005, 0.3, 0.8, 0.2),
     };
     set_option(&mut d, "wave1", w1);
     set_option(&mut d, "wave2", w2);
@@ -508,7 +497,10 @@ fn fallback_synth(program: u8) -> Device {
     set_param(&mut d, "sustain", sustain);
     set_param(&mut d, "release", release);
     set_param(&mut d, "filterEnv", 0.2);
-    set_param(&mut d, "gain", 0.5);
+    set_param(&mut d, "filterDecay", 0.35);
+    set_param(&mut d, "resonance", 0.2);
+    let gain = va_gain(&d, 0.375);
+    set_param(&mut d, "gain", gain);
     d
 }
 

@@ -165,6 +165,38 @@ pub(crate) fn has_instrument(kind: &str) -> bool {
     catalog::device_in(kind, Category::Instrument).is_some()
 }
 
+/// A clean, stable Cuivre (`cuivre`): no drift, no drive, no key tracking,
+/// no sub, a sine sub when one is used, a static clean low-pass filter. The
+/// importers shape generic subtractive patches from it.
+pub(crate) fn clean_va() -> Device {
+    let mut d = Device::new("cuivre");
+    for (k, v) in [
+        ("drift", 0.0),
+        ("drive", 0.0),
+        ("keyTrack", 0.0),
+        ("sub", 0.0),
+        ("pulseWidth", 0.5),
+        ("filterEnv", 0.0),
+        ("filterAttack", 0.001),
+        ("filterSustain", 0.0),
+        ("cutoff", 20000.0),
+        ("resonance", 0.0),
+    ] {
+        set_param(&mut d, k, v);
+    }
+    set_option(&mut d, "filter", "lowpass");
+    set_option(&mut d, "subWave", "sine");
+    d
+}
+
+/// Cuivre gain that makes its oscillator sum (osc 1 · (1 − mix2 / 4) +
+/// osc 2 · mix2 + sub, before the 0.42 output scaling) peak at `level`.
+pub(crate) fn va_gain(d: &Device, level: f64) -> f64 {
+    let mix2 = d.param("mix2");
+    let sum = 1.0 - 0.25 * mix2 + mix2 + d.param("sub");
+    level / (0.42 * sum.max(0.1))
+}
+
 /// Clamp a value into a range, reporting whether it had to change.
 pub(crate) fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
     if v.is_finite() {
@@ -335,7 +367,7 @@ mod tests {
 
     #[test]
     fn clamps_into_catalog() {
-        let mut d = Device::new("synth");
+        let mut d = Device::new("cuivre");
         set_param(&mut d, "cutoff", 1e9);
         set_param(&mut d, "unison", 3.4);
         set_param(&mut d, "nope", 1.0);

@@ -196,7 +196,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 | path | |
 |---|---|
 | `crates/core` | project model, device catalog, validation, JSON Schema, formatter |
-| `crates/engine` | portable DSP engine: sequencer, synths (Aurum subtractive, Lumière FM, Atelier drums, Vault sampler), effects, mixer, offline render |
+| `crates/engine` | portable DSP engine: sequencer, instruments (Cuivre analog, Sextant FM, Prisme additive, Tessera wavetable, Nébula granular, Dédale generative, Comète transitions, Atelier drums, Vault sampler, Orchestre soundfont), effects, mixer, offline render |
 | `crates/wasm` | the engine compiled to WebAssembly (C ABI for the AudioWorklet) |
 | `crates/import` | importers: LMMS projects (.mmp/.mmpz) and Standard MIDI Files |
 | `crates/fs` | the file system the studio works on: the disk, or an in-memory tree the browser persists |

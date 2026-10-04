@@ -40,7 +40,14 @@ fn song(kind: &str, transpose: i32) -> Project {
         id: "x".into(),
         name: "X".into(),
         color: "#ffffff".into(),
-        instrument: Device::new(kind),
+        instrument: {
+            let mut d = Device::new(kind);
+            // One plain oscillator: no sub an octave below the note.
+            if kind == "cuivre" {
+                d.params.insert("sub".into(), 0.0);
+            }
+            d
+        },
         volume: 1.0,
         pan: 0.0,
         mute: false,
@@ -81,9 +88,9 @@ fn semitones(a: f32, b: f32) -> f32 {
 
 #[test]
 fn the_song_sounds_transposed() {
-    let f0 = pitch_of(&play(song("synth", 0)).left);
-    let up = pitch_of(&play(song("synth", 3)).left);
-    let down = pitch_of(&play(song("synth", -5)).left);
+    let f0 = pitch_of(&play(song("cuivre", 0)).left);
+    let up = pitch_of(&play(song("cuivre", 3)).left);
+    let down = pitch_of(&play(song("cuivre", -5)).left);
     println!("f0 {f0:.1} Hz, +3 {up:.1} Hz, -5 {down:.1} Hz");
     assert!((f0 - 220.0).abs() < 220.0 * 0.03, "f0 = {f0}");
     assert!((semitones(f0, up) - 3.0).abs() < 0.2, "+3 → {up}");
@@ -107,7 +114,7 @@ fn drums_are_not_transposed() {
 
 #[test]
 fn live_notes_are_transposed_and_released() {
-    let mut p = song("synth", -12);
+    let mut p = song("cuivre", -12);
     p.playlist.clips.clear();
     let mut e = Engine::new(SR);
     e.set_project(p);
@@ -123,7 +130,7 @@ fn live_notes_are_transposed_and_released() {
     println!("A4 live, an octave down: {f:.1} Hz");
     assert!((f - 220.0).abs() < 220.0 * 0.03, "{f}");
     // The transpose changes while the key is down: the key still releases its note.
-    let mut q = song("synth", 2);
+    let mut q = song("cuivre", 2);
     q.playlist.clips.clear();
     e.set_project(q);
     e.note_off("x", 69);

@@ -220,6 +220,104 @@ fn presets_of(kind: &str) -> Vec<&'static presets::Preset> {
 
 // ------------------------------------------------------------------ Cuivre
 
+/// Energy of `x` below `hz` relative to its total (one-pole split).
+fn low_share(x: &[f32], hz: f32) -> f32 {
+    let a = (-std::f32::consts::TAU * hz / SR).exp();
+    let (mut lp, mut lo, mut all) = (0.0f32, 0.0f32, 0.0f32);
+    for &v in x {
+        lp = v + a * (lp - v);
+        lo += lp * lp;
+        all += v * v;
+    }
+    lo / all.max(1e-12)
+}
+
+#[test]
+fn cuivre_clean_filters_unison_and_waves() {
+    // A clean, stable base: no drift, drive, sub or key tracking.
+    let clean: &[(&str, f64)] = &[
+        ("drift", 0.0),
+        ("drive", 0.0),
+        ("sub", 0.0),
+        ("keyTrack", 0.0),
+        ("filterEnv", 0.0),
+        ("cutoff", 500.0),
+        ("sustain", 1.0),
+    ];
+    let with = |extra: &[(&str, f64)], opts: &[(&str, &str)]| {
+        let mut p = clean.to_vec();
+        p.extend_from_slice(extra);
+        device("cuivre", &p, opts)
+    };
+    for mode in ["lowpass", "highpass", "bandpass"] {
+        let o = note(&with(&[], &[("filter", mode)]), 120.0, 48, 1.0, 1.6);
+        check_clean(&format!("cuivre {mode}"), &o, 0.05, 0.9);
+    }
+    let lp = note(&with(&[], &[("filter", "lowpass")]), 120.0, 48, 1.0, 1.2).mono();
+    let hp = note(&with(&[], &[("filter", "highpass")]), 120.0, 48, 1.0, 1.2).mono();
+    assert!(
+        low_share(&lp[secs(0.2)..secs(0.9)], 300.0)
+            > 2.0 * low_share(&hp[secs(0.2)..secs(0.9)], 300.0),
+        "the high-pass removes the low end the low-pass keeps"
+    );
+
+    // Without drift a poly voice is centred; unison spreads it across the field.
+    let width = |o: &Out| {
+        let (a, b) = (secs(0.2), secs(0.9));
+        let side: f32 = (a..b).map(|i| (o.l[i] - o.r[i]).powi(2)).sum();
+        let mid: f32 = (a..b).map(|i| (o.l[i] + o.r[i]).powi(2)).sum();
+        (side / mid.max(1e-12)).sqrt()
+    };
+    let opts = [("filter", "lowpass")];
+    let one = note(&with(&[("cutoff", 5000.0)], &opts), 120.0, 48, 1.0, 1.2);
+    assert!(width(&one) < 1e-3, "centred: {}", width(&one));
+    let wide = note(
+        &with(
+            &[("cutoff", 5000.0), ("unison", 5.0), ("spread", 25.0)],
+            &opts,
+        ),
+        120.0,
+        48,
+        1.0,
+        1.6,
+    );
+    check_clean("cuivre unison", &wide, 0.05, 0.9);
+    assert!(width(&wide) > 0.2, "unison width {}", width(&wide));
+    let ladder_wide = note(
+        &with(&[("unison", 3.0), ("drift", 0.5), ("drive", 0.5)], &[]),
+        120.0,
+        48,
+        1.0,
+        1.6,
+    );
+    check_clean("cuivre unison ladder", &ladder_wide, 0.05, 0.9);
+
+    for wave in ["sine", "noise"] {
+        let o = note(
+            &with(
+                &[("cutoff", 8000.0)],
+                &[("wave1", wave), ("wave2", wave), ("filter", "lowpass")],
+            ),
+            120.0,
+            60,
+            1.0,
+            1.6,
+        );
+        check_clean(&format!("cuivre {wave}"), &o, 0.05, 0.9);
+    }
+    let o = note(
+        &with(
+            &[("sub", 1.0)],
+            &[("subWave", "sine"), ("filter", "lowpass")],
+        ),
+        120.0,
+        36,
+        1.0,
+        1.6,
+    );
+    check_clean("cuivre sine sub", &o, 0.05, 0.9);
+}
+
 #[test]
 fn cuivre_defaults_sound_clean() {
     let dev = Device::new("cuivre");
@@ -730,7 +828,7 @@ fn presets_render_within_bounds() {
     let verbose = std::env::var("PRESET_LEVELS").is_ok();
     for kind in ["cuivre", "dedale", "comete"] {
         let list = presets_of(kind);
-        assert_eq!(list.len(), 6, "{kind}: expected 6 presets");
+        assert!(list.len() >= 6, "{kind}: expected at least 6 presets");
         let spec = rosaclef_core::catalog::device(kind).expect("catalog entry");
         for p in list {
             // Presets only list what differs from the defaults.

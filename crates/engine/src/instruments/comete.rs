@@ -18,56 +18,12 @@ const OUT_SCALE: f32 = 0.62;
 /// Level of the summed shots going into the drive stage.
 const MIX: f32 = 0.38;
 
-/// Cheap rational tanh approximation (exact +-1 at +-3, smooth).
-#[inline]
-fn ftanh(x: f32) -> f32 {
-    let x = x.clamp(-3.0, 3.0);
-    let x2 = x * x;
-    x * (27.0 + x2) / (27.0 + 9.0 * x2)
-}
-
-/// Fast sine for a phase in cycles.
-#[inline]
-fn fsin(ph: f32) -> f32 {
-    // Wrap to [0, 1) without `floor` (a libm call on baseline x86-64).
-    let mut x = ph - (ph as i32) as f32;
-    if x < 0.0 {
-        x += 1.0;
-    }
-    let t = 2.0 * x - 1.0;
-    let y = 4.0 * t * (1.0 - t.abs());
-    -(y * (0.775 + 0.225 * y.abs()))
-}
-
-#[inline]
-fn blep(t: f32, dt: f32) -> f32 {
-    if t < dt {
-        let t = t / dt;
-        t + t - t * t - 1.0
-    } else if t > 1.0 - dt {
-        let t = (t - 1.0) / dt;
-        t * t + t + t + 1.0
-    } else {
-        0.0
-    }
-}
-
+/// Band-limited saw sample, then advance the phase.
 #[inline]
 fn saw(ph: &mut f32, dt: f32) -> f32 {
-    let s = 2.0 * *ph - 1.0 - blep(*ph, dt);
-    *ph += dt;
-    if *ph >= 1.0 {
-        *ph -= 1.0;
-    }
+    let s = blep_saw(*ph, dt);
+    advance(ph, dt);
     s
-}
-
-#[inline]
-fn adv(ph: &mut f32, dt: f32) {
-    *ph += dt;
-    if *ph >= 1.0 {
-        *ph -= 1.0;
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -561,7 +517,7 @@ impl Comete {
                         let b = saw(&mut s.ph[1], s.dt[1]);
                         let c = saw(&mut s.ph[2], s.dt[2]);
                         let sub = fsin(s.ph[3]) * 0.5;
-                        adv(&mut s.ph[3], s.dt[3]);
+                        advance(&mut s.ph[3], s.dt[3]);
                         let tl = s.tf_l.process(a + 0.7 * b, FilterMode::Lowpass) * 0.5 + sub;
                         let tr = s.tf_r.process(c + 0.7 * b, FilterMode::Lowpass) * 0.5 + sub;
                         let zl = s.nf_l.process(nl, FilterMode::Lowpass);
@@ -587,7 +543,7 @@ impl Comete {
                     }
                     Kind::Subdrop => {
                         let x = fsin(s.ph[0]);
-                        adv(&mut s.ph[0], s.dt[0]);
+                        advance(&mut s.ph[0], s.dt[0]);
                         let h = x * x * (0.2 + 0.4 * p.tone) - 0.15;
                         let body = x + h;
                         let nmx = p.noise * 0.35;
@@ -600,11 +556,11 @@ impl Comete {
                     }
                     Kind::Impact => {
                         let sub = fsin(s.ph[0]) * s.layers[2];
-                        adv(&mut s.ph[0], s.dt[0]);
+                        advance(&mut s.ph[0], s.dt[0]);
                         let mut metal = 0.0;
                         for j in 1..6 {
                             metal += fsin(s.ph[j]) * (1.0 / j as f32);
-                            adv(&mut s.ph[j], s.dt[j]);
+                            advance(&mut s.ph[j], s.dt[j]);
                         }
                         let metal = metal * 0.3 * s.layers[1];
                         let zl = s.nf_l.process(nl, FilterMode::Lowpass) * s.layers[0] * 1.3;

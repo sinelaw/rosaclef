@@ -129,11 +129,7 @@ fn imports_format0() {
 
     // Bass: GM program 33 → a bass instrument.
     let bass = &p.channels[0];
-    assert!(
-        ["synth", "cuivre"].contains(&bass.instrument.kind.as_str()),
-        "{}",
-        bass.instrument.kind
-    );
+    assert_eq!(bass.instrument.kind, "cuivre");
     assert!((bass.volume - 0.8).abs() < 1e-9);
     let notes: Vec<(i32, f64, f64, f64)> = p
         .patterns
@@ -486,7 +482,7 @@ fn merging_keeps_channel_lanes_and_the_song_tempo() {
         id: "keys-acoustic-grand-piano".into(),
         name: "Keys".into(),
         color: "#ffffff".into(),
-        instrument: rosaclef_core::Device::new("synth"),
+        instrument: rosaclef_core::Device::new("cuivre"),
         volume: 0.8,
         pan: 0.0,
         mute: false,

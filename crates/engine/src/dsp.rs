@@ -85,29 +85,10 @@ impl Rng {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Wave {
-    Sine,
-    Triangle,
-    Saw,
-    Square,
-    Noise,
-}
-
-impl Wave {
-    pub fn parse(s: &str) -> Wave {
-        match s {
-            "sine" => Wave::Sine,
-            "triangle" => Wave::Triangle,
-            "square" => Wave::Square,
-            "noise" => Wave::Noise,
-            _ => Wave::Saw,
-        }
-    }
-}
-
+/// PolyBLEP residual that band-limits a unit step at phase 0 (`dt` is the
+/// phase increment per sample).
 #[inline]
-fn poly_blep(t: f32, dt: f32) -> f32 {
+pub fn poly_blep(t: f32, dt: f32) -> f32 {
     if t < dt {
         let t = t / dt;
         t + t - t * t - 1.0
@@ -119,23 +100,40 @@ fn poly_blep(t: f32, dt: f32) -> f32 {
     }
 }
 
-/// Band-limited (PolyBLEP) oscillator sample for a phase in [0, 1).
+/// Band-limited (PolyBLEP) saw for a phase in [0, 1).
 #[inline]
-pub fn osc(wave: Wave, phase: f32, dt: f32, rng: &mut Rng) -> f32 {
-    match wave {
-        Wave::Sine => (phase * TAU).sin(),
-        Wave::Saw => 2.0 * phase - 1.0 - poly_blep(phase, dt),
-        Wave::Square => {
-            let naive = if phase < 0.5 { 1.0 } else { -1.0 };
-            let mut p2 = phase + 0.5;
-            if p2 >= 1.0 {
-                p2 -= 1.0;
-            }
-            naive + poly_blep(phase, dt) - poly_blep(p2, dt)
-        }
-        Wave::Triangle => 1.0 - 4.0 * (phase - 0.5).abs(),
-        Wave::Noise => rng.bipolar(),
+pub fn blep_saw(ph: f32, dt: f32) -> f32 {
+    2.0 * ph - 1.0 - poly_blep(ph, dt)
+}
+
+/// Advance a phase in cycles, wrapping into [0, 1).
+#[inline]
+pub fn advance(ph: &mut f32, dt: f32) {
+    *ph += dt;
+    if *ph >= 1.0 {
+        *ph -= 1.0;
     }
+}
+
+/// Fast sine for a phase in cycles (parabolic approximation with correction).
+#[inline]
+pub fn fsin(ph: f32) -> f32 {
+    // Wrap to [0, 1) without `floor` (a libm call on baseline x86-64).
+    let mut x = ph - (ph as i32) as f32;
+    if x < 0.0 {
+        x += 1.0;
+    }
+    let t = 2.0 * x - 1.0; // -1..1, sin(pi*t) = -sin(2*pi*x)
+    let y = 4.0 * t * (1.0 - t.abs());
+    -(y * (0.775 + 0.225 * y.abs()))
+}
+
+/// Cheap rational tanh approximation (Padé): exact at 0, ±1 beyond ±3, smooth.
+#[inline]
+pub fn ftanh(x: f32) -> f32 {
+    let x = x.clamp(-3.0, 3.0);
+    let x2 = x * x;
+    x * (27.0 + x2) / (27.0 + 9.0 * x2)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

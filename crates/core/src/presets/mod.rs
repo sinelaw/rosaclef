@@ -5,10 +5,10 @@
 //! into a project `Device`. Every preset is validated against the catalog
 //! by the tests below.
 
-mod classic;
 mod comete;
 mod cuivre;
 mod dedale;
+mod drum;
 mod nebula;
 mod prisme;
 mod sextant;
@@ -70,7 +70,7 @@ impl Serialize for Preset {
 /// Every factory preset, grouped by engine.
 pub fn all() -> Vec<&'static Preset> {
     [
-        classic::PRESETS,
+        drum::PRESETS,
         prisme::PRESETS,
         sextant::PRESETS,
         tessera::PRESETS,

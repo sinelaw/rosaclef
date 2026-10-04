@@ -105,8 +105,6 @@ export function addPresetChannel(pr) {
 }
 
 const DEVICE_ICONS = [
-  { type: "synth", icon: "wave" },
-  { type: "fm", icon: "spark" },
   { type: "drum", icon: "rack" },
   { type: "sampler", icon: "folder" },
   { type: "prisme", icon: "spark" },

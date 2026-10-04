@@ -414,7 +414,7 @@ function drumName(kind) {
 function laneChannel(lane) {
   const id = existingLaneChannel(lane);
   if (id !== "") return id;
-  if (lane === "melody") return pushChannel("synth", "Voice", (d) => undefined);
+  if (lane === "melody") return pushChannel("cuivre", "Voice", (d) => undefined);
   return pushChannel("drum", drumName(lane), (d) => setOption(d, "kind", lane));
 }
 
@@ -445,7 +445,7 @@ function previewJson(r) {
     let id = existingLaneChannel(lane);
     if (id === "") {
       id = `${PREVIEW}-${lane}`;
-      const dev = newDevice(drums ? "drum" : "synth");
+      const dev = newDevice(drums ? "drum" : "cuivre");
       if (drums) setOption(dev, "kind", lane);
       p.channels.push({ id: id, name: id, color: "#d4af37", instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(0), arp: noArp() });
     }

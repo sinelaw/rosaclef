@@ -151,7 +151,6 @@ const fn o(
     }
 }
 
-pub const WAVES: &[&str] = &["sine", "triangle", "saw", "square", "noise"];
 pub const FILTER_MODES: &[&str] = &["lowpass", "highpass", "bandpass"];
 pub const DRUM_KINDS: &[&str] = &[
     "kick", "snare", "clap", "hat", "openhat", "tom", "rim", "cowbell", "shaker",
@@ -159,12 +158,13 @@ pub const DRUM_KINDS: &[&str] = &[
 pub const PLUGIN_FORMATS: &[&str] = &["clap", "vst3", "lv2"];
 pub const SPECTRA: &[&str] = &["saw", "square", "organ", "bell", "choir", "glass"];
 pub const FM_ALGORITHMS: &[&str] = &[
-    "stack", "twin", "triad", "ep", "bell", "organ", "pad", "brass",
+    "stack", "twin", "triad", "ep", "bell", "organ", "pad", "brass", "duo",
 ];
 pub const WAVETABLES: &[&str] = &["analog", "digital", "vocal", "growl", "glass", "pulse"];
 pub const WARPS: &[&str] = &["none", "bend", "sync", "fold", "mirror"];
-pub const VA_WAVES: &[&str] = &["saw", "pulse", "triangle"];
-pub const VA_FILTERS: &[&str] = &["ladder", "screamer"];
+pub const VA_WAVES: &[&str] = &["saw", "pulse", "triangle", "sine", "noise"];
+pub const VA_FILTERS: &[&str] = &["ladder", "screamer", "lowpass", "highpass", "bandpass"];
+pub const SUB_WAVES: &[&str] = &["square", "sine"];
 pub const VOICE_MODES: &[&str] = &["poly", "mono", "legato"];
 pub const TEXTURE_SOURCES: &[&str] = &["choir", "bowl", "ember", "strings", "air", "sample"];
 pub const SCALES: &[&str] = &[
@@ -220,51 +220,6 @@ const ENV: [ParamSpec; 4] = [
 
 pub static DEVICES: &[DeviceSpec] = &[
     // ---------------------------------------------------------------- instruments
-    DeviceSpec {
-        kind: "synth",
-        label: "Aurum",
-        category: Category::Instrument,
-        doc: "Two-oscillator subtractive synthesizer with unison, sub oscillator, resonant filter and envelopes. Basses, leads, pads, stabs.",
-        params: &[
-            pi("osc2Semi", "Osc 2 Semi", -24.0, 24.0, 0.0, "st", "Oscillator 2 transpose in semitones."),
-            p("osc2Detune", "Osc 2 Fine", -100.0, 100.0, 7.0, "ct", "Oscillator 2 fine tune in cents."),
-            p("osc2Mix", "Osc 2 Mix", 0.0, 1.0, 0.5, "", "Oscillator 2 level relative to oscillator 1."),
-            p("sub", "Sub", 0.0, 1.0, 0.0, "", "Sine sub-oscillator one octave down."),
-            pi("unison", "Unison", 1.0, 7.0, 1.0, "", "Voices stacked per note."),
-            p("spread", "Spread", 0.0, 100.0, 12.0, "ct", "Unison detune spread in cents."),
-            pe("cutoff", "Cutoff", 20.0, 20000.0, 2400.0, "Hz", "Filter cutoff frequency."),
-            p("resonance", "Reso", 0.0, 1.0, 0.2, "", "Filter resonance."),
-            p("filterEnv", "Env Amt", -1.0, 1.0, 0.35, "", "Filter envelope depth (±1 = ±6 octaves)."),
-            pe("filterDecay", "Env Decay", 0.001, 8.0, 0.35, "s", "Filter envelope decay time."),
-            pe("glide", "Glide", 0.0001, 2.0, 0.0001, "s", "Portamento time between successive notes."),
-            ENV[0], ENV[1], ENV[2], ENV[3],
-            p("gain", "Gain", 0.0, 1.5, 0.6, "", "Output level."),
-        ],
-        options: &[
-            o("wave1", "Osc 1", WAVES, "saw", "Oscillator 1 waveform."),
-            o("wave2", "Osc 2", WAVES, "saw", "Oscillator 2 waveform."),
-            o("filter", "Filter", FILTER_MODES, "lowpass", "Filter mode."),
-        ],
-        open_params: false,
-    },
-    DeviceSpec {
-        kind: "fm",
-        label: "Lumière",
-        category: Category::Instrument,
-        doc: "Two-operator FM synthesizer. Electric pianos, bells, mallets, glassy keys and plucked basses.",
-        params: &[
-            p("ratio", "Ratio", 0.25, 16.0, 2.0, "", "Modulator frequency ratio (integers sound harmonic)."),
-            p("index", "Index", 0.0, 20.0, 3.0, "", "Modulation depth / brightness."),
-            pe("indexDecay", "Idx Decay", 0.01, 8.0, 0.6, "s", "How quickly the brightness fades."),
-            p("feedback", "Feedback", 0.0, 1.0, 0.0, "", "Modulator self-feedback (adds grit)."),
-            p("velocity", "Vel Sens", 0.0, 1.0, 0.6, "", "How much velocity affects brightness."),
-            p("detune", "Detune", 0.0, 30.0, 4.0, "ct", "Chorus-like detune of a second carrier."),
-            ENV[0], ENV[1], ENV[2], ENV[3],
-            p("gain", "Gain", 0.0, 1.5, 0.6, "", "Output level."),
-        ],
-        options: &[],
-        open_params: false,
-    },
     DeviceSpec {
         kind: "drum",
         label: "Atelier",
@@ -351,7 +306,7 @@ pub static DEVICES: &[DeviceSpec] = &[
         kind: "sextant",
         label: "Sextant",
         category: Category::Instrument,
-        doc: "Six-operator FM synthesizer. Operators modulate each other at audio rate in the chosen algorithm; each has its own ratio, level and envelope. Electric pianos, bells, metallic basses, brass, plucks.",
+        doc: "Six-operator FM synthesizer. Operators modulate each other at audio rate in the chosen algorithm; each has its own ratio, level and envelope. Electric pianos, bells, mallets, metallic basses, brass, plucks. The 'duo' algorithm is classic two-operator FM: operator 6 (ratio = modulator ratio, level = brightness, its envelope = how the brightness fades) modulates carriers 1 and 2, which 'detune' spreads apart for width.",
         params: &[
             p("op1Ratio", "Op 1 Ratio", 0.125, 16.0, 1.0, "", "Operator 1 frequency ratio (integers are harmonic)."),
             p("op1Level", "Op 1 Level", 0.0, 1.0, 1.0, "", "Operator 1 output level (modulation depth or carrier volume)."),
@@ -426,18 +381,20 @@ pub static DEVICES: &[DeviceSpec] = &[
         kind: "cuivre",
         label: "Cuivre",
         category: Category::Instrument,
-        doc: "Virtual analog synthesizer modelled on circuit behaviour: drifting oscillators into a saturating 4-pole ladder or an aggressive 2-pole 'screamer' filter. Fat basses, warm strings, screaming leads.",
+        doc: "Virtual analog subtractive synthesizer modelled on circuit behaviour: two drifting oscillators with unison and a sub, into a saturating 4-pole ladder, an aggressive 2-pole 'screamer', or a clean low-, high- or band-pass filter. Fat basses, supersaws, warm strings and pads, stabs, screaming leads. Set drift and drive to 0 for a clean, stable sound.",
         params: &[
             pi("osc2Semi", "Osc 2 Semi", -24.0, 24.0, 0.0, "st", "Oscillator 2 transpose."),
-            p("osc2Detune", "Osc 2 Fine", -50.0, 50.0, 6.0, "ct", "Oscillator 2 fine tune."),
+            p("osc2Detune", "Osc 2 Fine", -100.0, 100.0, 6.0, "ct", "Oscillator 2 fine tune."),
             p("mix2", "Osc 2 Mix", 0.0, 1.0, 0.5, "", "Oscillator 2 level."),
-            p("pulseWidth", "PW", 0.05, 0.95, 0.5, "", "Pulse width of pulse waves."),
-            p("sub", "Sub", 0.0, 1.0, 0.3, "", "Square sub oscillator one octave down."),
+            p("pulseWidth", "PW", 0.05, 0.95, 0.5, "", "Pulse width of pulse waves (0.5 = square)."),
+            pi("unison", "Unison", 1.0, 7.0, 1.0, "", "Detuned copies of both oscillators per note, spread across the stereo field."),
+            p("spread", "Spread", 0.0, 100.0, 12.0, "ct", "Unison detune spread in cents."),
+            p("sub", "Sub", 0.0, 1.0, 0.3, "", "Sub oscillator one octave down (options.subWave)."),
             p("noise", "Noise", 0.0, 1.0, 0.0, "", "Noise level."),
             p("drift", "Drift", 0.0, 1.0, 0.3, "", "Analog pitch and filter drift."),
             pe("cutoff", "Cutoff", 20.0, 20000.0, 1200.0, "Hz", "Filter cutoff."),
             p("resonance", "Reso", 0.0, 1.0, 0.3, "", "Filter resonance (self-oscillates near 1)."),
-            p("drive", "Drive", 0.0, 1.0, 0.3, "", "Filter saturation."),
+            p("drive", "Drive", 0.0, 1.0, 0.3, "", "Filter saturation (0 keeps the low/high/band-pass clean)."),
             p("keyTrack", "Key Track", 0.0, 1.0, 0.5, "", "How much the cutoff follows the note."),
             p("filterEnv", "Env Amt", -1.0, 1.0, 0.4, "", "Filter envelope depth (±1 = ±6 octaves)."),
             pe("filterAttack", "F Attack", 0.001, 8.0, 0.002, "s", "Filter envelope attack."),
@@ -450,7 +407,8 @@ pub static DEVICES: &[DeviceSpec] = &[
         options: &[
             o("wave1", "Osc 1", VA_WAVES, "saw", "Oscillator 1 waveform."),
             o("wave2", "Osc 2", VA_WAVES, "saw", "Oscillator 2 waveform."),
-            o("filter", "Filter", VA_FILTERS, "ladder", "Filter model."),
+            o("filter", "Filter", VA_FILTERS, "ladder", "Filter model: 4-pole ladder, 2-pole screamer, or a clean 2-pole low-, high- or band-pass."),
+            o("subWave", "Sub Wave", SUB_WAVES, "square", "Sub oscillator waveform."),
             o("mode", "Voicing", VOICE_MODES, "poly", "Polyphonic, monophonic, or monophonic legato (glide only when notes overlap)."),
         ],
         open_params: false,

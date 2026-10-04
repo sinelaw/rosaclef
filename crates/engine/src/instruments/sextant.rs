@@ -19,6 +19,7 @@
 //! | `organ`   | —                               | 1–6      | —     | six additive drawbars (6 has feedback) |
 //! | `pad`     | 4→1, 5→2, 6→3                   | 1, 2, 3  | 0.5   | three gently modulated carriers        |
 //! | `brass`   | 6→5→4→1, 3→1                    | 1, 2     | 1.0   | feedback stack + plain carrier 2       |
+//! | `duo`     | 6→1, 6→2                        | 1, 2     | 2.5   | classic 2-op FM, detuned twin carriers |
 //!
 //! Modulation index (radians) = 8 × level² × depth × velocity × key scaling ×
 //! envelope; the quadratic taper gives fine control of subtle indices.
@@ -105,7 +106,7 @@ const fn b(i: usize) -> u8 {
 }
 
 // Operators are 0-based here (op 1 = index 0).
-const ALGORITHMS: [Algorithm; 8] = [
+const ALGORITHMS: [Algorithm; 9] = [
     Algorithm {
         name: "stack",
         mods: [b(1), b(2), b(3), b(4), b(5), 0],
@@ -153,6 +154,14 @@ const ALGORITHMS: [Algorithm; 8] = [
         mods: [b(2) | b(3), 0, 0, b(4), b(5), 0],
         carriers: b(0) | b(1),
         depth: 1.0,
+    },
+    // One modulator (with feedback) on two carriers that `detune` spreads
+    // apart; the deeper scale reaches the bright indices of 2-op FM (20 rad).
+    Algorithm {
+        name: "duo",
+        mods: [b(5), b(5), 0, 0, 0, 0],
+        carriers: b(0) | b(1),
+        depth: 2.5,
     },
 ];
 

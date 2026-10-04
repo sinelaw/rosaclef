@@ -112,7 +112,7 @@ fn tessera_sounds_with_defaults() {
 #[test]
 fn every_algorithm_and_table_is_healthy() {
     for algo in [
-        "stack", "twin", "triad", "ep", "bell", "organ", "pad", "brass",
+        "stack", "twin", "triad", "ep", "bell", "organ", "pad", "brass", "duo",
     ] {
         let a = render_full(
             &device("sextant", &[("feedback", 0.7)], &[("algorithm", algo)]),
@@ -226,7 +226,7 @@ fn presets_render_within_level_bounds() {
             .into_iter()
             .filter(|p| p.kind == kind)
             .collect();
-        assert_eq!(presets.len(), 6, "{kind} presets");
+        assert!(presets.len() >= 6, "{kind} presets");
         let mut errors = vec![];
         for p in presets {
             for pitch in [48u8, 60, 72] {
