@@ -6,7 +6,7 @@
 // code the command line and the browser-only studio run.
 
 import { getJson, sendJson, now, audioPost } from "#platform";
-import { state, commit, invalidate, hint, currentPattern } from "../store.js";
+import { state, commit, invalidate, hint, currentPattern, hooks } from "../store.js";
 import { decodeProject, encodeProject, projectJson, meterMap } from "../model.js";
 import { startAudio } from "../audio.js";
 import { button, iconButton, select, textInput } from "./widgets.js";
@@ -131,13 +131,58 @@ function grooveLabel(g) {
   return `${g.style} · ${g.name}`;
 }
 
+// ------------------------------------------------------------------ meters
+
+/** type BarRun = { bar: Number, barBeats: Number, label: String } */
+
+/** The time signatures of the bars a groove would play (one run per bar
+ * length): the bars of the sections that groove in it — section `at`, or
+ * those on the part's groove when `at` is -1 — or bar 1 before there is a part. */
+/** function metersOf(at: Int) => BarRun[] */
+function metersOf(at) {
+  const map = meterMap(state.project.transport);
+  const d = state.project.drums;
+  /** const out: BarRun[] */
+  const out = [];
+  /** function add(bar: Number) => Undefined */
+  const add = (bar) => {
+    let s = map[0];
+    for (const m of map) if (m.bar <= bar) s = m;
+    // (bar 0 stands for the whole song when it keeps one time signature)
+    if (!out.some((r) => Math.abs(r.barBeats - s.barBeats) < 1e-6)) out.push({ bar: map.length === 1 ? 0 : bar, barBeats: s.barBeats, label: s.label });
+  };
+  if (!d.on) {
+    add(0);
+    return out;
+  }
+  let bar = d.start - 1;
+  for (let i = 0; i < d.sections.length; i++) {
+    const s = d.sections[i];
+    const uses = at >= 0 ? i === at : s.groove === "";
+    if (uses && (s.play === "a" || s.play === "b")) for (let k = 0; k < s.bars; k++) add(bar + k);
+    bar = bar + s.bars;
+  }
+  return out;
+}
+
+/** Why a groove cannot play those bars ("" when it can). */
+/** function misfit(g: GrooveInfo, runs: BarRun[]) => String */
+function misfit(g, runs) {
+  for (const r of runs) {
+    if (Math.abs(g.barBeats - r.barBeats) > 1e-6) {
+      const where = r.bar > 0 ? `bar ${r.bar + 1} is in ${r.label}` : `the song is in ${r.label}`;
+      return `${g.name} is in ${g.meter}, but ${where}. Pick a groove in ${r.label}, or change the time signature (Time, in the top bar).`;
+    }
+  }
+  return "";
+}
+
 // ------------------------------------------------------------------ editing
 
-/** Change the drum part (one undo step); a playing preview follows. */
+/** Change the drum part (one undo step); a playing preview follows (see playPreview). */
 /** function edit(fn: (DrumPart) => Undefined) => Undefined */
 function edit(fn) {
   commit(() => fn(state.project.drums));
-  if (drums.previewing) refreshPreview();
 }
 
 /** Bars of the song before the drum part's first section, as song beats. */
@@ -270,18 +315,25 @@ async function playPreview() {
   if (!state.project.drums.on) return false;
   await startAudio();
   drums.previewing = true;
+  // Every change to the song (the part, the kit, a note) plays on in the
+  // preview, instead of the song without its drums replacing it.
+  hooks.preview = refreshPreview;
+  hooks.previewing = true;
   invalidate();
   return await sendPreview(true);
 }
 
 function refreshPreview() {
-  sendPreview(false);
+  // (An undo can take the part away.)
+  if (!state.project.drums.on) stopPreview();
+  else sendPreview(false);
 }
 
 /** Stop the preview and give the engine the song back. */
 export function stopPreview() {
   if (!drums.previewing) return undefined;
   drums.previewing = false;
+  hooks.previewing = false;
   drums.previewSeq = drums.previewSeq + 1;
   audioPost({ t: "stop" });
   audioPost({ t: "project", json: projectJson(state.project) });
@@ -308,6 +360,32 @@ function field(b, key, label, value, choices, labels, tip, onSet) {
   b.open("label", key, "drums-field");
   b.leaf("span", "l", "drums-label", label);
   select(b, "s", "", value, choices, labels, tip, onSet);
+  b.close();
+}
+
+/** A labelled groove dropdown: the grooves that do not fit the bars are
+ * greyed out, their tooltip saying why (`why[i]`, "" = fits). */
+/** function grooveField(b: Builder, key: String, label: String, value: String, choices: String[], labels: String[], why: String[], tip: String, onSet: (String) => Undefined) => Undefined */
+function grooveField(b, key, label, value, choices, labels, why, tip, onSet) {
+  b.open("label", key, "drums-field");
+  b.leaf("span", "l", "drums-label", label);
+  b.open("select", "s", "select");
+  b.prop("value", value);
+  b.attr("title", tip);
+  b.on("pointerenter", (e) => hint(tip));
+  b.on("change", (e) => {
+    onSet(e.value);
+  });
+  for (let i = 0; i < choices.length; i++) {
+    const no = i < why.length && why[i] !== "";
+    b.leaf("option", choices[i], no ? "misfit" : "", no ? `${labels[i]} (${grooveOf(choices[i])?.meter ?? ""})` : labels[i]);
+    b.attr("value", choices[i]);
+    if (no) {
+      b.attr("disabled", "true");
+      b.attr("title", why[i]);
+    }
+  }
+  b.close();
   b.close();
 }
 
@@ -445,19 +523,21 @@ function grooveView(b, d) {
   const g = grooveOf(d.groove);
   b.open("section", "groove", "drums-step drums-groove");
   b.open("div", "pick", "drums-pick");
-  field(
+  const runs = metersOf(-1);
+  grooveField(
     b,
     "groove",
     "Groove",
     d.groove,
     gs.map((x) => x.id),
     gs.map(grooveLabel),
+    gs.map((x) => (x.id === d.groove ? "" : misfit(x, runs))),
     "The groove the drummer plays: A in verses, the bigger B in choruses",
     (v) => setGroove(v)
   );
   b.open("div", "nav", "drums-nav");
-  iconButton(b, "prev", "small", "left", "The previous groove (keeps playing)", () => stepGroove(-1));
-  iconButton(b, "next", "small", "right", "The next groove (keeps playing)", () => stepGroove(1));
+  iconButton(b, "prev", "small", "left", "The previous groove in this time signature (keeps playing)", () => stepGroove(-1));
+  iconButton(b, "next", "small", "right", "The next groove in this time signature (keeps playing)", () => stepGroove(1));
   iconButton(
     b,
     "play",
@@ -471,6 +551,8 @@ function grooveView(b, d) {
   );
   b.close();
   b.close();
+  const wrong = g ? misfit(g, runs) : "";
+  if (wrong !== "") b.leaf("div", "meter", "drums-info warn", wrong);
   if (g) {
     const bpm = state.project.transport.bpm;
     const fits = bpm >= g.tempo[0] && bpm <= g.tempo[1];
@@ -552,8 +634,16 @@ function setGroove(id) {
 function stepGroove(by) {
   const gs = drums.catalog.grooves;
   if (gs.length === 0) return undefined;
-  const i = gs.findIndex((g) => g.id === state.project.drums.groove);
-  setGroove(gs[(i + by + gs.length) % gs.length].id);
+  const runs = metersOf(-1);
+  let i = gs.findIndex((g) => g.id === state.project.drums.groove);
+  // The next one that fits the song's time signature.
+  for (let n = 0; n < gs.length; n++) {
+    i = (i + by + gs.length) % gs.length;
+    if (misfit(gs[i], runs) === "") {
+      setGroove(gs[i].id);
+      return undefined;
+    }
+  }
 }
 
 /** The sections, as a strip the width of the part, and the selected one's settings. */
@@ -662,11 +752,15 @@ function sectionsView(b, d) {
     const ids = [""];
     /** const labels: String[] */
     const labels = ["Same groove"];
+    /** const why: String[] */
+    const why = [""];
+    const runs = metersOf(at);
     for (const g of drums.catalog.grooves) {
       ids.push(g.id);
       labels.push(grooveLabel(g));
+      why.push(g.id === s.groove ? "" : misfit(g, runs));
     }
-    field(b, "groove", "Groove", s.groove, ids, labels, "Another groove for this section only (a half-time bridge)", (v) =>
+    grooveField(b, "groove", "Groove", s.groove, ids, labels, why, "Another groove for this section only (a half-time bridge)", (v) =>
       edit((x) => {
         x.sections[at].groove = v;
       })
@@ -830,6 +924,7 @@ function startView(b) {
     "Pick a groove. The sections are guessed from the playlist; then choose what each one plays — groove A or B, a fill, a crash — and write the drums."
   );
   const gs = drums.catalog.grooves;
+  const runs = metersOf(-1);
   /** const styles: String[] */
   const styles = [];
   for (const g of gs) if (!styles.includes(g.style)) styles.push(g.style);
@@ -839,7 +934,18 @@ function startView(b) {
     b.leaf("div", "n", "drums-label", st);
     b.open("div", "g", "drums-style-grooves");
     for (const g of gs.filter((x) => x.style === st)) {
-      button(b, g.id, "small", g.name, `${g.meter}, ${g.tempo[0]}–${g.tempo[1]} BPM — start the drum part on this groove`, () => startPart(g.id));
+      const no = misfit(g, runs);
+      button(
+        b,
+        g.id,
+        no === "" ? "small" : "small misfit",
+        g.name,
+        no === "" ? `${g.meter}, ${g.tempo[0]}–${g.tempo[1]} BPM — start the drum part on this groove` : no,
+        () => {
+          if (no === "") startPart(g.id);
+        }
+      );
+      if (no !== "") b.attr("aria-disabled", "true");
     }
     b.close();
     b.close();

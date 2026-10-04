@@ -14,6 +14,7 @@ import { drumsPanel, drumsTools } from "./drums.js";
 import { agentPanel, agentDot } from "./agent.js";
 import { toastView } from "./toast.js";
 import { automationMenu } from "./lanes.js";
+import { meterMenu } from "./meter.js";
 import { projectsOverlay } from "./projects.js";
 import { creditsOverlay } from "./credits.js";
 import { glyph } from "./widgets.js";
@@ -246,6 +247,7 @@ export function studio(b) {
   creditsOverlay(b);
   toastView(b);
   automationMenu(b);
+  meterMenu(b);
   b.close();
 }
 

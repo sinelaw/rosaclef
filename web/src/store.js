@@ -77,6 +77,11 @@ export const hooks = {
   sync: null,
   /** @type {(String) => Undefined} */
   engine: null,
+  /** While a preview plays its own version of the song (the Drums tab's,
+   * `previewing`), project changes go to it instead of the engine. */
+  /** @type {() => Undefined} */
+  preview: null,
+  previewing: false,
   /** @type {() => Undefined} */
   context: null,
 };
@@ -114,7 +119,8 @@ function pushToEngine() {
   engineQueued = true;
   setTimeout(() => {
     engineQueued = false;
-    if (hooks.engine) hooks.engine(projectJson(state.project));
+    if (hooks.previewing && hooks.preview) hooks.preview();
+    else if (hooks.engine) hooks.engine(projectJson(state.project));
   }, 30);
 }
 

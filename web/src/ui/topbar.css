@@ -78,6 +78,9 @@
   font: italic 500 18px/1 var(--serif);
   color: var(--champagne);
   max-width: 220px;
+  /* Room for a few words, however full the transport gets. */
+  min-width: 7.5em;
+  flex-shrink: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -154,4 +157,69 @@
   text-shadow:
     0 0 10px rgba(201, 123, 132, 0.6),
     0 0 2px rgba(255, 220, 225, 0.8);
+}
+
+/* The song's time signature (meter.js): a list in an LCD. */
+.lcd.timesig {
+  min-width: 0;
+  padding-right: 8px;
+  cursor: pointer;
+}
+.lcd-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 2px 0 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-shadow: inherit;
+  cursor: pointer;
+}
+.lcd-select:focus-visible {
+  outline: 1px solid var(--gold);
+  border-radius: 3px;
+}
+.lcd-select option {
+  background: #141117;
+  color: var(--text);
+  text-shadow: none;
+}
+
+/* A bar's time signature menu (the playlist ruler's right-click). */
+.meter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 2px 4px 6px;
+}
+.meter-choice {
+  padding: 6px 0;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--ob-2);
+  color: var(--text);
+  font: 500 13px/1 var(--mono);
+  cursor: pointer;
+}
+.meter-choice:hover {
+  border-color: var(--gold);
+  color: var(--gold-hi);
+}
+.meter-choice.on {
+  border-color: var(--gold);
+  background: rgba(212, 175, 55, 0.18);
+  color: var(--gold-hi);
+}
+
+/* Below 1700px the transport needs the room: the brand keeps its mark. */
+@media (max-width: 1700px) {
+  .topbar .brand {
+    min-width: 0;
+  }
+  .topbar .brand-text {
+    display: none;
+  }
 }

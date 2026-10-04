@@ -328,6 +328,17 @@
   flex-wrap: wrap;
   gap: 5px;
 }
+/* A groove in another time signature than the song's: greyed out, its
+   tooltip says why. */
+.drums-style-grooves .btn.misfit,
+.drums-style-grooves .btn.misfit:hover {
+  opacity: 0.38;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+.drums-field option.misfit {
+  color: var(--muted);
+}
 
 /* ---------------------------------------------------------------- medium */
 

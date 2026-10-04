@@ -193,6 +193,23 @@
 .lcd.static {
   cursor: default;
 }
+/* An LCD being typed into (the tempo, on a click). */
+.lcd.editing {
+  cursor: text;
+  border-color: var(--gold);
+}
+.lcd-input {
+  width: 6.8ch;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-shadow: inherit;
+  caret-color: var(--gold-hi);
+}
 .lcd-label {
   font: 600 8.5px/1 var(--sans);
   letter-spacing: 0.24em;
