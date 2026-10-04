@@ -92,7 +92,7 @@ import { toast } from "./toast.js";
  * hand, an export under way (its progress, 0..1; -1: none), and what the
  * picture on screen leaves out to draw faster (DRAWING keys).
  */
-/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], tiles: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, export: Number, off: String[], ticking: Boolean } */
+/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], tiles: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, export: Number, off: String[], ticking: Boolean, shown: Film[], shownInp: FilmInput[] } */
 
 /** function newFilmView(id: String) => FilmView */
 export function newFilmView(id) {
@@ -122,6 +122,8 @@ export function newFilmView(id) {
     export: -1,
     off: drawingOff(),
     ticking: false,
+    shown: [],
+    shownInp: [],
   };
 }
 
@@ -153,7 +155,11 @@ const DRAWING_PREF = "rosaclef.film.off";
 function drawingOff() {
   const saved = loadPref(DRAWING_PREF);
   if (saved === "") return fastGraphics() ? [] : DRAWING.map((x) => x[0]);
-  return saved.split(",").filter((k) => DRAWING.some((x) => x[0] === k));
+  const off = saved.split(",").filter((k) => DRAWING.some((x) => x[0] === k));
+  // Performance as saved before the ink's look could be left out: still Performance.
+  const before = DRAWING.filter((x) => x[0] !== "ink");
+  if (off.length === before.length && before.every((x) => off.includes(x[0]))) return off.concat(["ink"]);
+  return off;
 }
 
 /** Pixels a point of the pages' bitmaps. */
@@ -395,6 +401,7 @@ function schedule(fv, f, inp, need) {
     })
     .catch((e) => {
       fv.busy = false;
+      invalidate();
       return false;
     });
 }
@@ -848,8 +855,12 @@ export function filmView(b, fv, inp) {
   // frame, at the live playhead; the page around it (the timeline, the words
   // over the picture, the bitmaps wanted next) is rebuilt ten times a second.
   // Rebuilding all of it every frame is what slows the picture down.
+  // The loop reads the film as last shown, so it stops (and the page's frame
+  // is drawn) as soon as the film is no longer showing or another replaces it.
+  fv.shown = [f];
+  fv.shownInp = [inp];
   if (inp.showing && fv.export < 0 && (state.playing || fv.from.length > 0)) {
-    filmLive(`canvas[data-film="${fv.id}"]`, () => liveFrame(fv, f, inp));
+    filmLive(`canvas[data-film="${fv.id}"]`, () => liveFrame(fv));
     if (!fv.ticking) {
       fv.ticking = true;
       setTimeout(() => {
@@ -861,9 +872,12 @@ export function filmView(b, fv, inp) {
   if (fv.export >= 0) invalidate();
 }
 
-/** The picture now, while it moves by itself (the music playing, the camera gliding); none once it rests. */
-/** function liveFrame(fv: FilmView, f: Film, inp: FilmInput) => GlFrame | Undefined */
-function liveFrame(fv, f, inp) {
+/** The picture now, while it moves by itself (the music playing, the camera gliding) in the film last shown; none once it rests. */
+/** function liveFrame(fv: FilmView) => GlFrame | Undefined */
+function liveFrame(fv) {
+  if (fv.shown.length === 0 || fv.shownInp.length === 0) return undefined;
+  const f = fv.shown[0];
+  const inp = fv.shownInp[0];
   if (!inp.showing || fv.export >= 0 || !(state.playing || fv.from.length > 0)) return undefined;
   const beat = state.playing ? livePosition() : state.position;
   const cam = presented(fv, f, beat);
@@ -1047,36 +1061,70 @@ function exportStill(fv, f, inp) {
     });
 }
 
-/** A view sharing `fv`'s bitmaps, at the export's size (what it makes stays for `fv`). */
+/**
+ * A view at the export's size, drawing everything whatever the screen leaves
+ * out. It shares `fv`'s bitmaps (and what it makes stays for `fv`, see
+ * exported) when they are drawn alike; with the screen's ink plain, the pages
+ * differ, and it makes its own.
+ */
 /** function exportView(fv: FilmView) => FilmView */
 function exportView(fv) {
   const vf = newFilmView(`${fv.id}-export`);
   vf.width = VIDEO_W;
   vf.height = VIDEO_H;
-  vf.sig = fv.sig;
-  vf.pageKeys = fv.pageKeys;
-  vf.pages = fv.pages;
-  vf.tiles = fv.tiles;
-  vf.desk = fv.desk;
-  // Exports draw everything, whatever the screen leaves out.
   vf.off = [];
+  vf.desk = fv.desk;
+  if (sharesPages(fv)) {
+    vf.sig = fv.sig;
+    vf.pageKeys = fv.pageKeys;
+    vf.pages = fv.pages;
+    vf.tiles = fv.tiles;
+  }
   return vf;
+}
+
+/** Whether an export can use the bitmaps of the pages on screen (they are drawn as the export draws them). */
+/** function sharesPages(fv: FilmView) => Boolean */
+function sharesPages(fv) {
+  return !fv.off.includes("ink");
+}
+
+/** An export is done with its view: what it made stays for `fv` when shared (`shared`: as exportView found it), or is let go. */
+/** function exported(fv: FilmView, vf: FilmView, shared: Boolean) => Undefined */
+function exported(fv, vf, shared) {
+  fv.desk = vf.desk;
+  if (shared) {
+    fv.pages = vf.pages;
+    fv.tiles = vf.tiles;
+    return undefined;
+  }
+  for (const b of vf.pages) drop(b.url);
+  for (const b of vf.tiles) drop(b.url);
+  vf.pages = [];
+  vf.tiles = [];
+  return undefined;
 }
 
 /** The frame at the playhead, at the export's size, with every bitmap it needs. */
 /** function filmStill(fv: FilmView, f: Film, inp: FilmInput) => Promise<String> */
 async function filmStill(fv, f, inp) {
   const ef = replan(f, state.project.animation, VIDEO_W / VIDEO_H);
+  const shared = sharesPages(fv);
   const vf = exportView(fv);
   const beat = inp.showing ? state.position : 0;
   const cam = cameraAt(ef, beat);
-  await ensure(vf, ef, inp, wants(ef, cam, VIDEO_W, VIDEO_H, 0, 1));
-  fv.pages = vf.pages;
-  fv.tiles = vf.tiles;
-  fv.desk = vf.desk;
+  await ensure(vf, ef, inp, wants(ef, cam, VIDEO_W, VIDEO_H, 0, 1)).catch((e) => {
+    exported(fv, vf, shared);
+    throw e;
+  });
   const si = sceneAt(ef.scenes, beat);
   const frame = glFrame(vf, ef, inp, cam, beat, si >= 0 ? ef.scenes[si] : undefined, beat > 0, []);
-  return await renderStill(frame);
+  const url = await renderStill(frame).catch((e) => {
+    exported(fv, vf, shared);
+    throw e;
+  });
+  exported(fv, vf, shared);
+  return url;
 }
 
 /** Film the song frame by frame into an MP4 (1920×1080, 30 frames a second) with its mixdown, and download it; `clip`: only fifteen seconds from the playhead. */
@@ -1140,6 +1188,7 @@ async function filmVideo(fv, f, inp, clip) {
   const frames = Math.ceil(seconds * VIDEO_FPS);
   const ef = replan(f, p.animation, VIDEO_W / VIDEO_H);
   // Share the bitmaps the view has made (and the ones made now stay for it).
+  const shared = sharesPages(fv);
   const vf = exportView(fv);
   /** function frameAt(i: Int) => Promise<GlFrame> */
   async function frameAt(i) {
@@ -1151,11 +1200,7 @@ async function filmVideo(fv, f, inp, clip) {
     if (i % 15 === 0) invalidate();
     return glFrame(vf, ef, inp, cam, beat, si >= 0 ? ef.scenes[si] : undefined, beat > 0, []);
   }
-  const keep = () => {
-    fv.pages = vf.pages;
-    fv.tiles = vf.tiles;
-    fv.desk = vf.desk;
-  };
+  const keep = () => exported(fv, vf, shared);
   const out = await encodeFilm(VIDEO_W, VIDEO_H, VIDEO_FPS, frames, frameAt, sound, offset, (x) => {
     fv.export = x;
   }).catch((e) => {

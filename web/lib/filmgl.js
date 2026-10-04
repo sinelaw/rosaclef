@@ -535,8 +535,8 @@ let scheduled = false;
 const live = new Map();
 let looping = false;
 
-/** Draw a frame on the canvas matching `selector` now. */
-function drawOn(sel, f) {
+/** Draw a frame on the canvas matching `selector` now (`reload`: again when its bitmaps come in; a live canvas is drawn again anyway). */
+function drawOn(sel, f, reload) {
   const canvas = document.querySelector(sel);
   if (!canvas) return false;
   let r = screens.get(sel);
@@ -553,7 +553,7 @@ function drawOn(sel, f) {
   const dpr = Math.min(f.ratio, window.devicePixelRatio || 1);
   f.width = Math.round(canvas.clientWidth * dpr);
   f.height = Math.round(canvas.clientHeight * dpr);
-  r.onLoad = () => filmDraw(sel, f);
+  r.onLoad = reload ? () => filmDraw(sel, f) : null;
   r.draw(f);
   return true;
 }
@@ -568,7 +568,7 @@ export function filmDraw(selector, frame) {
     // A canvas drawn every frame shows its own (this one waits, for when it comes to rest).
     for (const [sel, f] of pending) {
       if (live.has(sel)) continue;
-      drawOn(sel, f);
+      drawOn(sel, f, true);
       pending.delete(sel);
     }
   });
@@ -587,12 +587,12 @@ export function filmLive(selector, next) {
     for (const [sel, next] of live) {
       const f = next();
       if (f) pending.delete(sel);
-      if (f && drawOn(sel, f)) continue;
+      if (f && drawOn(sel, f, false)) continue;
       live.delete(sel);
       // At rest: the page's latest frame, if one came in meanwhile.
       const last = pending.get(sel);
       pending.delete(sel);
-      if (last) drawOn(sel, last);
+      if (last) drawOn(sel, last, true);
     }
     if (live.size > 0) requestAnimationFrame(tick);
     else looping = false;

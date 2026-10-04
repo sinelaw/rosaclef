@@ -502,7 +502,7 @@ export function pagePart(lay, p, info, look, scale, box, textured) {
     return `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${size}" height="${size}"><image href="${t.url}" width="${size}" height="${size}"/></pattern>`;
   }
   const defs = [
-    markup(inkFilter("ink", look.wet, false, look.gloss, look.shine, sp * scale)),
+    look.filters ? markup(inkFilter("ink", look.wet, false, look.gloss, look.shine, sp * scale)) : "",
     `<filter id="sheen"><feGaussianBlur stdDeviation="0.09"/></filter>`,
     `<filter id="gloss"><feGaussianBlur stdDeviation="0.025"/></filter>`,
     `<filter id="edge" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="${n(3 * sp)}"/></filter>`,
