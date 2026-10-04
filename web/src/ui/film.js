@@ -36,12 +36,9 @@ import {
   filmForget,
   encodeFilm,
   renderStill,
-  rasterInk,
   sendJson,
   decodeAudioUrl,
   download,
-  loadPref,
-  savePref,
 } from "#platform";
 import { state, commit, begin, changed, invalidate, hint, reportContext } from "../store.js";
 import { livePosition, togglePlay } from "../audio.js";
@@ -67,7 +64,7 @@ import {
   ease,
   defaultTilt,
 } from "../film.js";
-import { pagePart, inkPart } from "../pdf.js";
+import { pagePart } from "../pdf.js";
 import { surface, PAPER } from "../ink.js";
 import { decodeShot, musicJson, noMove } from "../model.js";
 import { TPQ } from "../notation.js";
@@ -76,8 +73,8 @@ import { toast } from "./toast.js";
 
 // ------------------------------------------------------------------ state
 
-/** A bitmap pair (made or being made): what it shows, the object URLs of its color and its ink ("" while drawing, "-" if it failed), its scale (pixels a point), when last shown (ms), its page (-1: the desk) and the part of the page it shows ([x, y, w, h], points). */
-/** type Bitmap = { key: String, url: String, ink: String, scale: Number, used: Number, page: Int, box: Number[] } */
+/** A bitmap (made or being made): what it shows, its object URL ("" while drawing, "-" if it failed), its scale (pixels a point), when last shown (ms), its page (-1: the desk) and the part of the page it shows ([x, y, w, h], points). */
+/** type Bitmap = { key: String, url: String, scale: Number, used: Number, page: Int, box: Number[] } */
 /** A change of view made by hand while paused (not part of any shot): moved by fractions of the picture, zoomed, turned, leaned. */
 /** type Look = { dx: Number, dy: Number, zoom: Number, turn: Number, tilt: Number } */
 /** What the film is made of, from the score view: its notation, how it is drawn, its title block, beats in a bar, whether the playhead is this score's, and how to seek and go back to the paper. */
@@ -88,13 +85,12 @@ import { toast } from "./toast.js";
  * (0 or 1), what it was made from (`sc`, `sig`: the music; `plan`: the shots
  * and aspect), its bitmaps (pages, sharper tiles, the desk), whether one is
  * being made, the camera last shown (for gliding over jumps), the look by
- * hand, the ink's relief, and an export under way (its progress, 0..1; -1: none).
+ * hand, and an export under way (its progress, 0..1; -1: none).
  */
-/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], tiles: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, relief: Number, export: Number } */
+/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], tiles: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, export: Number } */
 
 /** function newFilmView(id: String) => FilmView */
 export function newFilmView(id) {
-  const r = loadPref(`rosaclef.film.${id}.relief`);
   return {
     id: id,
     width: 900,
@@ -118,7 +114,6 @@ export function newFilmView(id) {
     fromAt: 0,
     look: { dx: 0, dy: 0, zoom: 1, turn: 0, tilt: 0 },
     gesture: false,
-    relief: r !== "" && Number(r) >= 0 && Number(r) <= 1 ? Number(r) : 1,
     export: -1,
   };
 }
@@ -213,7 +208,7 @@ function pageKeys(fv, f, inp) {
   if (fv.pageKeys.length === f.lay.pages.length + 1 && fv.pageKeys[0] === key) return fv.pageKeys;
   /** const keys: String[] */
   const keys = [key];
-  for (let i = 0; i < f.lay.pages.length; i++) keys.push(hashText(pagePart(f.lay, i, inp.info, paperLook(inp), 1, [0, 0, f.lay.w, f.lay.h])));
+  for (let i = 0; i < f.lay.pages.length; i++) keys.push(hashText(pagePart(f.lay, i, inp.info, paperLook(inp), 1, [0, 0, f.lay.w, f.lay.h], false)));
   fv.pageKeys = keys;
   return keys;
 }
@@ -228,7 +223,7 @@ function drop(url) {
 /** A bitmap is drawn (or could not be). */
 /** function done(b: Bitmap) => Boolean */
 function done(b) {
-  return b.url !== "" && b.ink !== "";
+  return b.url !== "";
 }
 
 /**
@@ -243,19 +238,17 @@ function nextJob(fv, f, inp, need, all) {
   for (const pg of fv.pages)
     if (!keys.includes(pg.key)) {
       drop(pg.url);
-      drop(pg.ink);
     }
   fv.pages = fv.pages.filter((pg) => keys.includes(pg.key));
   for (const t of fv.tiles)
     if (!keys.includes(t.key.split("#")[0])) {
       drop(t.url);
-      drop(t.ink);
     }
   fv.tiles = fv.tiles.filter((t) => keys.includes(t.key.split("#")[0]));
   const surf = state.project.animation.surface;
   if (fv.desk.length === 0 || fv.desk[0].key !== surf) {
     for (const d of fv.desk) drop(d.url);
-    const d = { key: surf, url: "", ink: "-", scale: 1, used: now(), page: -1, box: [] };
+    const d = { key: surf, url: "", scale: 1, used: now(), page: -1, box: [] };
     fv.desk = [d];
     return d;
   }
@@ -268,7 +261,7 @@ function nextJob(fv, f, inp, need, all) {
       const k = keys[i + 1];
       if (fv.pages.some((pg) => pg.key === k)) continue;
       if (pass === 0 && !need.some((nd) => nd[0] === i)) continue;
-      const b = { key: k, url: "", ink: "", scale: PAGE_SCALE, used: now(), page: i, box: [0, 0, f.lay.w, f.lay.h] };
+      const b = { key: k, url: "", scale: PAGE_SCALE, used: now(), page: i, box: [0, 0, f.lay.w, f.lay.h] };
       fv.pages.push(b);
       return b;
     }
@@ -308,24 +301,22 @@ function tile(fv, f, keys, need, all) {
       let old = 0;
       for (let i = 1; i < fv.tiles.length; i++) if (fv.tiles[i].used < fv.tiles[old].used) old = i;
       drop(fv.tiles[old].url);
-      drop(fv.tiles[old].ink);
       fv.tiles.splice(old, 1);
     }
     const size = TILE_PX / level;
     const x = nd[2] * size;
     const y = nd[3] * size;
-    const b = { key: key, url: "", ink: "", scale: level, used: now(), page: page, box: [x, y, Math.min(size, f.lay.w - x), Math.min(size, f.lay.h - y)] };
+    const b = { key: key, url: "", scale: level, used: now(), page: page, box: [x, y, Math.min(size, f.lay.w - x), Math.min(size, f.lay.h - y)] };
     fv.tiles.push(b);
     return b;
   }
   return undefined;
 }
 
-/** Draw the missing part of a bitmap (its color, then its ink). */
+/** Draw a bitmap. */
 /** function drawBitmap(fv: FilmView, f: Film, inp: FilmInput, b: Bitmap) => Promise<Boolean> */
 async function drawBitmap(fv, f, inp, b) {
   const lay = f.lay;
-  const color = b.url === "";
   let svg = "";
   let w = 0;
   let h = 0;
@@ -337,19 +328,16 @@ async function drawBitmap(fv, f, inp, b) {
   } else {
     const page = b.page;
     const box = b.box;
-    svg = color ? pagePart(lay, page, inp.info, paperLook(inp), b.scale, box) : inkPart(lay, page, inp.info, b.scale, box);
+    // On plain paper: the renderer lays the paper's texture over it.
+    svg = pagePart(lay, page, inp.info, paperLook(inp), b.scale, box, false);
     w = Math.round(box[2] * b.scale);
     h = Math.round(box[3] * b.scale);
   }
   try {
-    // The ink's drops as a PNG height map (a JPEG's blocks would show in the light).
-    const url = color ? await rasterSvg(svg, w, h, "image/jpeg") : await rasterInk(svg, w, h, b.scale);
-    if (color) b.url = url;
-    else b.ink = url;
+    b.url = await rasterSvg(svg, w, h, "image/jpeg");
     return true;
   } catch (e) {
-    if (color) b.url = "-";
-    else b.ink = "-";
+    b.url = "-";
     return false;
   }
 }
@@ -836,7 +824,7 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
     sheets.push({
       quad: corners(i, 0, 0, d.pw, d.ph),
       color: bm ? url(bm.url) : "",
-      height: bm ? url(bm.ink) : "",
+      box: [0, 0, d.pw, d.ph],
       scale: PAGE_SCALE,
       rot: d.pages[i].rot,
       page: true,
@@ -849,7 +837,7 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
   tiles.sort((x, y) => x.scale - y.scale);
   for (const t of tiles) {
     const b = t.box;
-    sheets.push({ quad: corners(t.page, b[0], b[1], b[2], b[3]), color: t.url, height: url(t.ink), scale: t.scale, rot: d.pages[t.page].rot, page: false });
+    sheets.push({ quad: corners(t.page, b[0], b[1], b[2], b[3]), color: t.url, box: t.box, scale: t.scale, rot: d.pages[t.page].rot, page: false });
   }
   /** const glow: Number[] */
   const glow = [];
@@ -861,26 +849,27 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
       for (const x of [c[0], c[1], r, Math.min(1, s.a * fx.glow)]) glow.push(x);
     }
   }
-  // The lamp: up and to the left of what the camera looks at, high above the desk (its direction fixed in the room, so the ink's highlights move as the camera turns).
+  // The lamp: up and to the left of what the camera looks at, high above the desk.
   const lx = -0.55 * cam.span;
   const ly = -0.75 * cam.span;
-  const look = inp.look;
   return {
     width: fv.width,
     height: fv.height,
-    cam: [cam.x, cam.y, cam.span, cam.tilt, cam.turn, cam.blur],
+    cam: [cam.x, cam.y, cam.span, cam.tilt, cam.turn],
     desk: [d.x0 - m, d.y0 - m, d.x1 + m, d.y1 + m],
     deskColor: surf.color,
     deskTex: deskBm && deskBm.url !== "-" ? deskBm.url : "",
     deskTile: d.pw * 0.9,
     paper: PAPER.color,
+    // The paper's texture, laid over the plain paper of the bitmaps: its tiles, each this many points across.
+    paperTex: [PAPER.tooth.url, PAPER.mottle.url, PAPER.grain.url],
+    paperSize: [PAPER.tooth.size, PAPER.mottle.size, PAPER.grain.size].map((x) => (x * f.lay.sp) / 7),
+    pageSize: [d.pw, d.ph, f.lay.sp],
     sheets: sheets,
     sparks: glow,
     spot: [cam.rx, cam.ry, Math.max(cam.rw, d.pw * 0.55) * 0.62, cam.rh * 0.72, fx.spotlight],
     light: [cam.x + lx, cam.y + ly, 1.15 * cam.span],
-    fx: [fx.vignette, fx.focus, fx.glow],
-    // The film's ink is wet: beads fresh from the pen, glossy.
-    ink: [fv.relief, 1, look.shine],
+    fx: [fx.vignette, fx.glow],
     seed: Math.floor(beat * 97) % 1000,
   };
 }
@@ -982,7 +971,6 @@ function exportView(fv) {
   const vf = newFilmView(`${fv.id}-export`);
   vf.width = VIDEO_W;
   vf.height = VIDEO_H;
-  vf.relief = fv.relief;
   vf.sig = fv.sig;
   vf.pageKeys = fv.pageKeys;
   vf.pages = fv.pages;
@@ -1338,23 +1326,6 @@ function filmPanel(b, fv, f) {
   b.close();
   b.leaf("div", "eh", "score-side-h", "Effects");
   effectSliders(b, fv, a.effects, (type, x) => setEffect(anim().effects, type, x));
-  // The ink's relief is how this screen draws it, not part of the song.
-  b.open("label", "relief", "film-knob");
-  b.attr("title", "Relief: how far the ink stands proud of the paper, lit by the lamp (wet ink shines; set the ink on the paper view)");
-  b.leaf("span", "l", "film-knob-l", "Relief");
-  b.leaf("input", "in", "score-slider", "");
-  b.attr("type", "range");
-  b.attr("min", "0");
-  b.attr("max", "1");
-  b.attr("step", "0.05");
-  b.prop("value", fmt(fv.relief, 2));
-  b.on("input", (e) => {
-    fv.relief = Number(e.value);
-    invalidate();
-  });
-  b.on("change", (e) => savePref(`rosaclef.film.${fv.id}.relief`, fmt(fv.relief, 2)));
-  b.leaf("span", "v", "film-knob-v", fmt(fv.relief, 2));
-  b.close();
   b.leaf("div", "kh", "score-side-h", "Keys");
   b.leaf(
     "div",
@@ -1367,14 +1338,13 @@ function filmPanel(b, fv, f) {
 /** Sliders for the effects of a list. */
 /** function effectSliders(b: Builder, fv: FilmView, list: FilmEffect[], onSet: (String, Number) => Undefined) => Undefined */
 function effectSliders(b, fv, list, onSet) {
-  const names = ["Vignette", "Spotlight", "Focus", "Glow"];
+  const names = ["Vignette", "Spotlight", "Glow"];
   const tips = [
     "Vignette: the picture darkens toward its edges",
     "Spotlight: a pool of light on the framed staves, the rest of the desk dimmed",
-    "Focus: depth of field — the near and far edges of a leaning picture blur",
     "Glow: notes light up as they play (off unless set)",
   ];
-  const fx = [0.5, 0, 0.4, 0];
+  const fx = [0.5, 0, 0];
   for (let i = 0; i < EFFECTS.length; i++) {
     const e = list.find((x) => x.type === EFFECTS[i]);
     const v = e ? e.amount : fx[i];

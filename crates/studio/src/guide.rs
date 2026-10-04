@@ -337,7 +337,7 @@ it; it changes nothing that plays.
                                     //   and directs itself wherever no shot covers the song
   "surface": "walnut",              // the desk: walnut, oak, slate, felt, marble
   "energy": 0.6,                    // auto: 0 calm, long shots … 1 restless, close ones
-  "effects": [{ "type": "vignette", "amount": 0.6 }],   // vignette, spotlight, focus (depth of field), glow
+  "effects": [{ "type": "vignette", "amount": 0.6 }],   // vignette, spotlight, glow
   "shots": [
     { "start": 0, "end": 8, "frame": "desk", "label": "Opening" },
     { "start": 8, "end": 24, "focus": ["drums", "bass"], "frame": "medium", "tilt": 30, "turn": -18,
@@ -362,10 +362,10 @@ it; it changes nothing that plays.
   ±10–35° reads well), `offset` [x, y] moves the camera by fractions of the picture.
 - **Movement**: `to` gives `zoom`, `tilt`, `turn` or `offset` at the shot's end — a slow push in
   (`"to": {"zoom": 1.3}`), a pull back, a turn. **Coming in**: `transition` `glide` (default),
-  `cut`, `swoop` (rises away from the desk and comes down), `whip` (fast, blurred); `glide` is the
+  `cut`, `swoop` (rises away from the desk and comes down), `whip` (fast); `glide` is the
   move's length in beats (default up to a bar), `ease` `smooth`, `linear`, `in`, `out`, `snap`.
 - **Effects** (each `{ "type", "amount": 0..1 }`, 0 turns one off): `vignette` (0.5),
-  `spotlight` (0; a pool of light on the framed staves), `focus` (0; depth of field, off unless asked for), `glow`
+  `spotlight` (0; a pool of light on the framed staves), `glow`
   (0; notes light up as they play). A shot's effects override the film's by type.
 - Directing well: change shots with the music's sections (8 or 16 bars), frame the part that
   carries each moment (an entry, a solo, a part playing alone), alternate close and wide shots,

@@ -1,1 +1,0 @@
-three-gpu-pathtracer 0.0.26 (https://github.com/gkjohnson/three-gpu-pathtracer, MIT) with three-mesh-bvh 0.9.15 (https://github.com/gkjohnson/three-mesh-bvh, MIT): WebGLPathTracer, bundled and minified by tools/vendor-pathtracer.sh against web/vendor/three (its xatlas-web import, for lightmap baking, stubbed).

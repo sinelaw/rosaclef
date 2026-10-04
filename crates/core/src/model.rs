@@ -247,14 +247,13 @@ pub const FILM_FRAMES: &[&str] = &["desk", "page", "system", "medium", "close", 
 /// the drums and bass, the chords and pads, everyone.
 pub const FILM_ROLES: &[&str] = &["lead", "rhythm", "background", "all"];
 /// How the camera enters a shot: a smooth move, a cut, a move that rises
-/// away from the desk and comes down again, a fast blurred whip.
+/// away from the desk and comes down again, a fast whip.
 pub const FILM_TRANSITIONS: &[&str] = &["glide", "cut", "swoop", "whip"];
 /// The curves of camera moves.
 pub const FILM_EASES: &[&str] = &["smooth", "linear", "in", "out", "snap"];
 /// Effects: darkness at the picture's edges, a pool of light on the framed
-/// staves, depth of field (what is far from the framed point blurs), a glow
-/// on the notes as they play.
-pub const FILM_EFFECTS: &[&str] = &["vignette", "spotlight", "focus", "glow"];
+/// staves, a glow on the notes as they play.
+pub const FILM_EFFECTS: &[&str] = &["vignette", "spotlight", "glow"];
 
 /// A repeated passage of the arrangement (`|: … :|`), in song beats.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

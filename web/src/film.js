@@ -27,7 +27,7 @@ import { timeX } from "./engrave.js";
 import { pdfLayout } from "./pdf.js";
 
 /** The effects' amounts (0..1). */
-/** type Fx = { vignette: Number, spotlight: Number, focus: Number, glow: Number } */
+/** type Fx = { vignette: Number, spotlight: Number, glow: Number } */
 /** A page lying on the desk: its center and its turn (degrees), in desk units. */
 /** type DeskPage = { x: Number, y: Number, rot: Number } */
 /** The pages on the desk (each `pw` by `ph`) and the bounds of what they cover. */
@@ -43,10 +43,10 @@ import { pdfLayout } from "./pdf.js";
 /** type Scene = { start: Number, end: Number, staves: Int[], frame: String, at: Number, zoom: Number, tilt: Number, turn: Number, ox: Number, oy: Number, zoom1: Number, tilt1: Number, turn1: Number, ox1: Number, oy1: Number, transition: String, glide: Number, ease: String, fx: Fx, src: Int, why: String } */
 /**
  * The camera: the desk point it looks at, the desk units across the picture,
- * its lean and turn (degrees), motion blur (0..1), the framed region (center
- * and size, desk units) and the effects.
+ * its lean and turn (degrees), the framed region (center and size, desk
+ * units) and the effects.
  */
-/** type Cam = { x: Number, y: Number, span: Number, tilt: Number, turn: Number, blur: Number, rx: Number, ry: Number, rw: Number, rh: Number, fx: Fx } */
+/** type Cam = { x: Number, y: Number, span: Number, tilt: Number, turn: Number, rx: Number, ry: Number, rw: Number, rh: Number, fx: Fx } */
 /** Each staff's role, and the staff of the main melody (-1: none). */
 /** type Roles = { roles: String[], lead: Int } */
 /** A song filmed: the printed layout, the desk, the score, the roles, the scenes, where each system lies, the picture's aspect (width / height) and the song's end (beats). */
@@ -59,13 +59,13 @@ export const FRAMES = ["desk", "page", "system", "medium", "close", "detail"];
 export const ROLES = ["lead", "rhythm", "background", "all"];
 export const TRANSITIONS = ["glide", "cut", "swoop", "whip"];
 export const EASES = ["smooth", "linear", "in", "out", "snap"];
-export const EFFECTS = ["vignette", "spotlight", "focus", "glow"];
+export const EFFECTS = ["vignette", "spotlight", "glow"];
 export const SURFACES = ["walnut", "oak", "slate", "felt", "marble"];
 
 /** The effects' amounts when the film does not set them. */
 /** function defaultFx() => Fx */
 export function defaultFx() {
-  return { vignette: 0.5, spotlight: 0, focus: 0, glow: 0 };
+  return { vignette: 0.5, spotlight: 0, glow: 0 };
 }
 
 /** The camera's lean for a frame when the shot does not set it: the closer, the more. */
@@ -141,7 +141,6 @@ export function fxOf(lists) {
       const a = clamp(e.amount, 0, 1);
       if (e.type === "vignette") fx.vignette = a;
       else if (e.type === "spotlight") fx.spotlight = a;
-      else if (e.type === "focus") fx.focus = a;
       else if (e.type === "glow") fx.glow = a;
     }
   }
@@ -153,7 +152,6 @@ function mixFx(a, b, u) {
   return {
     vignette: lerp(a.vignette, b.vignette, u),
     spotlight: lerp(a.spotlight, b.spotlight, u),
-    focus: lerp(a.focus, b.focus, u),
     glow: lerp(a.glow, b.glow, u),
   };
 }
@@ -906,7 +904,6 @@ function camFor(f, k, r, u) {
     span: span,
     tilt: tilt,
     turn: turn,
-    blur: 0,
     rx: r[0],
     ry: r[1],
     rw: r[2],
@@ -924,7 +921,6 @@ export function mixCam(a, b, u) {
     span: lerpLog(a.span, b.span, u),
     tilt: lerp(a.tilt, b.tilt, u),
     turn: lerpAngle(a.turn, b.turn, u),
-    blur: lerp(a.blur, b.blur, u),
     rx: lerp(a.rx, b.rx, u),
     ry: lerp(a.ry, b.ry, u),
     rw: lerpLog(a.rw, b.rw, u),
@@ -949,7 +945,7 @@ export function cameraAt(f, beat) {
     const d = f.desk;
     const r = [(d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, d.x1 - d.x0, d.y1 - d.y0];
     const span = Math.max(r[2] * 1.12, r[3] * 1.2 * f.aspect);
-    return { x: r[0], y: r[1], span: span, tilt: 0, turn: 0, blur: 0, rx: r[0], ry: r[1], rw: r[2], rh: r[3], fx: defaultFx() };
+    return { x: r[0], y: r[1], span: span, tilt: 0, turn: 0, rx: r[0], ry: r[1], rw: r[2], rh: r[3], fx: defaultFx() };
   }
   const k = f.scenes[i];
   const cur = sceneCam(f, i, beat);
@@ -964,7 +960,6 @@ export function cameraAt(f, beat) {
   const rise = k.transition === "swoop" ? Math.max(0.6, 0.35 * d) : k.transition === "whip" ? 0 : clamp(0.3 * (d - 1.2), 0, 1);
   cam.span = cam.span * (1 + rise * bump);
   cam.tilt = cam.tilt * (1 - Math.min(0.5, 0.3 * rise) * bump);
-  if (k.transition === "whip") cam.blur = bump;
   return cam;
 }
 

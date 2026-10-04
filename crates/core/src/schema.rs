@@ -201,7 +201,7 @@ pub fn schema() -> Value {
                     "view": {"enum": FILM_VIEWS, "default": "score", "description": "What is filmed."},
                     "surface": {"enum": FILM_SURFACES, "default": "walnut", "description": "The desk the pages lie on."},
                     "energy": num(0.0, 1.0, "How much the self-directed camera moves: 0 calm, 1 restless (default 0.5)."),
-                    "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects over the whole film; unlisted ones keep their defaults (vignette 0.5, focus 0, spotlight 0, glow 0)."},
+                    "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects over the whole film; unlisted ones keep their defaults (vignette 0.5, spotlight 0, glow 0)."},
                     "shots": {"type": "array", "items": {"$ref": "#/$defs/shot"}}
                 }
             }
@@ -225,7 +225,7 @@ pub fn schema() -> Value {
                     "offset": {"type": "array", "items": {"type": "number", "minimum": -2, "maximum": 2}, "minItems": 2, "maxItems": 2, "description": "Shift of the framed point, [x, y] as fractions of the frame."},
                     "at": {"type": "number", "minimum": 0, "description": "A song beat to look at for the whole shot instead of following the playhead."},
                     "to": {"$ref": "#/$defs/cameraMove"},
-                    "transition": {"enum": FILM_TRANSITIONS, "default": "glide", "description": "How the camera comes into the shot: glide (a smooth move), cut, swoop (rises away from the desk and comes down again), whip (fast, blurred)."},
+                    "transition": {"enum": FILM_TRANSITIONS, "default": "glide", "description": "How the camera comes into the shot: glide (a smooth move), cut, swoop (rises away from the desk and comes down again), whip (fast)."},
                     "glide": num(0.0, 64.0, "Beats the move into the shot takes (default: up to a bar)."),
                     "ease": {"enum": FILM_EASES, "default": "smooth"},
                     "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects during the shot; they override the film's by type."}
@@ -247,7 +247,7 @@ pub fn schema() -> Value {
                 "required": ["type"],
                 "additionalProperties": false,
                 "properties": {
-                    "type": {"enum": FILM_EFFECTS, "description": "vignette (dark edges), spotlight (a pool of light on the framed staves), focus (depth of field: what is far from the framed point blurs), glow (notes glow as they play)."},
+                    "type": {"enum": FILM_EFFECTS, "description": "vignette (dark edges), spotlight (a pool of light on the framed staves), glow (notes glow as they play)."},
                     "amount": num(0.0, 1.0, "Strength; 0 turns the effect off (default 1).")
                 }
             },

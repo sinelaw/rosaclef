@@ -168,42 +168,25 @@
   values, and moves in from the previous scene (glide, swoop, whip, cut).
   `performance` unrolls the repeats as `form.rs` does, for the video's time.
 - `web/src/ui/film.js` prepares frames (`GlFrame`, plain data) and edits the
-  shots. Pages are bitmaps: `pdf.js` draws a page (`pagePart`) and its ink as a
-  height map (`inkPart`), the platform layer rasterizes them, one at a time,
-  the ones in view first; where the camera comes closer, tiles of the page in
-  view (1024 pixels square, 2.5 to 80 pixels a point) are laid over it, the
-  nearest first, so a beat can fill the picture with the ink sharp. They are kept while the
-  music stays the same (editing shots re-plans the scenes only).
-- `web/lib/filmgl.js` (WebGL 2, behind the platform boundary) draws a frame:
-  the desk, soft page shadows, the pages through a shader that raises the ink
-  off the paper and shades it physically. The height map is the ink's drops:
-  `inkPart` draws where ink was written (not the staff lines: the paper comes
-  printed with them), and `rasterInk` (`web/lib/inkdrops.js`) shapes it — an
-  anti-aliased distance transform (Gustavson & Strand) gives each pixel its
-  distance to the edge, the stroke's half-width is carried down from its
-  ridge (and smoothed along it), and the height is a spherical cap meeting
-  the paper at a contact angle (noteheads dome, stems bead low, a wide
-  mark's dome is lowered as a whole), kept at 16 bits (a half-float
-  texture). It is ray marched (relief mapping: the eye's ray followed down
-  to where it meets the ink, so a drop shows its outline from low down) and
-  gives the normal (Sobel). The light is a few simple rules, matched against
-  a path-traced reference: the ink is a dielectric (the split-sum BRDF)
-  mirroring a wide window behind the page (a smooth band of light by angle,
-  its glint fading where a stroke is only a few pixels wide on the screen,
-  so far ink stays ink, not chrome), a warm ceiling, and — reflected
-  downward — the lit paper around the drop; the window is fixed in the
-  world, so the glints slide over the ink as the camera moves, and it casts
-  each drop's long soft shadow on the paper (the heights walked toward it).
-  The paper's tooth is calmed, as under a room's soft light. Alternatives:
-  `web/lib/filmthree.js` (three.js, `?renderer=three`) and
-  `web/lib/filmpath.js` (a path tracer for saved frames and videos,
-  `?renderer=trace`), both lit by a photographed room (`web/vendor/hdri`). Then the playing notes in gold (the glow effect,
-  off by default), then a lens (the focus effect, off by default): each
-  pixel's distance to the desk (its ray meeting the desk's plane) gives its
-  blur circle, gathered over a disc; motion blur, vignette and grain. `renderStill` draws one frame offscreen (the camera
-  button: a PNG); `encodeFilm` renders frame after frame offscreen and
-  encodes them with WebCodecs (H.264/AAC, or VP9/Opus) into an MP4
-  (`web/vendor/mp4-muxer`), with the mixdown from `/api/render`.
+  shots. Pages are bitmaps: `pdf.js` draws a page (`pagePart`, on plain
+  paper), the platform layer rasterizes them, one at a time, the ones in view
+  first; where the camera comes closer, tiles of the page are laid over it
+  (1024 pixels square, 2.5 to 80 pixels a point), each at the sharpness its
+  own part of the picture calls for (through the renderer's camera: leaning
+  back, the near part is closer than the far), the coarser first. They are
+  kept while the music stays the same (editing shots re-plans the scenes only).
+- `web/lib/filmgl.js` (WebGL 2, behind the platform boundary) draws a frame,
+  kept light so it is fast with or without a GPU: the desk, soft page
+  shadows, the pages — each bitmap under the paper's texture (its tooth,
+  formation and grain, tiled as on the paper view, and its toned edges, laid
+  over in the shader, so tiles are drawn on plain paper and cost little) and
+  lit by the lamp — the playing notes in gold (the glow effect, off by
+  default), then a last pass: vignette, warmth and grain. `renderStill` draws
+  one frame offscreen (the camera button: a PNG); `encodeFilm` renders frame
+  after frame offscreen and encodes them with WebCodecs (H.264/AAC, or
+  VP9/Opus) into an MP4 (`web/vendor/mp4-muxer`), with the mixdown from
+  `/api/render`. (Raised, glossy ink, a three.js renderer and a path tracer
+  were tried on the branch `claude/film-heavy-rendering`.)
 
 ### The UI library (`web/src/ui/tree.js`)
 

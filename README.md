@@ -161,12 +161,9 @@ the pages lie on a desk (walnut, oak, slate, felt or marble) and a camera in
 3D space above them plays the song — zooming in on a part, pulling back to
 the whole band, leaning and turning so the music runs diagonally across the
 picture, gliding to the next line as one ends — down to a single beat filling
-the picture. The ink stands proud of the paper as wet beads: they glint where they
-mirror a wide window behind the page, the glints sliding over them as the
-camera moves, and cast soft shadows on the paper. (`?renderer=three` draws
-the film with three.js instead, and `?renderer=trace` path traces saved
-frames and videos, on the GPU.) A spotlight, depth of
-field and a vignette finish the picture (the notes can glow as they play too).
+the picture. The pages look as they do on the paper view, lit by a lamp; a
+spotlight and a vignette finish the picture (the notes can glow as they play
+too). It draws fast, with or without a GPU.
 
 - **Auto**: the camera directs itself. It finds the lead, the rhythm section
   (drums and bass) and the background (chords and pads), cuts the song into
@@ -274,6 +271,4 @@ Known inty rough edges are tracked in [`docs/inty-notes.md`](docs/inty-notes.md)
 
 GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js). `web/soundfonts/gm`
 is MuseScore General (MIT; see its [license](web/soundfonts/gm/LICENSE.md)).
-`web/vendor/mp4-muxer` is MIT (mp4-muxer, by Vanilagy). `web/vendor/three` is
-MIT (three.js; the film's alternative renderer, `?renderer=three`).
-`web/vendor/hdri` is CC0 (Poly Haven's "Artist Workshop").
+`web/vendor/mp4-muxer` is MIT (mp4-muxer, by Vanilagy).

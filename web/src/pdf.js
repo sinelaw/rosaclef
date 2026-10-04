@@ -401,35 +401,22 @@ function faceAttrs(face, size) {
  */
 /** function pageSvg(lay: PdfLayout, p: Int, info: PdfInfo, look: PageLook, scale: Number) => String */
 export function pageSvg(lay, p, info, look, scale) {
-  return pagePart(lay, p, info, look, scale, [0, 0, lay.w, lay.h]);
+  return pagePart(lay, p, info, look, scale, [0, 0, lay.w, lay.h], true);
 }
 
 /**
  * Part of page `p` as SVG: the points of `box` ([x, y, w, h]) drawn at `scale`
  * pixels a point — the whole page (pageSvg), or a tile of it, sharp enough to
- * look at closely (the film's close-ups).
+ * look at closely (the film's close-ups). `textured`: the paper's tooth,
+ * formation, grain and toned edges; else plain paper (the film lays its
+ * texture over the bitmap as it draws, web/lib/filmgl.js).
  */
-/** function pagePart(lay: PdfLayout, p: Int, info: PdfInfo, look: PageLook, scale: Number, box: Number[]) => String */
-export function pagePart(lay, p, info, look, scale, box) {
-  return drawPart(lay, p, info, look, scale, box, false);
-}
-
-/**
- * The ink written on part of a page (not the staff lines: the paper's): black
- * where it lies, white paper. The film shapes the drops the ink stands in
- * from it, raises them off the paper and lights them.
- */
-/** function inkPart(lay: PdfLayout, p: Int, info: PdfInfo, scale: Number, box: Number[]) => String */
-export function inkPart(lay, p, info, scale, box) {
-  return drawPart(lay, p, info, { wet: false, gloss: 0, shine: 0 }, scale, box, true);
-}
-
-/** function drawPart(lay: PdfLayout, p: Int, info: PdfInfo, look: PageLook, scale: Number, box: Number[], mask: Boolean) => String */
-function drawPart(lay, p, info, look, scale, box, mask) {
-  /** The color of a mark (all black for the height map). */
+/** function pagePart(lay: PdfLayout, p: Int, info: PdfInfo, look: PageLook, scale: Number, box: Number[], textured: Boolean) => String */
+export function pagePart(lay, p, info, look, scale, box, textured) {
+  /** The color of a mark. */
   /** function fillOf(c: String) => String */
   function fillOf(c) {
-    return mask ? "#000" : css(c);
+    return css(c);
   }
   const W = lay.w;
   const H = lay.h;
@@ -460,13 +447,11 @@ function drawPart(lay, p, info, look, scale, box, mask) {
     if (pl.top > box[1] + box[3] || pl.top + s.height * sp < box[1]) continue;
     // System coordinates are staff spaces, y down, like the page's.
     body.push(`<g transform="translate(${n(lay.left)} ${n(pl.top)}) scale(${n(sp)})">`);
-    if (!mask)
-      for (const b of s.bands)
-        body.push(`<rect x="${n(b.x)}" y="${n(b.y)}" width="${n(b.w)}" height="${n(b.h)}" rx="0.8" fill="${css(rgb(b.color, 1))}" fill-opacity="0.16"/>`);
+    for (const b of s.bands)
+      body.push(`<rect x="${n(b.x)}" y="${n(b.y)}" width="${n(b.w)}" height="${n(b.h)}" rx="0.8" fill="${css(rgb(b.color, 1))}" fill-opacity="0.16"/>`);
     // Staff lines are hairlines: drawn plainly, as on screen.
-    // (Not in the ink's map: they are the paper's, printed flat; what was written stands on them.)
-    if (!mask) for (const ink of s.inks) if (ink.color === "staff" && ink.d !== "") body.push(`<path d="${ink.d}" fill="${fillOf(STAFF)}"/>`);
-    body.push(mask ? `<g>` : `<g filter="url(#ink)">`);
+    for (const ink of s.inks) if (ink.color === "staff" && ink.d !== "") body.push(`<path d="${ink.d}" fill="${fillOf(STAFF)}"/>`);
+    body.push(`<g filter="url(#ink)">`);
     for (const ink of s.inks) {
       if (ink.color === GLOSS || ink.color === SHEEN || ink.color === "staff") continue;
       const fill = fillOf(inkRgb(ink.color));
@@ -488,14 +473,14 @@ function drawPart(lay, p, info, look, scale, box, mask) {
       );
     }
     for (const b of s.bands) {
-      if (b.label === "" || !b.first || mask) continue;
+      if (b.label === "" || !b.first) continue;
       body.push(
         `<text x="${n(b.x + 0.5)}" y="${n(b.y - 0.45)}" fill="${css(rgb(b.color, 0.68))}" ${faceAttrs("Times-BoldItalic", 1.35)}>${esc(b.label)}</text>`
       );
     }
     body.push("</g>");
     // The wet ink's glints, in light over the music.
-    if (look.wet && !mask) {
+    if (look.wet) {
       for (const run of [SHEEN, GLOSS]) {
         const ink = s.inks.find((x) => x.color === run);
         if (ink) body.push(`<path d="${ink.d}" fill="#fffcf2" fill-opacity="${n(0.9 * glintOpacity(run, look.gloss, look.shine))}" filter="url(#${run})"/>`);
@@ -521,27 +506,14 @@ function drawPart(lay, p, info, look, scale, box, mask) {
     tile("grain", PAPER.grain),
   ];
   for (const i of used) defs.push(`<path id="G${i}" d="${GLYPHS[i].d}"/>`);
-  if (mask) {
-    // Where the ink was written (everything but the staff lines, which the
-    // paper comes printed with): black on white, crisp. The drops it stands
-    // in are shaped from it by the platform layer (rasterInk).
-    const glyphs = defs.filter((d) => d.startsWith("<path"));
-    return (
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(box[2] * scale)}" height="${Math.round(box[3] * scale)}" viewBox="${n(box[0])} ${n(box[1])} ${n(box[2])} ${n(box[3])}">` +
-      `<defs>${glyphs.join("")}</defs><rect width="${n(W)}" height="${n(H)}" fill="#fff"/>${body.join("")}</svg>`
-    );
-  }
-  const paper = [
-    `<rect width="${n(W)}" height="${n(H)}" fill="${PAPER.color}"/>`,
-    `<rect width="${n(W)}" height="${n(H)}" fill="url(#tooth)"/>`,
-    `<rect width="${n(W)}" height="${n(H)}" fill="url(#mottle)"/>`,
-    `<rect width="${n(W)}" height="${n(H)}" fill="url(#grain)"/>`,
-  ];
+  /** const paper: String[] */
+  const paper = [`<rect width="${n(W)}" height="${n(H)}" fill="${PAPER.color}"/>`];
+  if (textured) for (const tex of ["tooth", "mottle", "grain"]) paper.push(`<rect width="${n(W)}" height="${n(H)}" fill="url(#${tex})"/>`);
   // Edges warmed a little, as paper tones with age. The toning reaches about a
   // dozen staff spaces in: a tile inside that leaves it out (its blur, wide at
   // a close-up's scale, is most of what drawing the tile costs).
   const band = 14 * sp;
-  if (box[0] < band || box[1] < band || box[0] + box[2] > W - band || box[1] + box[3] > H - band)
+  if (textured && (box[0] < band || box[1] < band || box[0] + box[2] > W - band || box[1] + box[3] > H - band))
     paper.push(
       `<rect width="${n(W)}" height="${n(H)}" fill="none" stroke="rgb(150,106,38)" stroke-opacity="0.22" stroke-width="${n(6 * sp)}" filter="url(#edge)"/>`
     );

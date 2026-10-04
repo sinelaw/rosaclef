@@ -7,10 +7,6 @@ import { Terminal } from "../vendor/xterm/xterm.mjs";
 import { FitAddon } from "../vendor/xterm/addon-fit.mjs";
 import { WebLinksAddon } from "../vendor/xterm/addon-web-links.mjs";
 import { backend, request, localSocket, resolveUrl } from "./backend.js";
-import { forgetInk } from "./inkdrops.js";
-import * as filmGl from "./filmgl.js";
-import * as filmThree from "./filmthree.js";
-import * as filmPath from "./filmpath.js";
 
 // ------------------------------------------------------------------ events
 
@@ -764,29 +760,10 @@ export async function rasterSvg(svg, w, h, type) {
   }
 }
 
-// The film's renderer: ours (web/lib/filmgl.js); three.js's (web/lib/filmthree.js)
-// with ?renderer=three; or with ?renderer=trace, three.js's on screen and the
-// path tracer's (web/lib/filmpath.js) for saved frames and videos.
-const filmMode = new URLSearchParams(location.search).get("renderer");
-const film = filmMode === "three" || filmMode === "trace" ? filmThree : filmGl;
-const filmOut = filmMode === "trace" ? filmPath : film;
-export function filmDraw(selector, frame) {
-  return film.filmDraw(selector, frame);
-}
-export function filmForget(url) {
-  return film.filmForget(url);
-}
-export function encodeFilm(w, h, fps, frames, frameAt, audio, offset, progress) {
-  return filmOut.encodeFilm(w, h, fps, frames, frameAt, audio, offset, progress);
-}
-export function renderStill(frame) {
-  return filmOut.renderStill(frame);
-}
-export { rasterInk } from "./inkdrops.js";
+export { filmDraw, filmForget, encodeFilm, renderStill } from "./filmgl.js";
 
 export function dropUrl(url) {
-  if (url.startsWith("ink:")) forgetInk(url);
-  else URL.revokeObjectURL(url);
+  URL.revokeObjectURL(url);
 }
 
 export function toggleFullscreen(selector) {
