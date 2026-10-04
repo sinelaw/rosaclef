@@ -90,20 +90,29 @@
 
 ### The Critic
 
-- `web/src/critic.js` lints the project with pure, deterministic checks (no
-  AI): `critique(project, off)` returns findings. Each finding has a level,
-  a stable key, the place it points at (notes of a pattern, a channel, an
-  insert, a bar, a lane) and, for a suggestion, a fix: a function that
-  mutates the project it is given. Pitches are read as they sound; channels
-  get a role (drums, bass, harmony, lead, ...) from their instrument and
-  notes. The song-wide checks expand the playlist the way `notation.js`
-  does. The checks and their thresholds are catalogued in
-  [`critic.md`](critic.md).
-- `web/src/ui/critic.js` is the panel: a plugin tab of the Maestro panel. It
-  covers the terminal, which stays mounted and keeps its size. Findings are
-  recomputed 350 ms after an edit (never during a drag). A fix runs inside
-  `commit`, so it is one undo step. Turned-off checks and ignored findings
-  live in `localStorage`.
+- `rosaclef_core::critic` lints a project with pure, deterministic checks (no
+  AI): `critique(project, off)` returns findings. Each finding has a level, a
+  stable key, the place it points at (notes of a pattern, a channel, an
+  insert, a bar, a lane) and, for a suggestion, a fix. A fix is a list of
+  JSON Patch operations on `project.json`. `apply_fixes` applies fixes one at
+  a time, looking each up again first. Suppressions and the checks turned
+  off live in the project (`critic`). The checks and their thresholds are
+  catalogued in [`critic.md`](critic.md).
+- `POST /api/critic` (the server, and `rosaclef-local` for the browser-only
+  studio), `rosaclef critic` and the shell's `critic` all call it.
+  `web/src/ui/critic.js` is the panel, a plugin tab of the Maestro panel. It
+  covers the terminal, which stays mounted and keeps its size. It asks for
+  findings 350 ms after an edit, never during a drag. It applies a fix by
+  replacing the project inside `commit`, so a fix is one undo step.
+
+### Forward compatibility
+
+- Editing is strict: validation rejects unknown keys and devices. Playing is
+  lenient. `rosaclef_core::compat::for_playback` drops what the JSON schema
+  doesn't define, plays unknown instruments on a stand-in and bypasses unknown
+  effects, so an engine older than the project still plays it. The
+  WebAssembly engine and `rosaclef render` load projects this way, and the
+  Critic lists each fallback as a warning.
 
 ### Voice to notes
 

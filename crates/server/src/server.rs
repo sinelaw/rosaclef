@@ -192,6 +192,12 @@ pub async fn run(cfg: Config) -> Result<()> {
             "/api/drums",
             post(write_drums).layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
         )
+        .route(
+            "/api/critic",
+            get(|| async { Json(rosaclef_core::critic::catalog()) })
+                .post(critique)
+                .layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
+        )
         .route("/api/render", post(render))
         .route("/api/agents", get(get_agents))
         .route("/api/info", get(get_info))
@@ -853,6 +859,19 @@ async fn write_drums(headers: HeaderMap, Query(q): Query<DrumsQuery>, body: Stri
     match tokio::task::spawn_blocking(move || rosaclef_core::drums::api_write(&body, guess, write))
         .await
     {
+        Ok(Ok(v)) => Json(v).into_response(),
+        Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// The Critic: the project in (`{"project", "fix"}`), its findings out —
+/// and the fixed project when `fix` names fixes to apply.
+async fn critique(headers: HeaderMap, body: String) -> Response {
+    if !same_origin(&headers) {
+        return forbidden();
+    }
+    match tokio::task::spawn_blocking(move || rosaclef_core::critic::api(&body)).await {
         Ok(Ok(v)) => Json(v).into_response(),
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),

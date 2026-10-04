@@ -75,6 +75,7 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef new DIR [--demo]` | create a project folder |
 | `rosaclef validate [DIR\|FILE]` | check `project.json` (errors carry JSON paths) |
 | `rosaclef summary [DIR]` | compact overview of a project |
+| `rosaclef critic [DIR] [--fix KEY\|RULE\|all] [--suppress KEY\|RULE] [--json]` | lint the song against production rules of thumb; apply fixes, suppress findings (see [`docs/critic.md`](docs/critic.md)) |
 | `rosaclef render [DIR] [--pattern ID] [--out FILE] [--bits 16\|24\|32]` | offline mixdown to WAV |
 | `rosaclef note --channel ID --pitch 60 --out samples/x.wav` | synthesize a note into a sample |
 | `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
@@ -85,14 +86,20 @@ there is no Studio audio output or CLAP plugins. See
 
 ## The Critic
 
-The **Critic** tab in the Maestro panel lints the song: 76 mechanical checks
+The **Critic** tab in the Maestro panel lints the song: 77 mechanical checks
 (no AI) of harmony, melody, rhythm, arrangement, low end, mix, stereo, effects
 and the master. Each check rests on a rule of thumb of production: muddy low
 voicings, notes out of key or beyond a real instrument's range, robotic
 velocities, loopitis, a bass panned off center, a limiter that isn't last.
-**Suggestions** apply with one click and undo with Ctrl+Z. **Issues** are for
-information, and in the native studio one click hands an issue to your agent.
-See [`docs/critic.md`](docs/critic.md).
+
+- **Suggestions** apply with one click and undo with Ctrl+Z.
+- **Issues** are for information, and in the native studio one click hands
+  an issue to your agent.
+- **Suppressing** one finding, or turning a check off, is saved in the
+  project.
+
+The same checks run on the command line: `rosaclef critic`, with `--fix`,
+`--suppress` and `--json` for agents. See [`docs/critic.md`](docs/critic.md).
 
 ## Voice to notes
 

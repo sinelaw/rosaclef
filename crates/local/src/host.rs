@@ -547,6 +547,13 @@ impl Host {
                     Err(e) => Response::text(422, e),
                 }
             }
+            ("GET", "/api/critic") => Response::json(rosaclef_core::critic::catalog()),
+            ("POST", "/api/critic") => {
+                match rosaclef_core::critic::api(&String::from_utf8_lossy(body)) {
+                    Ok(v) => Response::json(v),
+                    Err(e) => Response::text(422, e),
+                }
+            }
             ("POST", "/api/render") => {
                 let v = body_json(body)?;
                 let r = self.render(

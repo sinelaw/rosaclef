@@ -209,7 +209,16 @@ pub fn schema() -> Value {
                     "shots": {"type": "array", "items": {"$ref": "#/$defs/shot"}}
                 }
             },
-            "drums": drums_schema()
+            "drums": drums_schema(),
+            "critic": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "What the Critic (`rosaclef critic`, the studio's Critic tab) leaves out: checks turned off and findings suppressed. Changes nothing that plays.",
+                "properties": {
+                    "off": {"type": "array", "items": {"type": "string", "enum": crate::critic::RULES.iter().map(|r| r.id).collect::<Vec<_>>()}, "description": "Checks turned off, by rule id."},
+                    "suppress": {"type": "array", "items": {"type": "string"}, "description": "Findings suppressed one by one, by key (rule|place, as `rosaclef critic` prints it)."}
+                }
+            }
         },
         "$defs": {
             "shot": {

@@ -123,7 +123,12 @@ editing, and prefer matching notes by their content if the project changed since
    `patterns[2].notes[14].pitch: value 130 is outside the allowed range 0..127`.
    If the file is invalid the studio keeps playing the last good version and shows
    the producer the errors, so fix them promptly.
-4. Tell the producer briefly what you changed (they can undo any change in the studio with Ctrl+Z).
+4. Critique: `rosaclef critic` lints the song against production rules of thumb (muddy
+   voicings, notes out of key or beyond an instrument's range, robotic velocities, loopitis, a
+   panned bass, the master limiter, ...). Look at what your edit added; apply a fix with
+   `rosaclef critic --fix KEY` (or by rule id), or change the notes yourself. Findings the
+   producer suppressed (`critic` in `project.json`) are deliberate: leave them alone.
+5. Tell the producer briefly what you changed (they can undo any change in the studio with Ctrl+Z).
 
 The producer may be editing in the UI at the same time. Always re-read `project.json`
 right before editing it, and never rewrite the whole file from memory.
@@ -134,6 +139,10 @@ right before editing it, and never rewrite the whole file from memory.
 
 - `rosaclef validate` — check `project.json`.
 - `rosaclef summary` — compact overview of channels, patterns, arrangement and mixer.
+- `rosaclef critic` — the Critic's findings (`--json` with each fix as JSON Patch operations;
+  `--fix KEY|RULE|all` applies fixes; `--suppress` / `--unsuppress KEY|RULE` hides a finding or
+  turns a check off in `project.json`; `--rules` lists the checks). The studio's Critic tab
+  shows the same findings.
 - `rosaclef catalog` — every instrument/effect and its parameters (also below).
 - `rosaclef presets [TYPE|NAME]` — factory presets; with a name, prints the instrument JSON.
 - `rosaclef render [--pattern ID --loops N] [--out renders/x.wav]` — offline mixdown to WAV

@@ -1,27 +1,106 @@
 # The Critic
 
-The Critic is a plugin of the Maestro panel (the tab beside **Terminal**). It
-lints the project against the rules of thumb of composition, arrangement,
-sound design and mixing, and lists what it finds:
+The Critic lints the song against the rules of thumb of composition,
+arrangement, sound design and mixing. The checks are mechanical: no AI and no
+audio analysis. They read `project.json` (notes, clips, channels, the mixer,
+automation) and nothing else, so the same song always gets the same findings.
 
-- **Suggestions** come with a one-click fix (a gold button). Each fix is one
-  undo step, so Ctrl+Z takes it back. **Fix all** applies every instance of
-  one check, and **Apply all** applies every suggestion shown.
-- **Issues** are for information only. In the native studio, **Ask Maestro**
-  types the issue into the agent's prompt, and you press Enter to send it.
-- **Show** jumps to what a finding is about: its notes, selected in the piano
-  roll, an insert in the mixer, or the bar in the playlist.
-- **Ignore** (×) hides one finding in this project. The checks button turns
-  whole checks off. The browser remembers both.
+- **Suggestions** come with a fix: a list of JSON Patch operations
+  ([RFC 6902](https://www.rfc-editor.org/rfc/rfc6902) `add` and `remove`) on
+  `project.json`.
+- **Issues** are for information only.
+- **Suppressing** hides one finding (by its key), or turns a whole check off
+  (by its rule id). Both are saved in the project, in a `critic` section, like
+  a linter's configuration:
 
-The checks are mechanical. There is no AI and no audio analysis: they read
-`project.json` (notes, clips, channels, the mixer, automation) and nothing
-else. The same project always gets the same findings. The logic is in
-[`web/src/critic.js`](../web/src/critic.js), which is pure. The panel is in
-[`web/src/ui/critic.js`](../web/src/ui/critic.js). The tests are
-`web/test/critic.test.js` (every check fires on a project made to trigger
-it, and every fix makes its own finding go away), `critic-demo.mjs` (the
-same property on the demo song) and `critic-smoke.mjs` (in a browser).
+  ```json
+  "critic": { "off": ["parallel-fifths"], "suppress": ["loopitis|song:::-1"] }
+  ```
+
+  The studio, the command line and the agent all leave out the same things.
+  A suppressed finding is still reported, marked as suppressed, so it can be
+  brought back.
+
+## Where it runs
+
+The checks are written in Rust, in [`crates/core/src/critic`](../crates/core/src/critic),
+next to validation:
+
+- `analysis.rs`: channel roles, the song as it plays, bars, chords, and
+  helpers to word findings and build fixes.
+- `harmony.rs`: the key, voicings, voice leading, clashes, melody and
+  instrument ranges.
+- `rhythm.rs`: velocities, timing and MIDI hygiene.
+- `arrangement.rs`: the playlist, repetition, density over time, and project
+  hygiene.
+- `mixing.rs`: the low end, the mixer, stereo, effect chains and the master.
+
+Everything reaches the checks through one core:
+
+- **In the studio:** the Critic tab in the Maestro panel. The panel
+  ([`web/src/ui/critic.js`](../web/src/ui/critic.js)) posts the song to
+  `POST /api/critic` 350 ms after an edit, and never during a drag. The
+  native server and the browser-only studio's worker both answer it.
+  - **Apply** sends `fix` (finding keys or rule ids) and gets the fixed song
+    back. It is one undo step, and nothing is applied if the song changed in
+    the meantime.
+  - **Suppress** (×), **Turn off** (on a check's heading) and the checks list
+    edit the project's `critic` section. Ctrl+Z undoes them.
+  - **Ask Maestro** types an issue into the agent's prompt.
+  - **Show** selects the notes in the piano roll, opens the insert in the
+    mixer, or scrolls to the bar in the playlist.
+- **On the command line:**
+
+  ```sh
+  rosaclef critic [DIR]                       # the findings, grouped, with their keys
+  rosaclef critic --json                      # the same, with each fix's operations
+  rosaclef critic --fix KEY|RULE|all          # apply fixes and save (repeatable)
+  rosaclef critic --suppress KEY|RULE         # suppress a finding, or turn a check off
+  rosaclef critic --unsuppress KEY|RULE       # bring it back
+  rosaclef critic --suppressed                # list the suppressed findings too
+  rosaclef critic --rules                     # the checks, and which are off
+  ```
+
+  The browser-only studio's shell has `critic`, `critic fix|suppress|unsuppress
+  KEY|RULE` and `critic rules`. `AGENTS.md` asks the agent to run
+  `rosaclef critic` after its edits, and to leave suppressed findings alone.
+
+`--fix` applies one finding after another, and looks each up again on the
+song as the fixes before it left it, since a fix can move the notes another
+points at. A fix that would leave the project invalid is refused.
+
+## Content this version doesn't know
+
+A project made with a newer Rosaclef may hold sections, fields, instruments,
+effects or settings that this version doesn't know.
+[`crates/core/src/compat.rs`](../crates/core/src/compat.rs) loads it to play
+anyway, driven by the JSON schema:
+
+- Unknown sections and fields are ignored.
+- An unknown instrument plays on a stand-in (the analog synth).
+- An unknown effect is bypassed.
+- Unknown parameters and option values fall back to their defaults.
+
+The audio engine (WebAssembly) and `rosaclef render` load projects this way.
+Each fallback shows up in the Critic as a warning ("Content this version
+doesn't know"), and `render` prints them. Editing stays strict:
+`rosaclef validate` and the studio's server still reject the unknown keys,
+so an agent's typo is caught. While a song holds content that a fix would
+lose, fixes are refused. Suppressing still works, and the command line then
+rewrites only the `critic` section of the file.
+
+## Tests
+
+`crates/core/src/critic/tests.rs`:
+
+- Every check fires on a project built to trigger it.
+- Every fix makes its own finding go away and leaves a valid project, on
+  these projects and on the demo song.
+- Suppressions work.
+- JSON Patch is applied correctly, and the endpoint answers.
+
+`compat.rs` has its own tests, and `web/test/critic-smoke.mjs` drives the
+panel in a browser.
 
 ## How it reads a project
 
@@ -42,13 +121,16 @@ same property on the demo song) and `critic-smoke.mjs` (in a browser).
   pattern. The song-wide checks (clashes, crowding, arrangement) expand the
   playlist's clips into the notes as they play, leaving out muted tracks and
   channels. They use each pattern on its own when nothing is placed.
-- **The key** is the score's key when one is set. Otherwise it is the best
-  Krumhansl–Schmuckler fit of the duration-weighted pitch classes, the same
-  method the Score view uses. Minor keys also allow the raised 6th and 7th.
+- **The key** is the score's key when one is set (unless the notes clearly
+  disagree). Otherwise it is the best Krumhansl–Schmuckler fit of the
+  duration-weighted pitch classes. Minor keys also allow the raised 6th and
+  7th.
+- **Parameters** read their catalog defaults when a device leaves them out.
+- **Instrument ranges** come from a table in `gm.rs`, next to the program names.
 
 ## The checks
 
-"Fix" is the one-click change. A dash means the check only reports.
+77 checks. "Fix" is the one-click change. A dash means the check only reports.
 
 ### Harmony
 
@@ -177,6 +259,7 @@ These run on lead parts: their top line, one note per onset.
 | Patterns of odd lengths | A pattern that is not whole bars. Also reported: phrases of 3, 5 or 7 bars | Make it whole bars |
 | Unused channels | Channels with no notes that nothing layers (samplers and plugins excepted) | — |
 | Default names | "Pattern 3", "Channel 2", or an untitled song | — |
+| Content this version doesn't know | Sections, fields, instruments, effects, parameters or option values that this version left out or replaced to play the song (see above) | — |
 
 ## Sources
 

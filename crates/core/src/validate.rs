@@ -42,6 +42,7 @@ impl std::fmt::Display for Issue {
 }
 
 /// Result of parsing a document: the project (when it parsed) and any issues.
+#[derive(Debug)]
 pub struct Checked {
     pub project: Option<Project>,
     pub issues: Vec<Issue>,
@@ -405,6 +406,7 @@ pub fn validate(p: &Project) -> Vec<Issue> {
 
     check_automation(&mut v, p);
     check_score(&mut v, p);
+    check_critic(&mut v, p);
     check_repeats(&mut v, p);
     check_animation(&mut v, p);
     check_drums(&mut v, p);
@@ -741,6 +743,18 @@ fn check_repeats(v: &mut V, p: &Project) {
                     "repeats must not overlap (repeats[{}] runs to beat {})",
                     w[0].2, w[0].1
                 ),
+            );
+        }
+    }
+}
+
+/// The Critic's settings name rules that exist.
+fn check_critic(v: &mut V, p: &Project) {
+    for (i, id) in p.critic.off.iter().enumerate() {
+        if crate::critic::rule(id).is_none() {
+            v.warn(
+                format!("critic.off[{i}]"),
+                format!("unknown check {id:?} (`rosaclef critic --rules` lists them)"),
             );
         }
     }

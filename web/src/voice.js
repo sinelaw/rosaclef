@@ -64,14 +64,13 @@ export function snapPitch(p, key, steps) {
 }
 
 // Krumhansl–Kessler key profiles.
-export const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
-export const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
 /** type KeyGuess = { key: Int, scale: String } */
 
-/** How well a pitch-class histogram fits a key profile rotated to `key` (Pearson). */
 /** function correlate(hist: Number[], profile: Number[], key: Int) => Number */
-export function correlate(hist, profile, key) {
+function correlate(hist, profile, key) {
   let mh = 0;
   let mp = 0;
   for (let i = 0; i < 12; i++) {
