@@ -1,4 +1,4 @@
-//! Opal Strings & Pads (`granular`): granular texture instrument.
+//! Opal Atmospheres (`granular`): granular texture instrument.
 //!
 //! Each voice runs a grain scheduler over a source buffer: either one of the
 //! built-in sources (synthesised deterministically in `set_device` when the

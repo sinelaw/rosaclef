@@ -422,7 +422,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "analog",
-        label: "Bronze Bass & Lead",
+        label: "Bronze Bass",
         category: Category::Instrument,
         doc: "Virtual analog subtractive synthesizer modelled on circuit behaviour: two drifting oscillators with unison and a sub, into a saturating 4-pole ladder, an aggressive 2-pole 'screamer', or a clean low-, high- or band-pass filter. Set drift and drive to 0 for a clean, stable sound.",
         best_for: "Basses (sub, acid, analog), leads, brass stabs, string machines, warm pads; supersaws with unison.",
@@ -459,7 +459,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "fm",
-        label: "Silver Keys & Bells",
+        label: "Silver Keys",
         category: Category::Instrument,
         doc: "Six-operator FM synthesizer. Operators modulate each other at audio rate in the chosen algorithm; each has its own ratio, level and envelope. The 'duo' algorithm is classic two-operator FM: operator 6 (ratio = modulator ratio, level = brightness, its envelope = how the brightness fades) modulates carriers 1 and 2, which 'detune' spreads apart for width.",
         best_for: "Electric pianos, bells, mallets and marimbas, metallic basses, bright brass, plucks.",
@@ -536,7 +536,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "additive",
-        label: "Ivory Organ & Choir",
+        label: "Ivory Organ",
         category: Category::Instrument,
         doc: "Additive synthesizer: up to 64 sine partials per voice. Filtering reshapes partial amplitudes instead of filtering a waveform, so it stays pristine and alias-free.",
         best_for: "Organs, choirs, pristine pads, glass bells and harps.",
@@ -564,7 +564,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "granular",
-        label: "Opal Strings & Pads",
+        label: "Opal Atmospheres",
         category: Category::Instrument,
         doc: "Granular texture instrument. Clouds of grains from a built-in synthesized source (choir, singing bowls, ember crackle, strings, air) or from any project sample (options.source = sample, options.sample = path).",
         best_for: "Frozen strings, choir washes, ambient pads, drones and atmospheres; granulated recordings.",
@@ -638,7 +638,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "transition",
-        label: "Gilded Risers & FX",
+        label: "Gilded Risers",
         category: Category::Instrument,
         doc: "Cinematic transition effects: risers, downlifters, impacts, sweeps and sub drops. One 'intensity' macro scales pitch travel, filter sweep, drive and space together. A note triggers the effect; length is set in beats.",
         best_for: "Risers, downlifters, impacts, noise sweeps and sub drops between sections.",
@@ -672,7 +672,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     // ---------------------------------------------------------------- effects
     DeviceSpec {
         kind: "eq",
-        label: "Vernis EQ",
+        label: "Lacquer EQ",
         category: Category::Effect,
         doc: "Three-band equalizer: low shelf, bell, high shelf.",
         best_for: "",
@@ -690,7 +690,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "filter",
-        label: "Soie Filter",
+        label: "Silk Filter",
         category: Category::Effect,
         doc: "Resonant state-variable filter.",
         best_for: "",
@@ -704,7 +704,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "delay",
-        label: "Écho",
+        label: "Golden Echo",
         category: Category::Effect,
         doc: "Tempo-synced stereo delay. time is in beats (0.75 = dotted eighth).",
         best_for: "",
@@ -719,7 +719,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "reverb",
-        label: "Cathédrale",
+        label: "Cathedral Reverb",
         category: Category::Effect,
         doc: "Lush algorithmic reverb.",
         best_for: "",
@@ -735,7 +735,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "chorus",
-        label: "Chœur",
+        label: "Crystal Chorus",
         category: Category::Effect,
         doc: "Stereo chorus for width and shimmer.",
         best_for: "",
@@ -749,7 +749,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "phaser",
-        label: "Moiré Phaser",
+        label: "Satin Phaser",
         category: Category::Effect,
         doc: "Phaser: a chain of all-pass stages whose frequency an LFO sweeps, mixed with the dry signal, so moving notches comb the sound. No delay, so fast notes stay crisp.",
         best_for: "",
@@ -767,7 +767,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "drive",
-        label: "Velours Drive",
+        label: "Velvet Drive",
         category: Category::Effect,
         doc: "Warm tube-style saturation.",
         best_for: "",
@@ -782,7 +782,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "compressor",
-        label: "Couronne Comp",
+        label: "Crown Compressor",
         category: Category::Effect,
         doc: "Feed-forward compressor.",
         best_for: "",

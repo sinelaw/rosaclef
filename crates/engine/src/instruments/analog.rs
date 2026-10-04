@@ -1,4 +1,4 @@
-//! Bronze Bass & Lead (`analog`): virtual analog synthesizer modelled on circuit behaviour.
+//! Bronze Bass (`analog`): virtual analog synthesizer modelled on circuit behaviour.
 //!
 //! Two PolyBLEP oscillators (saw / pulse / triangle / sine / noise), stacked up to
 //! seven times in unison across the stereo field, a square or sine sub one

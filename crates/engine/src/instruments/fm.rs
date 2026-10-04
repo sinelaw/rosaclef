@@ -1,4 +1,4 @@
-//! Silver Keys & Bells (`fm`): six-operator phase-modulation (FM) synthesizer.
+//! Silver Keys (`fm`): six-operator phase-modulation (FM) synthesizer.
 //!
 //! Six sine operators, each with its own frequency ratio, output level and
 //! ADSR envelope (the release is shared). The `algorithm` option routes them.

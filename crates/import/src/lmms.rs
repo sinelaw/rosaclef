@@ -353,7 +353,7 @@ fn generic_effect(label: &str, wet: f64, ports: &HashMap<u32, f64>) -> Option<(V
     } else if has(&["flang", "chorus", "ensemble", "vibrato"]) {
         d = Device::new("chorus");
         if l.contains("calf") && has(&["chorus", "flanger"]) {
-            // Calf keeps `dry` and adds `amount` of the effect; Chœur
+            // Calf keeps `dry` and adds `amount` of the effect; the chorus
             // outputs (dry · (1 − mix/2) + wet · mix/2) · (1 + mix/5).
             let (amount, dry) = (wet * port(11, 1.0), port(12, 1.0));
             let ratio = amount / dry.max(1e-3);
@@ -1453,7 +1453,7 @@ impl<'o> Importer<'o> {
                 );
                 set_param(&mut d, "gain", 0.6);
                 self.warn.add(format!(
-                    "track \"{track}\": LB302 was approximated by Bronze Bass & Lead (analog)"
+                    "track \"{track}\": LB302 was approximated by Bronze Bass (analog)"
                 ));
                 (d, PitchMode::Normal, 0)
             }
@@ -1463,7 +1463,7 @@ impl<'o> Importer<'o> {
                     .map(|p| p.device())
                     .unwrap_or_else(|| Device::new("fm"));
                 self.warn.add(format!(
-                    "track \"{track}\": Mallets was approximated by Silver Keys & Bells (fm)"
+                    "track \"{track}\": Mallets was approximated by Silver Keys (fm)"
                 ));
                 (d, PitchMode::Normal, 0)
             }
@@ -1538,7 +1538,7 @@ impl<'o> Importer<'o> {
                 let carrier = 10f64.powf(-(63.0 - get("op2_lvl", 63.0)) * 0.75 / 20.0);
                 self.level(&mut d, TWO_OP_GAIN * 0.17 * carrier);
                 self.warn.add(format!(
-                    "track \"{track}\": OpulenZ (OPL2) was approximated by Silver Keys & Bells (fm, two-operator duo)"
+                    "track \"{track}\": OpulenZ (OPL2) was approximated by Silver Keys (fm, two-operator duo)"
                 ));
                 (d, PitchMode::Normal, 0)
             }
@@ -1579,7 +1579,7 @@ impl<'o> Importer<'o> {
                 }
                 self.envelope(it, &mut d);
                 self.warn.add(format!(
-                    "track \"{track}\": the NES synth was approximated by Bronze Bass & Lead (analog); sweeps and vibrato were dropped"
+                    "track \"{track}\": the NES synth was approximated by Bronze Bass (analog); sweeps and vibrato were dropped"
                 ));
                 (d, PitchMode::Normal, transpose)
             }
@@ -1615,7 +1615,7 @@ impl<'o> Importer<'o> {
                 self.level(&mut d, gain);
                 self.envelope(it, &mut d);
                 self.warn.add(format!(
-                    "track \"{track}\": BitInvader's drawn waveform was approximated by a {wave} wave in Bronze Bass & Lead (analog)"
+                    "track \"{track}\": BitInvader's drawn waveform was approximated by a {wave} wave in Bronze Bass (analog)"
                 ));
                 (d, PitchMode::Normal, 0)
             }
@@ -1630,7 +1630,7 @@ impl<'o> Importer<'o> {
                     format!("instrument \"{other}\"")
                 };
                 self.warn.add(format!(
-                    "track \"{track}\": {what} is not supported; replaced by Bronze Bass & Lead (analog)"
+                    "track \"{track}\": {what} is not supported; replaced by Bronze Bass (analog)"
                 ));
                 (d, PitchMode::Normal, 0)
             }

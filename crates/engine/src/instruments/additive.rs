@@ -1,4 +1,4 @@
-//! Ivory Organ & Choir (`additive`): additive synthesizer — up to 64 sine partials per voice.
+//! Ivory Organ (`additive`): additive synthesizer — up to 64 sine partials per voice.
 //!
 //! Each voice owns a bank of sine partials: rotating phasors (one complex
 //! multiply per partial and sample) laid out in 8-lane blocks so the compiler
