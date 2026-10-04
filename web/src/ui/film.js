@@ -403,6 +403,18 @@ function cut(poly, axis, at, sign) {
   return out;
 }
 
+/** A polygon's area. */
+/** function area(poly: Number[][]) => Number */
+function area(poly) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    a = a + (p[0] * q[1] - q[0] * p[1]);
+  }
+  return Math.abs(a) / 2;
+}
+
 /** The part of a convex polygon inside the rectangle [x0, x1] × [y0, y1]. */
 /** function within(poly: Number[][], x0: Number, y0: Number, x1: Number, y1: Number) => Number[][] */
 function within(poly, x0, y0, x1, y1) {
@@ -507,11 +519,12 @@ function wants(f, cam, w, h, later, ratio) {
         x1 = Math.max(x1, v[0]);
         y1 = Math.max(y1, v[1]);
       }
-      for (let tyi = Math.floor(y0 / size); tyi * size < y1; tyi++)
-        for (let txi = Math.floor(x0 / size); txi * size < x1; txi++) {
-          // A tile is drawn where some part of it in view calls for its level.
+      // The tiles of the page only (the view, cut to the page, can stray a rounding error past its edge).
+      for (let tyi = Math.max(0, Math.floor(y0 / size)); tyi * size < Math.min(y1, d.ph); tyi++)
+        for (let txi = Math.max(0, Math.floor(x0 / size)); txi * size < Math.min(x1, d.pw); txi++) {
+          // A tile is drawn where some part of it in view (not a mere sliver along its edge) calls for its level.
           const part = within(seen, txi * size, tyi * size, (txi + 1) * size, (tyi + 1) * size);
-          if (part.length < 3) continue;
+          if (part.length < 3 || area(part) < size * size * 1e-6) continue;
           const lv = levels(part);
           if (level < lv[0] || level > lv[1]) continue;
           let near = 0;
