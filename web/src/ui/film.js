@@ -1231,7 +1231,7 @@ function ribbon(b, fv, f, inp) {
     b.attr(
       "title",
       m === "auto"
-        ? "Auto: the camera directs itself — it frames the lead, the rhythm or the background, whichever carries the music"
+        ? "Auto: the camera directs itself — mostly the full score, following a part for a while as it comes in or takes the lead"
         : "Manual: the camera films your shots (from the timeline, the panel or the agent), and directs itself between them"
     );
     b.on("click", (e) => {
@@ -1423,7 +1423,7 @@ function filmPanel(b, fv, f) {
     "t",
     "film-card-s",
     a.mode === "auto"
-      ? "Auto: the camera directs itself. It frames a part playing alone, a part coming in, the lead, the groove or the whole band, and moves more with more energy."
+      ? "Auto: the camera directs itself. It mostly shows the full score, and follows a part for a short while as it comes in, takes the lead or plays alone. More energy: more often, closer, and more movement."
       : `Manual: ${a.shots.length === 0 ? "no shots yet — the camera directs itself until you add some" : `${a.shots.length} shot${a.shots.length === 1 ? "" : "s"}, and the director between them`}. Double-click the timeline to add a shot; select one to frame it.`
   );
   b.open("div", "acts", "film-acts");

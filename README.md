@@ -194,11 +194,12 @@ screen** picks how it draws in this browser: *Quality* (everything),
 chosen at first everywhere but Chrome on a GPU) or *Custom*, each part on or
 off; exports always draw everything.
 
-- **Auto**: the camera directs itself. It finds the lead, the rhythm section
-  (drums and bass) and the background (chords and pads), cuts the song into
-  phrases, and frames whatever carries each one — a part playing alone, a part
-  coming in, the lead, the groove, the whole band. **Energy** sets how much it
-  moves.
+- **Auto**: the camera directs itself. It mostly shows the full score — the
+  line being played, every staff — and follows a part for a short while now
+  and then: as it comes in, when it takes the lead for a few phrases, or while
+  it plays alone. The lead is found as the song goes: the single line that
+  stands out (busy, high, loud), not drums, bass or chords. **Energy** sets
+  how often it follows a part, how closely, and how much the camera moves.
 - **Manual**: the camera films your shots, and directs itself between them.
   A shot is a stretch of the song, what it frames (channels, or a role), how
   much (from the whole desk down to a single beat, the ink up close), the angle, a drift (a slow push in or
