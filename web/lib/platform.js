@@ -682,6 +682,7 @@ async function svgJpeg(svg, pw, ph) {
     const canvas = document.createElement("canvas");
     canvas.width = pw;
     canvas.height = ph;
+    const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, pw, ph);
     ctx.drawImage(img, 0, 0, pw, ph);
