@@ -3,7 +3,11 @@
 use rosaclef_core::automation::TempoMap;
 use rosaclef_core::{validate, Channel, Clip, Device, InsertIx, Note, Project, TrackIx};
 use rosaclef_engine::render::{render, render_note, RenderScope};
+use rosaclef_engine::soundfont::SoundFont;
 use rosaclef_engine::Engine;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 const DEMO: &str = include_str!("../../studio/assets/demo/project.json");
 
@@ -68,10 +72,34 @@ fn onsets(left: &[f32], sr: f32) -> Vec<f32> {
     out
 }
 
+/// Load the built-in soundfont presets the engine's project plays
+/// (web/soundfonts/gm), as the studio does.
+fn load_presets(e: &mut Engine) {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../web/soundfonts/gm");
+    let sf = SoundFont::parse(&std::fs::read(dir.join("index.sf2")).unwrap()).unwrap();
+    for key in e.required_presets() {
+        let p = sf.find(key.bank, key.program as u16).unwrap();
+        let mut pieces: HashMap<usize, Vec<u8>> = HashMap::new();
+        for k in sf.pieces(p) {
+            pieces.insert(
+                k,
+                std::fs::read(dir.join(format!("smpl-{k:03}.bin"))).unwrap(),
+            );
+        }
+        let loaded = sf.load(p, &pieces, &mut HashMap::new()).unwrap();
+        e.set_preset(key, Arc::new(loaded));
+    }
+}
+
 #[test]
 fn demo_song_renders_with_healthy_levels() {
     let mut e = Engine::new(48000.0);
     e.set_project(demo());
+    assert!(
+        !e.required_presets().is_empty(),
+        "the demo plays the soundfont"
+    );
+    load_presets(&mut e);
     let project = demo();
     let end = project
         .playlist
@@ -79,7 +107,7 @@ fn demo_song_renders_with_healthy_levels() {
         .iter()
         .map(|c| c.start + c.length)
         .fold(0.0, f64::max);
-    // The demo automates its tempo (a sag in the Fall, a closing ritardando),
+    // The demo automates its tempo (a closing ritardando),
     // so the song's length in seconds follows the tempo map, not the project BPM.
     let song_seconds = TempoMap::new(&project).seconds_at(end);
     assert!(

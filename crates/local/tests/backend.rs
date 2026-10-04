@@ -500,7 +500,9 @@ fn writes_a_drum_part() {
     let grooves = w.json("GET", "/api/grooves", json!(null));
     assert!(grooves["grooves"].as_array().unwrap().len() > 10);
     let mut p: Value = serde_json::from_slice(&w.req("GET", "/api/project", b"").1).unwrap();
-    p["drums"] = json!({"groove": "rock-8ths"});
+    // The demo is a jazz waltz with a drum part: write it again from scratch.
+    assert_eq!(p["drums"]["groove"], json!("jazz-waltz"));
+    p["drums"] = json!({"groove": "jazz-waltz-brushes"});
     let g = w.json("POST", "/api/drums?guess=true&write=false", p.clone());
     assert!(g["report"].is_null());
     assert!(g["project"]["drums"]["written"].is_null());
@@ -513,8 +515,12 @@ fn writes_a_drum_part() {
     let (status, body, _) = w.req("PUT", "/api/project", r["project"].to_string().as_bytes());
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
     // A part that cannot be written says why.
-    p["drums"] = json!({"groove": "waltz", "sections": [{"bars": 4}]});
+    p["drums"] = json!({"groove": "rock-8ths", "sections": [{"bars": 4}]});
     let (status, body, _) = w.req("POST", "/api/drums", p.to_string().as_bytes());
     assert_eq!(status, 422);
-    assert!(String::from_utf8_lossy(&body).contains("3/4"));
+    assert!(
+        String::from_utf8_lossy(&body).contains("4/4"),
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
 }
