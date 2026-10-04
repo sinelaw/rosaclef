@@ -849,6 +849,13 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         }
         !ours
     });
+    // Channels the old patterns played: one this write no longer uses goes.
+    let old_channels: Vec<String> = p
+        .patterns
+        .iter()
+        .filter(|pat| old.contains(&pat.id))
+        .flat_map(|pat| pat.notes.iter().map(|n| n.channel.clone()))
+        .collect();
     p.patterns.retain(|pat| !old.contains(&pat.id));
 
     // The grids, and the channels for the roles they use.
@@ -989,6 +996,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         track,
     };
     p.playlist.clips.extend(clips);
+    drop_unused(p, &old_channels);
     if let Some(d) = &mut p.drums {
         d.written = written;
     }
@@ -1025,6 +1033,33 @@ pub fn is_drum_channel(c: &Channel) -> bool {
 /// Shortest section a guess makes, in bars: shorter changes join the
 /// section before.
 const MIN_SECTION: u32 = 4;
+
+/// Remove the drum channels among `ids` that nothing plays any more: no
+/// notes, no layer on them, no automation (a kit change leaves them behind).
+fn drop_unused(p: &mut Project, ids: &[String]) {
+    let unused: Vec<String> = ids
+        .iter()
+        .filter(|id| {
+            p.channel(id).is_some_and(is_drum_channel)
+                && !p
+                    .patterns
+                    .iter()
+                    .any(|x| x.notes.iter().any(|n| &n.channel == *id))
+                && !p
+                    .channels
+                    .iter()
+                    .any(|c| c.layer_of.as_deref() == Some(id.as_str()))
+                && !p
+                    .automation
+                    .iter()
+                    .any(|l| l.target.starts_with(&format!("channel/{id}/")))
+        })
+        .cloned()
+        .collect();
+    p.channels.retain(|c| !unused.contains(&c.id));
+    p.score.hidden.retain(|c| !unused.contains(c));
+    p.score.clefs.retain(|c, _| !unused.contains(c));
+}
 
 /// Sections guessed from the playlist: a new section wherever the set of
 /// patterns playing changes (drum-only patterns aside), at least
@@ -1094,25 +1129,87 @@ pub fn guess_sections(p: &Project) -> (u32, Vec<DrumSection>) {
         };
         cuts.remove(if i == 0 { 1 } else { i });
     }
-    let mut out: Vec<DrumSection> = vec![];
-    for (k, w) in cuts.windows(2).enumerate() {
-        let start = t.bar_start(w[0]);
-        let label = p
-            .score
-            .marks
-            .iter()
-            .find(|m| m.pattern.is_empty() && !m.label.is_empty() && (m.start - start).abs() < 1e-6)
-            .map(|m| m.label.clone());
-        let n = k + 1;
-        out.push(DrumSection {
-            name: label.unwrap_or_else(|| format!("Section {n}")),
-            bars: w[1] - w[0],
-            play: if k % 2 == 1 { "b" } else { "a" }.into(),
-            fill: if k + 2 < cuts.len() { "beat" } else { "none" }.into(),
+    // What plays in each section: its patterns, and a name — a score passage
+    // label starting there, else the part of the pattern names after " · "
+    // that at least a third of them share
+    // ("Bass · Chorus", "Keys · Chorus").
+    let spans: Vec<(u32, u32, Vec<&str>, String)> = cuts
+        .windows(2)
+        .map(|w| {
+            let mut pats: Vec<&str> = (w[0]..w[1]).flat_map(&playing).collect();
+            pats.sort();
+            pats.dedup();
+            let start = t.bar_start(w[0]);
+            let label = p
+                .score
+                .marks
+                .iter()
+                .find(|m| {
+                    m.pattern.is_empty() && !m.label.is_empty() && (m.start - start).abs() < 1e-6
+                })
+                .map(|m| m.label.clone());
+            let name = label.unwrap_or_else(|| {
+                let mut counts: Vec<(&str, usize)> = vec![];
+                for id in &pats {
+                    let name = p.pattern(id).map(|x| x.name.as_str()).unwrap_or("");
+                    if let Some((_, suffix)) = name.rsplit_once(" · ") {
+                        match counts.iter_mut().find(|(s, _)| *s == suffix) {
+                            Some(c) => c.1 += 1,
+                            None => counts.push((suffix, 1)),
+                        }
+                    }
+                }
+                counts
+                    .iter()
+                    .max_by_key(|(_, n)| *n)
+                    .filter(|(_, n)| *n * 3 >= pats.len())
+                    .map(|(s, _)| s.to_string())
+                    .unwrap_or_default()
+            });
+            (w[0], w[1], pats, name)
+        })
+        .collect();
+    // Neighbours with the same name are one section.
+    let mut merged: Vec<(u32, u32, Vec<&str>, String)> = vec![];
+    for s in spans {
+        match merged.last_mut() {
+            Some(last) if !s.3.is_empty() && last.3 == s.3 => {
+                last.1 = s.1;
+                for id in s.2 {
+                    if !last.2.contains(&id) {
+                        last.2.push(id);
+                    }
+                }
+            }
+            _ => merged.push(s),
+        }
+    }
+    // The fuller sections (more parts playing than usual) get groove B.
+    let mut sizes: Vec<usize> = merged.iter().map(|s| s.2.len()).collect();
+    sizes.sort();
+    let median = sizes[(sizes.len() - 1) / 2];
+    let n = merged.len();
+    let out = merged
+        .into_iter()
+        .enumerate()
+        .map(|(k, (a, b, pats, name))| DrumSection {
+            name: if name.is_empty() {
+                format!("Section {}", k + 1)
+            } else {
+                name
+            },
+            bars: b - a,
+            play: if k > 0 && pats.len() > median {
+                "b"
+            } else {
+                "a"
+            }
+            .into(),
+            fill: if k + 1 < n { "beat" } else { "none" }.into(),
             crash: k > 0,
             groove: String::new(),
-        });
-    }
+        })
+        .collect();
     (first + 1, out)
 }
 

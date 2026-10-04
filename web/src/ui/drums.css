@@ -256,8 +256,15 @@
   line-height: 1.35;
   color: var(--muted);
 }
+.drums-status.warn {
+  color: var(--rose);
+}
 .btn.drums-writebtn {
   height: 36px;
+}
+.btn.drums-remove {
+  align-self: flex-start;
+  opacity: 0.75;
 }
 
 /* ---------------------------------------------------------------- start */

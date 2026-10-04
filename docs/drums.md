@@ -117,7 +117,7 @@ Beatbox (Voice tab) is Dawson's "sing it first".
 | 7 | Humanize | **Deterministic, structured feel**: *Tight*, *Natural* or *Loose* sets per-role timing (snare backbeat a few ms late, ghosts a little later, kick on the grid) and a small seeded variation in time and velocity. Optional swing for straight grooves; shuffles are written in triplets. | Repeatable output (same spec → same notes), no "random" button. Because patterns are reused, each repetition of a pattern is identical — accepted for v1. |
 | 8 | Pattern granularity | **Reuse**: one pattern for the plain groove, and one-bar patterns for bars that differ (crash bar, fill bar, turnaround bar). Runs of identical bars become one looping clip. | The playlist reads like a chart, and editing the main groove once changes it everywhere. A per-bar "re-roll" would need one pattern per bar — not in v1. |
 | 9 | Sound | **Both sound sources** through a role map: a General MIDI kit (one Grand Orchestra channel, GM drum map) or the Ebony Drum Machine (one channel per drum, crash and ride approximated as in the MIDI importer). Each groove suggests a kit. | One library plays on acoustic and electronic sounds. Ebony has no real cymbals, so acoustic styles default to a GM kit. |
-| 10 | Where sections come from | The **drum part's own section list**, prefilled from the playlist (a new section where the set of playing patterns changes) and named from Score passage labels when they exist. | Works on any project today. A song-wide "sections" concept shared with the score and playlist would be better; it is an open question, not a v1 blocker. |
+| 10 | Where sections come from | The **drum part's own section list**, prefilled from the playlist: a new section where the set of playing patterns changes (drum-only patterns aside), changes shorter than 4 bars joined to the section before, named from a Score passage label or from the pattern names' shared suffix ("Bass · Chorus", "Keys · Chorus" → *Chorus*), neighbours with the same name joined, and groove B for the sections fuller than usual. | Works on any project today. A song-wide "sections" concept shared with the score and playlist would be better; it is an open question, not a v1 blocker. |
 | 11 | UI home | **One "Drums" tab in the bottom dock**, beside Voice. No new windows, no new playlist chrome. | Matches how Voice works (shape, preview, add to song). |
 | 12 | Meters | v1 requires the drum part to be in **one meter** that matches the groove (4/4, or 3/4 and 6/8 grooves). | Odd and changing meters are rare in the target songs; the panel says why a groove is unavailable. |
 | 13 | Advanced ideas (displacement, linear, clave direction, metric modulation, Interpret, live triggering) | **Not in v1.** | Kept in the roadmap (section 5); the data model leaves room for them. |
@@ -191,6 +191,10 @@ For each section the writer lays out bars:
 Identical consecutive bars become one clip of a looping pattern. Patterns
 are named for what they are ("Drums · Straight 8ths A", "… A + crash",
 "… B + 1-bar fill") and get ids starting `drums-`.
+
+Drum channels the previous write used that nothing plays any more (after a
+kit change) are removed. Other drums already in the song are left alone, and
+the tab says which tracks hold them, since they will play along.
 
 ### 4.4 `project.json`
 

@@ -11,6 +11,7 @@ import { decodeProject, encodeProject, projectJson, meterMap } from "../model.js
 import { startAudio } from "../audio.js";
 import { button, iconButton, select, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
+import { trackIndex } from "#brands";
 
 export const drums = {
   catalog /*: GrooveCatalog */: { grooves: [], kits: [] },
@@ -235,7 +236,7 @@ export function writeDrums() {
       });
       toast(
         "Drums written",
-        `${Number(r.report.patterns)} patterns in ${Number(r.report.clips)} clips on the ${np.playlist.tracks[Math.round(Number(r.report.track))]?.name ?? "Drums"} track. Ctrl+Z undoes it.`,
+        `${Number(r.report.patterns)} patterns in ${Number(r.report.clips)} clips on track ${Math.round(Number(r.report.track)) + 1} (${np.playlist.tracks[Math.round(Number(r.report.track))]?.name ?? "Drums"}). Ctrl+Z undoes it.`,
         "info"
       );
       return true;
@@ -322,15 +323,16 @@ function field(b, key, label, value, choices, labels, tip, onSet) {
   b.close();
 }
 
-/** A number with − and + buttons. */
-/** function stepper(b: Builder, key: String, label: String, value: Number, lo: Number, hi: Number, tip: String, onSet: (Number) => Undefined) => Undefined */
-function stepper(b, key, label, value, lo, hi, tip, onSet) {
+/** A number with − and + buttons; `onStep` gets −1 or +1 and applies it to
+ * the current value (clicks quicker than a redraw all count). */
+/** function stepper(b: Builder, key: String, label: String, value: Number, tip: String, onStep: (Number) => Undefined) => Undefined */
+function stepper(b, key, label, value, tip, onStep) {
   b.open("div", key, "drums-field");
   b.leaf("span", "l", "drums-label", label);
   b.open("div", "n", "drums-stepper");
-  iconButton(b, "dn", "small", "minus", `${tip}: fewer`, () => onSet(Math.max(lo, value - 1)));
+  iconButton(b, "dn", "small", "minus", `${tip}: fewer`, () => onStep(-1));
   b.leaf("span", "v", "drums-num", String(value));
-  iconButton(b, "up", "small", "plus", `${tip}: more`, () => onSet(Math.min(hi, value + 1)));
+  iconButton(b, "up", "small", "plus", `${tip}: more`, () => onStep(1));
   b.close();
   b.close();
 }
@@ -529,9 +531,9 @@ function sectionsView(b, d) {
       })
     );
     b.close();
-    stepper(b, "bars", "Bars", s.bars, 1, 999, "Bars in this section", (v) =>
+    stepper(b, "bars", "Bars", s.bars, "Bars in this section", (by) =>
       edit((x) => {
-        x.sections[at].bars = v;
+        x.sections[at].bars = Math.min(999, Math.max(1, x.sections[at].bars + by));
       })
     );
     field(
@@ -613,9 +615,9 @@ function moveSection(i, by) {
 function writeView(b, d) {
   b.open("section", "write", "drums-step drums-write");
   b.open("div", "opts", "drums-opts");
-  stepper(b, "start", "Starts on bar", d.start, 1, 9999, "The bar the first section starts on", (v) =>
+  stepper(b, "start", "Starts on bar", d.start, "The bar the first section starts on", (by) =>
     edit((x) => {
-      x.start = v;
+      x.start = Math.min(9999, Math.max(1, x.start + by));
     })
   );
   field(b, "ending", "Ending", d.ending, ["hit", "none"], ["Final hit", "None"], "A crash and kick on the downbeat after the last section", (v) =>
@@ -647,6 +649,15 @@ function writeView(b, d) {
   b.close();
   b.close();
   const written = d.written.length;
+  const others = otherDrumTracks(d);
+  if (others.length > 0) {
+    b.leaf(
+      "div",
+      "others",
+      "drums-status warn",
+      `The song already has other drums (track ${others.join(", ")}); they play along with these. Mute or remove them if they should not.`
+    );
+  }
   b.leaf(
     "div",
     "status",
@@ -663,7 +674,44 @@ function writeView(b, d) {
     "Write the drum part into patterns and clips on a Drums track (Ctrl+Z undoes it)",
     () => writeDrums()
   );
+  button(
+    b,
+    "remove",
+    "small drums-remove",
+    "Remove drum part",
+    "Forget the drum part and go back to the grooves (the written patterns stay in the song; Ctrl+Z undoes it)",
+    () => removePart()
+  );
   b.close();
+}
+
+/** Does a channel play drums (an Ebony channel or a General MIDI kit)? */
+/** function isDrumChannel(c: Channel) => Boolean */
+function isDrumChannel(c) {
+  if (c.instrument.type === "drum") return true;
+  const prog = c.instrument.options.find((o) => o.key === "program");
+  return c.instrument.type === "soundfont" && prog !== undefined && drums.catalog.kits.includes(prog.value);
+}
+
+/** Playlist tracks (counted from 1) with drum clips the part did not write. */
+/** function otherDrumTracks(d: DrumPart) => Number[] */
+function otherDrumTracks(d) {
+  const p = state.project;
+  const ours = d.written.map((w) => w.key);
+  /** const out: Number[] */
+  const out = [];
+  for (const c of p.playlist.clips) {
+    if (c.pattern === "" || ours.includes(c.pattern)) continue;
+    const pat = p.patterns.find((x) => x.id === c.pattern);
+    if (!pat || pat.notes.length === 0) continue;
+    const drumsOnly = pat.notes.every((n) => {
+      const ch = p.channels.find((x) => x.id === n.channel);
+      return ch !== undefined && isDrumChannel(ch);
+    });
+    const track = trackIndex(c.track) + 1;
+    if (drumsOnly && !out.includes(track)) out.push(track);
+  }
+  return out.sort((a, b) => a - b);
 }
 
 /** Before there is a drum part: pick a groove to start from. */
@@ -719,14 +767,14 @@ export function drumsPanel(b) {
 export function drumsTools(b) {
   const d = state.project.drums;
   b.leaf("span", "l", "label", d.on ? "Groove → sections → write" : "A drummer for the song");
-  if (d.on) {
-    button(b, "remove", "small", "Remove part", "Forget the drum part (the written patterns stay in the song)", () => {
-      stopPreview();
-      commit(() => {
-        state.project.drums.on = false;
-        state.project.drums.written = [];
-      });
-      hint("");
-    });
-  }
+}
+
+/** Forget the drum part; the patterns it wrote stay in the song. */
+function removePart() {
+  stopPreview();
+  commit(() => {
+    state.project.drums.on = false;
+    state.project.drums.written = [];
+  });
+  hint("");
 }

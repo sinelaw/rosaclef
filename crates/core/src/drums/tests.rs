@@ -281,36 +281,115 @@ fn feel_puts_the_backbeat_behind() {
     assert!(plain.notes.iter().all(|n| (n.start * 4.0).fract() == 0.0));
 }
 
-#[test]
-fn guesses_sections_from_the_playlist() {
-    let mut p = Project::empty("Song");
-    for (i, id) in ["verse", "chorus"].iter().enumerate() {
+fn clip(p: &mut Project, id: &str, name: &str, track: u32, start: f64, beats: f64) {
+    if p.pattern(id).is_none() {
         p.patterns.push(Pattern {
-            id: (*id).into(),
-            name: (*id).into(),
-            color: "#fff".into(),
+            id: id.into(),
+            name: name.into(),
+            color: "#ffffff".into(),
             length: 4.0,
             notes: vec![],
         });
-        p.playlist.clips.push(Clip {
-            pattern: (*id).into(),
-            sample: String::new(),
-            track: TrackIx(0),
-            start: 4.0 + i as f64 * 32.0,
-            length: 32.0,
-            offset: 0.0,
-            gain: 1.0,
-            mixer: Default::default(),
-        });
     }
+    p.playlist.clips.push(Clip {
+        pattern: id.into(),
+        sample: String::new(),
+        track: TrackIx(track),
+        start,
+        length: beats,
+        offset: 0.0,
+        gain: 1.0,
+        mixer: Default::default(),
+    });
+}
+
+#[test]
+fn guesses_sections_from_the_playlist() {
+    let mut p = Project::empty("Song");
+    // Bar 2: an 8-bar verse (bass), then an 8-bar chorus (bass and keys).
+    clip(&mut p, "bv", "Bass · Verse", 0, 4.0, 32.0);
+    clip(&mut p, "bc", "Bass · Chorus", 0, 36.0, 32.0);
+    clip(&mut p, "kc", "Keys · Chorus", 1, 36.0, 32.0);
     let (start, s) = guess_sections(&p);
     assert_eq!(start, 2);
     assert_eq!(s.len(), 2);
     assert_eq!(
-        (s[0].bars, s[0].play.as_str(), s[0].fill.as_str()),
-        (8, "a", "beat")
+        (
+            s[0].name.as_str(),
+            s[0].bars,
+            s[0].play.as_str(),
+            s[0].fill.as_str()
+        ),
+        ("Verse", 8, "a", "beat")
     );
-    assert_eq!((s[1].bars, s[1].play.as_str(), s[1].crash), (8, "b", true));
+    assert_eq!(
+        (
+            s[1].name.as_str(),
+            s[1].bars,
+            s[1].play.as_str(),
+            s[1].crash
+        ),
+        ("Chorus", 8, "b", true)
+    );
+}
+
+#[test]
+fn same_named_neighbours_join() {
+    let mut p = Project::empty("Song");
+    // The verse's keys come in halfway: still the verse.
+    clip(&mut p, "bv", "Bass · Verse", 0, 0.0, 32.0);
+    clip(&mut p, "kv", "Keys · Verse", 1, 16.0, 16.0);
+    let (_, s) = guess_sections(&p);
+    assert_eq!(s.len(), 1);
+    assert_eq!((s[0].name.as_str(), s[0].bars), ("Verse", 8));
+}
+
+#[test]
+fn a_kit_change_removes_the_channels_left_unused() {
+    let mut p = song("rock-8ths", "Ebony");
+    write(&mut p).unwrap();
+    let ebony = p
+        .channels
+        .iter()
+        .filter(|c| c.instrument.kind == "drum")
+        .count();
+    assert!(ebony >= 4);
+    p.drums.as_mut().unwrap().kit = "Standard Kit".into();
+    write(&mut p).unwrap();
+    assert_eq!(
+        p.channels
+            .iter()
+            .filter(|c| c.instrument.kind == "drum")
+            .count(),
+        0
+    );
+    assert_eq!(p.channels.len(), 1);
+    // A drum channel that something else plays is kept.
+    let mut p = song("rock-8ths", "Ebony");
+    write(&mut p).unwrap();
+    let kick = p
+        .channels
+        .iter()
+        .find(|c| c.name == "Kick")
+        .unwrap()
+        .id
+        .clone();
+    p.patterns.push(Pattern {
+        id: "mine".into(),
+        name: "Mine".into(),
+        color: "#ffffff".into(),
+        length: 4.0,
+        notes: vec![Note {
+            channel: kick.clone(),
+            pitch: 60,
+            start: 0.0,
+            length: 0.25,
+            velocity: 0.8,
+        }],
+    });
+    p.drums.as_mut().unwrap().kit = "Standard Kit".into();
+    write(&mut p).unwrap();
+    assert!(p.channel(&kick).is_some());
 }
 
 #[test]
