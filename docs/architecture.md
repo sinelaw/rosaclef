@@ -189,11 +189,13 @@
   (Schlick's Fresnel) mirroring a photographed room (`web/vendor/hdri`, an
   equirectangular HDR decoded in the page, its mipmaps blurring it by
   roughness: wet ink smooth, dry ink satin), fixed in the world so the
-  reflections slide over the ink as the camera moves; it casts a soft shadow
-  on the paper. Then the playing notes in gold (the glow effect, off by
-  default), then a lens: each pixel's distance to the desk (its ray meeting
-  the desk's plane) gives its blur circle, gathered over a disc; motion blur,
-  vignette and grain. `renderStill` draws one frame offscreen (the camera
+  reflections slide over the ink as the camera moves; how much more it
+  mirrors seen low down is held back, and its brightest reflections roll
+  off, so far ink seen at a grazing angle stays ink, not chrome. It casts a
+  soft shadow on the paper. Then the playing notes in gold (the glow effect,
+  off by default), then a lens (the focus effect, off by default): each
+  pixel's distance to the desk (its ray meeting the desk's plane) gives its
+  blur circle, gathered over a disc; motion blur, vignette and grain. `renderStill` draws one frame offscreen (the camera
   button: a PNG); `encodeFilm` renders frame after frame offscreen and
   encodes them with WebCodecs (H.264/AAC, or VP9/Opus) into an MP4
   (`web/vendor/mp4-muxer`), with the mixdown from `/api/render`.

@@ -360,7 +360,7 @@ it; it changes nothing that plays.
   `cut`, `swoop` (rises away from the desk and comes down), `whip` (fast, blurred); `glide` is the
   move's length in beats (default up to a bar), `ease` `smooth`, `linear`, `in`, `out`, `snap`.
 - **Effects** (each `{ "type", "amount": 0..1 }`, 0 turns one off): `vignette` (0.5),
-  `spotlight` (0; a pool of light on the framed staves), `focus` (0.4; depth of field), `glow`
+  `spotlight` (0; a pool of light on the framed staves), `focus` (0; depth of field, off unless asked for), `glow`
   (0; notes light up as they play). A shot's effects override the film's by type.
 - Directing well: change shots with the music's sections (8 or 16 bars), frame the part that
   carries each moment (an entry, a solo, a part playing alone), alternate close and wide shots,
