@@ -36,6 +36,7 @@ import {
   filmForget,
   encodeFilm,
   renderStill,
+  rasterInk,
   sendJson,
   decodeAudioUrl,
   download,
@@ -117,7 +118,7 @@ export function newFilmView(id) {
     fromAt: 0,
     look: { dx: 0, dy: 0, zoom: 1, turn: 0, tilt: 0 },
     gesture: false,
-    relief: r !== "" && Number(r) >= 0 && Number(r) <= 1 ? Number(r) : 0.7,
+    relief: r !== "" && Number(r) >= 0 && Number(r) <= 1 ? Number(r) : 1,
     export: -1,
   };
 }
@@ -341,8 +342,8 @@ async function drawBitmap(fv, f, inp, b) {
     h = Math.round(box[3] * b.scale);
   }
   try {
-    // The ink's height as PNG: a JPEG's blocks would show in the light.
-    const url = await rasterSvg(svg, w, h, color ? "image/jpeg" : "image/png");
+    // The ink's drops as a PNG height map (a JPEG's blocks would show in the light).
+    const url = color ? await rasterSvg(svg, w, h, "image/jpeg") : await rasterInk(svg, w, h, b.scale);
     if (color) b.url = url;
     else b.ink = url;
     return true;
