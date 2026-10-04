@@ -179,20 +179,25 @@
   off the paper and shades it physically. The height map is the ink's drops:
   `inkPart` draws where ink was written (not the staff lines: the paper comes
   printed with them), and `rasterInk` (`web/lib/inkdrops.js`) shapes it — an
-  exact distance transform gives each pixel its distance to the edge, the
-  stroke's half-width is carried down from its ridge, and the height is a
-  spherical cap meeting the paper at a contact angle (noteheads dome, stems
-  bead low, wide pools flatten), saved as PNG so no JPEG blocks show in the
-  light. It is ray marched (relief mapping: the eye's
-  ray followed down to where it meets the ink, so a drop shows its outline
-  from low down) and gives the normal (Sobel). The ink is a dielectric
-  (Schlick's Fresnel) mirroring a photographed room (`web/vendor/hdri`, an
-  equirectangular HDR decoded in the page, its mipmaps blurring it by
-  roughness: wet ink smooth, dry ink satin), fixed in the world so the
-  reflections slide over the ink as the camera moves; how much more it
-  mirrors seen low down is held back, and its brightest reflections roll
-  off, so far ink seen at a grazing angle stays ink, not chrome. It casts a
-  soft shadow on the paper. Then the playing notes in gold (the glow effect,
+  anti-aliased distance transform (Gustavson & Strand) gives each pixel its
+  distance to the edge, the stroke's half-width is carried down from its
+  ridge (and smoothed along it), and the height is a spherical cap meeting
+  the paper at a contact angle (noteheads dome, stems bead low, a wide
+  mark's dome is lowered as a whole), kept at 16 bits (a half-float
+  texture). It is ray marched (relief mapping: the eye's ray followed down
+  to where it meets the ink, so a drop shows its outline from low down) and
+  gives the normal (Sobel). The light is a few simple rules, matched against
+  a path-traced reference: the ink is a dielectric (the split-sum BRDF)
+  mirroring a wide window behind the page (a smooth band of light by angle,
+  its glint fading where a stroke is only a few pixels wide on the screen,
+  so far ink stays ink, not chrome), a warm ceiling, and — reflected
+  downward — the lit paper around the drop; the window is fixed in the
+  world, so the glints slide over the ink as the camera moves, and it casts
+  each drop's long soft shadow on the paper (the heights walked toward it).
+  The paper's tooth is calmed, as under a room's soft light. Alternatives:
+  `web/lib/filmthree.js` (three.js, `?renderer=three`) and
+  `web/lib/filmpath.js` (a path tracer for saved frames and videos,
+  `?renderer=trace`), both lit by a photographed room (`web/vendor/hdri`). Then the playing notes in gold (the glow effect,
   off by default), then a lens (the focus effect, off by default): each
   pixel's distance to the desk (its ray meeting the desk's plane) gives its
   blur circle, gathered over a disc; motion blur, vignette and grain. `renderStill` draws one frame offscreen (the camera
