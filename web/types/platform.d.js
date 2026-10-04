@@ -72,6 +72,9 @@ export const filmDraw;
 /** Forget the texture made from an object URL (before letting it go). */
 /** const filmForget: (String) => Undefined */
 export const filmForget;
+/** Rasterize the ink's mask (an SVG of a size in pixels, at pixels a point) and shape the drops it stands in: a PNG height map's object URL. */
+/** const rasterInk: (String, Int, Int, Number) => Promise<String> */
+export const rasterInk;
 /** Draw one frame of the film (WebGL, every bitmap it names loaded first): a PNG's object URL. */
 /** const renderStill: (GlFrame) => Promise<String> */
 export const renderStill;

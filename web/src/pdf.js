@@ -415,9 +415,9 @@ export function pagePart(lay, p, info, look, scale, box) {
 }
 
 /**
- * The ink of part of a page, as a height map: black where ink lies (a little
- * softened, so it rounds off like a raised line), white paper. The film
- * raises the ink off the paper with it and lights it.
+ * The ink written on part of a page (not the staff lines: the paper's): black
+ * where it lies, white paper. The film shapes the drops the ink stands in
+ * from it, raises them off the paper and lights them.
  */
 /** function inkPart(lay: PdfLayout, p: Int, info: PdfInfo, scale: Number, box: Number[]) => String */
 export function inkPart(lay, p, info, scale, box) {
@@ -464,8 +464,9 @@ function drawPart(lay, p, info, look, scale, box, mask) {
       for (const b of s.bands)
         body.push(`<rect x="${n(b.x)}" y="${n(b.y)}" width="${n(b.w)}" height="${n(b.h)}" rx="0.8" fill="${css(rgb(b.color, 1))}" fill-opacity="0.16"/>`);
     // Staff lines are hairlines: drawn plainly, as on screen.
-    for (const ink of s.inks) if (ink.color === "staff" && ink.d !== "") body.push(`<path d="${ink.d}" fill="${fillOf(STAFF)}"/>`);
-    body.push(mask ? `<g filter="url(#soft)">` : `<g filter="url(#ink)">`);
+    // (Not in the ink's map: they are the paper's, printed flat; what was written stands on them.)
+    if (!mask) for (const ink of s.inks) if (ink.color === "staff" && ink.d !== "") body.push(`<path d="${ink.d}" fill="${fillOf(STAFF)}"/>`);
+    body.push(mask ? `<g>` : `<g filter="url(#ink)">`);
     for (const ink of s.inks) {
       if (ink.color === GLOSS || ink.color === SHEEN || ink.color === "staff") continue;
       const fill = fillOf(inkRgb(ink.color));
@@ -521,22 +522,13 @@ function drawPart(lay, p, info, look, scale, box, mask) {
   ];
   for (const i of used) defs.push(`<path id="G${i}" d="${GLYPHS[i].d}"/>`);
   if (mask) {
-    // The height map: white paper, black where the ink stands highest. Wet ink
-    // stands as drops: where it pools (noteheads, clefs, beams) surface tension
-    // gathers it into a dome, steep at its edge; a fine stroke holds too little
-    // to rise and lies nearly flat. (Staff spaces: a sharp blur for the edge, a
-    // broad one for how much ink is there, multiplied, then shaped round.)
+    // Where the ink was written (everything but the staff lines, which the
+    // paper comes printed with): black on white, crisp. The drops it stands
+    // in are shaped from it by the platform layer (rasterInk).
     const glyphs = defs.filter((d) => d.startsWith("<path"));
-    const soft =
-      `<filter id="soft" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">` +
-      `<feGaussianBlur in="SourceAlpha" stdDeviation="0.035" result="edge"/>` +
-      `<feGaussianBlur in="SourceAlpha" stdDeviation="0.3" result="pool"/>` +
-      `<feComponentTransfer in="pool" result="dome"><feFuncA type="gamma" amplitude="1.3" exponent="0.85" offset="0"/></feComponentTransfer>` +
-      `<feComposite in="edge" in2="dome" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="m"/>` +
-      `<feFlood flood-color="#000"/><feComposite in2="m" operator="in"/></filter>`;
     return (
       `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(box[2] * scale)}" height="${Math.round(box[3] * scale)}" viewBox="${n(box[0])} ${n(box[1])} ${n(box[2])} ${n(box[3])}">` +
-      `<defs>${soft}${glyphs.join("")}</defs><rect width="${n(W)}" height="${n(H)}" fill="#fff"/>${body.join("")}</svg>`
+      `<defs>${glyphs.join("")}</defs><rect width="${n(W)}" height="${n(H)}" fill="#fff"/>${body.join("")}</svg>`
     );
   }
   const paper = [

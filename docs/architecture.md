@@ -176,9 +176,14 @@
   music stays the same (editing shots re-plans the scenes only).
 - `web/lib/filmgl.js` (WebGL 2, behind the platform boundary) draws a frame:
   the desk, soft page shadows, the pages through a shader that raises the ink
-  off the paper and shades it physically. The height map (`inkPart`: drops
-  where the ink pools, steep at the edge; fine strokes nearly flat; PNG so no
-  JPEG blocks show in the light) is ray marched (relief mapping: the eye's
+  off the paper and shades it physically. The height map is the ink's drops:
+  `inkPart` draws where ink was written (not the staff lines: the paper comes
+  printed with them), and `rasterInk` (`web/lib/inkdrops.js`) shapes it — an
+  exact distance transform gives each pixel its distance to the edge, the
+  stroke's half-width is carried down from its ridge, and the height is a
+  spherical cap meeting the paper at a contact angle (noteheads dome, stems
+  bead low, wide pools flatten), saved as PNG so no JPEG blocks show in the
+  light. It is ray marched (relief mapping: the eye's
   ray followed down to where it meets the ink, so a drop shows its outline
   from low down) and gives the normal (Sobel). The ink is a dielectric
   (Schlick's Fresnel) mirroring a photographed room (`web/vendor/hdri`, an

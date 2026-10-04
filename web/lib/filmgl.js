@@ -215,7 +215,7 @@ void main() {
     vec3 v = normalize(uEye - p);
     // Where the ink lies: dark in the color bitmap (the height map's soft skirt is paper).
     float lum = dot(base, vec3(0.299, 0.587, 0.114));
-    float onInk = smoothstep(0.62, 0.3, lum) * smoothstep(0.02, 0.12, h0);
+    float onInk = smoothstep(0.62, 0.3, lum) * smoothstep(0.002, 0.02, h0);
 
     // On the paper: the raised ink casts a short soft shadow, away from the light.
     vec2 toward = normalize(l.xy + 1e-5);
