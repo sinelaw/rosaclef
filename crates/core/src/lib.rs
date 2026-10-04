@@ -5,6 +5,7 @@ pub mod arp;
 pub mod automation;
 pub mod catalog;
 pub mod context;
+pub mod drums;
 pub mod form;
 pub mod format;
 pub mod gm;

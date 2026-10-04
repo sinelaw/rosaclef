@@ -534,6 +534,16 @@ impl Host {
             }
             ("GET", "/api/peaks") => self.peaks(&qs("path"), qs("n").parse().unwrap_or(1024))?,
             ("GET", "/api/transcribe") => self.transcribe(&qs("path"), &qs("mode"))?,
+            ("GET", "/api/grooves") => Response::json(rosaclef_core::drums::catalog()),
+            ("POST", "/api/drums") => {
+                match rosaclef_core::drums::api_write(
+                    &String::from_utf8_lossy(body),
+                    qs("guess") == "true",
+                ) {
+                    Ok(v) => Response::json(v),
+                    Err(e) => Response::text(422, e),
+                }
+            }
             ("POST", "/api/render") => {
                 let v = body_json(body)?;
                 let r = self.render(

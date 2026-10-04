@@ -88,6 +88,12 @@ pub fn schema() -> Value {
     let id = json!({"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"});
     let color = json!({"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"});
     let arp_chords: Vec<&str> = crate::arp::CHORDS.iter().map(|c| c.0).collect();
+    let groove_ids: Vec<&str> = crate::drums::library::GROOVES
+        .iter()
+        .map(|g| g.id)
+        .collect();
+    let mut kits: Vec<&str> = crate::gm::KITS.iter().map(|k| k.0).collect();
+    kits.push(crate::drums::EBONY);
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": SCHEMA_ID,
@@ -203,6 +209,24 @@ pub fn schema() -> Value {
                     "energy": num(0.0, 1.0, "How much the self-directed camera moves: 0 calm, 1 restless (default 0.5)."),
                     "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects over the whole film; unlisted ones keep their defaults (vignette 0.5, spotlight 0, glow 1)."},
                     "shots": {"type": "array", "items": {"$ref": "#/$defs/shot"}}
+                }
+            },
+            "drums": {
+                "type": "object",
+                "required": ["groove"],
+                "additionalProperties": false,
+                "description": "The drum part: a groove from the library, a kit and what each section plays. Writing it (the studio's Drums tab, or `rosaclef drums`) makes ordinary patterns and clips on a Drums track; by itself it changes nothing that plays.",
+                "properties": {
+                    "groove": {"type": "string", "enum": groove_ids, "description": "Groove id (`rosaclef grooves`)."},
+                    "kit": {"type": "string", "enum": kits, "description": "A General MIDI drum kit, or Ebony (one Ebony Drum Machine channel per drum). Missing: the groove's suggestion."},
+                    "feel": {"type": "string", "enum": crate::drums::FEELS, "default": "natural", "description": "tight: on the grid; natural: the backbeat a little late, small differences; loose: more of both."},
+                    "swing": num(0.0, 1.0, "Delays the off 16ths of straight grooves (1 = triplet swing)."),
+                    "start": {"type": "integer", "minimum": 1, "default": 1, "description": "Bar the first section starts on, counted from 1."},
+                    "ending": {"type": "string", "enum": crate::drums::ENDINGS, "default": "hit", "description": "hit: a crash and kick on the downbeat after the last section."},
+                    "variations": {"type": "boolean", "default": true, "description": "A small turnaround every 4th bar."},
+                    "seed": {"type": "integer", "minimum": 0, "default": 1, "description": "Picks the fills and the small timing and velocity differences."},
+                    "sections": {"type": "array", "items": {"$ref": "#/$defs/drumSection"}},
+                    "written": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Managed by Rosaclef: pattern id -> fingerprint of the patterns the last write made."}
                 }
             }
         },
@@ -402,6 +426,20 @@ pub fn schema() -> Value {
                     "label": {"type": "string", "description": "Shown above the passage."},
                     "pattern": {"type": "string", "description": "Pattern id: the passage is in that pattern's time and is colored wherever the pattern plays."},
                     "channels": {"type": "array", "items": {"type": "string"}, "description": "Channel ids to color; empty or missing = every staff."}
+                }
+            },
+            "drumSection": {
+                "type": "object",
+                "required": ["bars"],
+                "additionalProperties": false,
+                "description": "A section of the drum part, in order from `start`.",
+                "properties": {
+                    "name": {"type": "string"},
+                    "bars": {"type": "integer", "minimum": 1, "maximum": 999},
+                    "play": {"type": "string", "enum": crate::drums::PLAYS, "default": "a", "description": "a: the groove (verse); b: the bigger groove (chorus); hits: crash and kick on each downbeat; count: a count-in on the side stick; rest: silence."},
+                    "fill": {"type": "string", "enum": crate::drums::FILL_SIZES, "default": "none", "description": "Fill into the next section: one beat, two beats (half) or the whole last bar."},
+                    "crash": {"type": "boolean", "default": false, "description": "Crash on the section's first downbeat."},
+                    "groove": {"type": "string", "enum": groove_ids, "description": "Another groove for this section (a half-time bridge)."}
                 }
             },
             "automationPoint": {

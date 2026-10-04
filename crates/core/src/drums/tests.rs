@@ -1,0 +1,401 @@
+use super::*;
+use crate::model::Project;
+
+fn sec(name: &str, bars: u32, play: &str, fill: &str, crash: bool) -> DrumSection {
+    DrumSection {
+        name: name.into(),
+        bars,
+        play: play.into(),
+        fill: fill.into(),
+        crash,
+        groove: String::new(),
+    }
+}
+
+fn song(groove: &str, kit: &str) -> Project {
+    let mut p = Project::empty("Drums");
+    let mut part = DrumPart::new(groove);
+    part.kit = kit.into();
+    part.sections = vec![
+        sec("Intro", 1, "count", "none", false),
+        sec("Verse", 8, "a", "beat", false),
+        sec("Chorus", 8, "b", "bar", true),
+    ];
+    p.drums = Some(part);
+    p
+}
+
+#[test]
+fn library_rows_are_well_formed() {
+    let mut ids = std::collections::HashSet::new();
+    for g in GROOVES {
+        assert!(ids.insert(g.id), "duplicate groove id {}", g.id);
+        assert_eq!(g.steps % g.bar_beats, 0, "{}: steps per beat", g.id);
+        assert!(valid_kit(g.kit), "{}: kit {}", g.id, g.kit);
+        assert!(g.tempo.0 < g.tempo.1, "{}: tempo", g.id);
+        for (part, rows) in [("a", g.a), ("b", g.b)] {
+            assert!(!rows.is_empty(), "{} {part}: empty", g.id);
+            for (role, row) in rows {
+                assert!(ROLES.contains(role), "{} {part}: unknown role {role}", g.id);
+                let s = steps(row);
+                assert!(
+                    !s.is_empty() && s.len() % g.steps as usize == 0,
+                    "{} {part} {role}: {} steps is not whole bars of {}",
+                    g.id,
+                    s.len(),
+                    g.steps
+                );
+                for c in s {
+                    assert!(
+                        c == '.' || level(c).is_some(),
+                        "{} {part} {role}: {c:?}",
+                        g.id
+                    );
+                }
+            }
+        }
+    }
+    for (i, f) in FILLS.iter().enumerate() {
+        for (role, row) in f.rows {
+            assert!(ROLES.contains(role), "fill {i}: unknown role {role}");
+            let s = steps(row);
+            assert_eq!(
+                s.len() as u32,
+                f.beats * f.steps_per_beat,
+                "fill {i} {role}"
+            );
+            for c in s {
+                assert!(c == '.' || level(c).is_some(), "fill {i} {role}: {c:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn grooves_and_fills_are_playable() {
+    for g in GROOVES.iter().filter(|g| !g.machine()) {
+        for (part, rows) in [("a", g.a), ("b", g.b)] {
+            let problems = playability(rows, g.steps_per_beat(), g.tempo.1);
+            assert!(problems.is_empty(), "{} {part}: {problems:?}", g.id);
+        }
+    }
+    for (i, f) in FILLS.iter().enumerate() {
+        let problems = playability(f.rows, f.steps_per_beat, 180);
+        assert!(problems.is_empty(), "fill {i}: {problems:?}");
+    }
+}
+
+#[test]
+fn playability_catches_three_hands() {
+    let rows = [("hat", "x..."), ("snare", "x..."), ("tom1", "x...")];
+    assert!(!playability(&rows, 4, 100).is_empty());
+}
+
+#[test]
+fn every_meter_has_fills_of_every_size() {
+    for g in GROOVES {
+        for beats in [1, 2, g.bar_beats] {
+            assert!(
+                pick_fill(g.steps_per_beat(), beats, 1, "k", None).is_some(),
+                "{}: no {beats}-beat fill",
+                g.id
+            );
+        }
+    }
+}
+
+#[test]
+fn writes_a_song() {
+    let mut p = song("rock-8ths", "");
+    let r = write(&mut p).unwrap();
+    // Count-in, groove A with a turnaround on bar 4 and a fill on bar 8,
+    // B with a crash, a turnaround and a fill, the ending.
+    let clips: Vec<&Clip> = p
+        .playlist
+        .clips
+        .iter()
+        .filter(|c| c.track.index() == r.track)
+        .collect();
+    let starts: Vec<f64> = clips.iter().map(|c| c.start).collect();
+    assert_eq!(
+        starts,
+        vec![0.0, 4.0, 16.0, 20.0, 32.0, 36.0, 40.0, 48.0, 52.0, 64.0, 68.0],
+        "{clips:#?}"
+    );
+    let names: Vec<&str> = clips
+        .iter()
+        .map(|c| p.pattern(&c.pattern).unwrap().name.as_str())
+        .collect();
+    assert_eq!(names[0], "Drums · Count-in");
+    assert_eq!(names[1], "Drums · Straight 8ths A");
+    assert!(
+        names[2].starts_with("Drums · Straight 8ths A + turnaround"),
+        "{names:?}"
+    );
+    assert!(
+        names[4].starts_with("Drums · Straight 8ths A + 1-beat fill"),
+        "{names:?}"
+    );
+    assert!(
+        names[5].starts_with("Drums · Straight 8ths B + crash"),
+        "{names:?}"
+    );
+    assert!(
+        names[9].starts_with("Drums · Straight 8ths B + 1-bar fill"),
+        "{names:?}"
+    );
+    assert_eq!(names[10], "Drums · Ending");
+    // The plain groove is one pattern used twice.
+    assert_eq!(clips[1].pattern, clips[3].pattern);
+    assert_eq!(clips[1].length, 12.0);
+    // One GM kit channel.
+    let kits: Vec<&Channel> = p
+        .channels
+        .iter()
+        .filter(|c| c.instrument.kind == "soundfont")
+        .collect();
+    assert_eq!(kits.len(), 1);
+    assert_eq!(kits[0].instrument.option("program"), "Standard Kit");
+    assert_eq!(p.playlist.tracks[r.track].name, "Drums");
+    assert!(crate::validate::validate(&p)
+        .iter()
+        .all(|i| i.severity != crate::validate::Severity::Error));
+}
+
+#[test]
+fn writing_again_replaces_and_is_deterministic() {
+    let mut p = song("funk-16ths", "");
+    write(&mut p).unwrap();
+    let first = p.clone();
+    write(&mut p).unwrap();
+    assert_eq!(p, first);
+    assert!(edited(&p).is_empty());
+    // A hand edit is noticed.
+    let id = p
+        .drums
+        .as_ref()
+        .unwrap()
+        .written
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    let pat = p.patterns.iter_mut().find(|x| x.id == id).unwrap();
+    pat.notes[0].velocity = 0.1;
+    assert_eq!(edited(&p), vec![id]);
+}
+
+#[test]
+fn changing_the_part_rewrites_it() {
+    let mut p = song("rock-8ths", "");
+    write(&mut p).unwrap();
+    let n = p.patterns.len();
+    p.drums.as_mut().unwrap().sections[1].play = "b".into();
+    write(&mut p).unwrap();
+    assert!(p.patterns.len() <= n);
+    assert!(p
+        .patterns
+        .iter()
+        .all(|x| !x.name.contains(" A") || !x.id.starts_with("drums")));
+}
+
+#[test]
+fn ebony_kit_makes_and_reuses_channels() {
+    let mut p = song("house", "");
+    write(&mut p).unwrap();
+    let kinds: Vec<&str> = p
+        .channels
+        .iter()
+        .map(|c| c.instrument.option("kind"))
+        .collect();
+    assert!(
+        kinds.contains(&"kick") && kinds.contains(&"clap"),
+        "{kinds:?}"
+    );
+    let crash = p.channels.iter().find(|c| c.name == "Crash").unwrap();
+    assert_eq!(crash.instrument.params.get("decay"), Some(&3.0));
+    let n = p.channels.len();
+    write(&mut p).unwrap();
+    assert_eq!(p.channels.len(), n);
+}
+
+#[test]
+fn a_groove_in_another_meter_is_refused() {
+    let mut p = song("waltz", "");
+    let err = write(&mut p).unwrap_err();
+    assert!(err.contains("3/4"), "{err}");
+    p.transport.beats_per_bar = 3;
+    write(&mut p).unwrap();
+}
+
+#[test]
+fn fills_do_not_repeat_back_to_back() {
+    let mut p = song("rock-8ths", "");
+    let part = p.drums.as_mut().unwrap();
+    part.sections = (0..6)
+        .map(|i| sec(&format!("S{i}"), 2, "a", "beat", false))
+        .collect();
+    write(&mut p).unwrap();
+    let mut fills: Vec<&str> = p
+        .playlist
+        .clips
+        .iter()
+        .map(|c| p.pattern(&c.pattern).unwrap().name.as_str())
+        .filter(|n| n.contains("fill"))
+        .collect();
+    assert_eq!(fills.len(), 6);
+    for w in fills.windows(2) {
+        assert_ne!(w[0], w[1]);
+    }
+    fills.dedup();
+    assert!(fills.len() > 1);
+}
+
+#[test]
+fn feel_puts_the_backbeat_behind() {
+    let mut p = song("rock-8ths", "");
+    p.drums.as_mut().unwrap().feel = "loose".into();
+    write(&mut p).unwrap();
+    let plain = p
+        .patterns
+        .iter()
+        .find(|x| x.name == "Drums · Straight 8ths A")
+        .unwrap();
+    let snares: Vec<f64> = plain
+        .notes
+        .iter()
+        .filter(|n| n.pitch == 38)
+        .map(|n| n.start)
+        .collect();
+    assert_eq!(snares.len(), 2);
+    for (s, beat) in snares.iter().zip([1.0, 3.0]) {
+        assert!(*s > beat && *s < beat + 0.05, "{s}");
+    }
+    p.drums.as_mut().unwrap().feel = "tight".into();
+    write(&mut p).unwrap();
+    let plain = p
+        .patterns
+        .iter()
+        .find(|x| x.name == "Drums · Straight 8ths A")
+        .unwrap();
+    assert!(plain.notes.iter().all(|n| (n.start * 4.0).fract() == 0.0));
+}
+
+#[test]
+fn guesses_sections_from_the_playlist() {
+    let mut p = Project::empty("Song");
+    for (i, id) in ["verse", "chorus"].iter().enumerate() {
+        p.patterns.push(Pattern {
+            id: (*id).into(),
+            name: (*id).into(),
+            color: "#fff".into(),
+            length: 4.0,
+            notes: vec![],
+        });
+        p.playlist.clips.push(Clip {
+            pattern: (*id).into(),
+            sample: String::new(),
+            track: TrackIx(0),
+            start: 4.0 + i as f64 * 32.0,
+            length: 32.0,
+            offset: 0.0,
+            gain: 1.0,
+            mixer: Default::default(),
+        });
+    }
+    let (start, s) = guess_sections(&p);
+    assert_eq!(start, 2);
+    assert_eq!(s.len(), 2);
+    assert_eq!(
+        (s[0].bars, s[0].play.as_str(), s[0].fill.as_str()),
+        (8, "a", "beat")
+    );
+    assert_eq!((s[1].bars, s[1].play.as_str(), s[1].crash), (8, "b", true));
+}
+
+#[test]
+fn round_trips_through_json() {
+    let mut p = song("jazz-swing", "Jazz Kit");
+    write(&mut p).unwrap();
+    let text = serde_json::to_string(&p).unwrap();
+    let back: Project = serde_json::from_str(&text).unwrap();
+    assert_eq!(back, p);
+}
+
+#[test]
+fn validation_names_bad_values() {
+    let mut p = song("rock-8ths", "");
+    {
+        let d = p.drums.as_mut().unwrap();
+        d.groove = "polka".into();
+        d.kit = "Bongos".into();
+        d.sections[1].play = "c".into();
+        d.sections[2].bars = 0;
+    }
+    let paths: Vec<String> = crate::validate::validate(&p)
+        .into_iter()
+        .filter(|i| i.severity == crate::validate::Severity::Error)
+        .map(|i| i.path)
+        .collect();
+    for want in [
+        "drums.groove",
+        "drums.kit",
+        "drums.sections[1].play",
+        "drums.sections[2].bars",
+    ] {
+        assert!(paths.iter().any(|p| p == want), "{want} not in {paths:?}");
+    }
+}
+
+#[test]
+fn written_ids_are_valid() {
+    let mut p = song("shuffle-half", "");
+    write(&mut p).unwrap();
+    for pat in &p.patterns {
+        assert!(
+            pat.id.len() <= 64
+                && pat
+                    .id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-')),
+            "{}",
+            pat.id
+        );
+    }
+}
+
+#[test]
+fn short_changes_join_a_section() {
+    let mut p = Project::empty("Song");
+    // 8 bars, 1 bar, 7 bars, 2 bars: each short one joins the one before.
+    for (i, (id, start, bars)) in [
+        ("a", 0.0, 8.0),
+        ("b", 32.0, 1.0),
+        ("c", 36.0, 7.0),
+        ("d", 64.0, 2.0),
+    ]
+    .iter()
+    .enumerate()
+    {
+        p.patterns.push(Pattern {
+            id: (*id).into(),
+            name: (*id).into(),
+            color: "#fff".into(),
+            length: 4.0,
+            notes: vec![],
+        });
+        p.playlist.clips.push(Clip {
+            pattern: (*id).into(),
+            sample: String::new(),
+            track: TrackIx(i as u32 % 2),
+            start: *start,
+            length: bars * 4.0,
+            offset: 0.0,
+            gain: 1.0,
+            mixer: Default::default(),
+        });
+    }
+    let (_, s) = guess_sections(&p);
+    let bars: Vec<u32> = s.iter().map(|x| x.bars).collect();
+    assert_eq!(bars, vec![9, 9]);
+}

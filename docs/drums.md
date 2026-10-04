@@ -266,7 +266,7 @@ drum kit, or Ebony channels of the right kind.
 |---|---|---|---|---|
 | Tight | on the grid | on the grid | on the grid | none |
 | Natural | +6 ms | +4 ms | on the grid | ±3 ms / ±0.04 |
-| Loose | +12 ms | +8 ms | ±2 ms | ±7 ms / ±0.08 |
+| Loose | +12 ms | +8 ms | on the grid | ±7 ms / ±0.08 |
 
 The spread is seeded by the spec's `seed`, the pattern and the note, so
 writing twice gives the same notes. Swing delays the off 16ths (or off 8ths
@@ -278,7 +278,7 @@ for an 8th-note grid) by up to a triplet, like the transport's swing.
 |---|---|
 | spec types, groove and fill library, kit map, writer | `crates/core/src/drums/` (native + wasm) |
 | `drums` in the model, schema and validation | `crates/core/src/model.rs`, `schema.rs`, `validate.rs` |
-| API: `GET /api/grooves`, `POST /api/drums` (project in → written project + hand-edited pattern ids out) | `crates/server`, `crates/local` (browser-only build) |
+| API: `GET /api/grooves`, `POST /api/drums[?guess=true]` (project in → written project + hand-edited pattern ids out) | `crates/server`, `crates/local` (browser-only build) |
 | CLI: `rosaclef grooves`, `rosaclef drums [DIR]` | `crates/server` |
 | agent guide | the generated `AGENTS.md` |
 | the Drums tab | `web/src/ui/drums.js`, `drums.css` |

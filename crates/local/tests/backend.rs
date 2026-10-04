@@ -493,3 +493,25 @@ fn renders_soundfont_instruments_with_files_from_the_site() {
     );
     assert!(out.contains("wrote samples/b.wav"), "{out}");
 }
+
+#[test]
+fn writes_a_drum_part() {
+    let mut w = Worker::boot(Store::default());
+    let grooves = w.json("GET", "/api/grooves", json!(null));
+    assert!(grooves["grooves"].as_array().unwrap().len() > 10);
+    let mut p: Value = serde_json::from_slice(&w.req("GET", "/api/project", b"").1).unwrap();
+    p["drums"] = json!({"groove": "rock-8ths"});
+    let r = w.json("POST", "/api/drums?guess=true", p.clone());
+    let sections = r["project"]["drums"]["sections"].as_array().unwrap();
+    assert!(!sections.is_empty(), "{r}");
+    assert!(r["report"]["patterns"].as_u64().unwrap() > 0);
+    assert_eq!(r["edited"], json!([]));
+    // The written project is a valid edit.
+    let (status, body, _) = w.req("PUT", "/api/project", r["project"].to_string().as_bytes());
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    // A part that cannot be written says why.
+    p["drums"] = json!({"groove": "waltz", "sections": [{"bars": 4}]});
+    let (status, body, _) = w.req("POST", "/api/drums", p.to_string().as_bytes());
+    assert_eq!(status, 422);
+    assert!(String::from_utf8_lossy(&body).contains("3/4"));
+}

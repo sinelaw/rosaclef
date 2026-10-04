@@ -84,6 +84,11 @@ pub struct Project {
     /// that plays. See [`Animation`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub animation: Option<Animation>,
+    /// The drum part: a groove, a kit and what each section plays. Writing
+    /// it makes ordinary patterns; it changes nothing that plays by itself.
+    /// See [`crate::drums`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drums: Option<crate::drums::DrumPart>,
 }
 
 /// The film of the song (the Score view's Film mode): the score's pages lie
@@ -776,6 +781,7 @@ impl Project {
             score: Score::default(),
             repeats: vec![],
             animation: None,
+            drums: None,
         }
     }
 

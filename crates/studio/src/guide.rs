@@ -141,6 +141,8 @@ right before editing it, and never rewrite the whole file from memory.
 - `rosaclef note --channel ID --pitch 60 --seconds 2 --out samples/x.wav` — synthesize one note
   of a channel's instrument (or `--instrument '{"type":"drum","options":{"kind":"clap"}}'`) into a sample.
 - You may also create samples any other way (e.g. write a WAV with Python) into `samples/`.
+- `rosaclef grooves` — the drum grooves; `rosaclef drums [--groove ID] [--guess]` — write the
+  song's drum part (see **Drums** below).
 - `rosaclef import-midi FILE.mid --name NAME --library ..` / `rosaclef import-lmms FILE.mmpz ...` —
   turn a MIDI file or an LMMS project into a new project next to this one (prints what was approximated).
   To add a MIDI file's parts to *this* song instead: `curl -X POST --data-binary @FILE.mid "$ROSACLEF_URL/api/import-midi?into=current"`.
@@ -372,6 +374,38 @@ it; it changes nothing that plays.
   alternate the sign of `turn`, and save `swoop` and `cut` for big moments. To start from what the
   camera would do on its own, the producer can press **Write the director's shots** (it fills
   `shots` from auto mode), then you refine them.
+
+### Drums (`drums`)
+
+For a drum track, prefer the drum part over writing drum notes by hand: it plays a groove from
+a library the way a session drummer would — groove A in verses, the bigger groove B in
+choruses, fills into the next section, a crash on its first downbeat, a turnaround every 4th
+bar and a human feel. The optional top-level `drums` object describes it; `rosaclef drums`
+(or **Write drums** in the studio's Drums tab) turns it into ordinary patterns (ids `drums-…`)
+and clips on a Drums track, replacing what the last write made.
+
+```jsonc
+"drums": {
+  "groove": "rock-8ths",            // `rosaclef grooves` lists them (style, meter, tempo range, kit)
+  "kit": "Standard Kit",            // optional: a General MIDI drum kit, or "Ebony" (drum machine channels)
+  "feel": "natural",                // tight | natural | loose
+  "swing": 0,                       // 0..1, straight grooves
+  "start": 1,                       // bar the first section starts on
+  "ending": "hit",                  // hit (crash + kick after the last section) | none
+  "sections": [
+    { "name": "Intro",  "bars": 1, "play": "count" },                  // count-in on the side stick
+    { "name": "Verse",  "bars": 8, "play": "a", "fill": "beat" },      // fill: none | beat | half | bar
+    { "name": "Chorus", "bars": 8, "play": "b", "fill": "bar", "crash": true },
+    { "name": "Bridge", "bars": 8, "play": "a", "groove": "rock-halftime", "crash": true },
+    { "name": "Stops",  "bars": 2, "play": "hits" }                    // crash + kick on each downbeat; "rest": silence
+  ]
+}
+```
+
+- Edit the part, then run `rosaclef drums`; `--guess` re-derives `start` and `sections` from the
+  playlist. It refuses to replace drum patterns the producer edited by hand unless `--force`.
+- Sections follow each other bar by bar from `start`; a groove only plays in its own meter.
+- `written` is managed by Rosaclef; leave it alone.
 
 ## Musical craft
 

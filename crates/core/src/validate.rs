@@ -407,6 +407,7 @@ pub fn validate(p: &Project) -> Vec<Issue> {
     check_score(&mut v, p);
     check_repeats(&mut v, p);
     check_animation(&mut v, p);
+    check_drums(&mut v, p);
     v.issues
 }
 
@@ -531,6 +532,56 @@ fn check_animation(v: &mut V, p: &Project) {
             }
         }
         spans.push((s.start, s.end, i));
+    }
+}
+
+fn check_drums(v: &mut V, p: &Project) {
+    use crate::drums;
+    let Some(d) = &p.drums else {
+        return;
+    };
+    let one_of = |v: &mut V, path: &str, value: &str, list: &[&str]| {
+        if !list.contains(&value) {
+            v.err(
+                path,
+                format!("unknown value {value:?}: use one of {}", list.join(", ")),
+            );
+        }
+    };
+    if drums::groove(&d.groove).is_none() {
+        v.err(
+            "drums.groove",
+            format!("unknown groove {:?} (see `rosaclef grooves`)", d.groove),
+        );
+    }
+    if !d.kit.is_empty() && !drums::valid_kit(&d.kit) {
+        v.err(
+            "drums.kit",
+            format!(
+                "unknown kit {:?}: use a General MIDI drum kit (\"Standard Kit\", ...) or \"Ebony\"",
+                d.kit
+            ),
+        );
+    }
+    one_of(v, "drums.feel", &d.feel, drums::FEELS);
+    one_of(v, "drums.ending", &d.ending, drums::ENDINGS);
+    v.range("drums.swing", d.swing, 0.0, 1.0);
+    if d.start < 1 {
+        v.err("drums.start", "bars are counted from 1");
+    }
+    for (i, s) in d.sections.iter().enumerate() {
+        let path = format!("drums.sections[{i}]");
+        if !(1..=999).contains(&s.bars) {
+            v.err(format!("{path}.bars"), "bars must be 1 to 999");
+        }
+        one_of(v, &format!("{path}.play"), &s.play, drums::PLAYS);
+        one_of(v, &format!("{path}.fill"), &s.fill, drums::FILL_SIZES);
+        if !s.groove.is_empty() && drums::groove(&s.groove).is_none() {
+            v.err(
+                format!("{path}.groove"),
+                format!("unknown groove {:?} (see `rosaclef grooves`)", s.groove),
+            );
+        }
     }
 }
 
