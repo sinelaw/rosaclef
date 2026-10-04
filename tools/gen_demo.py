@@ -24,6 +24,11 @@ written by `rosaclef drums`. The source score is Craig Sapp's Humdrum
 encoding of the Durand edition (github.com/craigsapp/beethoven-piano-sonatas);
 the music is in the public domain.
 
+Since then the bundled demo has been reworked in the studio into a jazz
+ballad (72 BPM): the head with breathing phrases, piano and bass solos, a
+sax variation, the B half of the head out and a coda ending on a sharp
+eleventh. This script still writes the original jazz waltz.
+
 Usage:
     cargo build --release -p rosaclef
     python3 tools/gen_demo.py crates/studio/assets/demo/project.json
