@@ -103,7 +103,7 @@ export const keyboard = {
  * singing into the microphone (a phone hides it there to free the room). */
 /** function keysHelp(dock: String) => Boolean */
 export function keysHelp(dock) {
-  return dock !== "mixer" && dock !== "voice";
+  return dock !== "mixer" && dock !== "voice" && dock !== "drums";
 }
 
 /** const held: Held[] */

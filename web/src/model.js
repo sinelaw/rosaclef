@@ -176,6 +176,7 @@ export function decodeProject(raw) {
       points: (l.points ?? []).map((pt) => ({ beat: Number(pt.beat), value: Number(pt.value), curve: Number(pt.curve ?? 0) })),
     })),
     score: decodeScore(raw.score),
+    drums: decodeDrums(raw.drums),
     repeats: (raw.repeats ?? []).map((r) => ({
       start: Number(r.start),
       end: Number(r.end),
@@ -318,6 +319,37 @@ function encodeAnimation(a) {
   return o;
 }
 
+/** function decodeDrums<T>(d: T) => DrumPart */
+export function decodeDrums(d) {
+  if (!d) return noDrums();
+  return {
+    on: true,
+    groove: String(d.groove),
+    kit: String(d.kit ?? ""),
+    feel: String(d.feel ?? "natural"),
+    swing: Number(d.swing ?? 0),
+    start: Math.round(Number(d.start ?? 1)),
+    ending: String(d.ending ?? "hit"),
+    variations: d.variations !== false,
+    seed: Math.round(Number(d.seed ?? 1)),
+    sections: (d.sections ?? []).map((x) => ({
+      name: String(x.name ?? ""),
+      bars: Math.round(Number(x.bars)),
+      play: String(x.play ?? "a"),
+      fill: String(x.fill ?? "none"),
+      crash: x.crash === true,
+      groove: String(x.groove ?? ""),
+    })),
+    written: decodeStrs(d.written),
+  };
+}
+
+/** A project without a drum part. */
+/** function noDrums() => DrumPart */
+export function noDrums() {
+  return { on: false, groove: "", kit: "", feel: "natural", swing: 0, start: 1, ending: "hit", variations: true, seed: 1, sections: [], written: [] };
+}
+
 /** function decodeScore<T>(s: T) => ScoreSettings */
 export function decodeScore(s) {
   if (!s) return emptyScore();
@@ -449,6 +481,33 @@ export function encodeProject(p) {
   if (Object.keys(sc).length > 0) o.score = sc;
   if (p.repeats.length > 0) o.repeats = p.repeats.map(encodeRepeat);
   if (p.animation.on) o.animation = encodeAnimation(p.animation);
+  if (p.drums.on) o.drums = encodeDrums(p.drums);
+  return o;
+}
+
+/** The wire form of the drum part; defaults are left out. */
+/** function encodeDrums<R>(d: DrumPart) => R */
+function encodeDrums(d) {
+  const o = JSON.parse("{}");
+  o.groove = d.groove;
+  if (d.kit !== "") o.kit = d.kit;
+  o.feel = d.feel;
+  if (d.swing !== 0) o.swing = round6(d.swing);
+  o.start = d.start;
+  o.ending = d.ending;
+  o.variations = d.variations;
+  o.seed = d.seed;
+  o.sections = d.sections.map((x) => {
+    const sec = JSON.parse("{}");
+    if (x.name !== "") sec.name = x.name;
+    sec.bars = x.bars;
+    sec.play = x.play;
+    if (x.fill !== "none") sec.fill = x.fill;
+    if (x.crash) sec.crash = true;
+    if (x.groove !== "") sec.groove = x.groove;
+    return sec;
+  });
+  if (d.written.length > 0) o.written = encodeStrs(d.written);
   return o;
 }
 
@@ -724,6 +783,7 @@ export function emptyProject() {
     score: emptyScore(),
     repeats: [],
     animation: noAnimation(),
+    drums: noDrums(),
   };
 }
 

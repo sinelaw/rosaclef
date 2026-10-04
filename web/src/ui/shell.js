@@ -10,6 +10,7 @@ import { pianoRoll, pianoTools } from "./pianoroll.js";
 import { playlist, playlistTools } from "./playlist.js";
 import { mixer, mixerTools } from "./mixer.js";
 import { voicePanel, voiceTools } from "./voice.js";
+import { drumsPanel, drumsTools } from "./drums.js";
 import { agentPanel, agentDot } from "./agent.js";
 import { toastView } from "./toast.js";
 import { automationMenu } from "./lanes.js";
@@ -89,6 +90,7 @@ function navBar(b) {
   navItem(b, "rack", "Rack", "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
   navItem(b, "piano", "Piano", "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
   navItem(b, "voice", "Voice", "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
+  navItem(b, "drums", "Drums", "drum", v === "dock" && state.dock === "drums", "", () => openDock("drums"));
   navItem(b, "mixer", "Mixer", "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
   navItem(b, "score", "Score", "score", v === "dock" && state.dock === "score", "", () => openDock("score"));
   navItem(b, "agent", "Maestro", "spark", v === "agent", agentDot(), () => setView("agent"));
@@ -181,12 +183,14 @@ export function studio(b) {
   tab(b, "rack", "Channel Rack", "rack", "F6");
   tab(b, "piano", "Piano Roll", "piano", "F7");
   tab(b, "voice", "Voice", "mic", "F8");
+  tab(b, "drums", "Drums", "drum", "F4");
   tab(b, "mixer", "Mixer", "mixer", "F9");
   tab(b, "score", "Score", "score", "F10");
   b.open("div", "tools", "tools");
   if (state.dock === "rack") rackTools(b);
   else if (state.dock === "piano") pianoTools(b);
   else if (state.dock === "voice") voiceTools(b);
+  else if (state.dock === "drums") drumsTools(b);
   else if (state.dock === "score") scoreTools(b, dockScore);
   else mixerTools(b);
   b.close();
@@ -197,6 +201,7 @@ export function studio(b) {
   if (state.dock === "rack") rack(b);
   else if (state.dock === "piano") pianoRoll(b);
   else if (state.dock === "voice") voicePanel(b);
+  else if (state.dock === "drums") drumsPanel(b);
   else if (state.dock === "score") scoreView(b, dockScore);
   else mixer(b);
   b.close();

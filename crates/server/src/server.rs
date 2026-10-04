@@ -840,6 +840,7 @@ async fn get_transcription(
 #[derive(Deserialize)]
 struct DrumsQuery {
     guess: Option<bool>,
+    write: Option<bool>,
 }
 
 /// Write a drum part: the project in the body, the written project out (the
@@ -848,8 +849,10 @@ async fn write_drums(headers: HeaderMap, Query(q): Query<DrumsQuery>, body: Stri
     if !same_origin(&headers) {
         return forbidden();
     }
-    let guess = q.guess.unwrap_or(false);
-    match tokio::task::spawn_blocking(move || rosaclef_core::drums::api_write(&body, guess)).await {
+    let (guess, write) = (q.guess.unwrap_or(false), q.write.unwrap_or(true));
+    match tokio::task::spawn_blocking(move || rosaclef_core::drums::api_write(&body, guess, write))
+        .await
+    {
         Ok(Ok(v)) => Json(v).into_response(),
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),

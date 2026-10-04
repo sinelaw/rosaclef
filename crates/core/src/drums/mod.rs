@@ -995,11 +995,12 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
     Ok(report)
 }
 
-/// `POST /api/drums`: the project (JSON text) in; the project with its drum
-/// part written, the patterns that had been edited by hand (now replaced)
-/// and a report out. With `guess`, the part's start and sections are
-/// guessed from the playlist first.
-pub fn api_write(text: &str, guess: bool) -> Result<serde_json::Value, String> {
+/// `POST /api/drums`: the project (JSON text) in; with `guess`, the part's
+/// start and sections are first guessed from the playlist (a part is
+/// started on the first groove if there is none); with `write`, the part is
+/// written. Out: the project, the patterns that had been edited by hand
+/// since the last write (replaced now), and what the write did.
+pub fn api_write(text: &str, guess: bool, write_it: bool) -> Result<serde_json::Value, String> {
     let mut p: Project = serde_json::from_str(text).map_err(|e| e.to_string())?;
     if guess {
         let (start, sections) = guess_sections(&p);
@@ -1008,7 +1009,7 @@ pub fn api_write(text: &str, guess: bool) -> Result<serde_json::Value, String> {
         part.sections = sections;
     }
     let edited = edited(&p);
-    let report = write(&mut p)?;
+    let report = if write_it { Some(write(&mut p)?) } else { None };
     Ok(serde_json::json!({"project": p, "edited": edited, "report": report}))
 }
 

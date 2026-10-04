@@ -80,9 +80,19 @@
 /** type GlFrame = { width: Number, height: Number, cam: Number[], desk: Number[], deskColor: String, deskTex: String, deskTile: Number, paper: String, paperTex: String[], paperSize: Number[], pageSize: Number[], sheets: GlSheet[], sparks: Number[], spot: Number[], light: Number[], fx: Number[], seed: Number, finish: Boolean, ratio: Number } */
 /** An encoded film: its object URL and its codecs ("AVC + AAC"). */
 /** type Encoded = { url: String, codecs: String } */
-/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[], animation: Animation } */
+// The drum part (crates/core/src/drums): `on` false = the project has none.
+/** type DrumSection = { name: String, bars: Number, play: String, fill: String, crash: Boolean, groove: String } */
+
+/** type DrumPart = { on: Boolean, groove: String, kit: String, feel: String, swing: Number, start: Number, ending: String, variations: Boolean, seed: Number, sections: DrumSection[], written: KS[] } */
+
+/** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[], animation: Animation, drums: DrumPart } */
 
 /** type Issue = { severity: String, path: String, message: String } */
+
+// The groove library (GET /api/grooves): rows are [role, steps] pairs.
+/** type GrooveInfo = { id: String, style: String, name: String, meter: String, barBeats: Int, steps: Int, tempo: Int[], kit: String, swing: Number, a: String[][], b: String[][] } */
+
+/** type GrooveCatalog = { grooves: GrooveInfo[], kits: String[] } */
 
 // ------------------------------------------------------------ voice to notes
 // A take analyzed by GET /api/transcribe (crates/studio/src/transcribe.rs):

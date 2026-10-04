@@ -249,6 +249,7 @@ export function dockName(dock) {
   if (dock === "piano") return "piano roll";
   if (dock === "mixer") return "mixer";
   if (dock === "voice") return "voice to notes";
+  if (dock === "drums") return "drums";
   if (dock === "score") return "score";
   return "channel rack";
 }

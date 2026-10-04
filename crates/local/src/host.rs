@@ -539,6 +539,7 @@ impl Host {
                 match rosaclef_core::drums::api_write(
                     &String::from_utf8_lossy(body),
                     qs("guess") == "true",
+                    qs("write") != "false",
                 ) {
                     Ok(v) => Response::json(v),
                     Err(e) => Response::text(422, e),

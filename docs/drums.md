@@ -131,7 +131,7 @@ default.
 
 ### 4.1 What the user does
 
-1. Open the **Drums** tab in the dock.
+1. Open the **Drums** tab in the dock (F4).
 2. Pick a **groove** (grouped by style). Press **▶** to hear it looped in
    time with the song; the arrows step to the previous/next groove while it
    plays, so comparing is quick.

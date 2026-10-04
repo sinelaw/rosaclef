@@ -501,6 +501,9 @@ fn writes_a_drum_part() {
     assert!(grooves["grooves"].as_array().unwrap().len() > 10);
     let mut p: Value = serde_json::from_slice(&w.req("GET", "/api/project", b"").1).unwrap();
     p["drums"] = json!({"groove": "rock-8ths"});
+    let g = w.json("POST", "/api/drums?guess=true&write=false", p.clone());
+    assert!(g["report"].is_null());
+    assert!(g["project"]["drums"]["written"].is_null());
     let r = w.json("POST", "/api/drums?guess=true", p.clone());
     let sections = r["project"]["drums"]["sections"].as_array().unwrap();
     assert!(!sections.is_empty(), "{r}");
