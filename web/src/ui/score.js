@@ -940,7 +940,7 @@ function exportPdf(v, asShown) {
   const size = paperSize() === "letter" ? "US Letter" : "A4";
   if (asShown) {
     const lay = pdfLayout(c.ink, paperSize(), hide);
-    const look = { wet: v.ink === "wet", gloss: v.gloss, shine: v.shine };
+    const look = { wet: v.ink === "wet", gloss: v.gloss, shine: v.shine, filters: true };
     /** const svgs: String[] */
     const svgs = [];
     for (let i = 0; i < lay.pages.length; i++) svgs.push(pageSvg(lay, i, info, look, PRINT_SCALE));
@@ -1599,7 +1599,7 @@ function filmOf(b, v, sc) {
   filmView(b, v.fv, {
     sc: score,
     hide: v.condense && sc.kind !== "pattern",
-    look: { wet: v.ink === "wet", gloss: v.gloss, shine: v.shine },
+    look: { wet: v.ink === "wet", gloss: v.gloss, shine: v.shine, filters: true },
     info: { title: scopeTitle(sc), subtitle: subtitle(score, sc), author: sc.kind === "song" ? p.meta.author : "", bpm: p.transport.bpm },
     bar: m ? m.length / Math.max(1, m.count) / TPQ : p.transport.beatsPerBar,
     showing: sc.kind === "pattern" ? state.mode === "pattern" && state.pattern === sc.pattern : state.mode === "song",

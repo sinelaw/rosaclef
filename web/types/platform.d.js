@@ -75,6 +75,9 @@ export const toggleFullscreen;
 /** Draw a frame of the film (WebGL) on the canvas matching a CSS selector, at the next animation frame. */
 /** const filmDraw: (String, GlFrame) => Undefined */
 export const filmDraw;
+/** Draw a canvas every animation frame, a frame from the function each time, until it gives none. */
+/** const filmLive: (String, () => GlFrame | Undefined) => Undefined */
+export const filmLive;
 /** Forget the texture made from an object URL (before letting it go). */
 /** const filmForget: (String) => Undefined */
 export const filmForget;

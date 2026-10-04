@@ -51,7 +51,11 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # The server's build would also make the browser's engine (crates/server/build.rs);
+      # the Web job builds and tests that.
       - run: cargo test --workspace --locked
+        env:
+          ROSACLEF_SKIP_WASM: 1
 
   web:
     name: Web

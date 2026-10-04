@@ -12,9 +12,11 @@
 //  - Roles (`findRoles`): which parts carry the melody (lead), the beat (drums
 //    and bass: rhythm) or the harmony (chords and pads: background).
 //  - Scenes (`plan`): the shots as filmed, covering the whole song. In auto
-//    mode the director cuts the song into phrases and frames whatever carries
-//    each one — a part playing alone, a part coming in, the lead, the groove,
-//    the whole band. In manual mode the project's shots are filmed, and the
+//    mode the director mostly shows the full score (the system being played,
+//    every staff), and follows a part for a short while now and then: as it
+//    comes in, when it takes the lead for a few phrases (the lead found bar by
+//    bar: the single line standing out, busy, high and loud), or while it
+//    plays alone. In manual mode the project's shots are filmed, and the
 //    director fills the time between them.
 //  - The camera (`cameraAt`): for a song beat, where the camera looks (a point
 //    on the desk), how much it sees (`span`, desk units across the picture),
@@ -459,7 +461,94 @@ function barStarts(sc) {
   return out;
 }
 
-/** The director: the song cut into phrases, each framed on what carries it. */
+/** What a part plays in each bar: the onsets (ticks), the notes, and their pitches' and velocities' sums. */
+/** type BarPart = { g: Int, on: Number[], n: Int, pitch: Number, vel: Number } */
+
+/** What each part plays in each bar (bars by their starts `bs`). */
+/** function barParts(sc: Score, bs: Number[]) => BarPart[][] */
+function barParts(sc, bs) {
+  const nb = bs.length - 1;
+  /** const out: BarPart[][] */
+  const out = [];
+  for (let b = 0; b < nb; b++) out.push([]);
+  let b = 0;
+  const notes = sc.notes.slice().sort((x, y) => x.start - y.start);
+  for (const n of notes) {
+    const g = groupOfNote(sc, n);
+    if (g < 0) continue;
+    const t = n.start * TPQ;
+    while (b + 1 < nb && bs[b + 1] <= t) b = b + 1;
+    while (b > 0 && bs[b] > t) b = b - 1;
+    let i = out[b].findIndex((x) => x.g === g);
+    if (i < 0) {
+      out[b].push({ g: g, on: [], n: 0, pitch: 0, vel: 0 });
+      i = out[b].length - 1;
+    }
+    const e = out[b][i];
+    if (!e.on.includes(t)) e.on.push(t);
+    e.n = e.n + 1;
+    e.pitch = e.pitch + n.pitch;
+    e.vel = e.vel + n.velocity;
+  }
+  return out;
+}
+
+/**
+ * The lead of bars [b0, b1): the part carrying the tune there — a single line
+ * (not chords), busy, high and loud — when one clearly stands out (-1: none
+ * does). Drums and bass lines keep the rhythm and are not leads.
+ */
+/** function leadOf(sc: Score, roles: Roles, parts: BarPart[][], b0: Int, b1: Int) => Int */
+function leadOf(sc, roles, parts, b0, b1) {
+  /** const gs: Int[] */
+  const gs = [];
+  /** const score: Number[] */
+  const score = [];
+  for (let b = b0; b < b1; b++) {
+    for (const e of parts[b]) {
+      if (roles.roles[e.g] === "rhythm") continue;
+      if (!gs.includes(e.g)) {
+        gs.push(e.g);
+        score.push(0);
+      }
+    }
+  }
+  for (let i = 0; i < gs.length; i++) {
+    let on = 0;
+    let n = 0;
+    let pitch = 0;
+    let vel = 0;
+    for (let b = b0; b < b1; b++)
+      for (const e of parts[b])
+        if (e.g === gs[i]) {
+          on = on + e.on.length;
+          n = n + e.n;
+          pitch = pitch + e.pitch;
+          vel = vel + e.vel;
+        }
+    const mono = on / Math.max(1, n);
+    const busy = on / Math.max(1, b1 - b0);
+    score[i] = Math.sqrt(busy) * mono * mono * clamp(1 + (pitch / Math.max(1, n) - 60) / 36, 0.4, 2) * (0.5 + vel / Math.max(1, n));
+  }
+  let best = -1;
+  let second = 0;
+  for (let i = 0; i < gs.length; i++) {
+    if (best < 0 || score[i] > score[best]) {
+      if (best >= 0) second = Math.max(second, score[best]);
+      best = i;
+    } else second = Math.max(second, score[i]);
+  }
+  if (best < 0 || score[best] <= 0) return -1;
+  return score[best] >= 1.25 * second ? gs[best] : -1;
+}
+
+/**
+ * The director. Mostly it shows the full score: the whole system being
+ * played, every staff, the camera drifting over it. Now and then it follows a
+ * part for a short while — as it comes in, when it takes the lead for a few
+ * phrases, or while it plays alone — and goes back to the full score. More
+ * energy: more of these, and closer.
+ */
 /** function autoScenes(sc: Score, roles: Roles, film: Animation, pages: Int, bar: Number) => Scene[] */
 export function autoScenes(sc, roles, film, pages, bar) {
   /** const out: Scene[] */
@@ -468,8 +557,8 @@ export function autoScenes(sc, roles, film, pages, bar) {
   const nb = bs.length - 1;
   if (sc.empty || nb <= 0) return out;
   const energy = clamp(film.energy, 0, 1);
-  const groups = groupsOf(sc);
-  // Which parts play in each bar.
+  const parts = barParts(sc, bs);
+  // Which parts sound in each bar (held notes too).
   /** const act: Int[][] */
   const act = [];
   for (let b = 0; b < nb; b++) act.push([]);
@@ -493,105 +582,157 @@ export function autoScenes(sc, roles, film, pages, bar) {
     marks.push(r.end * TPQ);
   }
   const marked = (b) => marks.some((t) => Math.abs(t - bs[b]) < 1);
-  /** function same(a: Int[], b: Int[]) => Boolean */
-  function same(a, b) {
-    return a.length === b.length && a.every((x) => b.includes(x));
-  }
-  // Phrases: a few bars each, cut early where a part comes in or where one is left alone.
-  const P = energy < 0.34 ? 8 : energy < 0.67 ? 4 : 2;
-  const minLen = energy < 0.5 ? 2 : 1;
-  /** const phrases: Int[][] */
-  const phrases = [];
-  let a = 0;
-  for (let b = 1; b < nb; b++) {
-    const len = b - a;
-    const enters = act[b].some((g) => !act[b - 1].includes(g) && (b < 2 || !act[b - 2].includes(g)));
-    const alone = (act[b].length === 1) !== (act[b - 1].length === 1) || (act[b].length === 1 && !same(act[b], act[b - 1]));
-    if (len >= P || (len >= minLen && (enters || alone)) || (len >= 1 && marked(b))) {
-      phrases.push([a, b]);
-      a = b;
-    }
-  }
-  phrases.push([a, nb]);
 
-  let full = 0;
-  /** const prevActive: Int[] */
-  let prevActive = [];
-  for (let i = 0; i < phrases.length; i++) {
-    const b0 = phrases[i][0];
-    const b1 = phrases[i][1];
-    /** const A: Int[] */
-    const A = [];
-    for (let b = b0; b < b1; b++) for (const g of act[b]) if (!A.includes(g)) A.push(g);
-    A.sort((x, y) => x - y);
-    const E = A.filter((g) => !prevActive.includes(g));
-    const roleOf = (g) => roles.roles[g];
-    let frame = "close";
-    /** let focus: Int[] */
-    let focus = [];
-    let why = "";
-    if (A.length === 0) {
-      frame = "system";
-      why = "a rest";
-    } else if (A.length === 1) {
-      focus = [A[0]];
-      frame = "detail";
-      why = `${partNames(sc, stavesOf(sc, A))} alone`;
-    } else if (E.length > 0 && E.length < A.length && i > 0) {
-      // A part coming in, up close: the lead if it is one of them, else the first.
-      const one = roles.lead >= 0 && E.includes(roles.lead) ? roles.lead : E[0];
-      focus = [one];
-      frame = "detail";
-      why = `${partNames(sc, stavesOf(sc, [one]))} comes in`;
-    } else if (A.every((g) => roleOf(g) === "rhythm")) {
-      focus = A;
-      frame = "medium";
-      why = "the rhythm section";
-    } else if (A.every((g) => roleOf(g) === "background")) {
-      focus = A;
-      frame = "system";
-      why = "the background";
-    } else {
-      const rhythm = A.filter((g) => roleOf(g) === "rhythm");
-      const hasLead = roles.lead >= 0 && A.includes(roles.lead);
-      const c = full % 4;
-      full = full + 1;
-      if (hasLead && (c === 0 || c === 2)) {
-        focus = [roles.lead];
-        frame = c === 0 ? "detail" : "close";
-        why = "the lead";
-      } else if (c === 3 && rhythm.length > 0) {
-        focus = [rhythm[0]];
-        frame = "detail";
-        why = "the groove";
-      } else {
-        frame = energy < 0.34 ? "page" : "system";
-        why = "the whole band";
+  // How long a follow lasts, and how much of the full score comes between two.
+  const comeIn = energy > 0.85 ? 1 : 2;
+  const feature = energy < 0.34 ? 4 : 2;
+  const gap = Math.round(6 - 4 * energy);
+  const revisit = energy < 0.34 ? Infinity : gap * 4;
+  const wholeLen = energy < 0.34 ? 16 : energy < 0.67 ? 8 : 4;
+
+  // The lead, bar by bar (over two bars), and the runs a lead holds for a few phrases.
+  /** const leadAt: Int[] */
+  const leadAt = [];
+  for (let b = 0; b < nb; b++) {
+    const g = leadOf(sc, roles, parts, b, Math.min(nb, b + 2));
+    leadAt.push(parts[b].some((e) => e.g === g) ? g : -1);
+  }
+  const runMin = energy < 0.5 ? 4 : 2;
+  /** const takes: Int[] */
+  const takes = [];
+  for (let b = 0; b < nb; b++) takes.push(-1);
+  let prevLead = -1;
+  for (let b = 0; b < nb; ) {
+    let e = b + 1;
+    while (e < nb && leadAt[e] === leadAt[b]) e = e + 1;
+    if (leadAt[b] >= 0 && e - b >= runMin) {
+      if (leadAt[b] !== prevLead) takes[b] = leadAt[b];
+      prevLead = leadAt[b];
+    }
+    b = e;
+  }
+
+  /** const follows: Scene[] */
+  const follows = [];
+  let free = 0;
+  let freeIn = 0;
+  let lastLead = -1;
+  let lastAt = 0;
+  /** function follow(b0: Int, b1: Int, g: Int, frame: String, why: String) => Undefined */
+  function follow(b0, b1, g, frame, why) {
+    follows.push(scene(follows.length + 1, b0, b1, stavesOf(sc, [g]), frame, why));
+    free = b1 + gap;
+    freeIn = b1 + Math.max(1, Math.ceil(gap / 2));
+    lastAt = b1;
+  }
+  for (let b = 0; b < nb; ) {
+    const A = act[b];
+    // One part alone: it is all there is to see.
+    if (A.length === 1) {
+      let e = b + 1;
+      while (e < nb && act[e].length === 1 && act[e][0] === A[0]) e = e + 1;
+      follow(b, e, A[0], "medium", `${partNames(sc, stavesOf(sc, A))} alone`);
+      // What comes in next is seen at once (nothing else was there to see).
+      freeIn = e;
+      if (leadAt[b] === A[0]) lastLead = A[0];
+      b = e;
+      continue;
+    }
+    // A part coming in (one, or two with the lead among them): its first bars, up close.
+    const prev = b > 0 ? act[b - 1] : [];
+    const before = b > 1 ? act[b - 2] : [];
+    const E = A.filter((g) => !prev.includes(g) && !before.includes(g));
+    if (b > 0 && E.length > 0 && E.length <= 2 && E.length < A.length && b >= freeIn) {
+      const lead = leadAt[b];
+      const one = E.includes(lead) ? lead : E.length === 1 ? E[0] : -1;
+      // Worth following: it plays a few notes as it comes in (not one held swell).
+      let on = 0;
+      for (let k = b; k < Math.min(nb, b + 2); k++) for (const x of parts[k]) if (x.g === one) on = on + x.on.length;
+      if (one >= 0 && on >= 3) {
+        const e = Math.min(nb, b + comeIn);
+        follow(b, e, one, energy > 0.75 ? "detail" : "close", `${partNames(sc, stavesOf(sc, [one]))} comes in`);
+        if (one === lead) lastLead = lead;
+        b = e;
+        continue;
       }
     }
-    prevActive = A;
-    const staves = stavesOf(sc, focus);
+    // A new lead taking over for a few phrases, or (with some energy) the lead again after a long while.
+    // (Not as the song starts: the opening shows it all first, and it is the lead from there.)
+    if (takes[b] >= 0 && b < 2) lastLead = takes[b];
+    const takeOver = takes[b] >= 0 && takes[b] !== lastLead;
+    const again = leadAt[b] >= 0 && leadAt[b] === lastLead && b - lastAt >= revisit;
+    if ((takeOver || again) && b >= free) {
+      const g = takeOver ? takes[b] : leadAt[b];
+      const e = Math.min(nb, b + feature);
+      const name = partNames(sc, stavesOf(sc, [g]));
+      follow(b, e, g, "medium", takeOver && lastLead >= 0 ? `${name} takes the lead` : `${name} leads`);
+      lastLead = g;
+      b = e;
+      continue;
+    }
+    if (takes[b] >= 0 && b < free) {
+      // Too soon after another: it is seen in the full score, and followed if it is still leading once there is room.
+      let k = b + 1;
+      while (k < nb && k < free && leadAt[k] === takes[b]) k = k + 1;
+      if (k < nb && k === free && leadAt[k] === takes[b]) takes[k] = takes[b];
+    }
+    b = b + 1;
+  }
+
+  // The full score everywhere else, in stretches cut at sections and every few bars.
+  /** const all: Scene[] */
+  const all = [];
+  let fi = 0;
+  let b = 0;
+  while (b < nb) {
+    const next = fi < follows.length ? Math.round(barOf(follows[fi].start)) : nb;
+    if (b >= next) {
+      all.push(follows[fi]);
+      b = Math.round(barOf(follows[fi].end));
+      fi = fi + 1;
+      continue;
+    }
+    // A stretch ends at a section or after a while, but leaves none shorter than two bars.
+    let e = b + 1;
+    while (e < next && e - b < wholeLen && !(marked(e) && e - b >= 2)) e = e + 1;
+    if (next - e < (next === nb ? 3 : 2)) e = next;
+    all.push(scene(all.length * 7 + 3, b, e, [], "system", "the full score"));
+    b = e;
+  }
+  for (const k of all) out.push(k);
+
+  /** The bar a beat starts (exact at bar lines). */
+  /** function barOf(beat: Number) => Number */
+  function barOf(beat) {
+    const t = beat * TPQ;
+    let i = 0;
+    while (i < nb && bs[i + 1] <= t + 1e-6) i = i + 1;
+    return i;
+  }
+
+  /** A scene of bars [b0, b1) framing `staves` (none: all) at `frame`, its camera varied by `i`. */
+  /** function scene(i: Int, b0: Int, b1: Int, staves: Int[], frame: String, why: String) => Scene */
+  function scene(i, b0, b1, staves, frame, why) {
     const wide = frame === "desk" || frame === "page" || frame === "system";
     const r1 = hash(i * 3 + 1);
     const r2 = hash(i * 3 + 2);
     const sign = i % 2 === 0 ? 1 : -1;
-    // Close up, the camera comes down low over the page (the drops of ink stand against it).
-    const tilt = frame === "desk" ? 2 + 10 * energy * r1 : wide ? 5 + 20 * energy * r1 : frame === "detail" ? 50 + 16 * r1 : 34 + 16 * r1;
-    const turn = sign * (frame === "desk" ? 3 * energy * r2 : wide ? 2 + 12 * energy * r2 : 4 + 30 * energy * r2);
+    // Close up, the camera comes down low over the page.
+    const tilt = wide ? 5 + 20 * energy * r1 : frame === "detail" ? 50 + 16 * r1 : frame === "close" ? 38 + 14 * r1 : 26 + 14 * r1;
+    const turn = sign * (wide ? 2 + 10 * energy * r2 : 4 + 26 * energy * r2);
     const start = bs[b0] / TPQ;
     const end = bs[b1] / TPQ;
     const len = end - start;
     let transition = "glide";
     let glide = Math.min(bar, len * 0.4);
-    if (energy > 0.7 && r1 > 0.78) {
+    if (!wide && energy > 0.7 && r1 > 0.7) {
       transition = "cut";
       glide = 0;
-    } else if (energy > 0.55 && r2 > 0.82) {
+    } else if (!wide && energy > 0.55 && r2 > 0.8) {
       transition = "whip";
       glide = Math.min(0.75, len * 0.3);
     }
-    const fx = fxOf([film.effects]);
-    out.push({
+    return {
       start: start,
       end: end,
       staves: staves,
@@ -602,18 +743,18 @@ export function autoScenes(sc, roles, film, pages, bar) {
       turn: turn,
       ox: 0,
       oy: 0,
-      zoom1: wide ? 1.06 : 1.08 + 0.2 * energy * r2,
+      zoom1: wide ? 1.05 + 0.05 * energy : 1.08 + 0.2 * energy * r2,
       tilt1: tilt,
-      turn1: turn + sign * (2 + 8 * energy),
+      turn1: turn + sign * (wide ? 1 + 4 * energy : 2 + 8 * energy),
       ox1: 0,
       oy1: 0,
       transition: transition,
       glide: glide,
       ease: "smooth",
-      fx: fx,
+      fx: fxOf([film.effects]),
       src: -1,
       why: why,
-    });
+    };
   }
   const fx = fxOf([film.effects]);
   // The opening: the camera starts high over the desk and swoops down to the first shot.

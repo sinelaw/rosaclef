@@ -115,19 +115,76 @@ check(
   takeOf(17).staves.includes(staffOf("bass")) && !takeOf(17).staves.includes(staffOf("drums")) && takeOf(17).why === "Bass comes in"
 );
 check(
-  "then the lead, as it comes in with the pad (up close, alone in the frame)",
-  takeOf(33).why === "Lead comes in" && takeOf(33).staves.join() === String(staffOf("lead")) && takeOf(33).frame === "detail"
+  "then the lead, as it comes in with the pad (up close, alone in the frame), for two bars",
+  takeOf(33).why === "Lead comes in" && takeOf(33).staves.join() === String(staffOf("lead")) && takeOf(33).frame === "close" && takeOf(33).end === 40
 );
-const later = scenes.filter((k) => k.start >= 40 && k.why !== "the close");
 check(
-  "with the whole band playing it looks at the lead, the groove or everyone",
-  later.length > 0 && later.every((k) => ["the lead", "the groove", "the whole band"].includes(k.why))
+  "between them, and after, the full score: every staff",
+  takeOf(24).why === "the full score" && takeOf(24).staves.length === 0 && takeOf(24).frame === "system"
 );
-check("close shots lean and turn (diagonals), and push in as they go", takeOf(8).tilt > 5 && Math.abs(takeOf(8).turn) > 1 && takeOf(8).zoom1 > takeOf(8).zoom);
+const later = scenes.filter((k) => k.start >= 36 && k.why !== "the close");
+check("with the whole band playing it shows the full score", later.length > 0 && later.every((k) => k.why === "the full score"));
+/** Beats of a film showing the full score (or the desk or a page). */
+/** function wideBeats(list: Scene[]) => Number */
+function wideBeats(list) {
+  let n = 0;
+  for (const k of list) if (k.staves.length === 0) n = n + (k.end - k.start);
+  return n;
+}
+check(
+  "close shots lean and turn (diagonals), and push in as they go",
+  takeOf(17).tilt > 30 && Math.abs(takeOf(17).turn) > 1 && takeOf(17).zoom1 > takeOf(17).zoom
+);
 check("the director leaves the paper evenly lit (no spotlight unless the film sets one)", takeOf(8).fx.spotlight === 0);
 const calm = autoScenes(sc, roles, filmOf(`{ "energy": 0 }`), 1, 4);
 const busy = autoScenes(sc, roles, filmOf(`{ "energy": 1 }`), 1, 4);
-check("energy: a calm film has fewer, longer shots", calm.length < scenes.length && scenes.length < busy.length);
+/** The longest the full score is shown at a stretch. */
+/** function longest(list: Scene[]) => Number */
+function longest(list) {
+  let n = 0;
+  for (const k of list) if (k.why === "the full score") n = Math.max(n, k.end - k.start);
+  return n;
+}
+check("energy: a calm film holds the full score longer, a busy one cuts it up more", longest(calm) >= longest(scenes) && longest(scenes) > longest(busy));
+check(
+  "at any energy, the full score is most of the film once the band plays",
+  [calm, scenes, busy].every((list) => wideBeats(list.filter((k) => k.start >= 16)) >= 0.5 * 48)
+);
+
+// A lead handing over: the flute leads for eight bars, then the violin takes
+// the tune while the flute holds long notes (both play throughout).
+/** function duet() => Project */
+function duet() {
+  const p = emptyProject();
+  p.channels.push(channel("piano", "Piano", "prisme"));
+  p.channels.push(channel("flute", "Flute", "prisme"));
+  p.channels.push(channel("violin", "Violin", "prisme"));
+  /** const notes: Note[] */
+  const notes = [];
+  for (let b = 0; b < 64; b = b + 4) for (const k of [48, 55, 60, 64]) notes.push({ channel: "piano", pitch: k, start: b, length: 4, velocity: 0.5 });
+  for (let b = 0; b < 32; b = b + 0.5) notes.push({ channel: "flute", pitch: 76 + ((b * 4) % 5), start: b, length: 0.5, velocity: 0.8 });
+  for (let b = 32; b < 64; b = b + 4) notes.push({ channel: "flute", pitch: 72, start: b, length: 4, velocity: 0.4 });
+  for (let b = 0; b < 32; b = b + 4) notes.push({ channel: "violin", pitch: 67, start: b, length: 4, velocity: 0.4 });
+  for (let b = 32; b < 64; b = b + 0.5) notes.push({ channel: "violin", pitch: 74 + ((b * 4) % 6), start: b, length: 0.5, velocity: 0.85 });
+  p.patterns.push({ id: "song", name: "Song", color: "#d4af37", length: 64, notes: notes });
+  p.playlist.tracks.push({ name: "Track 1", mute: false });
+  p.playlist.clips.push({ pattern: "song", sample: "", track: trackIx(0), start: 0, length: 64, offset: 0, gain: 1, mixer: insertIx(0) });
+  return p;
+}
+const dsc = buildScore(duet(), SONG, 12);
+const droles = findRoles(dsc);
+const dscenes = autoScenes(dsc, droles, auto, 1, 4);
+const violin = dsc.staves.findIndex((st) => st.channels.includes("violin"));
+const takeover = dscenes.find((k) => k.why === "Violin takes the lead");
+check(
+  "a new lead taking the tune is followed for a couple of bars, then back to the full score",
+  takeover !== undefined &&
+    takeover.start === 32 &&
+    takeover.end === 40 &&
+    takeover.staves.join() === String(violin) &&
+    takeover.frame === "medium" &&
+    dscenes[sceneAt(dscenes, 41)].why === "the full score"
+);
 
 // ------------------------------------------------------------------ manual shots
 

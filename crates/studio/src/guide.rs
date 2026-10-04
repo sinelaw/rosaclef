@@ -338,7 +338,7 @@ it; it changes nothing that plays.
   "mode": "manual",                 // "auto" (default): the camera directs itself; "manual": it films `shots`,
                                     //   and directs itself wherever no shot covers the song
   "surface": "walnut",              // the desk: walnut, oak, slate, felt, marble
-  "energy": 0.6,                    // auto: 0 calm, long shots … 1 restless, close ones
+  "energy": 0.6,                    // auto: 0 calm, the full score held long … 1 restless, more close follows
   "effects": [{ "type": "vignette", "amount": 0.6 }],   // vignette, spotlight, glow
   "shots": [
     { "start": 0, "end": 8, "frame": "desk", "label": "Opening" },

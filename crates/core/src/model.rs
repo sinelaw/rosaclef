@@ -95,10 +95,10 @@ pub struct Project {
 /// on a desk and a camera in 3D space above them follows the music —
 /// zooming, tilting and turning to frame one part or the whole band.
 ///
-/// In `auto` mode the camera directs itself: it finds the lead, the rhythm
-/// section and the background parts and frames whichever carries the music
-/// (a part playing alone, an entry, the full band). In `manual` mode it plays
-/// `shots`, and directs itself wherever no shot covers the song.
+/// In `auto` mode the camera directs itself: it mostly shows the full score,
+/// and follows a part for a short while as it comes in, takes the lead for a
+/// few phrases, or plays alone. In `manual` mode it plays `shots`, and directs
+/// itself wherever no shot covers the song.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Animation {

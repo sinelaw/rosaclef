@@ -199,12 +199,12 @@ pub fn schema() -> Value {
             "animation": {
                 "type": "object",
                 "additionalProperties": false,
-                "description": "The film of the song (the Score view's Film mode): the score's pages lie on a desk and a camera above them follows the music, zooming, tilting and turning to frame some staves. auto: the camera directs itself (it frames the lead, the rhythm section or the background, whichever carries the music). manual: it plays `shots`, and directs itself where no shot covers the song. Changes nothing that plays.",
+                "description": "The film of the song (the Score view's Film mode): the score's pages lie on a desk and a camera above them follows the music, zooming, tilting and turning to frame some staves. auto: the camera directs itself (mostly the full score, following a part for a short while as it comes in, takes the lead for a few phrases or plays alone). manual: it plays `shots`, and directs itself where no shot covers the song. Changes nothing that plays.",
                 "properties": {
                     "mode": {"enum": FILM_MODES, "default": "auto"},
                     "view": {"enum": FILM_VIEWS, "default": "score", "description": "What is filmed."},
                     "surface": {"enum": FILM_SURFACES, "default": "walnut", "description": "The desk the pages lie on."},
-                    "energy": num(0.0, 1.0, "How much the self-directed camera moves: 0 calm, 1 restless (default 0.5)."),
+                    "energy": num(0.0, 1.0, "How much the self-directed camera moves: 0 calm (the full score held long, few close-ups), 1 restless (more and closer follows) (default 0.5)."),
                     "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects over the whole film; unlisted ones keep their defaults (vignette 0.5, spotlight 0, glow 1)."},
                     "shots": {"type": "array", "items": {"$ref": "#/$defs/shot"}}
                 }
