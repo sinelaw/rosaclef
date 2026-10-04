@@ -154,8 +154,12 @@ float smith(float nv, float nl, float a) {
 }
 void main() {
   vec2 uv = vUv;
-  // The relief only where the bitmap is sharp enough to show it (the tiles over the page).
-  float relief = uRelief * smoothstep(1.8, 3.5, uScale);
+  // The relief as large as the ink shows on the screen (pixels a point, here),
+  // whichever bitmap draws it: full up close, fading where the strokes are a
+  // pixel or less (their slopes would only glint as a silvery fringe). Smooth
+  // across the picture, so its near and far parts look alike.
+  float onScreen = 1.0 / max(max(length(dFdx(vWorld)), length(dFdy(vWorld))), 1e-6);
+  float relief = uRelief * smoothstep(1.8, 3.5, onScreen);
   float lift = 0.7 * relief;
   float cr = cos(uRot), sr = sin(uRot);
   vec3 v0 = normalize(uEye - vec3(vWorld, 0.0));
@@ -192,12 +196,15 @@ void main() {
     if (hp < 0.5) uv = hit;
   }
   vec3 base = uHasColor > 0.5 ? texture(uColorTex, uv).rgb : uPaper;
-  // Up close the paper is smooth: its tooth would look like plaster. Soften it (not the ink).
-  float near_ = smoothstep(3.0, 12.0, uScale);
-  if (uHasColor > 0.5 && near_ > 0.0) {
-    vec3 smooth_ = textureLod(uColorTex, uv, log2(uScale / 5.0)).rgb;
+  // Up close the paper is smooth: its tooth would look like plaster. Its
+  // texture (not the ink's) is kept to what five pixels a point hold, whichever
+  // bitmap this is, so the paper looks the same from tile to tile.
+  if (uHasColor > 0.5 && uScale > 5.0) {
+    vec2 px = vUv * vec2(textureSize(uColorTex, 0));
+    float seen = 0.5 * log2(max(dot(dFdx(px), dFdx(px)), dot(dFdy(px), dFdy(px))));
+    vec3 smooth_ = textureLod(uColorTex, uv, max(seen, log2(uScale / 5.0))).rgb;
     float paperish = smoothstep(0.55, 0.8, dot(base, vec3(0.299, 0.587, 0.114))) * smoothstep(0.55, 0.8, dot(smooth_, vec3(0.299, 0.587, 0.114)));
-    base = mix(base, smooth_, 0.9 * near_ * paperish);
+    base = mix(base, smooth_, paperish);
   }
   float lamp = paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6);
   vec3 c = base * lamp;
