@@ -41,6 +41,7 @@ function channel(id, name, type) {
     mute: false,
     mixer: insertIx(0),
     arp: noArp(),
+    layerOf: "",
   };
 }
 
