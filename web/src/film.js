@@ -50,7 +50,7 @@ import { pdfLayout } from "./pdf.js";
 /** Each staff's role, and the staff of the main melody (-1: none). */
 /** type Roles = { roles: String[], lead: Int } */
 /** A song filmed: the printed layout, the desk, the score, the roles, the scenes, where each system lies, the picture's aspect (width / height) and the song's end (beats). */
-/** type Film = { lay: PdfLayout, desk: Desk, sc: Score, roles: Roles, scenes: Scene[], sys: SysAt[], aspect: Number, end: Number, bar: Number } */
+/** type Film = { lay: PdfLayout, desk: Desk, sc: Score, roles: Roles, scenes: Scene[], sys: SysAt[], aspect: Number, end: Number, bar: Number, onsets: Number[][] } */
 /** A note lit as it plays: its page, its notehead (page points) and how bright (0..1). */
 /** type Spark = { page: Int, x: Number, y: Number, a: Number } */
 
@@ -75,8 +75,8 @@ export function defaultTilt(frame) {
   if (frame === "page") return 8;
   if (frame === "system") return 14;
   if (frame === "medium") return 20;
-  if (frame === "detail") return 34;
-  return 28;
+  if (frame === "detail") return 58;
+  return 42;
 }
 
 /** Bars a following frame holds (0: not a following frame): two bars, one, or a beat (in 4/4) — close enough to see the ink. */
@@ -577,7 +577,8 @@ export function autoScenes(sc, roles, film, pages, bar) {
     const r1 = hash(i * 3 + 1);
     const r2 = hash(i * 3 + 2);
     const sign = i % 2 === 0 ? 1 : -1;
-    const tilt = frame === "desk" ? 2 + 10 * energy * r1 : wide ? 5 + 20 * energy * r1 : 12 + 36 * energy * r1;
+    // Close up, the camera comes down low over the page (the drops of ink stand against it).
+    const tilt = frame === "desk" ? 2 + 10 * energy * r1 : wide ? 5 + 20 * energy * r1 : frame === "detail" ? 50 + 16 * r1 : 34 + 16 * r1;
     const turn = sign * (frame === "desk" ? 3 * energy * r2 : wide ? 2 + 12 * energy * r2 : 4 + 30 * energy * r2);
     const start = bs[b0] / TPQ;
     const end = bs[b1] / TPQ;
@@ -592,6 +593,8 @@ export function autoScenes(sc, roles, film, pages, bar) {
       glide = Math.min(0.75, len * 0.3);
     }
     const fx = fxOf([film.effects]);
+    // Low and close, the lens holds a thin slice in focus.
+    if (!wide && !film.effects.some((e) => e.type === "focus")) fx.focus = Math.max(fx.focus, frame === "detail" ? 0.75 : 0.55);
     out.push({
       start: start,
       end: end,
@@ -747,6 +750,7 @@ export function makeFilm(film, sc, paper, hideEmpty, aspect, bar) {
     aspect: Math.max(0.2, aspect),
     end: sc.end / TPQ,
     bar: bar,
+    onsets: onsetsOf(sc),
   };
 }
 
@@ -763,7 +767,52 @@ export function replan(f, film, aspect) {
     aspect: Math.max(0.2, aspect),
     end: f.end,
     bar: f.bar,
+    onsets: f.onsets,
   };
+}
+
+/** Where notes start on each staff (ticks, sorted). */
+/** function onsetsOf(sc: Score) => Number[][] */
+function onsetsOf(sc) {
+  /** const out: Number[][] */
+  const out = sc.staves.map((st) => []);
+  for (const n of sc.notes) {
+    const t = Math.round(n.start * TPQ);
+    for (let i = 0; i < sc.staves.length; i++) if (sc.staves[i].channels.includes(n.channel)) out[i].push(t);
+  }
+  for (const o of out) o.sort((a, b) => a - b);
+  return out;
+}
+
+/**
+ * Ticks a detail frame holds at a tick: a beat, or the gap from the note
+ * sounding to the next one on the framed staves when it is longer (up to a
+ * bar), averaged around the tick so the frame breathes instead of jumping.
+ */
+/** function detailTicks(f: Film, staves: Int[], tick: Number) => Number */
+function detailTicks(f, staves, tick) {
+  const bar = barTicks(f.sc, tick);
+  const beat = bar / 4;
+  const rows = staves.length > 0 ? staves : f.onsets.map((o, i) => i);
+  let sum = 0;
+  for (const d of [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]) {
+    const t = tick + d * beat;
+    let prev = -Infinity;
+    let next = Infinity;
+    for (const i of rows) {
+      const o = i < f.onsets.length ? f.onsets[i] : [];
+      for (const x of o) {
+        if (x <= t) prev = Math.max(prev, x);
+        else {
+          next = Math.min(next, x);
+          break;
+        }
+      }
+    }
+    const gap = Number.isFinite(prev) && Number.isFinite(next) ? (next - prev) * 1.25 : beat;
+    sum = sum + clamp(gap, beat, bar);
+  }
+  return sum / 9;
 }
 
 /** The region a scene frames at a tick of system `si`: center and size on the desk ([x, y, w, h]). */
@@ -794,7 +843,8 @@ function sysRegion(f, k, si, tick) {
   const bars = frameBars(k.frame);
   if (bars > 0) {
     const sysW = s.x1 - s.x0;
-    const w = Math.min(sysW + 1, (sysW * bars * barTicks(f.sc, tick)) / Math.max(1, s.end - s.start));
+    const held = k.frame === "detail" ? detailTicks(f, k.staves, tick) : bars * barTicks(f.sc, tick);
+    const w = Math.min(sysW + 1, (sysW * held) / Math.max(1, s.end - s.start));
     // The playhead, smoothed over about what the frame holds, a little left of the middle.
     const b = barTicks(f.sc, tick) * Math.max(0.5, bars);
     let x = 0;
@@ -828,7 +878,10 @@ export function region(f, k, beat) {
   if (tick <= s.end - blend) return r;
   const next = sysRegion(f, k, si + 1, systems[si + 1].start);
   const u = ease("smooth", (tick - (s.end - blend)) / blend);
-  return [lerp(r[0], next[0], u), lerp(r[1], next[1], u), lerpLog(r[2], next[2], u), lerpLog(r[3], next[3], u)];
+  // Far to go for so close a frame: pull back on the way, and come down again.
+  const dist = Math.hypot(next[0] - r[0], next[1] - r[1]) / Math.max(1, Math.min(r[2], next[2]));
+  const rise = 1 + clamp(dist * 0.6 - 0.6, 0, 8) * Math.sin(Math.PI * u);
+  return [lerp(r[0], next[0], u), lerp(r[1], next[1], u), lerpLog(r[2], next[2], u) * rise, lerpLog(r[3], next[3], u) * rise];
 }
 
 /** The camera for a scene, framing a region, `u` of the way through the shot (eased). */

@@ -106,30 +106,41 @@ uniform vec3 uEye;
 uniform float uRelief;
 uniform float uGloss;
 uniform float uShine;
+uniform sampler2D uEnv;
+uniform float uHasEnv;
+uniform float uEnvRot;
+uniform float uEnvGain;
 ${LIGHT}
 out vec4 o;
 const float PI = 3.14159265;
 const float F0 = 0.045;
 float ink(vec2 uv) { return 1.0 - texture(uInkTex, uv).r; }
+// The photographed room (an equirectangular HDR image), by direction (z up),
+// blurrier the rougher the ink; the made-up one until it has loaded.
+vec3 roomOf(vec3 r, float rough);
+vec3 env(vec3 r, float rough) {
+  if (uHasEnv < 0.5) return roomOf(r, rough);
+  // Turned about the vertical as the path tracer turns it.
+  float cr = cos(uEnvRot), sr = sin(uEnvRot);
+  vec3 d = vec3(cr * r.x - sr * r.y, sr * r.x + cr * r.y, r.z);
+  float u = atan(d.y, d.x) / (2.0 * PI) + 0.5;
+  float v = 0.5 - asin(clamp(d.z, -1.0, 1.0)) / PI;
+  return textureLod(uEnv, vec2(u, v), rough * 9.0).rgb * uEnvGain;
+}
 // The room the ink reflects, by direction (z up), its edges softened by roughness.
-vec3 room(vec3 r, float rough) {
-  float w = 0.02 + rough * 0.75;
-  vec3 c = mix(vec3(0.004, 0.0035, 0.003), vec3(0.05, 0.045, 0.04), smoothstep(-0.15, 0.85, r.z));
-  // The window: a tall soft rectangle up behind the desk, to the left.
-  vec3 wd = normalize(vec3(-0.35, -0.62, 0.70));
-  vec3 wx = normalize(cross(wd, vec3(0.0, 0.0, 1.0)));
-  vec3 wy = cross(wx, wd);
-  float wz = dot(r, wd);
-  vec2 q = vec2(dot(r, wx), dot(r, wy)) / max(wz, 1e-3);
-  float win = smoothstep(0.2 + w, 0.2 - w * 0.5, abs(q.x)) * smoothstep(0.3 + w, 0.3 - w * 0.5, abs(q.y)) * step(0.0, wz);
-  // Its mullions: a cross of darker bars.
-  float bars = 1.0 - 0.8 * (1.0 - smoothstep(0.0, 0.015 + w * 0.3, abs(q.x))) - 0.8 * (1.0 - smoothstep(0.0, 0.015 + w * 0.3, abs(q.y - 0.05)));
-  c += vec3(5.0, 4.85, 4.5) * win * clamp(bars, 0.0, 1.0);
-  // A long strip light on the right, cooler.
-  vec3 sd = normalize(vec3(0.75, 0.05, 0.66));
-  float sp = dot(r, sd);
-  float along = abs(dot(r, vec3(0.0, 1.0, 0.0)));
-  c += vec3(2.0, 2.1, 2.3) * smoothstep(0.985 - w * 0.5, 0.985 + w * 0.1, sp + along * 0.012) * step(along, 0.6);
+vec3 roomOf(vec3 r, float rough) {
+  float w = 0.03 + rough * 0.6;
+  // A dim room: a dark floor, a faintly warm ceiling.
+  vec3 c = mix(vec3(0.006, 0.005, 0.004), vec3(0.16, 0.15, 0.13), smoothstep(-0.1, 0.9, r.z));
+  // The far wall is a broad window (beyond the top of the page, low in the
+  // sky): what a drop of ink mirrors across its top, as a soft band of light.
+  vec2 h = normalize(r.xy + vec2(1e-5));
+  float facing = smoothstep(0.2 - w, 0.45 + w, -h.y);
+  float band = smoothstep(0.02 - w * 0.3, 0.1 + w * 0.3, r.z) * smoothstep(0.62 + w, 0.48 - w * 0.5, r.z);
+  c += vec3(14.0, 13.6, 12.8) * facing * band;
+  // A smaller, cooler window on the right.
+  float side = smoothstep(0.75 - w, 0.85 + w * 0.3, h.x) * smoothstep(0.1 - w * 0.3, 0.2 + w * 0.3, r.z) * smoothstep(0.55 + w, 0.4 - w * 0.5, r.z);
+  c += vec3(4.0, 4.3, 4.9) * side;
   return c;
 }
 float ggx(float nh, float a) {
@@ -142,23 +153,61 @@ float smith(float nv, float nl, float a) {
   return (nv / (nv * (1.0 - k) + k)) * (nl / (nl * (1.0 - k) + k));
 }
 void main() {
-  vec3 base = uHasColor > 0.5 ? texture(uColorTex, vUv).rgb : uPaper;
-  float lamp = paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6);
-  vec3 c = base * lamp;
+  vec2 uv = vUv;
   // The relief only where the bitmap is sharp enough to show it (the tiles over the page).
   float relief = uRelief * smoothstep(1.8, 3.5, uScale);
+  float lift = 0.7 * relief;
+  float cr = cos(uRot), sr = sin(uRot);
+  vec3 v0 = normalize(uEye - vec3(vWorld, 0.0));
+  if (uHasInk > 0.5 && relief > 0.0) {
+    // Relief mapping: follow the eye's ray down through the ink's height field
+    // to where it meets the ink, so a drop shows its true outline from low down.
+    vec2 vt = vec2(cr * v0.x + sr * v0.y, -sr * v0.x + cr * v0.y);
+    vec2 uvPerPt = uTexel * uScale;
+    vec2 span = vt / max(v0.z, 0.12) * lift * uvPerPt;
+    float prev = 1.0;
+    vec2 top = uv + span;
+    vec2 hit = uv;
+    float hp = 1.0;
+    for (int i = 1; i <= 32; i++) {
+      float k = float(i) / 32.0;
+      vec2 q = top - span * k;
+      float rayH = 1.0 - k;
+      if (ink(q) >= rayH) {
+        // Refine between the last step above the ink and this one.
+        float lo = k - 1.0 / 32.0, hi = k;
+        for (int j = 0; j < 5; j++) {
+          float mid = 0.5 * (lo + hi);
+          if (ink(top - span * mid) >= 1.0 - mid) hi = mid;
+          else lo = mid;
+        }
+        hit = top - span * hi;
+        hp = 0.0;
+        break;
+      }
+    }
+    if (hp < 0.5) uv = hit;
+  }
+  vec3 base = uHasColor > 0.5 ? texture(uColorTex, uv).rgb : uPaper;
+  // Up close the paper is smooth: its tooth would look like plaster. Soften it (not the ink).
+  float near_ = smoothstep(3.0, 12.0, uScale);
+  if (uHasColor > 0.5 && near_ > 0.0) {
+    vec3 smooth_ = textureLod(uColorTex, uv, log2(uScale / 5.0)).rgb;
+    float paperish = smoothstep(0.55, 0.8, dot(base, vec3(0.299, 0.587, 0.114))) * smoothstep(0.55, 0.8, dot(smooth_, vec3(0.299, 0.587, 0.114)));
+    base = mix(base, smooth_, 0.9 * near_ * paperish);
+  }
+  float lamp = paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6);
+  vec3 c = base * lamp;
   if (uHasInk > 0.5 && relief > 0.0) {
     // The ink's height and its slope (Sobel), in points of height a point.
     vec2 t = uTexel;
-    float h0 = ink(vUv);
-    float a00 = ink(vUv + vec2(-t.x, -t.y)), a10 = ink(vUv + vec2(0.0, -t.y)), a20 = ink(vUv + vec2(t.x, -t.y));
-    float a01 = ink(vUv + vec2(-t.x, 0.0)), a21 = ink(vUv + vec2(t.x, 0.0));
-    float a02 = ink(vUv + vec2(-t.x, t.y)), a12 = ink(vUv + vec2(0.0, t.y)), a22 = ink(vUv + vec2(t.x, t.y));
+    float h0 = ink(uv);
+    float a00 = ink(uv + vec2(-t.x, -t.y)), a10 = ink(uv + vec2(0.0, -t.y)), a20 = ink(uv + vec2(t.x, -t.y));
+    float a01 = ink(uv + vec2(-t.x, 0.0)), a21 = ink(uv + vec2(t.x, 0.0));
+    float a02 = ink(uv + vec2(-t.x, t.y)), a12 = ink(uv + vec2(0.0, t.y)), a22 = ink(uv + vec2(t.x, t.y));
     float gx = (a20 + 2.0 * a21 + a22) - (a00 + 2.0 * a01 + a02);
     float gy = (a02 + 2.0 * a12 + a22) - (a00 + 2.0 * a10 + a20);
-    float lift = 0.26 * relief;
     vec2 g = vec2(gx, gy) / 8.0 * uScale * lift;
-    float cr = cos(uRot), sr = sin(uRot);
     g = vec2(cr * g.x - sr * g.y, sr * g.x + cr * g.y);
     vec3 n = normalize(vec3(-g, 1.0));
     vec3 p = vec3(vWorld, h0 * lift);
@@ -168,33 +217,36 @@ void main() {
     float lum = dot(base, vec3(0.299, 0.587, 0.114));
     float onInk = smoothstep(0.62, 0.3, lum) * smoothstep(0.02, 0.12, h0);
 
-    // On the paper: the raised ink casts a short soft shadow, away from the lamp.
+    // On the paper: the raised ink casts a short soft shadow, away from the light.
     vec2 toward = normalize(l.xy + 1e-5);
     vec2 tl = vec2(cr * toward.x + sr * toward.y, -sr * toward.x + cr * toward.y);
     vec2 st = tl * uTexel * uScale;
     float blur = log2(max(1.0, uScale * 0.12));
     float occl = 0.0;
-    occl += textureLod(uInkTex, vUv + st * 0.12, blur).r;
-    occl += textureLod(uInkTex, vUv + st * 0.24, blur + 0.5).r;
-    occl += textureLod(uInkTex, vUv + st * 0.38, blur + 1.0).r;
+    occl += textureLod(uInkTex, uv + st * 0.12, blur).r;
+    occl += textureLod(uInkTex, uv + st * 0.24, blur + 0.5).r;
+    occl += textureLod(uInkTex, uv + st * 0.38, blur + 1.0).r;
     occl = clamp((1.0 - occl / 3.0) - h0, 0.0, 1.0) * (1.0 - onInk);
-    c *= 1.0 - 0.26 * occl * relief;
+    c *= 1.0 - 0.42 * occl * relief;
 
-    // On the ink: a dark, faintly lit body…
+    // On the ink: a black body, faintly lit…
     float nl = max(dot(n, l), 0.0);
     float nv = max(dot(n, v), 1e-3);
-    c = mix(c, base * (0.55 + 0.6 * nl) * lamp, onInk);
-    // …and its gloss: the lamp's highlight and the room's reflection.
-    float rough = mix(0.5, mix(0.2, 0.055, uShine), clamp(uGloss, 0.0, 1.0));
+    c = mix(c, base * (0.5 + 0.5 * nl) * lamp, onInk);
+    // …and its gloss: a dielectric's reflection of the room (Schlick's Fresnel,
+    // blurred by roughness), and the lamp's GGX highlight when there is no room yet.
+    float rough = mix(0.45, mix(0.12, 0.04, uShine), clamp(uGloss, 0.0, 1.0));
     float a = rough * rough;
-    vec3 hv = normalize(l + v);
-    float nh = max(dot(n, hv), 0.0);
-    float vh = max(dot(v, hv), 0.0);
-    float fl = F0 + (1.0 - F0) * pow(1.0 - vh, 5.0);
-    float spec = ggx(nh, a) * smith(nv, nl, a) * fl / (4.0 * nv * max(nl, 1e-3)) * nl;
     vec3 r = reflect(-v, n);
     float fe = F0 + (max(1.0 - rough, F0) - F0) * pow(1.0 - nv, 5.0);
-    vec3 gloss = vec3(1.0, 0.95, 0.86) * spec * 1.6 * lamp + room(r, rough) * fe;
+    vec3 gloss = env(r, rough) * fe;
+    if (uHasEnv < 0.5) {
+      vec3 hv = normalize(l + v);
+      float nh = max(dot(n, hv), 0.0);
+      float vh = max(dot(v, hv), 0.0);
+      float fl = F0 + (1.0 - F0) * pow(1.0 - vh, 5.0);
+      gloss += vec3(1.0, 0.95, 0.86) * ggx(nh, a) * smith(nv, nl, a) * fl / (4.0 * nv * max(nl, 1e-3)) * nl * 4.0 * lamp;
+    }
     c += gloss * onInk * max(uGloss, 0.25);
   }
   o = vec4(c, 1.0);
@@ -226,7 +278,10 @@ const POST_FS = `#version 300 es
 precision highp float;
 in vec2 vUv;
 uniform sampler2D uScene;
-uniform float uFocus;
+uniform mat4 uInvVP;
+uniform vec3 uEyeGL;
+uniform float uFocusD;
+uniform float uCoc;
 uniform float uBlur;
 uniform float uVignette;
 uniform float uAspect;
@@ -235,19 +290,36 @@ uniform vec2 uPx;
 out vec4 o;
 float rnd(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uSeed) * 43758.5453); }
 void main() {
-  // Depth of field: the far (top) and near (bottom) edges blur; a whip blurs it all.
-  float far_ = smoothstep(0.55, 1.0, vUv.y);
-  float near_ = smoothstep(0.42, 0.0, vUv.y) * 0.7;
-  float lod = uFocus * 2.4 * max(far_, near_) + uBlur * 4.0;
+  // A lens: how far the desk is here (the ray through this pixel meets the
+  // desk's plane), and the blur circle of what is that far from the focus.
+  vec2 ndc = vUv * 2.0 - 1.0;
+  vec4 a = uInvVP * vec4(ndc, -1.0, 1.0);
+  vec4 b = uInvVP * vec4(ndc, 1.0, 1.0);
+  vec3 p0 = a.xyz / a.w;
+  vec3 dir = b.xyz / b.w - p0;
+  float coc = 40.0;
+  if (abs(dir.z) > 1e-6) {
+    float s = -p0.z / dir.z;
+    if (s > 0.0) {
+      float dist = length(p0 + dir * s - uEyeGL);
+      coc = uCoc * abs(1.0 - uFocusD / dist);
+    }
+  }
+  coc = min(coc + uBlur * 24.0, 40.0);
   vec3 c;
-  if (lod < 0.05) c = texture(uScene, vUv).rgb;
+  if (coc < 0.6) c = texture(uScene, vUv).rgb;
   else {
-    vec2 r = uPx * exp2(lod) * 0.75;
-    c = textureLod(uScene, vUv, lod).rgb * 0.4;
-    c += textureLod(uScene, vUv + vec2(r.x, r.y), lod).rgb * 0.15;
-    c += textureLod(uScene, vUv + vec2(-r.x, r.y), lod).rgb * 0.15;
-    c += textureLod(uScene, vUv + vec2(r.x, -r.y), lod).rgb * 0.15;
-    c += textureLod(uScene, vUv + vec2(-r.x, -r.y), lod).rgb * 0.15;
+    // Gathered over a disc (a golden-angle spiral), from a mipmap that matches its size.
+    float lod = max(0.0, log2(coc / 6.0));
+    vec3 sum = vec3(0.0);
+    float turn = rnd(vUv) * 6.2831;
+    for (int i = 0; i < 24; i++) {
+      float f = (float(i) + 0.5) / 24.0;
+      float ang = float(i) * 2.39996 + turn;
+      vec2 off = vec2(cos(ang), sin(ang)) * sqrt(f) * coc * uPx;
+      sum += textureLod(uScene, vUv + off, lod).rgb;
+    }
+    c = sum / 24.0;
   }
   // The lamp's warmth from the upper left, the corners falling into shadow.
   vec2 q = vUv - vec2(0.28, 0.92);
@@ -272,6 +344,29 @@ function mul(a, b) {
       o[c * 4 + r] = s;
     }
   return o;
+}
+
+function invert(m) {
+  const inv = new Float32Array(16);
+  inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+  inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+  inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+  inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+  inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+  inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+  inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+  inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+  inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+  inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+  inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+  inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+  inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+  inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+  inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+  inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+  const det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+  for (let i = 0; i < 16; i++) inv[i] /= det || 1;
+  return inv;
 }
 
 function perspective(fovy, aspect, near, far) {
@@ -321,6 +416,9 @@ function lookAt(eye, at, up) {
 }
 
 const FOV = (32 * Math.PI) / 180;
+/** The room's turn about the vertical (radians) and its brightness, shared with the path tracer (filmpt.js). */
+export const ENV_ROT = 2.4;
+export const ENV_GAIN = 1.6;
 
 /**
  * The camera of a frame: in the desk's space (x right, y down, z *into* the
@@ -345,7 +443,105 @@ function camera(cam, aspect) {
   }
   const view = lookAt(eye, [x, y, 0], up);
   const proj = perspective(FOV, aspect, d * 0.02, d * 20);
-  return { vp: mul(proj, view), eye: [eye[0], eye[1], -eye[2]] };
+  const vp = mul(proj, view);
+  return { vp, inv: invert(vp), eyeGL: eye, d, eye: [eye[0], eye[1], -eye[2]] };
+}
+
+// ------------------------------------------------------------------ the room
+
+/** Decode a Radiance .hdr (RGBE, run-length encoded scanlines): its size and linear RGB floats. */
+function parseHdr(buf) {
+  const bytes = new Uint8Array(buf);
+  let pos = 0;
+  const line = () => {
+    let s = "";
+    while (pos < bytes.length && bytes[pos] !== 10) s += String.fromCharCode(bytes[pos++]);
+    pos++;
+    return s;
+  };
+  let l = line();
+  while (l !== "") l = line();
+  const dims = line().match(/-Y (\d+) \+X (\d+)/);
+  if (!dims) throw new Error("unsupported HDR image");
+  const h = Number(dims[1]);
+  const w = Number(dims[2]);
+  const out = new Float32Array(w * h * 3);
+  const scan = new Uint8Array(w * 4);
+  for (let y = 0; y < h; y++) {
+    if (bytes[pos] === 2 && bytes[pos + 1] === 2 && (bytes[pos + 2] & 0x80) === 0) {
+      pos += 4;
+      for (let c = 0; c < 4; c++) {
+        let x = 0;
+        while (x < w) {
+          let n = bytes[pos++];
+          if (n > 128) {
+            n -= 128;
+            const v = bytes[pos++];
+            for (let i = 0; i < n; i++) scan[x++ * 4 + c] = v;
+          } else for (let i = 0; i < n; i++) scan[x++ * 4 + c] = bytes[pos++];
+        }
+      }
+    } else {
+      for (let x = 0; x < w; x++) for (let c = 0; c < 4; c++) scan[x * 4 + c] = bytes[pos++];
+    }
+    for (let x = 0; x < w; x++) {
+      const e = scan[x * 4 + 3];
+      const f = e === 0 ? 0 : Math.pow(2, e - 136);
+      const o = (y * w + x) * 3;
+      out[o] = scan[x * 4] * f;
+      out[o + 1] = scan[x * 4 + 1] * f;
+      out[o + 2] = scan[x * 4 + 2] * f;
+    }
+  }
+  return { w, h, data: out };
+}
+
+const halfBuf = new Float32Array(1);
+const halfInt = new Uint32Array(halfBuf.buffer);
+function toHalf(v) {
+  halfBuf[0] = v;
+  const x = halfInt[0];
+  const sign = (x >> 16) & 0x8000;
+  const e = ((x >> 23) & 0xff) - 112;
+  const m = x & 0x7fffff;
+  if (e <= 0) return sign;
+  if (e >= 31) return sign | 0x7bff;
+  return sign | (e << 10) | (m >> 13);
+}
+
+let roomPromise = null;
+/** The room's image, decoded once, with its mipmaps (each half the last), for any renderer. */
+function roomImage() {
+  if (!roomPromise)
+    roomPromise = fetch(new URL("../vendor/hdri/artist_workshop_1k.hdr", import.meta.url))
+      .then((r) => r.arrayBuffer())
+      .then((buf) => {
+        let img = parseHdr(buf);
+        const levels = [img];
+        while (img.w > 1 || img.h > 1) {
+          const w = Math.max(1, img.w >> 1);
+          const h = Math.max(1, img.h >> 1);
+          const d = new Float32Array(w * h * 3);
+          for (let y = 0; y < h; y++)
+            for (let x = 0; x < w; x++)
+              for (let c = 0; c < 3; c++) {
+                const x0 = Math.min(img.w - 1, x * 2),
+                  x1 = Math.min(img.w - 1, x * 2 + 1);
+                const y0 = Math.min(img.h - 1, y * 2),
+                  y1 = Math.min(img.h - 1, y * 2 + 1);
+                d[(y * w + x) * 3 + c] =
+                  (img.data[(y0 * img.w + x0) * 3 + c] +
+                    img.data[(y0 * img.w + x1) * 3 + c] +
+                    img.data[(y1 * img.w + x0) * 3 + c] +
+                    img.data[(y1 * img.w + x1) * 3 + c]) /
+                  4;
+              }
+          img = { w, h, data: d };
+          levels.push(img);
+        }
+        return levels;
+      });
+  return roomPromise;
 }
 
 // ------------------------------------------------------------------ renderer
@@ -403,6 +599,28 @@ function renderer(canvas) {
   const aniso = gl.getExtension("EXT_texture_filter_anisotropic");
   // Textures by URL: loading, loaded (with their size) or failed.
   const textures = new Map();
+  // The room the ink reflects (none until it has loaded).
+  let envTex = null;
+  roomImage()
+    .then((levels) => {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
+      for (let i = 0; i < levels.length; i++) {
+        const L = levels[i];
+        const half = new Uint16Array(L.w * L.h * 3);
+        for (let k = 0; k < half.length; k++) half[k] = toHalf(L.data[k]);
+        gl.texImage2D(gl.TEXTURE_2D, i, gl.RGB16F, L.w, L.h, 0, gl.RGB, gl.HALF_FLOAT, half);
+      }
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      envTex = tex;
+      if (api.onLoad) api.onLoad();
+    })
+    .catch((e) => console.warn("film: no room to reflect", e));
   let target = null;
 
   function texture(url, repeat) {
@@ -493,7 +711,7 @@ function renderer(canvas) {
     }
     let complete = true;
     const aspect = w / h;
-    const { vp, eye } = camera(f.cam, aspect);
+    const { vp, eye, inv, eyeGL, d } = camera(f.cam, aspect);
     const tg = ensureTarget(w, h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fb);
     gl.viewport(0, 0, w, h);
@@ -548,6 +766,13 @@ function renderer(canvas) {
     gl.uniform1f(pu.uShine, f.ink[2]);
     gl.uniform1i(pu.uColorTex, 0);
     gl.uniform1i(pu.uInkTex, 1);
+    gl.uniform1i(pu.uEnv, 2);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, envTex);
+    gl.uniform1f(pu.uHasEnv, envTex ? 1 : 0);
+    // The room turned so its windows are behind the page, as the path tracer has it.
+    gl.uniform1f(pu.uEnvRot, ENV_ROT);
+    gl.uniform1f(pu.uEnvGain, ENV_GAIN);
     for (const s of f.sheets) {
       const ct = texture(s.color, false);
       const it = texture(s.height, false);
@@ -588,7 +813,11 @@ function renderer(canvas) {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tg.tex);
     gl.uniform1i(po.u.uScene, 0);
-    gl.uniform1f(po.u.uFocus, f.fx[1] * Math.min(1.6, 0.35 + f.cam[3] / 28));
+    gl.uniformMatrix4fv(po.u.uInvVP, false, inv);
+    gl.uniform3f(po.u.uEyeGL, eyeGL[0], eyeGL[1], eyeGL[2]);
+    gl.uniform1f(po.u.uFocusD, d);
+    // The lens's blur circle, in pixels, for what is twice as far as the focus.
+    gl.uniform1f(po.u.uCoc, f.fx[1] * h * 0.07);
     gl.uniform1f(po.u.uBlur, f.cam[5]);
     gl.uniform1f(po.u.uVignette, f.fx[0]);
     gl.uniform1f(po.u.uAspect, aspect);
@@ -662,6 +891,22 @@ export function filmDraw(selector, frame) {
 export function filmForget(url) {
   for (const r of screens.values()) r.forget(url);
   if (offscreen) offscreen.forget(url);
+}
+
+// ------------------------------------------------------------------ stills
+
+/** Draw one frame offscreen (every bitmap it names loaded first): a PNG's object URL. */
+export async function renderStill(frame) {
+  if (!offscreen) {
+    const canvas = document.createElement("canvas");
+    offscreen = renderer(canvas);
+    if (!offscreen) throw new Error("WebGL 2 is not available");
+  }
+  await offscreen.ready(frame);
+  offscreen.draw(frame);
+  const blob = await new Promise((done) => offscreen.canvas.toBlob(done, "image/png"));
+  if (!blob) throw new Error("the picture could not be drawn");
+  return URL.createObjectURL(blob);
 }
 
 // ------------------------------------------------------------------ video

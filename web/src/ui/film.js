@@ -35,6 +35,9 @@ import {
   filmDraw,
   filmForget,
   encodeFilm,
+  renderStill,
+  traceFrame,
+  traceForget,
   sendJson,
   decodeAudioUrl,
   download,
@@ -116,7 +119,7 @@ export function newFilmView(id) {
     fromAt: 0,
     look: { dx: 0, dy: 0, zoom: 1, turn: 0, tilt: 0 },
     gesture: false,
-    relief: r !== "" && Number(r) >= 0 && Number(r) <= 1 ? Number(r) : 0.5,
+    relief: r !== "" && Number(r) >= 0 && Number(r) <= 1 ? Number(r) : 0.7,
     export: -1,
   };
 }
@@ -220,6 +223,7 @@ function pageKeys(fv, f, inp) {
 function drop(url) {
   if (url === "" || url === "-") return undefined;
   filmForget(url);
+  traceForget(url);
   dropUrl(url);
 }
 
@@ -866,6 +870,77 @@ function stage(b, fv, f, inp, cam, beat, scene) {
 
 // ------------------------------------------------------------------ export
 
+/** Samples of light a path-traced picture takes (more: less noise, slower); `rosaclef.film.traceSamples` changes it. */
+/** function traceSamples() => Int */
+function traceSamples() {
+  const n = Math.round(Number(loadPref("rosaclef.film.traceSamples")));
+  return n >= 1 && n <= 4096 ? n : 64;
+}
+
+/** The frame at the playhead as a picture (1920×1080 PNG): drawn as on screen, or (`traced`) path traced, the light simulated. */
+/** function exportStill(fv: FilmView, f: Film, inp: FilmInput, traced: Boolean) => Undefined */
+function exportStill(fv, f, inp, traced) {
+  if (fv.export >= 0) return undefined;
+  fv.export = 0;
+  invalidate();
+  toast(
+    traced ? "Ray tracing the frame" : "Drawing the frame",
+    traced ? "The light is simulated, pass after pass: it takes a while." : "At 1920×1080.",
+    "info"
+  );
+  filmStill(fv, f, inp, traced)
+    .then((url) => {
+      fv.export = -1;
+      const beat = inp.showing ? state.position : 0;
+      const name = `${inp.info.title.replace(/[^A-Za-z0-9 _-]+/g, "").trim() || "film"} - bar ${Math.floor(beat / f.bar) + 1}${traced ? " (ray traced)" : ""}.png`;
+      download(url, name);
+      toast("Picture saved", name, "info");
+      invalidate();
+      return true;
+    })
+    .catch((e) => {
+      fv.export = -1;
+      toast("The picture could not be made", String(e), "error");
+      invalidate();
+      return false;
+    });
+}
+
+/** A view sharing `fv`'s bitmaps, at the export's size (what it makes stays for `fv`). */
+/** function exportView(fv: FilmView) => FilmView */
+function exportView(fv) {
+  const vf = newFilmView(`${fv.id}-export`);
+  vf.width = VIDEO_W;
+  vf.height = VIDEO_H;
+  vf.relief = fv.relief;
+  vf.sig = fv.sig;
+  vf.pageKeys = fv.pageKeys;
+  vf.pages = fv.pages;
+  vf.tiles = fv.tiles;
+  vf.desk = fv.desk;
+  return vf;
+}
+
+/** The frame at the playhead, at the export's size, with every bitmap it needs. */
+/** function filmStill(fv: FilmView, f: Film, inp: FilmInput, traced: Boolean) => Promise<String> */
+async function filmStill(fv, f, inp, traced) {
+  const ef = replan(f, state.project.animation, VIDEO_W / VIDEO_H);
+  const vf = exportView(fv);
+  const beat = inp.showing ? state.position : 0;
+  const cam = cameraAt(ef, beat);
+  await ensure(vf, ef, inp, wants(ef, cam, VIDEO_W, VIDEO_H, 0, 1));
+  fv.pages = vf.pages;
+  fv.tiles = vf.tiles;
+  fv.desk = vf.desk;
+  const si = sceneAt(ef.scenes, beat);
+  const frame = glFrame(vf, ef, inp, cam, beat, si >= 0 ? ef.scenes[si] : undefined, beat > 0);
+  if (!traced) return await renderStill(frame);
+  return await traceFrame(frame, traceSamples(), (x) => {
+    fv.export = x;
+    invalidate();
+  });
+}
+
 /** Film the song frame by frame into an MP4 (1920×1080, 30 frames a second) with its mixdown, and download it; `clip`: only fifteen seconds from the playhead. */
 /** function exportVideo(fv: FilmView, f: Film, inp: FilmInput, clip: Boolean) => Undefined */
 function exportVideo(fv, f, inp, clip) {
@@ -1029,6 +1104,13 @@ function ribbon(b, fv, f, inp) {
   b.on("click", (e) => exportVideo(fv, f, inp, e.shiftKey));
   glyph(b, "export");
   b.close();
+  iconButton(b, "still", "small", "camera", "Save this frame as a picture (1920×1080 PNG, as on screen)", () => exportStill(fv, f, inp, false));
+  b.leaf("button", "traced", "btn small", "Ray trace");
+  b.attr(
+    "title",
+    "Save this frame path traced: the light simulated — the ink's gloss, its shadows, the lens — a photograph of the page (1920×1080 PNG; it takes a while)"
+  );
+  b.on("click", (e) => exportStill(fv, f, inp, true));
   iconButton(b, "cinema", "small", "fullscreen", "Cinema: just the picture, full screen", () => {
     fv.cinema = true;
     invalidate();
