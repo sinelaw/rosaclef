@@ -72,6 +72,15 @@ export const filmDraw;
 /** Forget the texture made from an object URL (before letting it go). */
 /** const filmForget: (String) => Undefined */
 export const filmForget;
+/** Draw one frame of the film (WebGL, every bitmap it names loaded first): a PNG's object URL. */
+/** const renderStill: (GlFrame) => Promise<String> */
+export const renderStill;
+/** Path trace one frame of the film (three-gpu-pathtracer): samples, progress (0..1); a PNG's object URL. */
+/** const traceFrame: (GlFrame, Int, (Number) => Undefined) => Promise<String> */
+export const traceFrame;
+/** Forget what the path tracer made from an object URL (before letting it go). */
+/** const traceForget: (String) => Undefined */
+export const traceForget;
 /** Encode a film as MP4: width, height, frames a second, frames, each frame (made when asked), the mixdown (no channels: silent), where in it the film starts (seconds) and progress (0..1). */
 /** const encodeFilm: (Int, Int, Int, Int, (Int) => Promise<GlFrame>, Decoded, Number, (Number) => Undefined) => Promise<Encoded> */
 export const encodeFilm;
