@@ -21,7 +21,7 @@ function song(notes, length) {
     id: "lead",
     name: "Lead",
     color: "#d4af37",
-    instrument: { type: "prisme", enabled: true, params: [], options: [] },
+    instrument: { type: "additive", enabled: true, params: [], options: [] },
     volume: 0.8,
     pan: 0,
     mute: false,

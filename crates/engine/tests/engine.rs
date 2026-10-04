@@ -135,7 +135,7 @@ fn solo_silences_other_inserts() {
 
 #[test]
 fn every_builtin_instrument_makes_sound() {
-    for kind in ["cuivre", "sextant", "drum"] {
+    for kind in ["analog", "fm", "drum"] {
         let a = render_note(&Device::new(kind), 60, 0.9, 0.5, 48000.0);
         assert!(a.peak() > 0.05, "{kind} peak {}", a.peak());
     }
@@ -151,7 +151,7 @@ fn every_builtin_instrument_makes_sound() {
 fn project_updates_keep_instruments() {
     // Changing a parameter must not cut a sounding note (instrument reused).
     let mut p = drum_project();
-    p.channels[0].instrument = Device::new("cuivre");
+    p.channels[0].instrument = Device::new("analog");
     p.patterns[0].notes[0].length = 4.0;
     let mut e = Engine::new(48000.0);
     e.set_project(p.clone());

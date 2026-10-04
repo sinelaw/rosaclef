@@ -49,7 +49,7 @@ await page.click('[title="Play / pause (Space)"]');
 // Sound: the channel's meter moves.
 await page.waitForFunction(
   () => {
-    const row = [...document.querySelectorAll(".rack-row")].find((r) => r.textContent.includes("Harpe de Saphir"));
+    const row = [...document.querySelectorAll(".rack-row")].find((r) => r.textContent.includes("Sapphire Harp"));
     const fill = row && row.querySelector(".led-fill");
     const m = fill && /scaleX\(([\d.]+)\)/.exec(fill.style.transform);
     return m && Number(m[1]) > 0.3;

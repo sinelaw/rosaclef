@@ -49,7 +49,7 @@ fn pitched(dev: &Device) -> bool {
 }
 
 fn tempo_synced(kind: &str) -> bool {
-    matches!(kind, "delay" | "comete" | "dedale")
+    matches!(kind, "delay" | "transition" | "generative")
 }
 
 /// Processing context handed to devices.
@@ -668,7 +668,7 @@ impl Engine {
         for ch in &self.project.channels {
             match ch.instrument.kind.as_str() {
                 "sampler" => add(ch.instrument.option("sample")),
-                "nebula" if ch.instrument.option("source") == "sample" => {
+                "granular" if ch.instrument.option("source") == "sample" => {
                     add(ch.instrument.option("sample"))
                 }
                 _ => {}

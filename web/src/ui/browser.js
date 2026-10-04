@@ -107,13 +107,13 @@ export function addPresetChannel(pr) {
 const DEVICE_ICONS = [
   { type: "drum", icon: "rack" },
   { type: "sampler", icon: "folder" },
-  { type: "prisme", icon: "spark" },
-  { type: "sextant", icon: "mixer" },
-  { type: "tessera", icon: "pattern" },
-  { type: "cuivre", icon: "wave" },
-  { type: "nebula", icon: "loop" },
-  { type: "dedale", icon: "select" },
-  { type: "comete", icon: "export" },
+  { type: "additive", icon: "spark" },
+  { type: "fm", icon: "mixer" },
+  { type: "wavetable", icon: "pattern" },
+  { type: "analog", icon: "wave" },
+  { type: "granular", icon: "loop" },
+  { type: "generative", icon: "select" },
+  { type: "transition", icon: "export" },
 ];
 
 /** function browser(b: Builder) => Undefined */

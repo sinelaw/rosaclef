@@ -1,4 +1,4 @@
-//! "Vault": sample player with pitched, one-shot and loop modes.
+//! Vault Sampler (`sampler`): sample player with pitched, one-shot and loop modes.
 
 use super::{pick_voice, Instrument, NoteKind, MAX_VOICES};
 use crate::dsp::*;

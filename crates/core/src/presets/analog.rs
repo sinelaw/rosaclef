@@ -1,16 +1,16 @@
-//! Factory presets for the `cuivre` engine (virtual analog).
+//! Factory presets for the `analog` engine (virtual analog).
 
 use super::Preset;
 
 pub const PRESETS: &[Preset] = &[
     Preset {
-        name: "Bronze Souverain",
-        kind: "cuivre",
+        name: "Sovereign Bronze Bass",
+        kind: "analog",
         tags: "bass, analog, mono",
         doc: "Fat monophonic bass: detuned saw and pulse over a strong sub, driven into a warm, gently resonant ladder.",
         params: &[
             ("osc2Detune", -9.0),
-            ("mix2", 0.6),
+            ("osc2Mix", 0.6),
             ("pulseWidth", 0.42),
             ("sub", 0.65),
             ("drift", 0.25),
@@ -31,13 +31,13 @@ pub const PRESETS: &[Preset] = &[
         options: &[("wave2", "pulse"), ("mode", "mono")],
     },
     Preset {
-        name: "Soie Vagabonde",
-        kind: "cuivre",
+        name: "Wandering Silk Strings",
+        kind: "analog",
         tags: "strings, warm, analog",
         doc: "Warm drifting string machine: two wide saws wandering against each other, a slow-opening filter and a long release.",
         params: &[
             ("osc2Detune", 13.0),
-            ("mix2", 0.8),
+            ("osc2Mix", 0.8),
             ("sub", 0.0),
             ("drift", 0.75),
             ("cutoff", 1900.0),
@@ -57,14 +57,14 @@ pub const PRESETS: &[Preset] = &[
         options: &[],
     },
     Preset {
-        name: "Cri de Rubis",
-        kind: "cuivre",
+        name: "Ruby Scream Lead",
+        kind: "analog",
         tags: "lead, screaming, legato",
         doc: "Screaming legato lead: saw and octave pulse driven hard into the resonant screamer filter, with glide between tied notes.",
         params: &[
             ("osc2Semi", 12.0),
             ("osc2Detune", 5.0),
-            ("mix2", 0.4),
+            ("osc2Mix", 0.4),
             ("pulseWidth", 0.32),
             ("sub", 0.0),
             ("drift", 0.35),
@@ -85,13 +85,13 @@ pub const PRESETS: &[Preset] = &[
         options: &[("wave2", "pulse"), ("filter", "screamer"), ("mode", "legato")],
     },
     Preset {
-        name: "Fanfare de Vermeil",
-        kind: "cuivre",
+        name: "Vermeil Fanfare Brass",
+        kind: "analog",
         tags: "brass, poly, analog",
         doc: "Brassy polyphonic stabs: the filter swells open with each note, like a section taking a breath.",
         params: &[
             ("osc2Detune", 9.0),
-            ("mix2", 0.7),
+            ("osc2Mix", 0.7),
             ("sub", 0.15),
             ("drift", 0.4),
             ("cutoff", 650.0),
@@ -111,14 +111,14 @@ pub const PRESETS: &[Preset] = &[
         options: &[],
     },
     Preset {
-        name: "Brume de Nacre",
-        kind: "cuivre",
+        name: "Pearl Mist Pad",
+        kind: "analog",
         tags: "pad, soft, analog",
         doc: "Soft analog pad: a hollow pulse and an octave triangle breathing through a slow, rounded filter.",
         params: &[
             ("osc2Semi", 12.0),
             ("osc2Detune", 4.0),
-            ("mix2", 0.55),
+            ("osc2Mix", 0.55),
             ("pulseWidth", 0.3),
             ("sub", 0.2),
             ("noise", 0.04),
@@ -139,12 +139,12 @@ pub const PRESETS: &[Preset] = &[
         options: &[("wave1", "pulse"), ("wave2", "triangle")],
     },
     Preset {
-        name: "Acide Émeraude",
-        kind: "cuivre",
+        name: "Emerald Acid Bass",
+        kind: "analog",
         tags: "bass, acid, squelch",
         doc: "Acid squelch: a single saw into a ladder on the edge of self-oscillation, snappy envelope and sliding legato notes.",
         params: &[
-            ("mix2", 0.0),
+            ("osc2Mix", 0.0),
             ("sub", 0.0),
             ("drift", 0.15),
             ("cutoff", 280.0),
@@ -164,13 +164,13 @@ pub const PRESETS: &[Preset] = &[
     },
     Preset {
         name: "Velvet Sub Bass",
-        kind: "cuivre",
+        kind: "analog",
         tags: "bass, deep",
         doc: "Round filtered saw with a strong sine sub; sits under a four-on-the-floor kick.",
         params: &[
             ("osc2Semi", -12.0),
             ("osc2Detune", 7.0),
-            ("mix2", 0.35),
+            ("osc2Mix", 0.35),
             ("sub", 0.6),
             ("drift", 0.0),
             ("cutoff", 340.0),
@@ -189,14 +189,14 @@ pub const PRESETS: &[Preset] = &[
     },
     Preset {
         name: "Silk Unison Pad",
-        kind: "cuivre",
+        kind: "analog",
         tags: "pad, lush",
         doc: "Five-voice unison saws, slow attack, gently filtered.",
         params: &[
             ("osc2Detune", 9.0),
-            ("mix2", 0.6),
+            ("osc2Mix", 0.6),
             ("unison", 5.0),
-            ("spread", 22.0),
+            ("detune", 22.0),
             ("sub", 0.0),
             ("drift", 0.0),
             ("cutoff", 1300.0),
@@ -217,15 +217,15 @@ pub const PRESETS: &[Preset] = &[
     },
     Preset {
         name: "Gilded Lead",
-        kind: "cuivre",
+        kind: "analog",
         tags: "lead, bright",
         doc: "Square and saw lead with a touch of glide.",
         params: &[
             ("osc2Semi", 12.0),
             ("osc2Detune", 7.0),
-            ("mix2", 0.3),
+            ("osc2Mix", 0.3),
             ("unison", 3.0),
-            ("spread", 10.0),
+            ("detune", 10.0),
             ("sub", 0.0),
             ("drift", 0.0),
             ("cutoff", 3200.0),

@@ -1,5 +1,5 @@
 //! Drum-beat transcription measured on real drum audio: beats played on the
-//! engine's Atelier drum voices (each hit rendered, then mixed at known times
+//! engine's `drum` voices (each hit rendered, then mixed at known times
 //! and velocities), so every onset and its drum are known. `cargo test -p
 //! rosaclef-studio --release --test drum_beats -- --nocapture` prints the
 //! scores.
@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 const SR: f32 = 44100.0;
 
-/// A played hit: seconds, the Atelier drum, velocity 0..1, pitch.
+/// A played hit: seconds, the `drum` voice, velocity 0..1, pitch.
 #[derive(Clone, Copy, Debug)]
 struct Ev {
     t: f32,

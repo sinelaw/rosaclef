@@ -489,7 +489,7 @@ mod tests {
             id: "pad".into(),
             name: "Pad".into(),
             color: "#ffffff".into(),
-            instrument: crate::model::Device::new("cuivre"),
+            instrument: crate::model::Device::new("analog"),
             volume: 0.8,
             pan: 0.0,
             mute: false,

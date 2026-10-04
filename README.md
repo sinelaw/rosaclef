@@ -89,7 +89,7 @@ instrument:
   pattern for the piano roll, on the selected channel or a new one.
 - **Beatbox** — kicks (a low "b"/"boom"), toms (a hummed "dum"), snares
   ("pf", "k"), hats ("ts") and open hats (a long "tsss") become a drum loop on
-  Atelier channels (existing ones are reused). A drum recording works too:
+  drum machine channels (existing ones are reused). A drum recording works too:
   several drums on one beat (a kick and a hat) are told apart, and rolls,
   fills and ghost notes come through. Set the grid, the sensitivity (ghost
   notes), the separation (hits closer than it to the one before join it — a
@@ -155,7 +155,7 @@ key, hide parts or color a chorus too.
 
 ## Sampled instruments
 
-**Orchestre** (`"type": "soundfont"`) plays sampled instruments: the 128
+**Grand Orchestra & Band** (`"type": "soundfont"`) plays sampled instruments: the 128
 General MIDI programs (pianos, strings, brass, winds, guitars, basses,
 choirs, …) and 8 drum kits, from the built-in
 [MuseScore General](web/soundfonts/gm/LICENSE.md) soundfont (MIT). Pick one
@@ -196,7 +196,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 | path | |
 |---|---|
 | `crates/core` | project model, device catalog, validation, JSON Schema, formatter |
-| `crates/engine` | portable DSP engine: sequencer, instruments (Cuivre analog, Sextant FM, Prisme additive, Tessera wavetable, Nébula granular, Dédale generative, Comète transitions, Atelier drums, Vault sampler, Orchestre soundfont), effects, mixer, offline render |
+| `crates/engine` | portable DSP engine: sequencer, instruments (analog, FM, additive, wavetable, granular, generative, transitions, drums, sampler, soundfont), effects, mixer, offline render |
 | `crates/wasm` | the engine compiled to WebAssembly (C ABI for the AudioWorklet) |
 | `crates/import` | importers: LMMS projects (.mmp/.mmpz) and Standard MIDI Files |
 | `crates/fs` | the file system the studio works on: the disk, or an in-memory tree the browser persists |

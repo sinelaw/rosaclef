@@ -94,7 +94,7 @@ Example:
   "transport": { "playing": false, "mode": "pattern", "positionBeats": 2, "position": "001:03:00", "bpm": 92 },
   "selection": {
     "pattern": { "id": "keys", "name": "Keys", "length": 16, "noteCount": 80 },
-    "channel": { "id": "keys", "name": "Rhodes", "instrument": "sextant", "mixer": 4 },
+    "channel": { "id": "keys", "name": "Rhodes", "instrument": "fm", "mixer": 4 },
     "insert": { "index": 4, "name": "Keys" }, "track": { "index": 2, "name": "Keys" },
     "notes": [ { "index": 12, "note": { "channel": "keys", "pitch": 63, "start": 2.5, "length": 1, "velocity": 0.72 } } ],
     "clips": []
@@ -323,6 +323,10 @@ optional top-level `score` object says how it reads; it changes nothing that pla
 - Check your work: `rosaclef render` reports peak/RMS. A healthy master peaks around −1 to
   −0.3 dBFS with the limiter; an RMS far below −20 dBFS usually means something is too quiet.
 - Prefer editing parameters over adding effects; keep one `limiter` last on the master.
+- Pick each part's instrument from **Choosing an instrument** (in the catalog below), start from
+  one of its presets (`rosaclef presets NAME` prints the instrument JSON), then adjust params.
+  Every option value and parameter is documented in the catalog; layer two channels playing the
+  same notes for a bigger sound.
 
 ## Factory presets
 

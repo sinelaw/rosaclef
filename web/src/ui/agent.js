@@ -139,7 +139,7 @@ function suggestions() {
       "summary",
       "set /transport/bpm 128",
       pat ? `get /patterns/${Math.max(0, state.project.patterns.indexOf(pat))}/name` : "get /meta",
-      "presets prisme",
+      "presets additive",
       "render",
       "context",
     ];

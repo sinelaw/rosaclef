@@ -28,13 +28,13 @@ fn lane(id: &str, target: &str, points: &[(f64, f64, f64)]) -> AutomationLane {
 fn blips(beats: f64) -> Project {
     let mut p = Project::empty("t");
     p.mixer.inserts[0].effects.clear();
-    let mut dev = Device::new("cuivre");
+    let mut dev = Device::new("analog");
     for (k, v) in [
         ("attack", 0.001),
         ("decay", 0.03),
         ("sustain", 0.0),
         ("release", 0.005),
-        ("mix2", 0.0),
+        ("osc2Mix", 0.0),
         ("sub", 0.0),
         ("drift", 0.0),
         ("drive", 0.0),
@@ -80,14 +80,14 @@ fn blips(beats: f64) -> Project {
 fn pad(beats: f64) -> Project {
     let mut p = Project::empty("t");
     p.mixer.inserts[0].effects.clear();
-    let mut dev = Device::new("cuivre");
+    let mut dev = Device::new("analog");
     for (k, v) in [
         ("filterEnv", 0.0),
         ("sustain", 1.0),
         ("resonance", 0.0),
         ("drift", 0.0),
         ("drive", 0.0),
-        ("mix2", 0.0),
+        ("osc2Mix", 0.0),
         ("sub", 0.0),
         ("cutoff", 2400.0),
     ] {

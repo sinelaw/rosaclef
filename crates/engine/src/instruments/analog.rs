@@ -1,4 +1,4 @@
-//! "Cuivre": virtual analog synthesizer modelled on circuit behaviour.
+//! Bronze Bass & Lead (`analog`): virtual analog synthesizer modelled on circuit behaviour.
 //!
 //! Two PolyBLEP oscillators (saw / pulse / triangle / sine / noise), stacked up to
 //! seven times in unison across the stereo field, a square or sine sub one
@@ -297,7 +297,7 @@ fn screamer(s: &mut [f32; 4], bp: &mut f32, x: f32, g: f32, k: f32) -> f32 {
     v2
 }
 
-pub struct Cuivre {
+pub struct Analog {
     sr: f32,
     p: Params,
     voices: Vec<Voice>,
@@ -309,9 +309,9 @@ pub struct Cuivre {
     fenv_times: (f32, f32, f32),
 }
 
-impl Cuivre {
-    pub fn new(sr: f32) -> Cuivre {
-        Cuivre {
+impl Analog {
+    pub fn new(sr: f32) -> Analog {
+        Analog {
             sr,
             p: Params {
                 wave1: VaWave::Saw,
@@ -464,7 +464,7 @@ impl Cuivre {
     }
 }
 
-impl Instrument for Cuivre {
+impl Instrument for Analog {
     fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
         let f = |k: &str| d.param(k) as f32;
         let voicing = match d.option("mode") {
@@ -486,10 +486,10 @@ impl Instrument for Cuivre {
             model: Model::parse(d.option("filter")),
             voicing,
             osc2_ratio: 2f32.powf(f("osc2Semi").round() / 12.0) * cents(f("osc2Detune")),
-            mix2: f("mix2").clamp(0.0, 1.0),
+            mix2: f("osc2Mix").clamp(0.0, 1.0),
             pw: f("pulseWidth").clamp(0.05, 0.95),
             unison: (f("unison").round() as usize).clamp(1, MAX_UNISON),
-            spread: f("spread").clamp(0.0, 100.0),
+            spread: f("detune").clamp(0.0, 100.0),
             sub: f("sub").clamp(0.0, 1.0),
             sub_sine: d.option("subWave") == "sine",
             noise: f("noise").clamp(0.0, 1.0),

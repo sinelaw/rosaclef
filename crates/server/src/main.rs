@@ -96,7 +96,7 @@ enum Command {
     Catalog,
     /// List factory presets (optionally for one instrument type), or print one as JSON.
     Presets {
-        /// Instrument type (e.g. prisme) or a preset name.
+        /// Instrument type (e.g. additive) or a preset name.
         filter: Option<String>,
     },
     /// Write/refresh AGENTS.md, CLAUDE.md and GEMINI.md in a project folder.

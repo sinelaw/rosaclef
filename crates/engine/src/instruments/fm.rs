@@ -1,4 +1,4 @@
-//! "Sextant": six-operator phase-modulation (FM) synthesizer.
+//! Silver Keys & Bells (`fm`): six-operator phase-modulation (FM) synthesizer.
 //!
 //! Six sine operators, each with its own frequency ratio, output level and
 //! ADSR envelope (the release is shared). The `algorithm` option routes them.
@@ -313,7 +313,7 @@ fn sine(table: &[f32], phase: f32) -> f32 {
     a + (table[i + 1] - a) * f
 }
 
-pub struct Sextant {
+pub struct Fm {
     sr: f32,
     p: Params,
     sine: Vec<f32>,
@@ -325,12 +325,12 @@ pub struct Sextant {
     dc_r: DcBlock,
 }
 
-impl Sextant {
-    pub fn new(sr: f32) -> Sextant {
+impl Fm {
+    pub fn new(sr: f32) -> Fm {
         let sine = (0..=SINE_LEN)
             .map(|i| (i as f32 / SINE_LEN as f32 * TAU).sin())
             .collect();
-        Sextant {
+        Fm {
             sr,
             p: Params {
                 ratio: [1.0, 1.0, 2.0, 1.0, 3.0, 1.0],
@@ -427,7 +427,7 @@ impl Sextant {
     }
 }
 
-impl Instrument for Sextant {
+impl Instrument for Fm {
     fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
         let f = |k: &str| d.param(k) as f32;
         let mut p = self.p.clone();

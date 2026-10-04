@@ -1,11 +1,11 @@
-//! Factory presets for the `sextant` engine.
+//! Factory presets for the `fm` engine.
 
 use super::Preset;
 
 pub const PRESETS: &[Preset] = &[
     Preset {
         name: "Opaline Keys",
-        kind: "sextant",
+        kind: "fm",
         tags: "keys, electric piano, glassy",
         doc: "Glassy tine electric piano: a warm body pair plus a bright, fast-fading tine that blooms with velocity.",
         params: &[
@@ -36,8 +36,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[],
     },
     Preset {
-        name: "Cathédrale d'Argent",
-        kind: "sextant",
+        name: "Silver Cathedral Bell",
+        kind: "fm",
         tags: "bell, cinematic, long",
         doc: "Cathedral bell: an inharmonic strike over a hum an octave below, ringing for seconds.",
         params: &[
@@ -73,8 +73,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[("algorithm", "bell")],
     },
     Preset {
-        name: "Obsidian Anvil",
-        kind: "sextant",
+        name: "Obsidian Anvil Bass",
+        kind: "fm",
         tags: "bass, metallic, aggressive",
         doc: "Metallic bass: a solid sine-core stack under a gritty, inharmonic mid stack with feedback.",
         params: &[
@@ -105,8 +105,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[("algorithm", "twin")],
     },
     Preset {
-        name: "Soleil Royal",
-        kind: "sextant",
+        name: "Royal Sun Brass",
+        kind: "fm",
         tags: "brass, bright, lead",
         doc: "Bright brass: modulators swell in after the attack like a player leaning into the note.",
         params: &[
@@ -143,8 +143,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[("algorithm", "brass")],
     },
     Preset {
-        name: "Palissandre",
-        kind: "sextant",
+        name: "Rosewood Marimba",
+        kind: "fm",
         tags: "mallet, marimba, percussive",
         doc: "Rosewood marimba: fundamental, tuned fourth and tenth partials, and a soft mallet strike.",
         params: &[
@@ -178,7 +178,7 @@ pub const PRESETS: &[Preset] = &[
     },
     Preset {
         name: "Astrolabe Pluck",
-        kind: "sextant",
+        kind: "fm",
         tags: "pluck, rhythmic, evolving",
         doc: "Rhythmic pluck whose modulators rise and fall at different rates, so repeated notes shimmer and shift.",
         params: &[
@@ -214,8 +214,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[("algorithm", "twin")],
     },
     Preset {
-        name: "Rhodes Lumière",
-        kind: "sextant",
+        name: "Candlelight Rhodes",
+        kind: "fm",
         tags: "keys, electric piano",
         doc: "Warm tine electric piano: classic two-operator FM.",
         params: &[
@@ -237,7 +237,7 @@ pub const PRESETS: &[Preset] = &[
     },
     Preset {
         name: "Crystal Mallet",
-        kind: "sextant",
+        kind: "fm",
         tags: "bell, mallet",
         doc: "Bright inharmonic mallet for arpeggios.",
         params: &[

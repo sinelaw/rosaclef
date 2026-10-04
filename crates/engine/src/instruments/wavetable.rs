@@ -1,4 +1,4 @@
-//! "Tessera": wavetable synthesizer.
+//! Sapphire Plucks & Leads (`wavetable`): wavetable synthesizer.
 //!
 //! The selected table is generated procedurally when it changes (never per
 //! note): 32 frames, each defined by a harmonic spectrum (built directly, or
@@ -461,7 +461,7 @@ fn read(a: &[f32], b: &[f32], n: usize, ff: f32, ph: f32) -> f32 {
     sa + (sb - sa) * ff
 }
 
-pub struct Tessera {
+pub struct Wavetable {
     sr: f32,
     p: Params,
     table: Option<Table>,
@@ -476,9 +476,9 @@ pub struct Tessera {
     dc_r: DcBlock,
 }
 
-impl Tessera {
-    pub fn new(sr: f32) -> Tessera {
-        Tessera {
+impl Wavetable {
+    pub fn new(sr: f32) -> Wavetable {
+        Wavetable {
             sr,
             p: Params {
                 position: 0.25,
@@ -686,7 +686,7 @@ impl Tessera {
     }
 }
 
-impl Instrument for Tessera {
+impl Instrument for Wavetable {
     fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
         let sr = self.sr;
         let f = |k: &str| d.param(k) as f32;

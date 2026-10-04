@@ -1,4 +1,4 @@
-//! "Comète": cinematic transition effects.
+//! Gilded Risers & Impacts (`transition`): cinematic transition effects.
 //!
 //! A note-on fires a one-shot effect lasting `length` beats (note-offs are
 //! ignored): riser, downlifter, impact, sweep or sub drop. The `intensity`
@@ -245,7 +245,7 @@ impl Space {
     }
 }
 
-pub struct Comete {
+pub struct Transition {
     sr: f32,
     bpm: f32,
     p: Params,
@@ -258,9 +258,9 @@ pub struct Comete {
     inc: f64,
 }
 
-impl Comete {
-    pub fn new(sr: f32) -> Comete {
-        let mut c = Comete {
+impl Transition {
+    pub fn new(sr: f32) -> Transition {
+        let mut c = Transition {
             sr,
             bpm: 120.0,
             p: Params {
@@ -402,7 +402,7 @@ impl Comete {
     }
 }
 
-impl Instrument for Comete {
+impl Instrument for Transition {
     fn set_device(&mut self, d: &Device, ctx: &Ctx) {
         let f = |k: &str| d.param(k) as f32;
         self.p = Params {
@@ -475,7 +475,7 @@ impl Instrument for Comete {
     }
 }
 
-impl Comete {
+impl Transition {
     fn render_chunk(&mut self, left: &mut [f32], right: &mut [f32]) {
         let n = left.len();
         let any = self.shots.iter().any(|s| s.active);
@@ -503,7 +503,7 @@ impl Comete {
             let vel = 0.35 + 0.65 * s.vel;
             for i in 0..n {
                 if s.counter.is_multiple_of(CONTROL) {
-                    Comete::control(s, &p, sr, inc);
+                    Transition::control(s, &p, sr, inc);
                 }
                 s.counter += 1;
                 s.amp += s.amp_inc;

@@ -1,4 +1,4 @@
-//! Factory presets for the `drum` engine (Atelier).
+//! Factory presets for the `drum` engine (Ebony Drum Machine).
 
 use super::Preset;
 

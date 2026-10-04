@@ -1,26 +1,26 @@
 //! Built-in instruments and the common instrument interface.
 
-mod comete;
-mod cuivre;
-mod dedale;
+mod additive;
+mod analog;
 mod drum;
-mod nebula;
-mod prisme;
+mod fm;
+mod generative;
+mod granular;
 mod sampler;
-mod sextant;
 mod soundfont;
-mod tessera;
+mod transition;
+mod wavetable;
 
-pub use comete::Comete;
-pub use cuivre::Cuivre;
-pub use dedale::Dedale;
+pub use additive::Additive;
+pub use analog::Analog;
 pub use drum::Drum;
-pub use nebula::Nebula;
-pub use prisme::Prisme;
+pub use fm::Fm;
+pub use generative::Generative;
+pub use granular::Granular;
 pub use sampler::Sampler;
-pub use sextant::Sextant;
 pub use soundfont::SoundFontInst;
-pub use tessera::Tessera;
+pub use transition::Transition;
+pub use wavetable::Wavetable;
 
 use crate::samples::SampleBank;
 use crate::Ctx;
@@ -105,13 +105,13 @@ pub fn create(dev: &Device, ctx: &Ctx) -> Option<Box<dyn Instrument>> {
     let mut inst: Box<dyn Instrument> = match dev.kind.as_str() {
         "drum" => Box::new(Drum::new(ctx.sr)),
         "sampler" => Box::new(Sampler::new(ctx.sr)),
-        "prisme" => Box::new(Prisme::new(ctx.sr)),
-        "sextant" => Box::new(Sextant::new(ctx.sr)),
-        "tessera" => Box::new(Tessera::new(ctx.sr)),
-        "cuivre" => Box::new(Cuivre::new(ctx.sr)),
-        "nebula" => Box::new(Nebula::new(ctx.sr)),
-        "dedale" => Box::new(Dedale::new(ctx.sr)),
-        "comete" => Box::new(Comete::new(ctx.sr)),
+        "additive" => Box::new(Additive::new(ctx.sr)),
+        "fm" => Box::new(Fm::new(ctx.sr)),
+        "wavetable" => Box::new(Wavetable::new(ctx.sr)),
+        "analog" => Box::new(Analog::new(ctx.sr)),
+        "granular" => Box::new(Granular::new(ctx.sr)),
+        "generative" => Box::new(Generative::new(ctx.sr)),
+        "transition" => Box::new(Transition::new(ctx.sr)),
         "soundfont" => Box::new(SoundFontInst::new(ctx.sr)),
         _ => return None,
     };

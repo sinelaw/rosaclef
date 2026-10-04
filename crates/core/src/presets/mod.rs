@@ -5,14 +5,14 @@
 //! into a project `Device`. Every preset is validated against the catalog
 //! by the tests below.
 
-mod comete;
-mod cuivre;
-mod dedale;
+mod additive;
+mod analog;
 mod drum;
-mod nebula;
-mod prisme;
-mod sextant;
-mod tessera;
+mod fm;
+mod generative;
+mod granular;
+mod transition;
+mod wavetable;
 
 use crate::Device;
 use serde::ser::{Serialize, SerializeMap, SerializeStruct, Serializer};
@@ -20,7 +20,7 @@ use serde::ser::{Serialize, SerializeMap, SerializeStruct, Serializer};
 #[derive(Clone, Copy, Debug)]
 pub struct Preset {
     pub name: &'static str,
-    /// Device type (`"prisme"`, `"sextant"`, ...).
+    /// Device type (`"additive"`, `"fm"`, ...).
     pub kind: &'static str,
     /// Comma-separated tags: role and character ("pad, cinematic").
     pub tags: &'static str,
@@ -71,13 +71,13 @@ impl Serialize for Preset {
 pub fn all() -> Vec<&'static Preset> {
     [
         drum::PRESETS,
-        prisme::PRESETS,
-        sextant::PRESETS,
-        tessera::PRESETS,
-        cuivre::PRESETS,
-        nebula::PRESETS,
-        dedale::PRESETS,
-        comete::PRESETS,
+        additive::PRESETS,
+        fm::PRESETS,
+        wavetable::PRESETS,
+        analog::PRESETS,
+        granular::PRESETS,
+        generative::PRESETS,
+        transition::PRESETS,
     ]
     .iter()
     .flat_map(|list| list.iter())

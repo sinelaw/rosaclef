@@ -20,7 +20,7 @@
 //!   the GM drum kit its program selects, keys unchanged. With
 //!   [`Options::soundfont`] off, the instrument is a synthesizer preset of
 //!   the program's family (see [`gm_instrument`]) and channel 10 becomes one
-//!   Atelier `drum` channel per GM drum group used (kick, snare, hats, toms,
+//!   `drum` channel per GM drum group used (kick, snare, hats, toms,
 //!   ...), notes remapped to pitch 60 (toms keep their relative tuning).
 //! - Mixing: volume × expression (CC 7, 11) and pan (CC 10) when a channel
 //!   starts set its volume and pan; later changes become automation lanes.
@@ -50,7 +50,7 @@ pub struct Options {
     /// Play the file with the sampled General MIDI instruments (`soundfont`
     /// channels with the file's programs and drum kits). When false, each
     /// program gets a synthesizer preset of its family and the drums become
-    /// synthesized Atelier drums.
+    /// synthesized `drum` voices.
     pub soundfont: bool,
 }
 
@@ -391,63 +391,59 @@ fn choice(program: u8) -> Choice {
     };
     match program / 8 {
         0 => c(
-            &["Rhodes Lumière"],
-            &["sextant", "prisme"],
+            &["Candlelight Rhodes"],
+            &["fm", "additive"],
             &["electric piano", "piano", "keys"],
         ),
         1 => c(
-            &["Crystal Mallet", "Rosée de Cristal"],
-            &["sextant", "prisme"],
+            &["Crystal Mallet", "Crystal Dew Bells"],
+            &["fm", "additive"],
             &["mallet", "bell"],
         ),
-        2 => c(&["Nef d'Ivoire"], &["prisme", "sextant"], &["organ"]),
+        2 => c(&["Ivory Nave Organ"], &["additive", "fm"], &["organ"]),
         3 => c(
-            &["Harpe de Saphir"],
-            &["tessera", "prisme"],
+            &["Sapphire Harp"],
+            &["wavetable", "additive"],
             &["guitar", "pluck", "harp"],
         ),
-        4 => c(&["Velvet Sub Bass"], &["cuivre"], &["bass"]),
+        4 => c(&["Velvet Sub Bass"], &["analog"], &["bass"]),
         5 => c(
-            &["Cordes Givrées", "Silk Unison Pad"],
-            &["nebula", "prisme"],
+            &["Frosted Strings", "Silk Unison Pad"],
+            &["granular", "additive"],
             &["strings", "pad"],
         ),
         6 if (52..=54).contains(&program) => c(
-            &["Voile de Chœur", "Séraphine"],
-            &["prisme", "nebula"],
+            &["Veiled Choir", "Seraphine Choir"],
+            &["additive", "granular"],
             &["choir"],
         ),
         6 => c(
-            &["Cordes Givrées", "Silk Unison Pad"],
-            &["nebula", "prisme"],
+            &["Frosted Strings", "Silk Unison Pad"],
+            &["granular", "additive"],
             &["strings", "pad"],
         ),
-        7 => c(&[], &["cuivre"], &["brass"]),
-        8 | 9 => c(&[], &["tessera", "cuivre"], &["reed", "flute", "lead"]),
-        10 => c(&["Gilded Lead"], &["tessera", "cuivre"], &["lead"]),
+        7 => c(&[], &["analog"], &["brass"]),
+        8 | 9 => c(&[], &["wavetable", "analog"], &["reed", "flute", "lead"]),
+        10 => c(&["Gilded Lead"], &["wavetable", "analog"], &["lead"]),
         11 => c(
-            &["Silk Unison Pad", "Opaline Veil"],
-            &["prisme", "nebula"],
+            &["Silk Unison Pad", "Opaline Veil Pad"],
+            &["additive", "granular"],
             &["pad"],
         ),
         12 => c(
-            &["Aurore Spectrale", "Poussière d'Astres"],
-            &["nebula", "prisme"],
+            &["Spectral Dawn Pad", "Stardust Shimmer Pad"],
+            &["granular", "additive"],
             &["texture", "cinematic", "pad"],
         ),
-        13 => c(&["Harpe de Saphir"], &["tessera", "prisme"], &["pluck"]),
-        14 => c(
-            &["Crystal Mallet"],
-            &["sextant"],
-            &["mallet", "perc", "bell"],
-        ),
-        _ => c(&[], &["nebula"], &["texture"]),
+        13 => c(&["Sapphire Harp"], &["wavetable", "additive"], &["pluck"]),
+        14 => c(&["Crystal Mallet"], &["fm"], &["mallet", "perc", "bell"]),
+        _ => c(&[], &["granular"], &["texture"]),
     }
 }
 
 /// Pick an instrument for a GM program: a named factory preset if it exists
 /// in this build, else a preset of a preferred engine with a matching tag,
-/// else a clean Cuivre patch shaped like the family. Returns the device and
+/// else a clean analog-synth patch shaped like the family. Returns the device and
 /// the preset name.
 pub fn gm_instrument(program: u8) -> (Device, Option<&'static str>) {
     let ch = choice(program);
@@ -476,7 +472,7 @@ pub fn gm_instrument(program: u8) -> (Device, Option<&'static str>) {
     (fallback_synth(program), None)
 }
 
-/// A clean Cuivre patch shaped roughly like the GM family.
+/// A clean analog-synth patch shaped roughly like the GM family.
 fn fallback_synth(program: u8) -> Device {
     let mut d = clean_va();
     let (w1, w2, cutoff, attack, decay, sustain, release) = match program / 8 {
@@ -504,7 +500,7 @@ fn fallback_synth(program: u8) -> Device {
     d
 }
 
-/// A General MIDI drum group: display name, Atelier kind, pitch, decay
+/// A General MIDI drum group: display name, `drum` kind, pitch, decay
 /// override and whether the mapping is an approximation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DrumGroup {
@@ -997,7 +993,7 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
     }
     for (key, name, kind) in &approx_drums {
         warn.add(format!(
-            "GM drum key {key} ({name}) was approximated by the Atelier \"{kind}\" drum"
+            "GM drum key {key} ({name}) was approximated by the Ebony Drum Machine \"{kind}\""
         ));
     }
     let bent_with_notes = bent

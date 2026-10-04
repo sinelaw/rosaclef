@@ -34,7 +34,7 @@ fn device_schema(spec: &DeviceSpec) -> Value {
     }
     let mut options = Map::new();
     for o in spec.options {
-        let mut s = json!({"type": "string", "default": o.default, "description": o.doc});
+        let mut s = json!({"type": "string", "default": o.default, "description": o.full_doc()});
         if !o.choices.is_empty() {
             s["enum"] = json!(o.choices);
         }
@@ -48,7 +48,7 @@ fn device_schema(spec: &DeviceSpec) -> Value {
     json!({
         "if": {"properties": {"type": {"const": spec.kind}}},
         "then": {
-            "description": format!("{} — {}", spec.label, spec.doc),
+            "description": format!("{} — {}", spec.label, spec.full_doc()),
             "properties": {
                 "params": params_schema,
                 "options": {"type": "object", "properties": options, "additionalProperties": false}

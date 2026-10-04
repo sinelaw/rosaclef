@@ -1,4 +1,4 @@
-//! "Atelier": synthesized drum voices (kick, snare, clap, hats, tom, rim,
+//! Ebony Drum Machine (`drum`): synthesized drum voices (kick, snare, clap, hats, tom, rim,
 //! cowbell, shaker).
 
 use super::{pick_voice, Instrument, NoteKind};

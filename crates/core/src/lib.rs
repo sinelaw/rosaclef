@@ -181,13 +181,36 @@ pub fn presets_markdown() -> String {
 pub fn catalog_markdown() -> String {
     use std::fmt::Write;
     let mut s = String::new();
+    // Which instrument for which part: the quick answer before the details.
+    let _ = writeln!(
+        s,
+        "### Choosing an instrument\n\n| for | `type` | instrument | presets |\n|---|---|---|---|"
+    );
+    for d in catalog::instruments().filter(|d| !d.best_for.is_empty()) {
+        let presets: Vec<String> = crate::presets::all()
+            .into_iter()
+            .filter(|p| p.kind == d.kind)
+            .map(|p| p.name.to_string())
+            .collect();
+        let presets = if presets.is_empty() {
+            "—".to_string()
+        } else {
+            presets.join(", ")
+        };
+        let _ = writeln!(
+            s,
+            "| {} | `{}` | {} | {} |",
+            d.best_for, d.kind, d.label, presets
+        );
+    }
+    s.push('\n');
     for (title, cat) in [
         ("Instruments", catalog::Category::Instrument),
         ("Effects", catalog::Category::Effect),
     ] {
         let _ = writeln!(s, "### {title}\n");
         for d in catalog::DEVICES.iter().filter(|d| d.category == cat) {
-            let _ = writeln!(s, "#### `{}` — {}\n\n{}\n", d.kind, d.label, d.doc);
+            let _ = writeln!(s, "#### `{}` — {}\n\n{}\n", d.kind, d.label, d.full_doc());
             if !d.options.is_empty() {
                 let _ = writeln!(s, "| option | values | default | |\n|---|---|---|---|");
                 for o in d.options {
@@ -199,7 +222,10 @@ pub fn catalog_markdown() -> String {
                     let _ = writeln!(
                         s,
                         "| `{}` | {} | `{}` | {} |",
-                        o.key, values, o.default, o.doc
+                        o.key,
+                        values,
+                        o.default,
+                        o.full_doc()
                     );
                 }
                 s.push('\n');
@@ -251,7 +277,7 @@ mod tests {
             name: "Lead".into(),
             color: "#ffffff".into(),
             instrument: Device {
-                kind: "cuivre".into(),
+                kind: "analog".into(),
                 enabled: true,
                 params: [("cutoff".into(), 99999.0)].into(),
                 options: Default::default(),
@@ -325,7 +351,7 @@ mod tests {
             id: "pad".into(),
             name: "Pad".into(),
             color: "#ffffff".into(),
-            instrument: Device::new("cuivre"),
+            instrument: Device::new("analog"),
             volume: 0.8,
             pan: 0.0,
             mute: false,

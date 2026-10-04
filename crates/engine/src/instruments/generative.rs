@@ -1,4 +1,4 @@
-//! "Dédale": generative sequencer instrument.
+//! Clockwork Arpeggios (`generative`): generative sequencer instrument.
 //!
 //! Each held key (up to four) runs its own tempo-synced phrase: a euclidean
 //! rhythm of `pulses` over `steps`, and a random walk over a scale rooted at
@@ -295,7 +295,7 @@ impl Voice {
     }
 }
 
-pub struct Dedale {
+pub struct Generative {
     sr: f32,
     bpm: f32,
     p: Params,
@@ -306,9 +306,9 @@ pub struct Dedale {
     step_inc: f64,
 }
 
-impl Dedale {
-    pub fn new(sr: f32) -> Dedale {
-        let mut d = Dedale {
+impl Generative {
+    pub fn new(sr: f32) -> Generative {
+        let mut d = Generative {
             sr,
             bpm: 120.0,
             p: Params {
@@ -433,7 +433,7 @@ impl Dedale {
     }
 }
 
-impl Instrument for Dedale {
+impl Instrument for Generative {
     fn set_device(&mut self, d: &Device, ctx: &Ctx) {
         let f = |k: &str| d.param(k) as f32;
         let steps = (f("steps").round() as usize).clamp(2, MAX_STEPS);

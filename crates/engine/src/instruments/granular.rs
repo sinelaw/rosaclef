@@ -1,4 +1,4 @@
-//! "Nébula": granular texture instrument.
+//! Opal Strings & Ambience (`granular`): granular texture instrument.
 //!
 //! Each voice runs a grain scheduler over a source buffer: either one of the
 //! built-in sources (synthesised deterministically in `set_device` when the
@@ -228,7 +228,7 @@ fn set_env(env: &mut Adsr, p: &Params, sr: f32) {
     env.set(p.attack.max(0.002), 0.001, 1.0, p.release.max(0.01), sr);
 }
 
-pub struct Nebula {
+pub struct Granular {
     sr: f32,
     p: Params,
     voices: Vec<Voice>,
@@ -248,14 +248,14 @@ pub struct Nebula {
     dc_coef: f32,
 }
 
-impl Nebula {
-    pub fn new(sr: f32) -> Nebula {
+impl Granular {
+    pub fn new(sr: f32) -> Granular {
         let mut window = Box::new([0f32; WIN_SIZE + 1]);
         for (i, w) in window.iter_mut().enumerate() {
             let t = i as f32 / WIN_SIZE as f32;
             *w = 0.5 - 0.5 * (TAU * t).cos();
         }
-        Nebula {
+        Granular {
             sr,
             p: Params {
                 position: 0.3,
@@ -299,7 +299,7 @@ impl Nebula {
     }
 }
 
-impl Instrument for Nebula {
+impl Instrument for Granular {
     fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
         let f = |k: &str| d.param(k) as f32;
         self.p = Params {
@@ -309,9 +309,9 @@ impl Instrument for Nebula {
             density: f("density").clamp(0.5, 200.0),
             scatter: f("scatter").max(0.0),
             drift: f("drift").clamp(0.0, 1.0),
-            spread: f("spread").clamp(0.0, 1.0),
+            spread: f("width").clamp(0.0, 1.0),
             reverse: f("reverse").clamp(0.0, 1.0),
-            tone: f("tone").clamp(20.0, 20000.0),
+            tone: f("cutoff").clamp(20.0, 20000.0),
             root: f("root"),
             attack: f("attack"),
             release: f("release"),
