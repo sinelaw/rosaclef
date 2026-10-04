@@ -594,7 +594,7 @@ export function autoScenes(sc, roles, film, pages, bar) {
     }
     const fx = fxOf([film.effects]);
     // Low and close, the lens holds a thin slice in focus.
-    if (!wide && !film.effects.some((e) => e.type === "focus")) fx.focus = Math.max(fx.focus, frame === "detail" ? 0.75 : 0.55);
+    if (!wide && !film.effects.some((e) => e.type === "focus")) fx.focus = Math.max(fx.focus, frame === "detail" ? 0.6 : 0.5);
     out.push({
       start: start,
       end: end,

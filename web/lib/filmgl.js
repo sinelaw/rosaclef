@@ -817,7 +817,7 @@ function renderer(canvas) {
     gl.uniform3f(po.u.uEyeGL, eyeGL[0], eyeGL[1], eyeGL[2]);
     gl.uniform1f(po.u.uFocusD, d);
     // The lens's blur circle, in pixels, for what is twice as far as the focus.
-    gl.uniform1f(po.u.uCoc, f.fx[1] * h * 0.07);
+    gl.uniform1f(po.u.uCoc, f.fx[1] * h * 0.03);
     gl.uniform1f(po.u.uBlur, f.cam[5]);
     gl.uniform1f(po.u.uVignette, f.fx[0]);
     gl.uniform1f(po.u.uAspect, aspect);
