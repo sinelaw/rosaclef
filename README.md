@@ -162,7 +162,7 @@ the pages lie on a desk (walnut, oak, slate, felt or marble) and a camera in
 the whole band, leaning and turning so the music runs diagonally across the
 picture, gliding to the next line as one ends — down to a single beat filling
 the picture. The ink stands proud of the paper and is lit physically: wet ink
-mirrors the room (a window, a strip light) and the lamp, and the reflections
+mirrors a photographed room (an artist's workshop and its tall windows), and the reflections
 slide over it as the camera moves; dry ink is satin. A spotlight, depth of
 field and a vignette finish the picture (the notes can glow as they play too).
 
@@ -181,7 +181,8 @@ field and a vignette finish the picture (the notes can glow as they play too).
   auto film into shots to refine.
 - **MP4**: the whole film at 1920×1080 with its mixdown (Shift-click: fifteen
   seconds from the playhead), H.264/AAC where the browser encodes them, VP9/Opus
-  otherwise. **Cinema** shows just the picture, full screen.
+  otherwise. The camera button saves the frame at the playhead as a picture.
+  **Cinema** shows just the picture, full screen.
 
 The film lives in `project.json` under `animation` (shots in song beats, roles
 and frames by name), so an agent can direct it — or start from the director's
@@ -271,4 +272,5 @@ Known inty rough edges are tracked in [`docs/inty-notes.md`](docs/inty-notes.md)
 
 GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js). `web/soundfonts/gm`
 is MuseScore General (MIT; see its [license](web/soundfonts/gm/LICENSE.md)).
-`web/vendor/mp4-muxer` is MIT (mp4-muxer, by Vanilagy).
+`web/vendor/mp4-muxer` is MIT (mp4-muxer, by Vanilagy). `web/vendor/hdri` is CC0
+(Poly Haven's "Artist Workshop").

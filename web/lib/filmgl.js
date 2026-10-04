@@ -120,7 +120,7 @@ float ink(vec2 uv) { return 1.0 - texture(uInkTex, uv).r; }
 vec3 roomOf(vec3 r, float rough);
 vec3 env(vec3 r, float rough) {
   if (uHasEnv < 0.5) return roomOf(r, rough);
-  // Turned about the vertical as the path tracer turns it.
+  // Turned about the vertical: its windows behind the page.
   float cr = cos(uEnvRot), sr = sin(uEnvRot);
   vec3 d = vec3(cr * r.x - sr * r.y, sr * r.x + cr * r.y, r.z);
   float u = atan(d.y, d.x) / (2.0 * PI) + 0.5;
@@ -416,9 +416,9 @@ function lookAt(eye, at, up) {
 }
 
 const FOV = (32 * Math.PI) / 180;
-/** The room's turn about the vertical (radians) and its brightness, shared with the path tracer (filmpt.js). */
-export const ENV_ROT = 2.4;
-export const ENV_GAIN = 1.6;
+/** The room's turn about the vertical (radians: its windows behind the page) and its brightness. */
+const ENV_ROT = 2.4;
+const ENV_GAIN = 1.6;
 
 /**
  * The camera of a frame: in the desk's space (x right, y down, z *into* the
@@ -770,7 +770,7 @@ function renderer(canvas) {
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, envTex);
     gl.uniform1f(pu.uHasEnv, envTex ? 1 : 0);
-    // The room turned so its windows are behind the page, as the path tracer has it.
+    // The room turned so its windows are behind the page.
     gl.uniform1f(pu.uEnvRot, ENV_ROT);
     gl.uniform1f(pu.uEnvGain, ENV_GAIN);
     for (const s of f.sheets) {
