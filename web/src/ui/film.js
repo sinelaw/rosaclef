@@ -129,7 +129,7 @@ const PAGE_SCALE = 1.6;
 const TILE_LEVELS = [2.5, 5, 10, 20, 40, 80];
 const TILE_PX = 1024;
 /** Tiles kept at once (the ones shown longest ago go). */
-const TILES_MAX = 40;
+const TILES_MAX = 64;
 /** The exported video. */
 const VIDEO_W = 1920;
 const VIDEO_H = 1080;
@@ -384,75 +384,157 @@ async function ensure(fv, f, inp, need) {
   return true;
 }
 
+/** The lens's vertical field of view (radians), as web/lib/filmgl.js draws with it. */
+const FOV = (32 * Math.PI) / 180;
+
+/** The bitmap level that draws `px` pixels a point sharply: -1 for the page's own bitmap, else a tile level. */
+/** function levelFor(px: Number) => Number */
+function levelFor(px) {
+  const need = px * 1.15;
+  if (need <= PAGE_SCALE * 1.15) return -1;
+  for (const l of TILE_LEVELS) if (l >= need) return l;
+  return TILE_LEVELS[TILE_LEVELS.length - 1];
+}
+
+/** A convex polygon (x, y pairs) cut to the side of an axis-aligned line where `sign` · (coordinate − `at`) ≥ 0 (`axis` 0: x, 1: y). */
+/** function cut(poly: Number[][], axis: Int, at: Number, sign: Number) => Number[][] */
+function cut(poly, axis, at, sign) {
+  /** const out: Number[][] */
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    const dp = sign * (p[axis] - at);
+    const dq = sign * (q[axis] - at);
+    if (dp >= 0) out.push(p);
+    if (dp >= 0 !== dq >= 0) {
+      const u = dp / (dp - dq);
+      out.push([p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u]);
+    }
+  }
+  return out;
+}
+
+/** The part of a convex polygon inside the rectangle [x0, x1] × [y0, y1]. */
+/** function within(poly: Number[][], x0: Number, y0: Number, x1: Number, y1: Number) => Number[][] */
+function within(poly, x0, y0, x1, y1) {
+  return cut(cut(cut(cut(poly, 0, x0, 1), 0, x1, -1), 1, y0, 1), 1, y1, -1);
+}
+
 /**
  * What a camera needs drawn: the pages it sees ([page, -1, 0, 0, later]), and
- * where it comes closer than the pages' bitmaps, the tiles of each page in
- * view at the level that matches ([page, level, tx, ty, later]), nearest first.
+ * over them the tiles of each part in view at the level its own nearness
+ * calls for ([page, level, tx, ty, later]). The camera is the renderer's
+ * (web/lib/filmgl.js `camera`): leaning back, the near part of the picture is
+ * closer than the far, so every part gets a bitmap as sharp as it shows —
+ * near and far drawn alike, never the far part from the page's coarse one.
  */
 /** function wants(f: Film, cam: Cam, w: Number, h: Number, later: Number, ratio: Number) => Number[][] */
 function wants(f, cam, w, h, later, ratio) {
   /** const out: Number[][] */
   const out = [];
   const d = f.desk;
-  // The picture on the desk: a rectangle around the camera's point, longer toward the far side as it leans.
-  const th = (cam.turn * Math.PI) / 180;
-  const hw = (cam.span / 2) * 1.1;
-  const hh = (((cam.span * h) / Math.max(1, w) / 2) * 1.1) / Math.max(0.35, Math.cos((cam.tilt * Math.PI) / 180));
-  /** const corners: Number[][] */
-  const corners = [];
+  const aspect = w / Math.max(1, h);
+  const t = (cam.tilt * Math.PI) / 180;
+  const r = (cam.turn * Math.PI) / 180;
+  const dist = cam.span / 2 / Math.tan(FOV / 2) / aspect;
+  const dx = -Math.sin(r);
+  const dy = Math.cos(r);
+  // The eye (z into the desk: above it is negative), where it looks, and the picture's axes.
+  const eye = [cam.x + dx * dist * Math.sin(t), cam.y + dy * dist * Math.sin(t), -dist * Math.cos(t)];
+  const fwd = [(cam.x - eye[0]) / dist, (cam.y - eye[1]) / dist, -eye[2] / dist];
+  // Right: across the picture (level on the desk); up: the picture's up.
+  const right = [Math.cos(r), Math.sin(r), 0];
+  const up = [right[1] * fwd[2] - right[2] * fwd[1], right[2] * fwd[0] - right[0] * fwd[2], right[0] * fwd[1] - right[1] * fwd[0]];
+  const ty = Math.tan(FOV / 2) * 1.1;
+  const tx = ty * aspect;
+  const far = dist * 20;
+  // The picture on the desk: where the rays through its corners (a little beyond) meet it, cut at the far plane.
+  /** const quad: Number[][] */
+  const quad = [];
   for (const c of [
-    [-hw, -hh],
-    [hw, -hh],
-    [hw, hh],
-    [-hw, hh],
-  ])
-    corners.push([cam.x + c[0] * Math.cos(th) - c[1] * Math.sin(th), cam.y + c[0] * Math.sin(th) + c[1] * Math.cos(th)]);
-  const px = (w / cam.span) * ratio * 1.15;
-  let level = -1;
-  if (px > PAGE_SCALE * 1.15) {
-    level = TILE_LEVELS[TILE_LEVELS.length - 1];
-    for (let i = TILE_LEVELS.length - 1; i >= 0; i--) if (TILE_LEVELS[i] >= px) level = TILE_LEVELS[i];
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ]) {
+    const ray = [fwd[0] + right[0] * c[0] * tx + up[0] * c[1] * ty, fwd[1] + right[1] * c[0] * tx + up[1] * c[1] * ty, fwd[2] + up[2] * c[1] * ty];
+    const reach = ray[2] > 1e-6 ? Math.min(far, -eye[2] / ray[2]) : far;
+    quad.push([eye[0] + ray[0] * reach, eye[1] + ray[1] * reach]);
+  }
+  /** Pixels a point at a point of the desk (across the picture, where nothing is foreshortened). */
+  /** function sharpness(x: Number, y: Number) => Number */
+  function sharpness(x, y) {
+    const z = (x - eye[0]) * fwd[0] + (y - eye[1]) * fwd[1] - eye[2] * fwd[2];
+    return z > 1e-6 ? (h * ratio) / 2 / (z * Math.tan(FOV / 2)) : 0;
   }
   /** const tiles: Number[][] */
   const tiles = [];
   for (let p = 0; p < d.pages.length; p++) {
     const pg = d.pages[p];
     const a = (-pg.rot * Math.PI) / 180;
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -Infinity;
-    let y1 = -Infinity;
-    for (const c of corners) {
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    // The picture in the page's points, and back.
+    /** const local: Number[][] */
+    const local = [];
+    for (const c of quad) {
       const qx = c[0] - pg.x;
       const qy = c[1] - pg.y;
-      const lx = qx * Math.cos(a) - qy * Math.sin(a) + d.pw / 2;
-      const ly = qx * Math.sin(a) + qy * Math.cos(a) + d.ph / 2;
-      x0 = Math.min(x0, lx);
-      y0 = Math.min(y0, ly);
-      x1 = Math.max(x1, lx);
-      y1 = Math.max(y1, ly);
+      local.push([qx * ca - qy * sa + d.pw / 2, qx * sa + qy * ca + d.ph / 2]);
     }
-    x0 = Math.max(0, x0);
-    y0 = Math.max(0, y0);
-    x1 = Math.min(d.pw, x1);
-    y1 = Math.min(d.ph, y1);
-    if (x1 <= x0 || y1 <= y0) continue;
-    out.push([p, -1, 0, 0, later]);
-    if (level < 0) continue;
-    const size = TILE_PX / level;
-    // The camera's point on this page, to draw the nearest tiles first.
-    const qx = cam.x - pg.x;
-    const qy = cam.y - pg.y;
-    const cx = qx * Math.cos(a) - qy * Math.sin(a) + d.pw / 2;
-    const cy = qx * Math.sin(a) + qy * Math.cos(a) + d.ph / 2;
-    for (let ty = Math.floor(y0 / size); ty * size < y1; ty++)
-      for (let tx = Math.floor(x0 / size); tx * size < x1; tx++) {
-        const dist = Math.hypot((tx + 0.5) * size - cx, (ty + 0.5) * size - cy);
-        tiles.push([p, level, tx, ty, later, dist]);
+    /** function nearness(lx: Number, ly: Number) => Number */
+    function nearness(lx, ly) {
+      const ux = lx - d.pw / 2;
+      const uy = ly - d.ph / 2;
+      return sharpness(pg.x + ux * ca + uy * sa, pg.y - ux * sa + uy * ca);
+    }
+    /** The finest and coarsest levels a part of the page (a convex polygon in its points) calls for: depth is linear over the desk, so its corners tell. */
+    /** function levels(poly: Number[][]) => Number[] */
+    function levels(poly) {
+      let lo = Infinity;
+      let hi = 0;
+      for (const v of poly) {
+        const s = nearness(v[0], v[1]);
+        lo = Math.min(lo, s);
+        hi = Math.max(hi, s);
       }
+      return [levelFor(lo), levelFor(hi)];
+    }
+    const seen = within(local, 0, 0, d.pw, d.ph);
+    if (seen.length < 3) continue;
+    out.push([p, -1, 0, 0, later]);
+    const span = levels(seen);
+    if (span[1] < 0) continue;
+    for (const level of TILE_LEVELS) {
+      if (level < span[0] || level > span[1]) continue;
+      const size = TILE_PX / level;
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -Infinity;
+      let y1 = -Infinity;
+      for (const v of seen) {
+        x0 = Math.min(x0, v[0]);
+        y0 = Math.min(y0, v[1]);
+        x1 = Math.max(x1, v[0]);
+        y1 = Math.max(y1, v[1]);
+      }
+      for (let tyi = Math.floor(y0 / size); tyi * size < y1; tyi++)
+        for (let txi = Math.floor(x0 / size); txi * size < x1; txi++) {
+          // A tile is drawn where some part of it in view calls for its level.
+          const part = within(seen, txi * size, tyi * size, (txi + 1) * size, (tyi + 1) * size);
+          if (part.length < 3) continue;
+          const lv = levels(part);
+          if (level < lv[0] || level > lv[1]) continue;
+          let near = 0;
+          for (const v of part) near = Math.max(near, nearness(v[0], v[1]));
+          tiles.push([p, level, txi, tyi, later, near]);
+        }
+    }
   }
-  tiles.sort((x, y) => x[5] - y[5]);
-  for (const t of tiles.slice(0, later > 0.5 ? 6 : 16)) out.push([t[0], t[1], t[2], t[3], t[4]]);
+  // The coarser first (the whole picture soon), then the nearest.
+  tiles.sort((x, y) => x[1] - y[1] || y[5] - x[5]);
+  for (const t of tiles.slice(0, later > 0.5 ? 6 : TILES_MAX - 8)) out.push([t[0], t[1], t[2], t[3], t[4]]);
   return out;
 }
 
