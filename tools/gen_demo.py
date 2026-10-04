@@ -315,11 +315,12 @@ def intro(pid):
     for bar, beats in enumerate(CLASSIC):
         for i, (bass, chord) in enumerate(beats):
             t = BAR + bar * BAR + i  # the intro starts after the pickup bar
+            bass += 12  # in the bass staff, clear of the low register's mud
             note(pid, "piano", bass, t, 0.95, 0.42)
             mel = [p for (b, d, p) in INTRO_MELODY[bar] if b <= i < b + d]
             top = mel[0] if mel else 76
             for name in chord.split():
-                p = nearest(PC[name], top - 7, 55, top - 1)
+                p = nearest(PC[name], top - 7, max(55, bass + 3), top - 1)
                 if p is not None:
                     note(pid, "piano", p, t, 0.9, 0.3, human=0.004)
         for b, d, p in INTRO_MELODY[bar]:

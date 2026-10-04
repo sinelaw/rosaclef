@@ -80,6 +80,8 @@ const heads = () => page.evaluate(HEADS);
 await page.waitForFunction(`${HEADS} > 0`);
 const before = await heads();
 await page.click(".score-dock .score-ribbon button[title^='Write']");
+// Notices (the browser studio's welcome) pass in a few seconds; they would cover the staff.
+await page.waitForFunction(() => document.querySelector(".toast") === null, null, { timeout: 15000 });
 // On the middle line of the first staff, a little into the first bar: Write shows a ghost note there.
 const lines = await page.locator(".score-dock .score-sys").first().locator("path.staff").boundingBox();
 const at = { x: lines.x + lines.width * 0.42, y: lines.y + lines.height / 2 };

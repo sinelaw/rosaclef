@@ -105,7 +105,7 @@ const keysDown = (sel, n) => [(a) => document.querySelectorAll(a.sel).length ===
   await page.click(".nav-item[aria-label=Browser]");
   await page
     .locator(".b-item, .b-row")
-    .filter({ hasText: "Pad · Prologue" })
+    .filter({ hasText: "Piano · Intro" })
     .first()
     .dblclick()
     .catch(() => {});

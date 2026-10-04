@@ -67,13 +67,14 @@ await page.dblclick(".lcd.transpose .lcd-label");
 await transposed(page, "0");
 ok("the song transposes by semitones, and stays transposed");
 
-// The Drums tab: start a part on a groove, write it, and it is in the song.
+// The Drums tab: the demo's drum part is a jazz waltz; writing it again
+// keeps it in the song.
 await page.keyboard.press("F4");
-await page.click(".drums-style-grooves button:has-text('Straight 8ths')");
 await page.waitForSelector(".drums-sec");
+await hasText(page, "Jazz waltz");
 await page.click(".drums-writebtn");
 await hasText(page, "Drums written");
-await hasText(page, "Drums · Straight 8ths A");
+await hasText(page, "Drums · Jazz waltz A");
 ok("the Drums tab writes a drum part into the song");
 
 await page.keyboard.press("Control+o");
