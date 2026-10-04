@@ -165,11 +165,14 @@ void main() {
     vec2 vt = vec2(cr * v0.x + sr * v0.y, -sr * v0.x + cr * v0.y);
     vec2 uvPerPt = uTexel * uScale;
     vec2 span = vt / max(v0.z, 0.12) * lift * uvPerPt;
-    float prev = 1.0;
     vec2 top = uv + span;
     vec2 hit = uv;
     float hp = 1.0;
-    for (int i = 1; i <= 32; i++) {
+    // Bare paper all along the ray (the ink's mipmap, as wide as the ray's
+    // reach, is white there): nothing to meet, so no march. Most of a close-up.
+    float reach = max(length(span / uTexel), 1.0);
+    float clear = textureLod(uInkTex, uv + span * 0.5, log2(reach) + 1.0).r;
+    for (int i = 1; i <= 32 && clear < 0.998; i++) {
       float k = float(i) / 32.0;
       vec2 q = top - span * k;
       float rayH = 1.0 - k;
@@ -199,20 +202,10 @@ void main() {
   float lamp = paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6);
   vec3 c = base * lamp;
   if (uHasInk > 0.5 && relief > 0.0) {
-    // The ink's height and its slope (Sobel), in points of height a point.
     vec2 t = uTexel;
     float h0 = ink(uv);
-    float a00 = ink(uv + vec2(-t.x, -t.y)), a10 = ink(uv + vec2(0.0, -t.y)), a20 = ink(uv + vec2(t.x, -t.y));
-    float a01 = ink(uv + vec2(-t.x, 0.0)), a21 = ink(uv + vec2(t.x, 0.0));
-    float a02 = ink(uv + vec2(-t.x, t.y)), a12 = ink(uv + vec2(0.0, t.y)), a22 = ink(uv + vec2(t.x, t.y));
-    float gx = (a20 + 2.0 * a21 + a22) - (a00 + 2.0 * a01 + a02);
-    float gy = (a02 + 2.0 * a12 + a22) - (a00 + 2.0 * a10 + a20);
-    vec2 g = vec2(gx, gy) / 8.0 * uScale * lift;
-    g = vec2(cr * g.x - sr * g.y, sr * g.x + cr * g.y);
-    vec3 n = normalize(vec3(-g, 1.0));
     vec3 p = vec3(vWorld, h0 * lift);
     vec3 l = normalize(uLight - p);
-    vec3 v = normalize(uEye - p);
     // Where the ink lies: dark in the color bitmap (the height map's soft skirt is paper).
     float lum = dot(base, vec3(0.299, 0.587, 0.114));
     float onInk = smoothstep(0.62, 0.3, lum) * smoothstep(0.002, 0.02, h0);
@@ -229,25 +222,39 @@ void main() {
     occl = clamp((1.0 - occl / 3.0) - h0, 0.0, 1.0) * (1.0 - onInk);
     c *= 1.0 - 0.42 * occl * relief;
 
-    // On the ink: a black body, faintly lit…
-    float nl = max(dot(n, l), 0.0);
-    float nv = max(dot(n, v), 1e-3);
-    c = mix(c, base * (0.5 + 0.5 * nl) * lamp, onInk);
-    // …and its gloss: a dielectric's reflection of the room (Schlick's Fresnel,
-    // blurred by roughness), and the lamp's GGX highlight when there is no room yet.
-    float rough = mix(0.45, mix(0.12, 0.04, uShine), clamp(uGloss, 0.0, 1.0));
-    float a = rough * rough;
-    vec3 r = reflect(-v, n);
-    float fe = F0 + (max(1.0 - rough, F0) - F0) * pow(1.0 - nv, 5.0);
-    vec3 gloss = env(r, rough) * fe;
-    if (uHasEnv < 0.5) {
-      vec3 hv = normalize(l + v);
-      float nh = max(dot(n, hv), 0.0);
-      float vh = max(dot(v, hv), 0.0);
-      float fl = F0 + (1.0 - F0) * pow(1.0 - vh, 5.0);
-      gloss += vec3(1.0, 0.95, 0.86) * ggx(nh, a) * smith(nv, nl, a) * fl / (4.0 * nv * max(nl, 1e-3)) * nl * 4.0 * lamp;
+    // The ink itself (none here: what follows would be weighed by nothing).
+    if (onInk > 0.0) {
+      // Its slope (Sobel), in points of height a point.
+      float a00 = ink(uv + vec2(-t.x, -t.y)), a10 = ink(uv + vec2(0.0, -t.y)), a20 = ink(uv + vec2(t.x, -t.y));
+      float a01 = ink(uv + vec2(-t.x, 0.0)), a21 = ink(uv + vec2(t.x, 0.0));
+      float a02 = ink(uv + vec2(-t.x, t.y)), a12 = ink(uv + vec2(0.0, t.y)), a22 = ink(uv + vec2(t.x, t.y));
+      float gx = (a20 + 2.0 * a21 + a22) - (a00 + 2.0 * a01 + a02);
+      float gy = (a02 + 2.0 * a12 + a22) - (a00 + 2.0 * a10 + a20);
+      vec2 g = vec2(gx, gy) / 8.0 * uScale * lift;
+      g = vec2(cr * g.x - sr * g.y, sr * g.x + cr * g.y);
+      vec3 n = normalize(vec3(-g, 1.0));
+      vec3 v = normalize(uEye - p);
+
+      // A black body, faintly lit…
+      float nl = max(dot(n, l), 0.0);
+      float nv = max(dot(n, v), 1e-3);
+      c = mix(c, base * (0.5 + 0.5 * nl) * lamp, onInk);
+      // …and its gloss: a dielectric's reflection of the room (Schlick's Fresnel,
+      // blurred by roughness), and the lamp's GGX highlight when there is no room yet.
+      float rough = mix(0.45, mix(0.12, 0.04, uShine), clamp(uGloss, 0.0, 1.0));
+      float a = rough * rough;
+      vec3 r = reflect(-v, n);
+      float fe = F0 + (max(1.0 - rough, F0) - F0) * pow(1.0 - nv, 5.0);
+      vec3 gloss = env(r, rough) * fe;
+      if (uHasEnv < 0.5) {
+        vec3 hv = normalize(l + v);
+        float nh = max(dot(n, hv), 0.0);
+        float vh = max(dot(v, hv), 0.0);
+        float fl = F0 + (1.0 - F0) * pow(1.0 - vh, 5.0);
+        gloss += vec3(1.0, 0.95, 0.86) * ggx(nh, a) * smith(nv, nl, a) * fl / (4.0 * nv * max(nl, 1e-3)) * nl * 4.0 * lamp;
+      }
+      c += gloss * onInk * max(uGloss, 0.25);
     }
-    c += gloss * onInk * max(uGloss, 0.25);
   }
   o = vec4(c, 1.0);
 }`;
