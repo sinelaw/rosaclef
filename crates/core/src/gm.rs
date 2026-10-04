@@ -334,6 +334,68 @@ pub fn collection() -> serde_json::Value {
     })
 }
 
+/// The sounding range (MIDI pitches) of the real instrument a General MIDI
+/// program samples, for the programs that have one a player would keep to
+/// (the Critic flags notes outside it). Pianos run the full keyboard.
+pub fn range(program: &str) -> Option<(i32, i32)> {
+    RANGES.iter().find(|r| r.0 == program).map(|r| (r.1, r.2))
+}
+
+const RANGES: &[(&str, i32, i32)] = &[
+    ("Acoustic Grand Piano", 21, 108),
+    ("Bright Acoustic Piano", 21, 108),
+    ("Electric Grand Piano", 21, 108),
+    ("Honky-tonk Piano", 21, 108),
+    ("Electric Piano 1", 28, 103),
+    ("Electric Piano 2", 28, 103),
+    ("Harpsichord", 29, 89),
+    ("Clavinet", 29, 89),
+    ("Celesta", 60, 108),
+    ("Glockenspiel", 79, 108),
+    ("Vibraphone", 53, 89),
+    ("Marimba", 45, 96),
+    ("Xylophone", 65, 108),
+    ("Tubular Bells", 60, 77),
+    ("Harmonica", 60, 84),
+    ("Acoustic Guitar (nylon)", 40, 83),
+    ("Acoustic Guitar (steel)", 40, 86),
+    ("Electric Guitar (jazz)", 40, 88),
+    ("Electric Guitar (clean)", 40, 88),
+    ("Electric Guitar (muted)", 40, 88),
+    ("Overdriven Guitar", 40, 88),
+    ("Distortion Guitar", 40, 88),
+    ("Acoustic Bass", 28, 67),
+    ("Electric Bass (finger)", 28, 67),
+    ("Electric Bass (pick)", 28, 67),
+    ("Fretless Bass", 28, 67),
+    ("Slap Bass 1", 28, 67),
+    ("Slap Bass 2", 28, 67),
+    ("Violin", 55, 103),
+    ("Viola", 48, 91),
+    ("Cello", 36, 84),
+    ("Contrabass", 28, 67),
+    ("Orchestral Harp", 23, 104),
+    ("Timpani", 38, 62),
+    ("Choir Aahs", 40, 81),
+    ("Voice Oohs", 40, 81),
+    ("Trumpet", 52, 86),
+    ("Muted Trumpet", 52, 82),
+    ("Trombone", 40, 77),
+    ("Tuba", 26, 65),
+    ("French Horn", 35, 77),
+    ("Soprano Sax", 56, 88),
+    ("Alto Sax", 49, 81),
+    ("Tenor Sax", 44, 76),
+    ("Baritone Sax", 36, 69),
+    ("Oboe", 58, 93),
+    ("English Horn", 52, 81),
+    ("Bassoon", 34, 75),
+    ("Clarinet", 50, 94),
+    ("Piccolo", 74, 108),
+    ("Flute", 60, 96),
+    ("Recorder", 72, 98),
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;

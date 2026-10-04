@@ -49,6 +49,33 @@ enum Command {
     Fmt { path: Option<PathBuf> },
     /// Print a compact overview of a project.
     Summary { path: Option<PathBuf> },
+    /// Lint the song against production rules of thumb (harmony, melody,
+    /// rhythm, arrangement, low end, mix, effects, master): what to fix, and
+    /// one-click fixes. Mechanical checks, no AI. See docs/critic.md.
+    Critic {
+        /// Project folder or project.json (default: current folder).
+        path: Option<PathBuf>,
+        /// Print the findings as JSON (with each fix's JSON Patch operations).
+        #[arg(long)]
+        json: bool,
+        /// Apply fixes and save: a finding's key, a rule id, or `all`
+        /// (repeatable). Suppressed findings are left alone unless named by key.
+        #[arg(long)]
+        fix: Vec<String>,
+        /// Suppress a finding (by key) or turn a check off (by rule id), in
+        /// project.json (repeatable).
+        #[arg(long)]
+        suppress: Vec<String>,
+        /// Bring back a suppressed finding or a check turned off (repeatable).
+        #[arg(long)]
+        unsuppress: Vec<String>,
+        /// List the suppressed findings too.
+        #[arg(long)]
+        suppressed: bool,
+        /// List the checks (and which are off).
+        #[arg(long)]
+        rules: bool,
+    },
     /// Render the song (or a pattern) to a WAV file.
     Render {
         /// Project folder or project.json (default: current folder).
@@ -213,6 +240,110 @@ fn main() -> Result<()> {
             print!("{}", rosaclef_core::summary(&p));
             Ok(())
         }
+        Command::Critic {
+            path,
+            json,
+            fix,
+            suppress,
+            unsuppress,
+            suppressed,
+            rules,
+        } => {
+            use rosaclef_core::{compat, critic};
+            let file = project_file(path)?;
+            let text = std::fs::read_to_string(&file)
+                .with_context(|| format!("reading {}", file.display()))?;
+            let raw: serde_json::Value = serde_json::from_str(&text)
+                .with_context(|| format!("{} is not JSON", file.display()))?;
+            // Forward-compatibly, as the engine plays it: what this version
+            // doesn't know is reported, and kept when the file is saved.
+            let playable = compat::value_for_playback(raw.clone()).map_err(|checked| {
+                let msgs: Vec<String> = checked.issues.iter().map(|i| i.to_string()).collect();
+                anyhow!("{} is invalid:\n{}", file.display(), msgs.join("\n"))
+            })?;
+            let lossy = compat::lossy(&playable);
+            let fallbacks = playable.fallbacks;
+            let mut p = playable.project;
+            if rules {
+                print!("{}", critic::rules_text(&p));
+                return Ok(());
+            }
+            let mut changed = false;
+            for w in &suppress {
+                println!(
+                    "{}",
+                    critic::suppress(&mut p, w, &fallbacks).map_err(|e| anyhow!(e))?
+                );
+                changed = true;
+            }
+            for w in &unsuppress {
+                println!("{}", critic::unsuppress(&mut p, w).map_err(|e| anyhow!(e))?);
+                changed = true;
+            }
+            if !fix.is_empty() && lossy {
+                bail!(
+                    "{} holds content this version of Rosaclef doesn't know (run `rosaclef critic`); fixes are off so that nothing of it is lost",
+                    file.display()
+                );
+            }
+            if !fix.is_empty() {
+                let (fixed, done) = critic::apply_fixes(&p, &fix, &[]).map_err(|e| anyhow!(e))?;
+                let errors: Vec<String> = validate::validate(&fixed)
+                    .into_iter()
+                    .filter(|i| i.severity == validate::Severity::Error)
+                    .map(|i| i.to_string())
+                    .collect();
+                if !errors.is_empty() {
+                    bail!(
+                        "the fixes would make the project invalid:\n{}",
+                        errors.join("\n")
+                    );
+                }
+                for d in &done {
+                    println!("fixed: {d}");
+                }
+                if done.is_empty() {
+                    println!("nothing to fix for {}", fix.join(", "));
+                }
+                changed |= !done.is_empty();
+                p = fixed;
+            }
+            if changed {
+                if lossy {
+                    // Only the Critic's settings changed: write them into the
+                    // document as it is, so nothing else is lost.
+                    let mut doc = raw;
+                    let settings = serde_json::to_value(&p.critic)?;
+                    match doc.as_object_mut() {
+                        Some(m) if p.critic.is_empty() => {
+                            m.remove("critic");
+                        }
+                        Some(m) => {
+                            m.insert("critic".into(), settings);
+                        }
+                        None => bail!("{} is not a JSON object", file.display()),
+                    }
+                    std::fs::write(&file, format::to_string(&doc))?;
+                } else {
+                    std::fs::write(&file, format::to_string(&p))?;
+                }
+                println!("saved {}", file.display());
+                if json {
+                    return Ok(());
+                }
+                println!();
+            }
+            let c = critic::critique_with(&p, &[], &fallbacks);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&c)?);
+            } else if !changed || fix.is_empty() {
+                print!("{}", critic::report_text(&c, suppressed));
+            } else {
+                let left = c.findings.iter().filter(|f| !f.suppressed).count();
+                println!("{left} findings left (run `rosaclef critic` to see them)");
+            }
+            Ok(())
+        }
         Command::Render {
             path,
             out,
@@ -224,7 +355,7 @@ fn main() -> Result<()> {
             let file = project_file(path)?;
             let dir = file.parent().unwrap_or(Path::new(".")).to_path_buf();
             let folder = Folder::on_disk(&dir);
-            let project = load_project(&file)?;
+            let project = load_playable(&file)?;
             if ![16, 24, 32].contains(&bits) {
                 bail!("--bits must be 16, 24 or 32");
             }
@@ -475,6 +606,25 @@ fn project_file(path: Option<PathBuf>) -> Result<PathBuf> {
         );
     }
     Ok(file)
+}
+
+/// Load a project to play it (forward-compatibly: what this version does
+/// not know is left out or played on a stand-in, with a warning for each).
+fn load_playable(file: &Path) -> Result<rosaclef_core::Project> {
+    let text =
+        std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
+    match rosaclef_core::compat::for_playback(&text) {
+        Ok(p) => {
+            for f in &p.fallbacks {
+                eprintln!("warning: {f}");
+            }
+            Ok(p.project)
+        }
+        Err(checked) => {
+            let msgs: Vec<String> = checked.issues.iter().map(|i| i.to_string()).collect();
+            bail!("{} is invalid:\n{}", file.display(), msgs.join("\n"));
+        }
+    }
 }
 
 fn load_project(file: &Path) -> Result<rosaclef_core::Project> {

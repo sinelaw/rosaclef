@@ -75,6 +75,15 @@ check("a kit names its drums", drumName(chans[0], 38) === "Snare");
 check("so does a kit variation", drumName(chans[1], 38) === "Snare");
 check("an instrument does not", drumName(chans[2], 38) === "");
 
+// The Critic's settings travel with the song (and are left out when empty).
+check("no critic settings, no critic key", !projectJson(bare).includes('"critic"'));
+const linted = emptyProject();
+linted.critic.off.push("loopitis");
+linted.critic.suppress.push("flat-velocity|pattern:beat:hat:-1");
+const relinted = decodeProject(JSON.parse(projectJson(linted)));
+check("checks turned off survive a save", relinted.critic.off.join() === "loopitis");
+check("suppressed findings survive a save", relinted.critic.suppress.join() === "flat-velocity|pattern:beat:hat:-1");
+
 if (failures > 0) {
   console.log(`${failures} model test(s) failed`);
   throw new Error("model tests failed");

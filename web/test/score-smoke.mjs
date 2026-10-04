@@ -76,9 +76,16 @@ await page.waitForFunction(() => {
 const HEADS = `[...document.querySelectorAll(".score-dock text.glyphs:not(.ghost):not(.sel)")].reduce(
   (n, t) => n + [...t.textContent].filter((c) => c === "\u{e0a4}" || c === "\u{e0a3}" || c === "\u{e0a2}").length, 0)`;
 const heads = () => page.evaluate(HEADS);
-// Count them once the pattern's notes are drawn (the dock may still be catching up).
+// Count them once the pattern's notes are drawn and the dock has caught up: the
+// count holds still for half a second (a slow machine may still be laying it out).
 await page.waitForFunction(`${HEADS} > 0`);
-const before = await heads();
+let before = await heads();
+for (let still = 0; still < 5; ) {
+  await page.waitForTimeout(100);
+  const n = await heads();
+  still = n === before ? still + 1 : 0;
+  before = n;
+}
 await page.click(".score-dock .score-ribbon button[title^='Write']");
 // Notices (the browser studio's welcome) pass in a few seconds; they would cover the staff.
 await page.waitForFunction(() => document.querySelector(".toast") === null, null, { timeout: 15000 });

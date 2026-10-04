@@ -34,6 +34,11 @@ Song
   del /json/pointer           remove a key or an array element
   fmt                         rewrite project.json in canonical form
   context                     what you are looking at in the studio
+  critic [all]                lint the song: what to fix, and fixes (all: with
+                              the suppressed findings too)
+  critic fix KEY|RULE|all     apply fixes
+  critic suppress KEY|RULE    suppress a finding, or turn a check off
+  critic unsuppress KEY|RULE  bring it back       critic rules   list the checks
 
 Sound
   render [--pattern ID] [--loops N] [--bits 16|24|32] [--out renders/x.wav]
@@ -56,8 +61,8 @@ Files and projects
 `rosaclef <command>` works too, as in AGENTS.md. Up/Down browse the history.";
 
 const COMMANDS: &[&str] = &[
-    "help", "summary", "validate", "get", "set", "del", "fmt", "context", "render", "note",
-    "catalog", "presets", "schema", "ls", "cat", "rm", "projects", "open", "clear", "exit",
+    "help", "summary", "validate", "get", "set", "del", "fmt", "context", "critic", "render",
+    "note", "catalog", "presets", "schema", "ls", "cat", "rm", "projects", "open", "clear", "exit",
 ];
 
 /// Line editing state of one terminal.
@@ -512,6 +517,35 @@ impl Host {
                 }
                 let rev = self.apply(checked.project.unwrap(), checked.issues, "disk", 0)?;
                 format!("{GREEN}ok{RESET} {DIM}(rev {rev} — Ctrl+Z in the studio undoes it){RESET}")
+            }
+            "critic" => {
+                use rosaclef_core::critic;
+                let mut p = self.project().clone();
+                let what = arg(1);
+                let done = match arg(0).as_str() {
+                    "" | "all" => return Ok(critic::report_text(&critic::critique(&p, &[]), arg(0) == "all")),
+                    "rules" => return Ok(critic::rules_text(&p)),
+                    "fix" => {
+                        let (fixed, applied) = critic::apply_fixes(&p, std::slice::from_ref(&what), &[]).map_err(|e| anyhow!(e))?;
+                        if applied.is_empty() {
+                            bail!("nothing to fix for {what:?}");
+                        }
+                        p = fixed;
+                        applied.iter().map(|d| format!("fixed: {d}")).collect::<Vec<_>>().join("\n")
+                    }
+                    "suppress" => critic::suppress(&mut p, &what, &[]).map_err(|e| anyhow!(e))?,
+                    "unsuppress" => critic::unsuppress(&mut p, &what).map_err(|e| anyhow!(e))?,
+                    other => bail!("critic {other}: use critic, critic all, critic rules, critic fix|suppress|unsuppress KEY|RULE"),
+                };
+                let issues = validate::validate(&p);
+                if let Some(e) = issues
+                    .iter()
+                    .find(|i| i.severity == validate::Severity::Error)
+                {
+                    bail!("the change was not applied: {e}");
+                }
+                let rev = self.apply(p, issues, "disk", 0)?;
+                format!("{done}\n{GREEN}ok{RESET} {DIM}(rev {rev} — Ctrl+Z in the studio undoes it){RESET}")
             }
             "fmt" => {
                 let p = self.project().clone();

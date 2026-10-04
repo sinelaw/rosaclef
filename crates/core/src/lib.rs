@@ -7,7 +7,9 @@
 pub mod arp;
 pub mod automation;
 pub mod catalog;
+pub mod compat;
 pub mod context;
+pub mod critic;
 pub mod drums;
 pub mod form;
 pub mod format;

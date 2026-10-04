@@ -11,7 +11,7 @@
 //! receives each preset in small steps (`rc_preset_*`), so a large preset
 //! never holds up the audio.
 
-use rosaclef_core::validate;
+use rosaclef_core::compat;
 use rosaclef_engine::samples::{PresetKey, SampleData};
 use rosaclef_engine::soundfont::{LoadedPreset, PresetBuilder, SoundFont};
 use rosaclef_engine::{Engine, PlayMode};
@@ -78,20 +78,25 @@ pub extern "C" fn rc_init(sample_rate: f32) {
 }
 
 /// Load a project from JSON. Returns 0 on success, 1 when invalid (details
-/// via `rc_result_*`).
+/// via `rc_result_*`). Loading is forward-compatible
+/// ([`rosaclef_core::compat`]): what this engine does not know is left out
+/// or played on a stand-in, and listed in the result's `fallbacks`.
 ///
 /// # Safety
 /// `ptr`/`len` must describe readable memory.
 #[no_mangle]
 pub unsafe extern "C" fn rc_set_project(ptr: *const u8, len: usize) -> i32 {
-    let checked = validate::parse_and_validate(text(ptr, len));
+    let loaded = compat::for_playback(text(ptr, len));
     with(|s| {
-        if !checked.is_ok() {
-            let msgs: Vec<String> = checked.issues.iter().map(|i| i.to_string()).collect();
-            s.result = msgs.join("\n").into_bytes();
-            return 1;
-        }
-        s.engine.set_project(checked.project.unwrap());
+        let playable = match loaded {
+            Ok(p) => p,
+            Err(checked) => {
+                let msgs: Vec<String> = checked.issues.iter().map(|i| i.to_string()).collect();
+                s.result = msgs.join("\n").into_bytes();
+                return 1;
+            }
+        };
+        s.engine.set_project(playable.project);
         // Report which samples and soundfont presets still need to be provided.
         let samples: Vec<String> = s
             .engine
@@ -106,7 +111,7 @@ pub unsafe extern "C" fn rc_set_project(ptr: *const u8, len: usize) -> i32 {
             .filter(|k| !s.engine.has_preset(k))
             .map(|k| serde_json::json!({"font": k.font, "bank": k.bank, "program": k.program}))
             .collect();
-        s.result = serde_json::to_vec(&serde_json::json!({"samples": samples, "presets": presets}))
+        s.result = serde_json::to_vec(&serde_json::json!({"samples": samples, "presets": presets, "fallbacks": playable.fallbacks}))
             .unwrap_or_default();
         0
     })

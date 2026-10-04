@@ -191,6 +191,10 @@ export function decodeProject(raw) {
     })),
     score: decodeScore(raw.score),
     drums: decodeDrums(raw.drums),
+    critic: {
+      off: ((raw.critic ?? {}).off ?? []).map((x) => String(x)),
+      suppress: ((raw.critic ?? {}).suppress ?? []).map((x) => String(x)),
+    },
     repeats: (raw.repeats ?? []).map((r) => ({
       start: Number(r.start),
       end: Number(r.end),
@@ -520,6 +524,7 @@ export function encodeProject(p) {
   if (p.repeats.length > 0) o.repeats = p.repeats.map(encodeRepeat);
   if (p.animation.on) o.animation = encodeAnimation(p.animation);
   if (p.drums.on) o.drums = encodeDrums(p.drums);
+  if (p.critic.off.length > 0 || p.critic.suppress.length > 0) o.critic = { off: p.critic.off.slice(), suppress: p.critic.suppress.slice() };
   return o;
 }
 
@@ -899,6 +904,7 @@ export function emptyProject() {
     repeats: [],
     animation: noAnimation(),
     drums: noDrums(),
+    critic: { off: [], suppress: [] },
   };
 }
 

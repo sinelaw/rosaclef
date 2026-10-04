@@ -89,6 +89,31 @@ pub struct Project {
     /// See [`crate::drums`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drums: Option<crate::drums::DrumPart>,
+    /// What the Critic leaves out: checks turned off and findings
+    /// suppressed. See [`crate::critic`].
+    #[serde(default, skip_serializing_if = "CriticSettings::is_empty")]
+    pub critic: CriticSettings,
+}
+
+/// The Critic's settings for a project (`critic` in project.json): like a
+/// linter's configuration, they travel with the song, so the studio, the
+/// command line and an agent all leave out the same things.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CriticSettings {
+    /// Checks turned off, by rule id (`rosaclef critic --rules` lists them).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub off: Vec<String>,
+    /// Findings suppressed one by one, by their key (as `rosaclef critic`
+    /// prints it): reported as suppressed, not as something to do.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suppress: Vec<String>,
+}
+
+impl CriticSettings {
+    pub fn is_empty(&self) -> bool {
+        self.off.is_empty() && self.suppress.is_empty()
+    }
 }
 
 /// The film of the song (the Score view's Film mode): the score's pages lie
@@ -782,6 +807,7 @@ impl Project {
             repeats: vec![],
             animation: None,
             drums: None,
+            critic: CriticSettings::default(),
         }
     }
 

@@ -587,6 +587,14 @@ function revealLane(g) {
   if (y < view.scrollTop || y + LANE_H > view.scrollTop + view.height) view.scrollTop = Math.max(0, y + LANE_H - view.height + 12);
 }
 
+/** Scroll the playlist so a song beat is in view (the Critic's "show me"). */
+/** function revealBeat(beat: Number) => Undefined */
+export function revealBeat(beat) {
+  const x = beat * view.zoom;
+  if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.88) view.scrollLeft = Math.max(0, x - view.width * 0.08);
+  invalidate();
+}
+
 /** Page the view along with the playhead (FL Studio style) while playing. */
 /** function followPlayhead(g: PGeo) => Undefined */
 function followPlayhead(g) {
