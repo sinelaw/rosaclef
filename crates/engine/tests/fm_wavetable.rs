@@ -1,4 +1,4 @@
-//! Tests for the Sextant (6-op FM) and Tessera (wavetable) instruments.
+//! Tests for the fm (6-op FM) and wavetable instruments.
 
 use rosaclef_core::Device;
 use rosaclef_engine::instruments::{self, NoteKind};
@@ -98,30 +98,30 @@ fn assert_octave(kind: &str, dev: &Device) {
 }
 
 #[test]
-fn sextant_sounds_with_defaults() {
-    let a = render_full(&Device::new("sextant"), 60);
-    println!("{}", check_note("sextant default", &a).unwrap());
+fn fm_sounds_with_defaults() {
+    let a = render_full(&Device::new("fm"), 60);
+    println!("{}", check_note("fm default", &a).unwrap());
 }
 
 #[test]
-fn tessera_sounds_with_defaults() {
-    let a = render_full(&Device::new("tessera"), 60);
-    println!("{}", check_note("tessera default", &a).unwrap());
+fn wavetable_sounds_with_defaults() {
+    let a = render_full(&Device::new("wavetable"), 60);
+    println!("{}", check_note("wavetable default", &a).unwrap());
 }
 
 #[test]
 fn every_algorithm_and_table_is_healthy() {
     for algo in [
-        "stack", "twin", "triad", "ep", "bell", "organ", "pad", "brass",
+        "stack", "twin", "triad", "ep", "bell", "organ", "pad", "brass", "duo",
     ] {
         let a = render_full(
-            &device("sextant", &[("feedback", 0.7)], &[("algorithm", algo)]),
+            &device("fm", &[("feedback", 0.7)], &[("algorithm", algo)]),
             57,
         );
         assert!(a.left.iter().all(|x| x.is_finite()), "{algo}");
         assert!(
             a.peak() > 0.05 && a.peak() < 1.0,
-            "sextant {algo}: peak {}",
+            "fm {algo}: peak {}",
             a.peak()
         );
     }
@@ -129,7 +129,7 @@ fn every_algorithm_and_table_is_healthy() {
         for warp in ["none", "bend", "sync", "fold", "mirror"] {
             for pos in [0.0, 0.5, 1.0] {
                 let d = device(
-                    "tessera",
+                    "wavetable",
                     &[("position", pos), ("warp", 0.6)],
                     &[("table", table), ("warp", warp)],
                 );
@@ -137,7 +137,7 @@ fn every_algorithm_and_table_is_healthy() {
                 assert!(a.left.iter().all(|x| x.is_finite()), "{table}/{warp}");
                 assert!(
                     a.peak() > 0.01 && a.peak() < 1.0,
-                    "tessera {table}/{warp}/{pos}: peak {}",
+                    "wavetable {table}/{warp}/{pos}: peak {}",
                     a.peak()
                 );
             }
@@ -146,17 +146,17 @@ fn every_algorithm_and_table_is_healthy() {
 }
 
 #[test]
-fn sextant_tracks_pitch() {
-    assert_octave("sextant", &Device::new("sextant"));
+fn fm_tracks_pitch() {
+    assert_octave("fm", &Device::new("fm"));
 }
 
 #[test]
-fn tessera_tracks_pitch() {
-    assert_octave("tessera", &Device::new("tessera"));
+fn wavetable_tracks_pitch() {
+    assert_octave("wavetable", &Device::new("wavetable"));
     assert_octave(
-        "tessera growl",
+        "wavetable growl",
         &device(
-            "tessera",
+            "wavetable",
             &[("unison", 1.0), ("position", 0.3)],
             &[("table", "growl")],
         ),
@@ -191,11 +191,11 @@ fn inharmonic_share(x: &[f32], f0: f32) -> f64 {
 }
 
 #[test]
-fn tessera_high_notes_do_not_alias() {
+fn wavetable_high_notes_do_not_alias() {
     let key = 108u8;
     let f0 = 440.0 * 2f32.powf((key as f32 - 69.0) / 12.0);
     let d = device(
-        "tessera",
+        "wavetable",
         &[
             ("unison", 1.0),
             ("position", 0.5),
@@ -211,22 +211,22 @@ fn tessera_high_notes_do_not_alias() {
         .map(|i| 2.0 * (i as f32 * f0 / SR).fract() - 1.0)
         .collect();
     let reference = inharmonic_share(&naive, f0);
-    println!("inharmonic energy: tessera {ours:.2e}, naive saw {reference:.2e}");
-    assert!(ours < 1e-3, "tessera aliasing {ours}");
+    println!("inharmonic energy: wavetable {ours:.2e}, naive saw {reference:.2e}");
+    assert!(ours < 1e-3, "wavetable aliasing {ours}");
     assert!(
         ours < reference / 20.0,
-        "tessera {ours} vs naive {reference}"
+        "wavetable {ours} vs naive {reference}"
     );
 }
 
 #[test]
 fn presets_render_within_level_bounds() {
-    for kind in ["sextant", "tessera"] {
+    for kind in ["fm", "wavetable"] {
         let presets: Vec<_> = rosaclef_core::presets::all()
             .into_iter()
             .filter(|p| p.kind == kind)
             .collect();
-        assert_eq!(presets.len(), 6, "{kind} presets");
+        assert!(presets.len() >= 6, "{kind} presets");
         let mut errors = vec![];
         for p in presets {
             for pitch in [48u8, 60, 72] {
@@ -249,12 +249,12 @@ fn voice_stealing_is_clean() {
     let ctx = Ctx { sr: SR, bpm: 120.0 };
     // Low sine tones: legitimate sample steps are tiny, so a hard cut would stand out.
     let sine_fm = device(
-        "sextant",
+        "fm",
         &[("op2Level", 0.0), ("op1Sustain", 1.0), ("release", 3.0)],
         &[("algorithm", "stack")],
     );
     let sine_wt = device(
-        "tessera",
+        "wavetable",
         &[
             ("position", 0.0),
             ("unison", 1.0),
@@ -325,26 +325,23 @@ fn realtime_factor(dev: &Device) -> f64 {
 #[ignore = "wall-clock timing; flaky on a loaded machine (run with --release -- --ignored)"]
 fn realtime_performance() {
     let cases = [
+        ("fm ep (default)", device("fm", &[("release", 8.0)], &[])),
         (
-            "sextant ep (default)",
-            device("sextant", &[("release", 8.0)], &[]),
-        ),
-        (
-            "sextant stack + feedback",
+            "fm stack + feedback",
             device(
-                "sextant",
+                "fm",
                 &[("feedback", 0.8), ("release", 8.0)],
                 &[("algorithm", "stack")],
             ),
         ),
         (
-            "tessera default (unison 3)",
-            device("tessera", &[("sustain", 1.0)], &[]),
+            "wavetable default (unison 3)",
+            device("wavetable", &[("sustain", 1.0)], &[]),
         ),
         (
-            "tessera supersaw (unison 7)",
+            "wavetable supersaw (unison 7)",
             device(
-                "tessera",
+                "wavetable",
                 &[
                     ("unison", 7.0),
                     ("detune", 38.0),
@@ -355,9 +352,9 @@ fn realtime_performance() {
             ),
         ),
         (
-            "tessera unison 7, warp, drive, sub",
+            "wavetable unison 7, warp, drive, sub",
             device(
-                "tessera",
+                "wavetable",
                 &[
                     ("unison", 7.0),
                     ("positionLfo", 0.5),
@@ -380,10 +377,10 @@ fn realtime_performance() {
 #[test]
 fn table_generation_is_fast_enough() {
     let ctx = Ctx { sr: SR, bpm: 120.0 };
-    let mut inst = instruments::create(&Device::new("tessera"), &ctx).unwrap();
+    let mut inst = instruments::create(&Device::new("wavetable"), &ctx).unwrap();
     let t = Instant::now();
     for table in ["digital", "vocal", "growl", "glass", "pulse", "analog"] {
-        inst.set_device(&device("tessera", &[], &[("table", table)]), &ctx);
+        inst.set_device(&device("wavetable", &[], &[("table", table)]), &ctx);
     }
     println!(
         "6 wavetables generated in {:.1} ms",

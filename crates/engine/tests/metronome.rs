@@ -103,18 +103,22 @@ fn count_in_clicks_a_bar_before_the_pattern_starts() {
 fn blip() -> Engine {
     let mut p = Project::empty("t");
     p.mixer.inserts[0].effects.clear();
-    let mut dev = Device::new("synth");
+    let mut dev = Device::new("analog");
     for (k, v) in [
         ("attack", 0.001),
         ("decay", 0.03),
         ("sustain", 0.0),
         ("release", 0.005),
         ("osc2Mix", 0.0),
+        ("sub", 0.0),
+        ("drift", 0.0),
+        ("drive", 0.0),
         ("cutoff", 20000.0),
     ] {
         dev.params.insert(k.into(), v);
     }
     dev.options.insert("wave1".into(), "sine".into());
+    dev.options.insert("filter".into(), "lowpass".into());
     p.channels.push(Channel {
         id: "b".into(),
         name: "Blip".into(),
@@ -125,6 +129,7 @@ fn blip() -> Engine {
         mute: false,
         mixer: InsertIx(1),
         arp: None,
+        layer_of: None,
     });
     p.patterns[0].notes.clear();
     p.patterns[0].length = 4.0;

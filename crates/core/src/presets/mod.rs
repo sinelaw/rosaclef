@@ -5,14 +5,14 @@
 //! into a project `Device`. Every preset is validated against the catalog
 //! by the tests below.
 
-mod classic;
-mod comete;
-mod cuivre;
-mod dedale;
-mod nebula;
-mod prisme;
-mod sextant;
-mod tessera;
+mod additive;
+mod analog;
+mod drum;
+mod fm;
+mod generative;
+mod granular;
+mod transition;
+mod wavetable;
 
 use crate::Device;
 use serde::ser::{Serialize, SerializeMap, SerializeStruct, Serializer};
@@ -20,7 +20,7 @@ use serde::ser::{Serialize, SerializeMap, SerializeStruct, Serializer};
 #[derive(Clone, Copy, Debug)]
 pub struct Preset {
     pub name: &'static str,
-    /// Device type (`"prisme"`, `"sextant"`, ...).
+    /// Device type (`"additive"`, `"fm"`, ...).
     pub kind: &'static str,
     /// Comma-separated tags: role and character ("pad, cinematic").
     pub tags: &'static str,
@@ -70,14 +70,14 @@ impl Serialize for Preset {
 /// Every factory preset, grouped by engine.
 pub fn all() -> Vec<&'static Preset> {
     [
-        classic::PRESETS,
-        prisme::PRESETS,
-        sextant::PRESETS,
-        tessera::PRESETS,
-        cuivre::PRESETS,
-        nebula::PRESETS,
-        dedale::PRESETS,
-        comete::PRESETS,
+        drum::PRESETS,
+        additive::PRESETS,
+        fm::PRESETS,
+        wavetable::PRESETS,
+        analog::PRESETS,
+        granular::PRESETS,
+        generative::PRESETS,
+        transition::PRESETS,
     ]
     .iter()
     .flat_map(|list| list.iter())
@@ -109,6 +109,7 @@ mod tests {
                 mute: false,
                 mixer: InsertIx::MASTER,
                 arp: None,
+                layer_of: None,
             });
         }
         let issues = validate::validate(&p);

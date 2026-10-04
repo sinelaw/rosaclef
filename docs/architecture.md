@@ -99,7 +99,7 @@
   drums, read from how much its body, click, noise and hiss rose — with the
   spill between drums learned from the take's clear hits — into kick, tom,
   snare, hat and open hat (beatbox, `transcribe/drums.rs`; scored against
-  beats played on the Atelier drums by `crates/studio/tests/drum_beats.rs`).
+  beats played on the `drum` machine by `crates/studio/tests/drum_beats.rs`).
   It returns raw seconds and fractional pitches (`GET /api/transcribe`, on
   the server and in `rosaclef-local`).
 - `web/src/voice.js` turns that into notes on every redraw — cropping

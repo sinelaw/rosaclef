@@ -1,4 +1,4 @@
-//! Tests for the Prisme (additive) and Nébula (granular) instruments.
+//! Tests for the additive and granular instruments.
 
 use rosaclef_core::{Channel, Device, InsertIx, Project};
 use rosaclef_engine::instruments::{self, NoteKind};
@@ -7,7 +7,7 @@ use rosaclef_engine::samples::SampleData;
 use rosaclef_engine::{Ctx, Engine, MAX_BLOCK};
 
 const SR: f32 = 48000.0;
-const KINDS: [&str; 2] = ["prisme", "nebula"];
+const KINDS: [&str; 2] = ["additive", "granular"];
 
 fn project(dev: &Device) -> Project {
     let mut p = Project::empty("t");
@@ -21,6 +21,7 @@ fn project(dev: &Device) -> Project {
         mute: false,
         mixer: InsertIx::MASTER,
         arp: None,
+        layer_of: None,
     });
     p.mixer.inserts[0].effects.clear();
     p
@@ -160,7 +161,7 @@ fn pitch_tracks_the_keyboard() {
     for kind in KINDS {
         let mut dev = Device::new(kind);
         // Keep the output low-pass out of the way of the transposed spectrum.
-        let top = if kind == "nebula" { "tone" } else { "cutoff" };
+        let top = "cutoff";
         dev.params.insert(top.into(), 20000.0);
         let at = (0.8 * SR) as usize;
         let a = mono(&note(&dev, 60, 1.6, 0.1))[at..].to_vec();
@@ -187,8 +188,8 @@ fn pitch_tracks_the_keyboard() {
                 "{kind}: estimated {f} Hz is not a C"
             );
         }
-        if kind == "prisme" {
-            assert!((fb / fa - 2.0).abs() < 0.04, "prisme: {fa} -> {fb}");
+        if kind == "additive" {
+            assert!((fb / fa - 2.0).abs() < 0.04, "additive: {fa} -> {fb}");
         }
     }
 }
@@ -301,29 +302,29 @@ fn voice_stealing_is_bounded_and_smooth() {
 }
 
 #[test]
-fn every_prisme_spectrum_and_nebula_source_sounds() {
+fn every_additive_spectrum_and_granular_source_sounds() {
     for spec in rosaclef_core::catalog::SPECTRA {
-        let mut dev = Device::new("prisme");
+        let mut dev = Device::new("additive");
         dev.options.insert("spectrum".into(), spec.to_string());
         let a = render_note(&dev, 60, 0.9, 2.0, SR);
-        eprintln!("prisme {spec:<8} peak {:.3}", a.peak());
+        eprintln!("additive {spec:<8} peak {:.3}", a.peak());
         check_basic(spec, &a);
     }
     for src in rosaclef_core::catalog::TEXTURE_SOURCES
         .iter()
         .filter(|s| **s != "sample")
     {
-        let mut dev = Device::new("nebula");
+        let mut dev = Device::new("granular");
         dev.options.insert("source".into(), src.to_string());
         let a = render_note(&dev, 60, 0.9, 2.0, SR);
-        eprintln!("nebula {src:<8} peak {:.3}", a.peak());
+        eprintln!("granular {src:<8} peak {:.3}", a.peak());
         check_basic(src, &a);
     }
 }
 
 #[test]
-fn nebula_plays_a_project_sample() {
-    let mut dev = Device::new("nebula");
+fn granular_plays_a_project_sample() {
+    let mut dev = Device::new("granular");
     dev.options.insert("source".into(), "sample".into());
     dev.options
         .insert("sample".into(), "samples/tone.wav".into());
@@ -350,24 +351,28 @@ fn nebula_plays_a_project_sample() {
     assert!((f / 220.0 - 1.0).abs() < 0.02, "sample played at {f} Hz");
 }
 
-/// `cargo test -p rosaclef-engine --release --test prisme_nebula -- --ignored --nocapture`
+/// `cargo test -p rosaclef-engine --release --test additive_granular -- --ignored --nocapture`
 #[test]
 #[ignore]
 fn realtime_factor() {
     let heavy = [
-        ("prisme", "defaults", None),
-        ("prisme", "Opaline Veil", Some("Opaline Veil")),
-        ("prisme", "Séraphine", Some("Séraphine")),
-        ("nebula", "defaults", None),
-        ("nebula", "Poussière d'Astres", Some("Poussière d'Astres")),
+        ("additive", "defaults", None),
+        ("additive", "Opaline Veil Pad", Some("Opaline Veil Pad")),
+        ("additive", "Seraphine Choir", Some("Seraphine Choir")),
+        ("granular", "defaults", None),
+        (
+            "granular",
+            "Stardust Shimmer Pad",
+            Some("Stardust Shimmer Pad"),
+        ),
     ];
     for src in ["choir", "bowl", "ember", "strings", "air"] {
-        let mut dev = Device::new("nebula");
+        let mut dev = Device::new("granular");
         dev.options.insert("source".into(), src.into());
         let t = std::time::Instant::now();
         let inst = instruments::create(&dev, &Ctx { sr: SR, bpm: 120.0 });
         println!(
-            "nebula source {src:<8} built in {:.1} ms",
+            "granular source {src:<8} built in {:.1} ms",
             t.elapsed().as_secs_f64() * 1000.0
         );
         drop(inst);

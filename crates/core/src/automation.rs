@@ -489,18 +489,19 @@ mod tests {
             id: "pad".into(),
             name: "Pad".into(),
             color: "#ffffff".into(),
-            instrument: crate::model::Device::new("synth"),
+            instrument: crate::model::Device::new("analog"),
             volume: 0.8,
             pan: 0.0,
             mute: false,
             mixer: InsertIx(1),
             arp: None,
+            layer_of: None,
         });
         let t: AutomationTarget = "channel/pad/cutoff".parse().unwrap();
         let info = t.resolve(&p).unwrap();
         assert_eq!((info.min, info.max, info.exp), (20.0, 20000.0, true));
         assert_eq!(info.label, "Pad · Cutoff");
-        assert_eq!(t.base_value(&p), Some(2400.0));
+        assert_eq!(t.base_value(&p), Some(1200.0));
         assert!("channel/pad/nope"
             .parse::<AutomationTarget>()
             .unwrap()

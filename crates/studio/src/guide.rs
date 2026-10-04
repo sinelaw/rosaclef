@@ -94,7 +94,7 @@ Example:
   "transport": { "playing": false, "mode": "pattern", "positionBeats": 2, "position": "001:03:00", "bpm": 92 },
   "selection": {
     "pattern": { "id": "keys", "name": "Keys", "length": 16, "noteCount": 80 },
-    "channel": { "id": "keys", "name": "Rhodes", "instrument": "sextant", "mixer": 4 },
+    "channel": { "id": "keys", "name": "Rhodes", "instrument": "fm", "mixer": 4 },
     "insert": { "index": 4, "name": "Keys" }, "track": { "index": 2, "name": "Keys" },
     "notes": [ { "index": 12, "note": { "channel": "keys", "pitch": 63, "start": 2.5, "length": 1, "velocity": 0.72 } } ],
     "clips": []
@@ -202,6 +202,11 @@ Rules and conventions:
   "mode": "free" }` — `rate` in beats between run notes (0.25 = 16ths), `gate` each note's length as
   a share of the rate, `direction` up / down / updown / downup / random, `mode` "sort" makes notes
   struck together take turns. Chords: `rosaclef schema` lists them (`octave` = the note itself).
+- A channel may be a **layer** of another, `"layerOf": "lead"` (omit it for none): it also plays
+  every note written for `lead`, through its own instrument, arpeggiator, volume and mixer insert.
+  Use it to thicken a part without copying notes (e.g. an `additive` pad layered with a `granular`
+  string texture, a `soundfont` piano with an `fm` electric piano). A layer may have notes of its
+  own; a layer cannot be layered on. Deleting a channel means removing its layers' `layerOf`.
 - Time-signature changes go in `transport.meters`, sorted by bar (counted from 1):
   `"meters": [ { "bar": 9, "numerator": 3, "denominator": 4 }, { "bar": 17, "numerator": 7, "denominator": 8 } ]`.
   A bar lasts `4 × numerator / denominator` beats (3/4 → 3, 6/8 → 3, 7/8 → 3.5); bars before the
@@ -323,6 +328,10 @@ optional top-level `score` object says how it reads; it changes nothing that pla
 - Check your work: `rosaclef render` reports peak/RMS. A healthy master peaks around −1 to
   −0.3 dBFS with the limiter; an RMS far below −20 dBFS usually means something is too quiet.
 - Prefer editing parameters over adding effects; keep one `limiter` last on the master.
+- Pick each part's instrument from **Choosing an instrument** (in the catalog below), start from
+  one of its presets (`rosaclef presets NAME` prints the instrument JSON), then adjust params.
+  Every option value and parameter is documented in the catalog; layer two channels playing the
+  same notes for a bigger sound.
 
 ## Factory presets
 

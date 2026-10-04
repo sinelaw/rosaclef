@@ -176,9 +176,11 @@ fn imports_a_song() {
     let names: Vec<&str> = p.channels.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(names, ["Lead", "Kicker", "Hat Sample", "Pad", "Acid"]);
     let lead = &p.channels[0];
-    assert_eq!(lead.instrument.kind, "synth");
+    assert_eq!(lead.instrument.kind, "analog");
     assert_eq!(lead.instrument.option("wave1"), "saw");
-    assert_eq!(lead.instrument.option("wave2"), "square");
+    assert_eq!(lead.instrument.option("wave2"), "pulse");
+    assert_eq!(lead.instrument.option("filter"), "lowpass");
+    assert_eq!(lead.instrument.param("drift"), 0.0);
     assert_eq!(lead.instrument.param("osc2Semi"), -12.0);
     assert_eq!(lead.instrument.param("sustain"), 0.75);
     assert!((lead.instrument.param("attack") - 0.05).abs() < 1e-9);
@@ -196,11 +198,11 @@ fn imports_a_song() {
     assert!(hat.mute, "muted B&B tracks mute their channel");
     assert_eq!(hat.volume, 0.8);
     let pad = &p.channels[3];
-    assert_eq!(pad.instrument.kind, "synth");
+    assert_eq!(pad.instrument.kind, "analog");
     let acid = &p.channels[4];
     assert_eq!(
-        acid.instrument.kind, "cuivre",
-        "LB302 becomes the Cuivre virtual analog"
+        acid.instrument.kind, "analog",
+        "LB302 becomes the analog synth"
     );
     assert_eq!(acid.instrument.option("wave1"), "saw");
     assert_eq!(

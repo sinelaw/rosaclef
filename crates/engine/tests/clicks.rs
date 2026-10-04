@@ -1,9 +1,9 @@
 //! Click regressions: discontinuities found in the demo's stems.
 //!
-//! - Cuivre (the demo bass) stepped its output when a sounding mono voice was
+//! - Analog (the demo bass) stepped its output when a sounding mono voice was
 //!   retriggered at a new velocity: the velocity gain changed instantly,
 //!   mid-waveform.
-//! - Atelier drum hits started at full level on their first sample (and each
+//! - `drum` hits started at full level on their first sample (and each
 //!   clap burst re-attacked in one sample), and voices stopped dead at the
 //!   end of their length.
 
@@ -60,8 +60,10 @@ fn quantile(mut v: Vec<f32>, q: f32) -> f32 {
 }
 
 #[test]
-fn cuivre_mono_retrigger_at_a_new_velocity_is_smooth() {
-    let dev = presets::find("Bronze Souverain").expect("preset").device();
+fn analog_mono_retrigger_at_a_new_velocity_is_smooth() {
+    let dev = presets::find("Sovereign Bronze Bass")
+        .expect("preset")
+        .device();
     // Loud and soft notes alternating, each starting while the last still sounds
     // (the demo's bass line: roots, octave ghosts, approach notes).
     let mut events = vec![];

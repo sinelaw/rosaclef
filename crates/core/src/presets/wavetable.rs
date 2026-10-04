@@ -1,11 +1,11 @@
-//! Factory presets for the `tessera` engine.
+//! Factory presets for the `wavetable` engine.
 
 use super::Preset;
 
 pub const PRESETS: &[Preset] = &[
     Preset {
-        name: "Rugissement d'Onyx",
-        kind: "tessera",
+        name: "Onyx Growl Bass",
+        kind: "wavetable",
         tags: "bass, aggressive, growl",
         doc: "Heavy growl bass: FM wavetable swept by LFO and envelope, bent, driven hard over a clean sine sub.",
         params: &[
@@ -32,8 +32,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[("table", "growl"), ("warp", "bend")],
     },
     Preset {
-        name: "Aurore Boréale",
-        kind: "tessera",
+        name: "Aurora Supersaw Lead",
+        kind: "wavetable",
         tags: "lead, wide, supersaw",
         doc: "Wide supersaw lead: seven detuned saws spread across the stereo field.",
         params: &[
@@ -52,8 +52,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[],
     },
     Preset {
-        name: "Voile Céleste",
-        kind: "tessera",
+        name: "Celestial Veil Pad",
+        kind: "wavetable",
         tags: "pad, ethereal, evolving",
         doc: "Ethereal pad: glassy partials drifting slowly along the table, mirrored and spread wide.",
         params: &[
@@ -74,8 +74,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[("table", "glass"), ("warp", "mirror")],
     },
     Preset {
-        name: "Éclat de Quartz",
-        kind: "tessera",
+        name: "Quartz Shard Pluck",
+        kind: "wavetable",
         tags: "pluck, crisp, bright",
         doc: "Crisp pluck: sparse digital harmonic combs snapping shut under a fast filter envelope.",
         params: &[
@@ -94,8 +94,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[("table", "digital")],
     },
     Preset {
-        name: "Chœur de Saphir",
-        kind: "tessera",
+        name: "Sapphire Vowel Pad",
+        kind: "wavetable",
         tags: "vocal, texture, pad",
         doc: "Formant texture: a slow LFO walks the vowels while three voices breathe around each other.",
         params: &[
@@ -112,8 +112,8 @@ pub const PRESETS: &[Preset] = &[
         options: &[("table", "vocal")],
     },
     Preset {
-        name: "Velours d'Ambre",
-        kind: "tessera",
+        name: "Amber Velvet Poly",
+        kind: "wavetable",
         tags: "poly, warm, analog",
         doc: "Warm analog-style poly: saw-to-square blend, gentle filter envelope and a touch of drive.",
         params: &[

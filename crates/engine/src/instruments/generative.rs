@@ -1,4 +1,4 @@
-//! "Dédale": generative sequencer instrument.
+//! Clockwork Arpeggios (`generative`): generative sequencer instrument.
 //!
 //! Each held key (up to four) runs its own tempo-synced phrase: a euclidean
 //! rhythm of `pulses` over `steps`, and a random walk over a scale rooted at
@@ -51,45 +51,6 @@ fn degree_to_semis(sc: &[i32], deg: i32) -> i32 {
 fn euclid(step: usize, steps: usize, pulses: usize) -> bool {
     let pulses = pulses.min(steps);
     (step * pulses) % steps < pulses
-}
-
-#[inline]
-fn blep(t: f32, dt: f32) -> f32 {
-    if t < dt {
-        let t = t / dt;
-        t + t - t * t - 1.0
-    } else if t > 1.0 - dt {
-        let t = (t - 1.0) / dt;
-        t * t + t + t + 1.0
-    } else {
-        0.0
-    }
-}
-
-#[inline]
-fn saw(ph: f32, dt: f32) -> f32 {
-    2.0 * ph - 1.0 - blep(ph, dt)
-}
-
-#[inline]
-fn wrap(ph: &mut f32, dt: f32) {
-    *ph += dt;
-    if *ph >= 1.0 {
-        *ph -= 1.0;
-    }
-}
-
-/// Fast sine for a phase in [0, 1) (parabolic approximation with correction).
-#[inline]
-fn fsin(ph: f32) -> f32 {
-    // Wrap to [0, 1) without `floor` (a libm call on baseline x86-64).
-    let mut x = ph - (ph as i32) as f32;
-    if x < 0.0 {
-        x += 1.0;
-    }
-    let t = 2.0 * x - 1.0; // -1..1, sin(pi*t) = -sin(2*pi*x)
-    let y = 4.0 * t * (1.0 - t.abs());
-    -(y * (0.775 + 0.225 * y.abs()))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -334,7 +295,7 @@ impl Voice {
     }
 }
 
-pub struct Dedale {
+pub struct Generative {
     sr: f32,
     bpm: f32,
     p: Params,
@@ -345,9 +306,9 @@ pub struct Dedale {
     step_inc: f64,
 }
 
-impl Dedale {
-    pub fn new(sr: f32) -> Dedale {
-        let mut d = Dedale {
+impl Generative {
+    pub fn new(sr: f32) -> Generative {
+        let mut d = Generative {
             sr,
             bpm: 120.0,
             p: Params {
@@ -472,7 +433,7 @@ impl Dedale {
     }
 }
 
-impl Instrument for Dedale {
+impl Instrument for Generative {
     fn set_device(&mut self, d: &Device, ctx: &Ctx) {
         let f = |k: &str| d.param(k) as f32;
         let steps = (f("steps").round() as usize).clamp(2, MAX_STEPS);
@@ -623,9 +584,9 @@ impl Instrument for Dedale {
                                 v.svf.set(fc.min(18000.0), 0.15 + 0.2 * tone, sr);
                             }
                             let dt2 = dt * 1.0035;
-                            let x = saw(v.ph[0], dt) + 0.6 * saw(v.ph[1], dt2);
-                            wrap(&mut v.ph[0], dt);
-                            wrap(&mut v.ph[1], dt2);
+                            let x = blep_saw(v.ph[0], dt) + 0.6 * blep_saw(v.ph[1], dt2);
+                            advance(&mut v.ph[0], dt);
+                            advance(&mut v.ph[1], dt2);
                             v.svf.process(x, FilterMode::Lowpass) * 0.7
                         }
                         Sound::Bell => {
@@ -634,9 +595,9 @@ impl Instrument for Dedale {
                             let c = fsin(v.ph[0] + index * m * 0.159);
                             // A soft upper partial for shimmer.
                             let h = fsin(v.ph[2]) * 0.18 * v.fenv;
-                            wrap(&mut v.ph[0], dt);
-                            wrap(&mut v.ph[1], (dt * 3.5).min(0.49));
-                            wrap(&mut v.ph[2], (dt * 5.4).min(0.49));
+                            advance(&mut v.ph[0], dt);
+                            advance(&mut v.ph[1], (dt * 3.5).min(0.49));
+                            advance(&mut v.ph[2], (dt * 5.4).min(0.49));
                             (c + h) * 0.75
                         }
                         Sound::Bass => {
@@ -644,8 +605,8 @@ impl Instrument for Dedale {
                                 let fc = f * (1.5 + 5.0 * tone) * (1.0 + 3.0 * v.fenv) + 60.0;
                                 v.svf.set(fc.min(12000.0), 0.3, sr);
                             }
-                            let x = saw(v.ph[0], dt) * 0.7 + fsin(v.ph[1]) * 0.9;
-                            wrap(&mut v.ph[0], dt);
+                            let x = blep_saw(v.ph[0], dt) * 0.7 + fsin(v.ph[1]) * 0.9;
+                            advance(&mut v.ph[0], dt);
                             v.ph[1] = v.ph[0];
                             v.svf.process(x, FilterMode::Lowpass) * 1.35
                         }
@@ -670,9 +631,9 @@ impl Instrument for Dedale {
                             } else {
                                 0.0
                             };
-                            wrap(&mut v.ph[0], (dt * 1.47).min(0.49));
-                            wrap(&mut v.ph[1], (dt * 2.13).min(0.49));
-                            wrap(&mut v.ph[2], (dt * 3.31).min(0.49));
+                            advance(&mut v.ph[0], (dt * 1.47).min(0.49));
+                            advance(&mut v.ph[1], (dt * 2.13).min(0.49));
+                            advance(&mut v.ph[2], (dt * 3.31).min(0.49));
                             body + click + m
                         }
                     };

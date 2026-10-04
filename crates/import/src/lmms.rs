@@ -30,22 +30,23 @@
 //! | track effects | prepended to the track's FX channel when it is the only user, else a new insert |
 //! | arpeggiator | the channel's `arp` (the notes stay as written) |
 //! | chord stacking | written out as notes |
-//! | TripleOscillator | `synth` (Aurum) |
+//! | TripleOscillator | `analog` (clean: no drift or drive, filter from the track's) |
 //! | Kicker | `drum` kick |
-//! | AudioFileProcessor | `sampler` (Vault); DrumSynth `.ds` patches become `drum` voices |
-//! | LB302 | `cuivre` acid bass (ladder / screamer filter, mono, legato glide) |
-//! | Sf2 Player | `soundfont` (Orchestre) playing the same General MIDI patch |
-//! | OpulenZ (OPL2) | `fm` (Lumière) |
-//! | NES, BitInvader | `synth` with the nearest waveforms |
+//! | AudioFileProcessor | `sampler` (Vault Sampler); DrumSynth `.ds` patches become `drum` voices |
+//! | LB302 | `analog` acid bass (ladder / screamer filter, mono, legato glide) |
+//! | Sf2 Player | `soundfont` (Grand Orchestra) playing the same General MIDI patch |
+//! | OpulenZ (OPL2) | `fm` with the two-operator `duo` algorithm |
+//! | Mallets | `fm` "Crystal Mallet" |
+//! | NES, BitInvader | `analog` with the nearest waveforms |
 //! | LADSPA / LV2 effects | the built-in effect of the same family (reverb, delay, chorus, ...) |
-//! | other instruments | `synth` fallback, with a warning |
+//! | other instruments | `analog` fallback, with a warning |
 //!
 //! Instrument parameter automation, per-clip mutes, sends between FX
 //! channels and unsupported plugins are skipped with a warning.
 
 use crate::{
-    beats, clamp, color, ensure_valid, has_instrument, pad_tracks, set_option, set_param, Ids,
-    Imported, SampleCopy, Warnings, MAX_INSERTS,
+    beats, clamp, clean_va, color, ensure_valid, has_instrument, pad_tracks, set_option, set_param,
+    va_gain, Ids, Imported, SampleCopy, Warnings, MAX_INSERTS,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use rosaclef_core::automation::AutomationTarget;
@@ -352,7 +353,7 @@ fn generic_effect(label: &str, wet: f64, ports: &HashMap<u32, f64>) -> Option<(V
     } else if has(&["flang", "chorus", "ensemble", "vibrato"]) {
         d = Device::new("chorus");
         if l.contains("calf") && has(&["chorus", "flanger"]) {
-            // Calf keeps `dry` and adds `amount` of the effect; Chœur
+            // Calf keeps `dry` and adds `amount` of the effect; the chorus
             // outputs (dry · (1 − mix/2) + wet · mix/2) · (1 + mix/5).
             let (amount, dry) = (wet * port(11, 1.0), port(12, 1.0));
             let ratio = amount / dry.max(1e-3);
@@ -402,7 +403,7 @@ fn generic_effect(label: &str, wet: f64, ports: &HashMap<u32, f64>) -> Option<(V
     Some((before, gain))
 }
 
-/// Which Atelier drum a DrumSynth patch is, judged by its file name.
+/// Which `drum` voice a DrumSynth patch is, judged by its file name.
 fn drumsynth_kind(path: &str) -> Option<&'static str> {
     let name = Path::new(path)
         .file_stem()
@@ -436,7 +437,7 @@ fn drumsynth_kind(path: &str) -> Option<&'static str> {
     )
 }
 
-/// Atelier decay and gain that match LMMS's factory DrumSynth patches of
+/// `drum` decay and gain that match LMMS's factory DrumSynth patches of
 /// a kind (medians over the 345 tr606/tr808/tr909/... patches whose
 /// kind the file name tells, rendered by LMMS 1.2.2 and Rosaclef).
 fn drumsynth_level(kind: &str) -> (f64, f64) {
@@ -481,6 +482,55 @@ fn base64(s: &str) -> Option<Vec<u8>> {
         }
     }
     Some(out)
+}
+
+/// The fm synth's `duo` gain that matches the level of the measured two-operator
+/// LMMS calibration (`duo` is about 7 dB louder at the same gain).
+const TWO_OP_GAIN: f64 = 0.43;
+
+/// A two-operator FM patch: modulator ratio, modulation index (radians),
+/// how fast the index decays, feedback (0..1) and the carrier envelope.
+struct TwoOp {
+    ratio: f64,
+    index: f64,
+    index_decay: f64,
+    feedback: f64,
+    attack: f64,
+    decay: f64,
+    sustain: f64,
+    release: f64,
+}
+
+/// The fm synth playing a two-operator patch with its `duo` algorithm: operator 6
+/// modulates carriers 1 and 2 (index = 20 × level²); its envelope decays to
+/// 12 % of the index.
+fn two_op_fm(p: TwoOp) -> Device {
+    let mut d = Device::new("fm");
+    set_option(&mut d, "algorithm", "duo");
+    let level = (p.index / 20.0).clamp(0.0, 1.0).sqrt();
+    for (k, v) in [
+        ("op1Ratio", 1.0),
+        ("op2Ratio", 1.0),
+        ("op6Ratio", p.ratio),
+        ("op1Level", 1.0),
+        ("op2Level", 1.0),
+        ("op6Level", level),
+        ("op1Attack", p.attack),
+        ("op1Decay", p.decay),
+        ("op1Sustain", p.sustain),
+        ("op2Attack", p.attack),
+        ("op2Decay", p.decay),
+        ("op2Sustain", p.sustain),
+        ("op6Attack", 0.001),
+        ("op6Decay", p.index_decay),
+        ("op6Sustain", 0.12),
+        ("release", p.release),
+        ("feedback", p.feedback),
+        ("detune", 0.0),
+    ] {
+        set_param(&mut d, k, v);
+    }
+    d
 }
 
 /// The basic waveform closest to a drawn single-cycle wave (best
@@ -1099,6 +1149,7 @@ impl<'o> Importer<'o> {
             mute: flag(track, "muted"),
             mixer,
             arp,
+            layer_of: None,
         });
         Some(ChannelInfo {
             id,
@@ -1195,7 +1246,7 @@ impl<'o> Importer<'o> {
         let get = |k: &str, d: f64| settings.map(|s| num_or(s, k, d)).unwrap_or(d);
         match kind {
             "tripleoscillator" => {
-                let mut d = Device::new("synth");
+                let mut d = clean_va();
                 let osc: Vec<(usize, f64, f64, f64, f64)> = (0..3)
                     .map(|i| {
                         let fine =
@@ -1213,7 +1264,7 @@ impl<'o> Importer<'o> {
                 let wave = |w: f64| match w as i32 {
                     0 => "sine",
                     1 | 5 => "triangle",
-                    3 => "square",
+                    3 => "pulse",
                     6 => "noise",
                     _ => "saw",
                 };
@@ -1236,16 +1287,17 @@ impl<'o> Importer<'o> {
                     if let Some(c) = osc.get(2) {
                         if (c.3 - (a.3 - 12.0)).abs() < 0.5 {
                             set_param(&mut d, "sub", c.1 / a.1.max(1.0));
+                            if wave(c.2) != "sine" {
+                                set_option(&mut d, "subWave", "square");
+                            }
                         } else {
-                            self.warn.add(format!("track \"{track}\": TripleOscillator's third oscillator was dropped (Aurum has two plus a sub)"));
+                            self.warn.add(format!("track \"{track}\": TripleOscillator's third oscillator was dropped (the analog synth has two plus a sub)"));
                         }
                     }
-                    // TripleOscillator sums its oscillators (100% = full
-                    // scale); Aurum outputs (osc 1 + osc 2 + sub) × gain / 2.
+                    // TripleOscillator sums its oscillators (100% = full scale).
                     let total: f64 = osc.iter().map(|o| o.1).sum();
-                    let mix2 = d.param("osc2Mix");
-                    let sum = 1.0 - mix2 * 0.5 + mix2 + d.param("sub");
-                    self.level(&mut d, 2.0 * (total / 100.0) / sum.max(0.1));
+                    let gain = va_gain(&d, total / 100.0);
+                    self.level(&mut d, gain);
                 } else {
                     set_param(&mut d, "gain", 0.0);
                 }
@@ -1272,10 +1324,10 @@ impl<'o> Importer<'o> {
                 set_param(&mut d, "decay", get("decay", 440.0) / 440.0);
                 set_param(&mut d, "snap", get("click", 0.4));
                 set_param(&mut d, "drive", get("dist", 0.8) / 10.0);
-                // Measured against LMMS renders: Atelier at 1.2 × Kicker's gain.
+                // Measured against LMMS renders: `drum` at 1.2 × Kicker's gain.
                 self.level(&mut d, 1.2 * get("gain", 1.0));
                 self.warn.add(format!(
-                    "track \"{track}\": Kicker was approximated by the Atelier drum"
+                    "track \"{track}\": Kicker was approximated by the Ebony Drum Machine"
                 ));
                 let follows = get("startnote", 1.0) != 0.0 || get("endnote", 0.0) != 0.0;
                 (
@@ -1294,7 +1346,7 @@ impl<'o> Importer<'o> {
                     .unwrap_or(false) =>
             {
                 // A DrumSynth patch is synthesized by LMMS, not an audio
-                // file: play the Atelier drum it is closest to.
+                // file: play the `drum` voice it is closest to.
                 let src = settings.map(|s| text(s, "src")).unwrap_or("");
                 let mut d = Device::new("drum");
                 let kind = drumsynth_kind(src);
@@ -1303,7 +1355,7 @@ impl<'o> Importer<'o> {
                 set_param(&mut d, "decay", decay);
                 self.level(&mut d, gain * get("amp", 100.0) / 100.0);
                 self.warn.add(format!(
-                    "track \"{track}\": DrumSynth patch \"{src}\" was approximated by the Atelier {} drum",
+                    "track \"{track}\": DrumSynth patch \"{src}\" was approximated by the Ebony Drum Machine {}",
                     kind.unwrap_or("tom")
                 ));
                 (d, PitchMode::Relative, 0)
@@ -1342,14 +1394,14 @@ impl<'o> Importer<'o> {
                 (d, PitchMode::Normal, 0)
             }
             "lb302" => {
-                // Cuivre (virtual analog) from its acid preset: one oscillator
+                // The analog synth from its acid preset: one oscillator
                 // into the 4-pole ladder (24 dB, `db24`) or the 2-pole
                 // screamer (12 dB), a snappy filter envelope, monophonic, and
                 // legato glide when LB302's slide is on.
-                let mut d = rosaclef_core::presets::find("Acide Émeraude")
-                    .filter(|p| p.kind == "cuivre")
+                let mut d = rosaclef_core::presets::find("Emerald Acid Bass")
+                    .filter(|p| p.kind == "analog")
                     .map(|p| p.device())
-                    .unwrap_or_else(|| Device::new("cuivre"));
+                    .unwrap_or_else(|| Device::new("analog"));
                 // LB302 shapes: 0 saw, 1 triangle, 2 square, 3 round square,
                 // 4 moog, 5 sine, 6 exponential, 7 noise, 8-11 band-limited
                 // saw / square / triangle / moog.
@@ -1363,10 +1415,10 @@ impl<'o> Importer<'o> {
                 if shape == 7 {
                     set_param(&mut d, "noise", 1.0);
                     self.warn.add(format!(
-                        "track \"{track}\": LB302's noise shape became Cuivre's noise over a saw"
+                        "track \"{track}\": LB302's noise shape became the analog synth's noise over a saw"
                     ));
                 }
-                set_param(&mut d, "mix2", 0.0);
+                set_param(&mut d, "osc2Mix", 0.0);
                 set_param(&mut d, "sub", 0.0);
                 set_option(
                     &mut d,
@@ -1401,7 +1453,7 @@ impl<'o> Importer<'o> {
                 );
                 set_param(&mut d, "gain", 0.6);
                 self.warn.add(format!(
-                    "track \"{track}\": LB302 was approximated by Cuivre"
+                    "track \"{track}\": LB302 was approximated by Bronze Bass (analog)"
                 ));
                 (d, PitchMode::Normal, 0)
             }
@@ -1411,7 +1463,7 @@ impl<'o> Importer<'o> {
                     .map(|p| p.device())
                     .unwrap_or_else(|| Device::new("fm"));
                 self.warn.add(format!(
-                    "track \"{track}\": Mallets was approximated by Lumière (fm)"
+                    "track \"{track}\": Mallets was approximated by Silver Keys (fm)"
                 ));
                 (d, PitchMode::Normal, 0)
             }
@@ -1444,21 +1496,16 @@ impl<'o> Importer<'o> {
             "OPL2" | "opl2" | "opulenz" => {
                 // Two-operator FM: operator 1 modulates operator 2 (or both
                 // sound, in additive mode). Levels count up to 63.
-                let mut d = Device::new("fm");
                 const MUL: [f64; 16] = [
                     0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 10.0, 12.0, 12.0, 15.0,
                     15.0,
                 ];
                 let mul = |k: &str| MUL[get(k, 1.0).clamp(0.0, 15.0) as usize];
-                set_param(&mut d, "ratio", mul("op1_mul") / mul("op2_mul"));
-                let depth = if get("fm", 1.0) != 0.0 {
+                let index = if get("fm", 1.0) != 0.0 {
                     6.0 * get("op1_lvl", 40.0) / 63.0
                 } else {
                     0.0
                 };
-                set_param(&mut d, "index", depth);
-                set_param(&mut d, "feedback", get("feedback", 0.0) / 7.0);
-                set_param(&mut d, "detune", 0.0);
                 // Envelope knobs count down the chip's rates (0 fastest);
                 // sustain counts up from -45 dB in 3 dB steps. A rate r
                 // decays 96 dB in about 39 s / 2^(r-1); Rosaclef times are
@@ -1476,30 +1523,31 @@ impl<'o> Importer<'o> {
                     r if r < 1.0 => 8.0,
                     r => 2.826 / 2f64.powf(r - 1.0),
                 };
-                set_param(&mut d, "attack", attack);
-                set_param(&mut d, "decay", fall(rate("op2_d", 14.0)));
-                set_param(
-                    &mut d,
-                    "sustain",
-                    10f64.powf(-3.0 * (15.0 - get("op2_s", 3.0)) / 20.0),
-                );
-                set_param(&mut d, "release", 0.75 * fall(rate("op2_r", 10.0)));
-                set_param(&mut d, "indexDecay", fall(rate("op1_d", 14.0)));
+                let mut d = two_op_fm(TwoOp {
+                    ratio: mul("op1_mul") / mul("op2_mul"),
+                    index,
+                    index_decay: fall(rate("op1_d", 14.0)),
+                    feedback: get("feedback", 0.0) / 7.0,
+                    attack,
+                    decay: fall(rate("op2_d", 14.0)),
+                    sustain: 10f64.powf(-3.0 * (15.0 - get("op2_s", 3.0)) / 20.0),
+                    release: 0.75 * fall(rate("op2_r", 10.0)),
+                });
                 // Measured against LMMS: a full-level carrier peaks at
                 // about -26 dBFS; levels are 0.75 dB steps.
                 let carrier = 10f64.powf(-(63.0 - get("op2_lvl", 63.0)) * 0.75 / 20.0);
-                self.level(&mut d, 0.17 * carrier);
+                self.level(&mut d, TWO_OP_GAIN * 0.17 * carrier);
                 self.warn.add(format!(
-                    "track \"{track}\": OpulenZ (OPL2) was approximated by Lumière (fm)"
+                    "track \"{track}\": OpulenZ (OPL2) was approximated by Silver Keys (fm, two-operator duo)"
                 ));
                 (d, PitchMode::Normal, 0)
             }
             "nes" => {
                 // Two pulse channels, a triangle and noise: the first two
-                // enabled become Aurum's oscillators.
-                let mut d = Device::new("synth");
+                // enabled become the analog synth's oscillators.
+                let mut d = clean_va();
                 let voices: Vec<(&str, f64, f64)> =
-                    [(1, "square"), (2, "square"), (3, "triangle"), (4, "noise")]
+                    [(1, "pulse"), (2, "pulse"), (3, "triangle"), (4, "noise")]
                         .into_iter()
                         .filter(|(i, _)| get(&format!("on{i}"), 0.0) != 0.0)
                         .map(|(i, w)| {
@@ -1524,19 +1572,21 @@ impl<'o> Importer<'o> {
                             }
                             None => set_param(&mut d, "osc2Mix", 0.0),
                         }
+                        let gain = va_gain(&d, 0.3 * (1.0 + 0.5 * d.param("osc2Mix")));
+                        set_param(&mut d, "gain", gain);
                     }
                     None => set_param(&mut d, "gain", 0.0),
                 }
                 self.envelope(it, &mut d);
                 self.warn.add(format!(
-                    "track \"{track}\": the NES synth was approximated by Aurum (synth); sweeps and vibrato were dropped"
+                    "track \"{track}\": the NES synth was approximated by Bronze Bass (analog); sweeps and vibrato were dropped"
                 ));
                 (d, PitchMode::Normal, transpose)
             }
             "bitinvader" => {
                 // A drawn single-cycle wave (base64 floats): use the basic
                 // waveform it resembles most.
-                let mut d = Device::new("synth");
+                let mut d = clean_va();
                 let len = get("sampleLength", 128.0).max(0.0) as usize;
                 let shape: Option<Vec<f64>> = settings
                     .and_then(|s| base64(text(s, "sampleShape")))
@@ -1554,18 +1604,25 @@ impl<'o> Importer<'o> {
                     }
                     _ => "saw",
                 };
-                set_option(&mut d, "wave1", wave);
+                set_option(
+                    &mut d,
+                    "wave1",
+                    if wave == "square" { "pulse" } else { wave },
+                );
                 set_param(&mut d, "osc2Mix", 0.0);
                 // Measured against LMMS: BitInvader peaks near -6 dBFS.
-                self.level(&mut d, 0.9);
+                let gain = va_gain(&d, 0.45);
+                self.level(&mut d, gain);
                 self.envelope(it, &mut d);
                 self.warn.add(format!(
-                    "track \"{track}\": BitInvader's drawn waveform was approximated by a {wave} wave in Aurum (synth)"
+                    "track \"{track}\": BitInvader's drawn waveform was approximated by a {wave} wave in Bronze Bass (analog)"
                 ));
                 (d, PitchMode::Normal, 0)
             }
             other => {
-                let mut d = Device::new("synth");
+                let mut d = clean_va();
+                let gain = va_gain(&d, 0.375);
+                set_param(&mut d, "gain", gain);
                 self.envelope(it, &mut d);
                 let what = if other.is_empty() {
                     "an empty instrument".to_string()
@@ -1573,7 +1630,7 @@ impl<'o> Importer<'o> {
                     format!("instrument \"{other}\"")
                 };
                 self.warn.add(format!(
-                    "track \"{track}\": {what} is not supported; replaced by Aurum (synth)"
+                    "track \"{track}\": {what} is not supported; replaced by Bronze Bass (analog)"
                 ));
                 (d, PitchMode::Normal, 0)
             }

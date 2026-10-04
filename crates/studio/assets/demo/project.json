@@ -117,7 +117,7 @@
       "name": "Bronze Bass",
       "color": "#8e3b46",
       "instrument": {
-        "type": "cuivre",
+        "type": "analog",
         "params": {
           "attack": 0.002,
           "cutoff": 240,
@@ -130,7 +130,7 @@
           "gain": 0.8,
           "glide": 0.035,
           "keyTrack": 0.3,
-          "mix2": 0.6,
+          "osc2Mix": 0.6,
           "osc2Detune": -9,
           "pulseWidth": 0.42,
           "release": 0.08,
@@ -150,7 +150,7 @@
       "name": "Opaline Keys",
       "color": "#d4af37",
       "instrument": {
-        "type": "sextant",
+        "type": "fm",
         "params": {
           "detune": 5,
           "gain": 0.7,
@@ -185,10 +185,10 @@
     },
     {
       "id": "pad",
-      "name": "Opaline Veil",
+      "name": "Opaline Veil Pad",
       "color": "#8a6bb0",
       "instrument": {
-        "type": "prisme",
+        "type": "additive",
         "params": {
           "attack": 1.2,
           "brightness": 0.45,
@@ -215,10 +215,10 @@
     },
     {
       "id": "choir",
-      "name": "Voile de Chœur",
+      "name": "Veiled Choir",
       "color": "#8a6bb0",
       "instrument": {
-        "type": "nebula",
+        "type": "granular",
         "params": {
           "attack": 1.2,
           "density": 30,
@@ -226,8 +226,8 @@
           "grainSize": 0.25,
           "release": 4,
           "spray": 0.4,
-          "spread": 0.9,
-          "tone": 6000
+          "width": 0.9,
+          "cutoff": 6000
         },
         "options": { "source": "choir" }
       },
@@ -238,10 +238,10 @@
     },
     {
       "id": "dawn",
-      "name": "Aurore Spectrale",
+      "name": "Spectral Dawn Pad",
       "color": "#8a6bb0",
       "instrument": {
-        "type": "prisme",
+        "type": "additive",
         "params": {
           "attack": 1.5,
           "brightness": 0.75,
@@ -269,10 +269,10 @@
     },
     {
       "id": "bowls",
-      "name": "Grotte aux Bols",
+      "name": "Singing Bowl Grotto",
       "color": "#5a4e5e",
       "instrument": {
-        "type": "nebula",
+        "type": "granular",
         "params": {
           "attack": 0.6,
           "density": 14,
@@ -281,8 +281,8 @@
           "position": 0.15,
           "release": 5,
           "spray": 0.35,
-          "spread": 0.9,
-          "tone": 7000
+          "width": 0.9,
+          "cutoff": 7000
         },
         "options": { "source": "bowl" }
       },
@@ -293,10 +293,10 @@
     },
     {
       "id": "harp",
-      "name": "Harpe de Saphir",
+      "name": "Sapphire Harp",
       "color": "#4a6fa5",
       "instrument": {
-        "type": "prisme",
+        "type": "additive",
         "params": {
           "attack": 0.0015,
           "brightness": 0.6,
@@ -323,10 +323,10 @@
     },
     {
       "id": "strings",
-      "name": "Soie Vagabonde",
+      "name": "Wandering Silk Strings",
       "color": "#c97b84",
       "instrument": {
-        "type": "cuivre",
+        "type": "analog",
         "params": {
           "attack": 0.55,
           "cutoff": 1900,
@@ -339,7 +339,7 @@
           "filterSustain": 0.6,
           "gain": 0.5,
           "keyTrack": 0.7,
-          "mix2": 0.8,
+          "osc2Mix": 0.8,
           "osc2Detune": 13,
           "release": 1.6,
           "resonance": 0.12,
@@ -355,10 +355,10 @@
     },
     {
       "id": "air",
-      "name": "Souffle d'Opale",
+      "name": "Opal Breath Texture",
       "color": "#3f8f7a",
       "instrument": {
-        "type": "nebula",
+        "type": "granular",
         "params": {
           "attack": 1.5,
           "density": 36,
@@ -368,8 +368,8 @@
           "position": 0.5,
           "release": 3,
           "spray": 0.6,
-          "spread": 1,
-          "tone": 8000
+          "width": 1,
+          "cutoff": 8000
         },
         "options": { "source": "air" }
       },
@@ -380,10 +380,10 @@
     },
     {
       "id": "embers",
-      "name": "Cendres d'Ambre",
+      "name": "Amber Ember Drone",
       "color": "#d98c5f",
       "instrument": {
-        "type": "nebula",
+        "type": "granular",
         "params": {
           "attack": 0.03,
           "density": 24,
@@ -394,7 +394,7 @@
           "release": 3,
           "reverse": 0.2,
           "spray": 0.3,
-          "tone": 3500
+          "cutoff": 3500
         },
         "options": { "source": "ember" }
       },
@@ -405,10 +405,10 @@
     },
     {
       "id": "stardust",
-      "name": "Poussière d'Astres",
+      "name": "Stardust Shimmer Pad",
       "color": "#d9d4e8",
       "instrument": {
-        "type": "nebula",
+        "type": "granular",
         "params": {
           "attack": 0.8,
           "density": 70,
@@ -419,8 +419,8 @@
           "reverse": 0.5,
           "scatter": 0.2,
           "spray": 0.8,
-          "spread": 1,
-          "tone": 14000
+          "width": 1,
+          "cutoff": 14000
         },
         "options": { "source": "bowl" }
       },
@@ -431,10 +431,10 @@
     },
     {
       "id": "crypt",
-      "name": "Crypte de Grenat",
+      "name": "Garnet Crypt Sequence",
       "color": "#5a4e5e",
       "instrument": {
-        "type": "dedale",
+        "type": "generative",
         "params": { "accent": 0.5, "decay": 0.45, "gate": 0.6, "range": 1.2, "seed": 13, "steps": 12, "tone": 0.25 },
         "options": { "scale": "phrygian" }
       },
@@ -445,10 +445,10 @@
     },
     {
       "id": "pearls",
-      "name": "Pluie de Perles",
+      "name": "Pearl Rain Bells",
       "color": "#6fa3a0",
       "instrument": {
-        "type": "dedale",
+        "type": "generative",
         "params": {
           "accent": 0.3,
           "decay": 1.4,
@@ -469,10 +469,10 @@
     },
     {
       "id": "sparkle",
-      "name": "Étincelles de Diamant",
+      "name": "Diamond Sparkle Bells",
       "color": "#d9d4e8",
       "instrument": {
-        "type": "dedale",
+        "type": "generative",
         "params": {
           "accent": 0.3,
           "decay": 0.5,
@@ -494,10 +494,10 @@
     },
     {
       "id": "bell",
-      "name": "Cathédrale d'Argent",
+      "name": "Silver Cathedral Bell",
       "color": "#e8d5b0",
       "instrument": {
-        "type": "sextant",
+        "type": "fm",
         "params": {
           "detune": 2,
           "feedback": 0.2,
@@ -537,10 +537,10 @@
     },
     {
       "id": "ascent",
-      "name": "Voie Lactée",
+      "name": "Milky Way Riser",
       "color": "#e8d5b0",
       "instrument": {
-        "type": "comete",
+        "type": "transition",
         "params": { "drive": 0.25, "intensity": 0.85, "length": 16, "noise": 0.5, "pitch": 36, "space": 0.65 },
         "options": {}
       },
@@ -551,9 +551,9 @@
     },
     {
       "id": "riser",
-      "name": "Ascension d'Or",
+      "name": "Golden Ascent Riser",
       "color": "#e8d5b0",
-      "instrument": { "type": "comete", "params": { "intensity": 0.7, "noise": 0.55, "tone": 0.6 }, "options": {} },
+      "instrument": { "type": "transition", "params": { "intensity": 0.7, "noise": 0.55, "tone": 0.6 }, "options": {} },
       "volume": 0.32,
       "pan": 0,
       "mute": false,
@@ -561,10 +561,10 @@
     },
     {
       "id": "impact",
-      "name": "Météore",
+      "name": "Basalt Meteor Impact",
       "color": "#b08d57",
       "instrument": {
-        "type": "comete",
+        "type": "transition",
         "params": { "drive": 0.35, "intensity": 0.8, "noise": 0.5, "space": 0.7, "tone": 0.4 },
         "options": { "kind": "impact" }
       },
@@ -575,10 +575,10 @@
     },
     {
       "id": "subdrop",
-      "name": "Abîme d'Encre",
+      "name": "Ink Abyss Sub Drop",
       "color": "#5a4e5e",
       "instrument": {
-        "type": "comete",
+        "type": "transition",
         "params": { "drive": 0.3, "length": 4, "noise": 0.1, "space": 0.2, "tone": 0.3 },
         "options": { "kind": "subdrop" }
       },
@@ -589,10 +589,10 @@
     },
     {
       "id": "fall",
-      "name": "Déclin de Lune",
+      "name": "Moonfall Downlifter",
       "color": "#e8d5b0",
       "instrument": {
-        "type": "comete",
+        "type": "transition",
         "params": { "length": 4, "noise": 0.7, "space": 0.6 },
         "options": { "kind": "downlifter" }
       },

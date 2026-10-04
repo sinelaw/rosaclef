@@ -68,7 +68,7 @@ export const voice = {
   kinds /*: String[] */: [],
   /** "auto" (the selected channel if melodic, else a new one), "new" or a channel id. */
   melodyChannel: "auto",
-  /** Per drum: a channel id, "" = the first matching Atelier channel (or a new one). */
+  /** Per drum: a channel id, "" = the first matching drum machine channel (or a new one). */
   drumChannels /*: KS[] */: [
     { key: "kick", value: "" },
     { key: "tom", value: "" },
@@ -339,7 +339,7 @@ function channelExists(id) {
   return state.project.channels.some((c) => c.id === id);
 }
 
-/** An Atelier channel playing `kind` (a snare also takes a clap, a hat a shaker). */
+/** A drum machine channel playing `kind` (a snare also takes a clap, a hat a shaker). */
 /** function drumChannel(kind: String) => String */
 function drumChannel(kind) {
   const also = kind === "snare" ? "clap" : kind === "hat" ? "shaker" : kind;
@@ -414,7 +414,7 @@ function drumName(kind) {
 function laneChannel(lane) {
   const id = existingLaneChannel(lane);
   if (id !== "") return id;
-  if (lane === "melody") return pushChannel("synth", "Voice", (d) => undefined);
+  if (lane === "melody") return pushChannel("analog", "Voice", (d) => undefined);
   return pushChannel("drum", drumName(lane), (d) => setOption(d, "kind", lane));
 }
 
@@ -445,9 +445,9 @@ function previewJson(r) {
     let id = existingLaneChannel(lane);
     if (id === "") {
       id = `${PREVIEW}-${lane}`;
-      const dev = newDevice(drums ? "drum" : "synth");
+      const dev = newDevice(drums ? "drum" : "analog");
       if (drums) setOption(dev, "kind", lane);
-      p.channels.push({ id: id, name: id, color: "#d4af37", instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(0), arp: noArp() });
+      p.channels.push({ id: id, name: id, color: "#d4af37", instrument: dev, volume: 0.8, pan: 0, mute: false, mixer: insertIx(0), arp: noArp(), layerOf: "" });
     }
     lanes.push({ key: lane, value: id });
   }
@@ -805,7 +805,7 @@ function targetView(b, r) {
       /** const ids: String[] */
       const ids = [""];
       /** const names: String[] */
-      const names = [found !== "" ? `Auto (${channelName(found)})` : "Auto (new Atelier)"];
+      const names = [found !== "" ? `Auto (${channelName(found)})` : "Auto (new drum machine)"];
       for (const c of chs) {
         ids.push(c.id);
         names.push(c.name);
@@ -1082,7 +1082,7 @@ function previewView(b, r) {
       "d",
       "voice-empty-doc",
       drums
-        ? "Kicks (a low “b” or “boom”), toms (a hummed “dum”), snares (“pf”, “k”), hats (“ts”, “t”) and open hats (a long “tsss”) become a drum loop on Atelier channels. Record a take, or open a recording."
+        ? "Kicks (a low “b” or “boom”), toms (a hummed “dum”), snares (“pf”, “k”), hats (“ts”, “t”) and open hats (a long “tsss”) become a drum loop on drum machine channels. Record a take, or open a recording."
         : "The notes come out on the beat grid, snapped to a key and scale — a pattern for the piano roll. Record a take, or open a recording."
     );
     b.close();

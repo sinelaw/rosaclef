@@ -1,4 +1,4 @@
-//! "Prisme": additive synthesizer — up to 64 sine partials per voice.
+//! Ivory Organ (`additive`): additive synthesizer — up to 64 sine partials per voice.
 //!
 //! Each voice owns a bank of sine partials: rotating phasors (one complex
 //! multiply per partial and sample) laid out in 8-lane blocks so the compiler
@@ -457,7 +457,7 @@ fn set_env(env: &mut Adsr, p: &Params, sr: f32) {
     );
 }
 
-pub struct Prisme {
+pub struct Additive {
     sr: f32,
     p: Params,
     voices: Vec<Voice>,
@@ -465,8 +465,8 @@ pub struct Prisme {
     clock: u64,
 }
 
-impl Prisme {
-    pub fn new(sr: f32) -> Prisme {
+impl Additive {
+    pub fn new(sr: f32) -> Additive {
         let mut p = Params {
             spectrum: Spectrum::Saw,
             partials: 32,
@@ -492,7 +492,7 @@ impl Prisme {
             uni_norm: 1.0,
         };
         p.derive_unison();
-        Prisme {
+        Additive {
             sr,
             p,
             voices: (0..VOICES).map(|_| Voice::new()).collect(),
@@ -502,7 +502,7 @@ impl Prisme {
     }
 }
 
-impl Instrument for Prisme {
+impl Instrument for Additive {
     fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
         let f = |k: &str| d.param(k) as f32;
         let p = &mut self.p;
@@ -576,7 +576,7 @@ impl Instrument for Prisme {
     }
 
     fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
-        let Prisme {
+        let Additive {
             sr, p, voices, rng, ..
         } = self;
         let sr = *sr;

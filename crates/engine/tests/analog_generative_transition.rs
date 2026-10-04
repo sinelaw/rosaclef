@@ -1,5 +1,5 @@
-//! Behaviour tests for the Cuivre (virtual analog), Dédale (generative
-//! sequencer) and Comète (transition FX) instruments.
+//! Behaviour tests for the analog (virtual analog), generative (generative
+//! sequencer) and transition (transition FX) instruments.
 
 use rosaclef_core::{presets, Device};
 use rosaclef_engine::instruments::{create, Instrument, NoteEvent, NoteKind};
@@ -218,22 +218,120 @@ fn presets_of(kind: &str) -> Vec<&'static presets::Preset> {
         .collect()
 }
 
-// ------------------------------------------------------------------ Cuivre
+// ------------------------------------------------------------------ Analog
+
+/// Energy of `x` below `hz` relative to its total (one-pole split).
+fn low_share(x: &[f32], hz: f32) -> f32 {
+    let a = (-std::f32::consts::TAU * hz / SR).exp();
+    let (mut lp, mut lo, mut all) = (0.0f32, 0.0f32, 0.0f32);
+    for &v in x {
+        lp = v + a * (lp - v);
+        lo += lp * lp;
+        all += v * v;
+    }
+    lo / all.max(1e-12)
+}
 
 #[test]
-fn cuivre_defaults_sound_clean() {
-    let dev = Device::new("cuivre");
+fn analog_clean_filters_unison_and_waves() {
+    // A clean, stable base: no drift, drive, sub or key tracking.
+    let clean: &[(&str, f64)] = &[
+        ("drift", 0.0),
+        ("drive", 0.0),
+        ("sub", 0.0),
+        ("keyTrack", 0.0),
+        ("filterEnv", 0.0),
+        ("cutoff", 500.0),
+        ("sustain", 1.0),
+    ];
+    let with = |extra: &[(&str, f64)], opts: &[(&str, &str)]| {
+        let mut p = clean.to_vec();
+        p.extend_from_slice(extra);
+        device("analog", &p, opts)
+    };
+    for mode in ["lowpass", "highpass", "bandpass"] {
+        let o = note(&with(&[], &[("filter", mode)]), 120.0, 48, 1.0, 1.6);
+        check_clean(&format!("analog {mode}"), &o, 0.05, 0.9);
+    }
+    let lp = note(&with(&[], &[("filter", "lowpass")]), 120.0, 48, 1.0, 1.2).mono();
+    let hp = note(&with(&[], &[("filter", "highpass")]), 120.0, 48, 1.0, 1.2).mono();
+    assert!(
+        low_share(&lp[secs(0.2)..secs(0.9)], 300.0)
+            > 2.0 * low_share(&hp[secs(0.2)..secs(0.9)], 300.0),
+        "the high-pass removes the low end the low-pass keeps"
+    );
+
+    // Without drift a poly voice is centred; unison spreads it across the field.
+    let width = |o: &Out| {
+        let (a, b) = (secs(0.2), secs(0.9));
+        let side: f32 = (a..b).map(|i| (o.l[i] - o.r[i]).powi(2)).sum();
+        let mid: f32 = (a..b).map(|i| (o.l[i] + o.r[i]).powi(2)).sum();
+        (side / mid.max(1e-12)).sqrt()
+    };
+    let opts = [("filter", "lowpass")];
+    let one = note(&with(&[("cutoff", 5000.0)], &opts), 120.0, 48, 1.0, 1.2);
+    assert!(width(&one) < 1e-3, "centred: {}", width(&one));
+    let wide = note(
+        &with(
+            &[("cutoff", 5000.0), ("unison", 5.0), ("detune", 25.0)],
+            &opts,
+        ),
+        120.0,
+        48,
+        1.0,
+        1.6,
+    );
+    check_clean("analog unison", &wide, 0.05, 0.9);
+    assert!(width(&wide) > 0.2, "unison width {}", width(&wide));
+    let ladder_wide = note(
+        &with(&[("unison", 3.0), ("drift", 0.5), ("drive", 0.5)], &[]),
+        120.0,
+        48,
+        1.0,
+        1.6,
+    );
+    check_clean("analog unison ladder", &ladder_wide, 0.05, 0.9);
+
+    for wave in ["sine", "noise"] {
+        let o = note(
+            &with(
+                &[("cutoff", 8000.0)],
+                &[("wave1", wave), ("wave2", wave), ("filter", "lowpass")],
+            ),
+            120.0,
+            60,
+            1.0,
+            1.6,
+        );
+        check_clean(&format!("analog {wave}"), &o, 0.05, 0.9);
+    }
+    let o = note(
+        &with(
+            &[("sub", 1.0)],
+            &[("subWave", "sine"), ("filter", "lowpass")],
+        ),
+        120.0,
+        36,
+        1.0,
+        1.6,
+    );
+    check_clean("analog sine sub", &o, 0.05, 0.9);
+}
+
+#[test]
+fn analog_defaults_sound_clean() {
+    let dev = Device::new("analog");
     for key in [36u8, 60, 84] {
         let o = note(&dev, 120.0, key, 1.0, 2.5);
-        check_clean(&format!("cuivre default key {key}"), &o, 0.15, 0.8);
+        check_clean(&format!("analog default key {key}"), &o, 0.15, 0.8);
     }
-    let dev = device("cuivre", &[], &[("filter", "screamer")]);
+    let dev = device("analog", &[], &[("filter", "screamer")]);
     let o = note(&dev, 120.0, 48, 1.0, 2.5);
-    check_clean("cuivre screamer", &o, 0.15, 0.8);
+    check_clean("analog screamer", &o, 0.15, 0.8);
     // A dark patch is smooth: no clicks at note on / off, nor when notes
     // retrigger in mono mode.
     let smooth = device(
-        "cuivre",
+        "analog",
         &[
             ("cutoff", 300.0),
             ("filterEnv", 0.0),
@@ -255,17 +353,17 @@ fn cuivre_defaults_sound_clean() {
         ],
         2.0,
     );
-    check_clean("cuivre smooth", &o, 0.05, 0.8);
-    check_no_jumps("cuivre smooth", &o, 0.25);
+    check_clean("analog smooth", &o, 0.05, 0.8);
+    check_no_jumps("analog smooth", &o, 0.25);
 }
 
 #[test]
-fn cuivre_tracks_pitch() {
+fn analog_tracks_pitch() {
     let dev = device(
-        "cuivre",
+        "analog",
         &[
             ("sub", 0.0),
-            ("mix2", 0.0),
+            ("osc2Mix", 0.0),
             ("drift", 0.0),
             ("cutoff", 900.0),
             ("keyTrack", 1.0),
@@ -285,10 +383,10 @@ fn cuivre_tracks_pitch() {
     );
     // Drift keeps the pitch within a few cents.
     let drifting = device(
-        "cuivre",
+        "analog",
         &[
             ("sub", 0.0),
-            ("mix2", 0.0),
+            ("osc2Mix", 0.0),
             ("drift", 1.0),
             ("cutoff", 900.0),
             ("keyTrack", 1.0),
@@ -306,12 +404,12 @@ fn cuivre_tracks_pitch() {
 }
 
 #[test]
-fn cuivre_mono_is_last_note_priority() {
+fn analog_mono_is_last_note_priority() {
     let dev = device(
-        "cuivre",
+        "analog",
         &[
             ("sub", 0.0),
-            ("mix2", 0.0),
+            ("osc2Mix", 0.0),
             ("drift", 0.0),
             ("cutoff", 900.0),
             ("keyTrack", 1.0),
@@ -342,10 +440,10 @@ fn cuivre_mono_is_last_note_priority() {
     );
     // Poly stacks them.
     let poly = device(
-        "cuivre",
+        "analog",
         &[
             ("sub", 0.0),
-            ("mix2", 0.0),
+            ("osc2Mix", 0.0),
             ("drift", 0.0),
             ("cutoff", 900.0),
             ("keyTrack", 1.0),
@@ -367,10 +465,10 @@ fn cuivre_mono_is_last_note_priority() {
 }
 
 #[test]
-fn cuivre_legato_ties_overlapping_notes() {
+fn analog_legato_ties_overlapping_notes() {
     let params = [
         ("sub", 0.0),
-        ("mix2", 0.0),
+        ("osc2Mix", 0.0),
         ("drift", 0.0),
         ("cutoff", 3000.0),
         ("filterEnv", 0.0),
@@ -389,13 +487,13 @@ fn cuivre_legato_ties_overlapping_notes() {
         (2.0, off(55)),
     ];
     let mono = play(
-        &device("cuivre", &params, &[("mode", "mono")]),
+        &device("analog", &params, &[("mode", "mono")]),
         120.0,
         &events,
         2.4,
     );
     let legato = play(
-        &device("cuivre", &params, &[("mode", "legato")]),
+        &device("analog", &params, &[("mode", "legato")]),
         120.0,
         &events,
         2.4,
@@ -426,12 +524,12 @@ fn cuivre_legato_ties_overlapping_notes() {
 }
 
 #[test]
-fn cuivre_ladder_is_stable_at_extremes() {
+fn analog_ladder_is_stable_at_extremes() {
     for filter in ["ladder", "screamer"] {
         for cutoff in [20.0, 20000.0] {
             for key in [24u8, 60, 108] {
                 let dev = device(
-                    "cuivre",
+                    "analog",
                     &[
                         ("resonance", 1.0),
                         ("cutoff", cutoff),
@@ -454,11 +552,11 @@ fn cuivre_ladder_is_stable_at_extremes() {
     }
     // Self-oscillation: with no input level the ladder still rings at resonance 1.
     let dev = device(
-        "cuivre",
+        "analog",
         &[
             ("resonance", 1.0),
             ("cutoff", 800.0),
-            ("mix2", 0.0),
+            ("osc2Mix", 0.0),
             ("sub", 0.0),
             ("filterEnv", 0.0),
             ("keyTrack", 0.0),
@@ -472,13 +570,13 @@ fn cuivre_ladder_is_stable_at_extremes() {
     );
 }
 
-// ------------------------------------------------------------------ Dédale
+// ------------------------------------------------------------------ Generative
 
 #[test]
-fn dedale_defaults_play_a_phrase() {
-    let dev = Device::new("dedale");
+fn generative_defaults_play_a_phrase() {
+    let dev = Device::new("generative");
     let o = note(&dev, 120.0, 60, 4.0, 6.0);
-    check_clean("dedale default", &o, 0.15, 0.8);
+    check_clean("generative default", &o, 0.15, 0.8);
     let hits = onsets(&o, 0.05);
     assert!(hits.len() >= 8, "expected a phrase, got onsets {hits:?}");
     // Releasing the key stops new notes; the sound dies away.
@@ -486,14 +584,14 @@ fn dedale_defaults_play_a_phrase() {
 }
 
 #[test]
-fn dedale_steps_follow_rate_and_tempo() {
+fn generative_steps_follow_rate_and_tempo() {
     for (bpm, rate, steps, pulses) in [
         (120.0f32, 0.25f64, 16.0f64, 4.0f64),
         (90.0, 0.25, 16.0, 4.0),
         (140.0, 0.5, 8.0, 8.0),
     ] {
         let dev = device(
-            "dedale",
+            "generative",
             &[
                 ("rate", rate),
                 ("steps", steps),
@@ -532,9 +630,9 @@ fn dedale_steps_follow_rate_and_tempo() {
 }
 
 #[test]
-fn dedale_is_deterministic_per_seed() {
-    let a = device("dedale", &[("seed", 42.0)], &[]);
-    let b = device("dedale", &[("seed", 43.0)], &[]);
+fn generative_is_deterministic_per_seed() {
+    let a = device("generative", &[("seed", 42.0)], &[]);
+    let b = device("generative", &[("seed", 43.0)], &[]);
     let r1 = note(&a, 120.0, 60, 3.0, 3.5);
     let r2 = note(&a, 120.0, 60, 3.0, 3.5);
     let r3 = note(&b, 120.0, 60, 3.0, 3.5);
@@ -543,7 +641,7 @@ fn dedale_is_deterministic_per_seed() {
     assert!(diff > 1.0, "different seeds should differ");
     // variation 0: the phrase repeats exactly every cycle (16 steps = 2 s at 120 BPM).
     let fixed = device(
-        "dedale",
+        "generative",
         &[("seed", 5.0), ("variation", 0.0), ("density", 0.7)],
         &[],
     );
@@ -560,14 +658,14 @@ fn dedale_is_deterministic_per_seed() {
 }
 
 #[test]
-fn dedale_voices_and_polyphony() {
+fn generative_voices_and_polyphony() {
     for voice in ["pluck", "bell", "bass", "perc"] {
-        let dev = device("dedale", &[], &[("voice", voice)]);
+        let dev = device("generative", &[], &[("voice", voice)]);
         let o = note(&dev, 120.0, if voice == "bass" { 40 } else { 64 }, 3.0, 6.0);
-        check_clean(&format!("dedale {voice}"), &o, 0.15, 0.8);
+        check_clean(&format!("generative {voice}"), &o, 0.15, 0.8);
     }
     // Four held keys run four phrases without blowing up.
-    let dev = Device::new("dedale");
+    let dev = Device::new("generative");
     let o = play(
         &dev,
         120.0,
@@ -585,9 +683,9 @@ fn dedale_voices_and_polyphony() {
 }
 
 #[test]
-fn dedale_tempo_change_keeps_running() {
+fn generative_tempo_change_keeps_running() {
     let dev = device(
-        "dedale",
+        "generative",
         &[
             ("density", 1.0),
             ("pulses", 16.0),
@@ -612,30 +710,30 @@ fn dedale_tempo_change_keeps_running() {
     }
 }
 
-// ------------------------------------------------------------------ Comète
+// ------------------------------------------------------------------ Transition
 
 #[test]
-fn comete_kinds_sound_clean() {
+fn transition_kinds_sound_clean() {
     for kind in ["riser", "downlifter", "impact", "sweep", "subdrop"] {
-        let dev = device("comete", &[("length", 4.0)], &[("kind", kind)]);
+        let dev = device("transition", &[("length", 4.0)], &[("kind", kind)]);
         let o = note(&dev, 120.0, 60, 0.1, 6.0);
-        check_clean(&format!("comete {kind}"), &o, 0.15, 0.8);
+        check_clean(&format!("transition {kind}"), &o, 0.15, 0.8);
     }
     let dev = device(
-        "comete",
+        "transition",
         &[("length", 2.0), ("noise", 0.0)],
         &[("kind", "subdrop")],
     );
     let o = note(&dev, 120.0, 60, 0.1, 3.0);
-    check_no_jumps("comete subdrop", &o, 0.1);
+    check_no_jumps("transition subdrop", &o, 0.1);
 }
 
 #[test]
-fn comete_lasts_length_beats() {
+fn transition_lasts_length_beats() {
     for (bpm, beats) in [(120.0f32, 4.0f64), (90.0, 4.0), (128.0, 8.0)] {
         for kind in ["riser", "downlifter", "sweep", "subdrop"] {
             let dev = device(
-                "comete",
+                "transition",
                 &[("length", beats), ("space", 0.0)],
                 &[("kind", kind)],
             );
@@ -654,7 +752,7 @@ fn comete_lasts_length_beats() {
         }
     }
     // A riser peaks at its end.
-    let dev = device("comete", &[("length", 8.0)], &[("kind", "riser")]);
+    let dev = device("transition", &[("length", 8.0)], &[("kind", "riser")]);
     let o = note(&dev, 120.0, 60, 0.05, 5.0);
     assert!(
         o.rms_in(3.5, 3.95) > 3.0 * o.rms_in(0.2, 0.6),
@@ -662,7 +760,7 @@ fn comete_lasts_length_beats() {
     );
     // An impact's tail decays over its length.
     let dev = device(
-        "comete",
+        "transition",
         &[("length", 4.0), ("space", 0.0)],
         &[("kind", "impact")],
     );
@@ -676,9 +774,9 @@ fn comete_lasts_length_beats() {
 }
 
 #[test]
-fn comete_note_pitch_offsets_the_effect() {
+fn transition_note_pitch_offsets_the_effect() {
     let dev = device(
-        "comete",
+        "transition",
         &[
             ("length", 4.0),
             ("noise", 0.0),
@@ -705,11 +803,11 @@ fn comete_note_pitch_offsets_the_effect() {
 fn preset_render(p: &presets::Preset) -> Out {
     let dev = p.device();
     match p.kind {
-        "comete" => {
+        "transition" => {
             let beats = dev.param("length") as f32;
             note(&dev, 120.0, 60, 0.1, beats * 0.5 + 5.0)
         }
-        "dedale" => {
+        "generative" => {
             let key = if dev.option("voice") == "bass" {
                 40
             } else {
@@ -728,9 +826,9 @@ fn preset_render(p: &presets::Preset) -> Out {
 #[test]
 fn presets_render_within_bounds() {
     let verbose = std::env::var("PRESET_LEVELS").is_ok();
-    for kind in ["cuivre", "dedale", "comete"] {
+    for kind in ["analog", "generative", "transition"] {
         let list = presets_of(kind);
-        assert_eq!(list.len(), 6, "{kind}: expected 6 presets");
+        assert!(list.len() >= 6, "{kind}: expected at least 6 presets");
         let spec = rosaclef_core::catalog::device(kind).expect("catalog entry");
         for p in list {
             // Presets only list what differs from the defaults.
@@ -799,43 +897,46 @@ fn realtime_factor(dev: &Device, keys: &[u8], seconds: f32) -> f64 {
 fn realtime_performance() {
     let keys = [36u8, 43, 48, 55, 60, 64, 67, 72];
     let cases = [
-        ("cuivre ladder", device("cuivre", &[("drift", 0.5)], &[])),
+        ("analog ladder", device("analog", &[("drift", 0.5)], &[])),
         (
-            "cuivre bright",
-            device("cuivre", &[("cutoff", 9000.0), ("resonance", 0.8)], &[]),
+            "analog bright",
+            device("analog", &[("cutoff", 9000.0), ("resonance", 0.8)], &[]),
         ),
         (
-            "cuivre screamer",
-            device("cuivre", &[("noise", 0.3)], &[("filter", "screamer")]),
+            "analog screamer",
+            device("analog", &[("noise", 0.3)], &[("filter", "screamer")]),
         ),
         (
-            "dedale pluck",
+            "generative pluck",
             device(
-                "dedale",
+                "generative",
                 &[("density", 1.0), ("pulses", 16.0), ("decay", 2.0)],
                 &[],
             ),
         ),
         (
-            "dedale bell",
+            "generative bell",
             device(
-                "dedale",
+                "generative",
                 &[("density", 1.0), ("pulses", 16.0), ("decay", 2.0)],
                 &[("voice", "bell")],
             ),
         ),
         (
-            "dedale perc",
+            "generative perc",
             device(
-                "dedale",
+                "generative",
                 &[("density", 1.0), ("pulses", 16.0), ("decay", 2.0)],
                 &[("voice", "perc")],
             ),
         ),
-        ("comete riser", device("comete", &[("length", 16.0)], &[])),
         (
-            "comete impact",
-            device("comete", &[("length", 16.0)], &[("kind", "impact")]),
+            "transition riser",
+            device("transition", &[("length", 16.0)], &[]),
+        ),
+        (
+            "transition impact",
+            device("transition", &[("length", 16.0)], &[("kind", "impact")]),
         ),
     ];
     for (name, dev) in cases {

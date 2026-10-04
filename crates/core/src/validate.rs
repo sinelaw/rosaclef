@@ -269,6 +269,22 @@ pub fn validate(p: &Project) -> Vec<Issue> {
         if let Some(arp) = &ch.arp {
             check_arp(&mut v, &format!("{path}.arp"), arp);
         }
+        if let Some(of) = &ch.layer_of {
+            match p.channels.iter().find(|c| &c.id == of) {
+                None => v.err(
+                    format!("{path}.layerOf"),
+                    format!("channel {of:?} does not exist"),
+                ),
+                Some(c) if c.id == ch.id => {
+                    v.err(format!("{path}.layerOf"), "a channel cannot layer itself")
+                }
+                Some(c) if c.layer_of.is_some() => v.err(
+                    format!("{path}.layerOf"),
+                    format!("channel {of:?} is itself a layer; layer on the channel it follows"),
+                ),
+                Some(_) => {}
+            }
+        }
     }
 
     // Patterns.

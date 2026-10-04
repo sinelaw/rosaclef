@@ -49,9 +49,13 @@ pub fn summary(p: &Project) -> String {
             "plugin" => format!("plugin {}", c.instrument.option("path")),
             k => k.to_string(),
         };
+        let layer = match &c.layer_of {
+            Some(of) => format!(" (layer of {of})"),
+            None => String::new(),
+        };
         let _ = writeln!(
             s,
-            "  [{i}] {:<14} {:<22} → insert {}{}",
+            "  [{i}] {:<14} {:<22} → insert {}{}{layer}",
             c.id,
             detail,
             c.mixer,
@@ -181,13 +185,36 @@ pub fn presets_markdown() -> String {
 pub fn catalog_markdown() -> String {
     use std::fmt::Write;
     let mut s = String::new();
+    // Which instrument for which part: the quick answer before the details.
+    let _ = writeln!(
+        s,
+        "### Choosing an instrument\n\n| for | `type` | instrument | presets |\n|---|---|---|---|"
+    );
+    for d in catalog::instruments().filter(|d| !d.best_for.is_empty()) {
+        let presets: Vec<String> = crate::presets::all()
+            .into_iter()
+            .filter(|p| p.kind == d.kind)
+            .map(|p| p.name.to_string())
+            .collect();
+        let presets = if presets.is_empty() {
+            "—".to_string()
+        } else {
+            presets.join(", ")
+        };
+        let _ = writeln!(
+            s,
+            "| {} | `{}` | {} | {} |",
+            d.best_for, d.kind, d.label, presets
+        );
+    }
+    s.push('\n');
     for (title, cat) in [
         ("Instruments", catalog::Category::Instrument),
         ("Effects", catalog::Category::Effect),
     ] {
         let _ = writeln!(s, "### {title}\n");
         for d in catalog::DEVICES.iter().filter(|d| d.category == cat) {
-            let _ = writeln!(s, "#### `{}` — {}\n\n{}\n", d.kind, d.label, d.doc);
+            let _ = writeln!(s, "#### `{}` — {}\n\n{}\n", d.kind, d.label, d.full_doc());
             if !d.options.is_empty() {
                 let _ = writeln!(s, "| option | values | default | |\n|---|---|---|---|");
                 for o in d.options {
@@ -199,7 +226,10 @@ pub fn catalog_markdown() -> String {
                     let _ = writeln!(
                         s,
                         "| `{}` | {} | `{}` | {} |",
-                        o.key, values, o.default, o.doc
+                        o.key,
+                        values,
+                        o.default,
+                        o.full_doc()
                     );
                 }
                 s.push('\n');
@@ -251,7 +281,7 @@ mod tests {
             name: "Lead".into(),
             color: "#ffffff".into(),
             instrument: Device {
-                kind: "synth".into(),
+                kind: "analog".into(),
                 enabled: true,
                 params: [("cutoff".into(), 99999.0)].into(),
                 options: Default::default(),
@@ -261,11 +291,39 @@ mod tests {
             mute: false,
             mixer: InsertIx(99),
             arp: None,
+            layer_of: None,
         });
         let issues = validate::validate(&p);
         let paths: Vec<&str> = issues.iter().map(|i| i.path.as_str()).collect();
         assert!(paths.contains(&"channels[0].mixer"));
         assert!(paths.contains(&"channels[0].instrument.params.cutoff"));
+    }
+
+    #[test]
+    fn layers_must_point_at_a_plain_channel() {
+        let mut p = with_pad();
+        let mut layer = p.channels[0].clone();
+        layer.id = "air".into();
+        layer.layer_of = Some("pad".into());
+        p.channels.push(layer);
+        assert!(validate::validate(&p).is_empty());
+        let bad = |of: &str| {
+            let mut q = p.clone();
+            let mut c = q.channels[0].clone();
+            c.id = "x".into();
+            c.layer_of = Some(of.into());
+            q.channels.push(c);
+            validate::validate(&q)
+                .iter()
+                .map(|i| i.path.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(bad("nope"), ["channels[2].layerOf"], "unknown channel");
+        assert_eq!(bad("x"), ["channels[2].layerOf"], "itself");
+        assert_eq!(bad("air"), ["channels[2].layerOf"], "a layer of a layer");
+        let text = format::to_string(&p);
+        assert!(text.contains(r#""layerOf": "pad""#), "{text}");
+        assert!(summary(&p).contains("(layer of pad)"));
     }
 
     #[test]
@@ -325,12 +383,13 @@ mod tests {
             id: "pad".into(),
             name: "Pad".into(),
             color: "#ffffff".into(),
-            instrument: Device::new("synth"),
+            instrument: Device::new("analog"),
             volume: 0.8,
             pan: 0.0,
             mute: false,
             mixer: InsertIx(1),
             arp: None,
+            layer_of: None,
         });
         p
     }

@@ -34,6 +34,7 @@ export function pushChannel(type, name, setup) {
     mute: false,
     mixer: insertIx(mixer),
     arp: noArp(),
+    layerOf: "",
   });
   return id;
 }
@@ -105,17 +106,15 @@ export function addPresetChannel(pr) {
 }
 
 const DEVICE_ICONS = [
-  { type: "synth", icon: "wave" },
-  { type: "fm", icon: "spark" },
   { type: "drum", icon: "rack" },
   { type: "sampler", icon: "folder" },
-  { type: "prisme", icon: "spark" },
-  { type: "sextant", icon: "mixer" },
-  { type: "tessera", icon: "pattern" },
-  { type: "cuivre", icon: "wave" },
-  { type: "nebula", icon: "loop" },
-  { type: "dedale", icon: "select" },
-  { type: "comete", icon: "export" },
+  { type: "additive", icon: "spark" },
+  { type: "fm", icon: "mixer" },
+  { type: "wavetable", icon: "pattern" },
+  { type: "analog", icon: "wave" },
+  { type: "granular", icon: "loop" },
+  { type: "generative", icon: "select" },
+  { type: "transition", icon: "export" },
 ];
 
 /** function browser(b: Builder) => Undefined */
@@ -142,8 +141,9 @@ export function browser(b) {
     const presets = state.catalog.presets.filter((pr) => pr.type === d.type);
     const open = expanded.includes(d.type);
     b.open("div", `inst-${d.type}`, open ? "b-item inst open" : "b-item inst");
-    b.attr("title", d.doc);
-    b.on("pointerenter", (e) => hint(`${d.label} — ${d.doc} Click to add a channel${presets.length > 0 ? "; the arrow shows its presets" : ""}.`));
+    const doc = d.bestFor !== "" ? `Best for: ${d.bestFor} ${d.doc}` : d.doc;
+    b.attr("title", doc);
+    b.on("pointerenter", (e) => hint(`${d.label} — ${doc} Click to add a channel${presets.length > 0 ? "; the arrow shows its presets" : ""}.`));
     b.on("click", (e) => {
       if (d.type === "sampler") {
         pickFiles("audio/*", (files) => {

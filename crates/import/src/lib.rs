@@ -165,6 +165,38 @@ pub(crate) fn has_instrument(kind: &str) -> bool {
     catalog::device_in(kind, Category::Instrument).is_some()
 }
 
+/// A clean, stable analog synth (`analog`): no drift, no drive, no key tracking,
+/// no sub, a sine sub when one is used, a static clean low-pass filter. The
+/// importers shape generic subtractive patches from it.
+pub(crate) fn clean_va() -> Device {
+    let mut d = Device::new("analog");
+    for (k, v) in [
+        ("drift", 0.0),
+        ("drive", 0.0),
+        ("keyTrack", 0.0),
+        ("sub", 0.0),
+        ("pulseWidth", 0.5),
+        ("filterEnv", 0.0),
+        ("filterAttack", 0.001),
+        ("filterSustain", 0.0),
+        ("cutoff", 20000.0),
+        ("resonance", 0.0),
+    ] {
+        set_param(&mut d, k, v);
+    }
+    set_option(&mut d, "filter", "lowpass");
+    set_option(&mut d, "subWave", "sine");
+    d
+}
+
+/// The analog synth's gain that makes its oscillator sum (osc 1 · (1 − osc2Mix / 4) +
+/// osc 2 · osc2Mix + sub, before the 0.42 output scaling) peak at `level`.
+pub(crate) fn va_gain(d: &Device, level: f64) -> f64 {
+    let mix2 = d.param("osc2Mix");
+    let sum = 1.0 - 0.25 * mix2 + mix2 + d.param("sub");
+    level / (0.42 * sum.max(0.1))
+}
+
 /// Clamp a value into a range, reporting whether it had to change.
 pub(crate) fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
     if v.is_finite() {
@@ -240,12 +272,20 @@ pub fn merge_into(base: &mut Project, add: Project) -> Vec<String> {
     }
     let remap_insert = |ix: InsertIx| insert_map.get(&ix.0).copied().unwrap_or(InsertIx::MASTER);
 
+    let first_added = base.channels.len();
     for mut ch in add.channels {
         let id = channel_ids.keep(&ch.id);
         channel_map.insert(ch.id.clone(), id.clone());
         ch.id = id;
         ch.mixer = remap_insert(ch.mixer);
         base.channels.push(ch);
+    }
+    for ch in &mut base.channels[first_added..] {
+        if let Some(of) = ch.layer_of.as_mut() {
+            if let Some(c) = channel_map.get(of) {
+                *of = c.clone();
+            }
+        }
     }
     for mut pat in add.patterns {
         let id = pattern_ids.keep(&pat.id);
@@ -335,7 +375,7 @@ mod tests {
 
     #[test]
     fn clamps_into_catalog() {
-        let mut d = Device::new("synth");
+        let mut d = Device::new("analog");
         set_param(&mut d, "cutoff", 1e9);
         set_param(&mut d, "unison", 3.4);
         set_param(&mut d, "nope", 1.0);

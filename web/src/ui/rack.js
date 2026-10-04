@@ -2,7 +2,7 @@
 
 import { drag, getJson } from "#platform";
 import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, showDock, deviceSpec, invalidate, hint } from "../store.js";
-import { getParam, setParam, getOption, setOption, presetDevice, PALETTE, copyArp } from "../model.js";
+import { getParam, setParam, getOption, setOption, presetDevice, PALETTE, copyArp, newDevice, noArp } from "../model.js";
 import { preview } from "../audio.js";
 import { knobAt, paramKnobAt, select, button, iconButton, led, textInput, glyph } from "./widgets.js";
 import { shownValue, retargetLanes } from "../automation.js";
@@ -130,7 +130,8 @@ function rackRow(b, pat, ch, idx) {
   });
   b.leaf("i", "sw", "swatch", "");
   b.style("--c", ch.color);
-  b.leaf("span", "n", "", ch.name);
+  b.leaf("span", "n", "", ch.layerOf !== "" ? `↳ ${ch.name}` : ch.name);
+  if (ch.layerOf !== "") b.attr("title", `Layer: also plays the notes of ${channelLabel(ch.layerOf)}`);
   b.close();
   led(b, "led", level);
 
@@ -244,7 +245,11 @@ export function deviceControls(b, dev, spec, target) {
       }
       b.open("div", o.key, "option");
       b.leaf("label", "l", "", o.label);
-      select(b, "sel", "", getOption(dev, o), o.choices, o.choices, o.doc, (v) => {
+      // The tooltip says what the chosen value does.
+      const cur = getOption(dev, o);
+      const at = o.choices.indexOf(cur);
+      const tip = at >= 0 && at < o.choiceDocs.length ? `${o.doc} ${cur}: ${o.choiceDocs[at]}.` : o.doc;
+      select(b, "sel", "", cur, o.choices, o.choices, tip, (v) => {
         commit(() => setOption(dev, o.key, v));
       });
       b.close();
@@ -449,6 +454,7 @@ function inspector(b) {
   b.leaf("div", "sub", "insp-sub", `${ch.name} · ${ch.instrument.type}`);
   b.close();
   b.close();
+  if (spec && spec.bestFor !== "") b.leaf("div", "best", "insp-doc", `Best for: ${spec.bestFor}`);
   if (spec) b.leaf("div", "doc", "insp-doc", spec.doc);
 
   b.open("div", "name", "field");
@@ -476,6 +482,7 @@ function inspector(b) {
   presetPicker(b, ch.instrument);
   if (spec) deviceControls(b, ch.instrument, spec, `channel/${ch.id}/`);
   arpControls(b, ch);
+  layerControls(b, ch);
 
   b.open("div", "actions", "rack-add");
   button(b, "roll", "small", "Piano roll", "Edit this channel's notes (F7)", () => {
@@ -513,6 +520,103 @@ function duplicateChannel(ch) {
       mute: false,
       mixer: ch.mixer,
       arp: copyArp(ch.arp),
+      layerOf: ch.layerOf,
+    });
+  });
+  selectChannel(id);
+}
+
+/** The name of a channel by id (the id itself when it is gone). */
+/** function channelLabel(id: String) => String */
+function channelLabel(id) {
+  for (const c of state.project.channels) if (c.id === id) return `“${c.name}”`;
+  return `“${id}”`;
+}
+
+/** Layering: a layer plays the notes of another channel through its own
+ * instrument (one level: a layer cannot be layered on). */
+/** function layerControls(b: Builder, ch: Channel) => Undefined */
+function layerControls(b, ch) {
+  const p = state.project;
+  b.open("div", "layer", "param-group layer");
+  b.leaf("div", "t", "param-group-title", "Layer");
+  b.open("div", "opts", "options");
+  // Which channel's notes this one also plays.
+  const hosts = p.channels.filter((c) => c.id !== ch.id && c.layerOf === "");
+  const layered = p.channels.some((c) => c.layerOf === ch.id);
+  if (!layered) {
+    b.open("div", "of", "option");
+    b.leaf("label", "l", "", "Also plays");
+    select(
+      b,
+      "sel",
+      "",
+      ch.layerOf,
+      [""].concat(hosts.map((c) => c.id)),
+      ["Only its own notes"].concat(hosts.map((c) => `${c.name}'s notes`)),
+      "Make this channel a layer: it also plays every note written for the chosen channel",
+      (v) => {
+        commit(() => {
+          ch.layerOf = v;
+        });
+      }
+    );
+    b.close();
+  }
+  if (ch.layerOf === "") {
+    // Add a layer: a new channel playing this one's notes.
+    /** const kinds: String[] */
+    const kinds = [];
+    /** const labels: String[] */
+    const labels = [];
+    for (const d of state.catalog.devices) {
+      if (d.category !== "instrument" || d.type === "plugin" || d.type === "sampler") continue;
+      kinds.push(d.type);
+      labels.push(d.label);
+    }
+    b.open("div", "add", "option");
+    b.leaf("label", "l", "", "Add a layer");
+    select(
+      b,
+      "sel",
+      "",
+      "",
+      [""].concat(kinds),
+      ["Choose an instrument…"].concat(labels),
+      "Add a channel that plays this channel's notes with another instrument",
+      (v) => {
+        if (v !== "") addLayer(ch, v);
+      }
+    );
+    b.close();
+  }
+  b.close();
+  b.close();
+}
+
+/** function addLayer(ch: Channel, type: String) => Undefined */
+function addLayer(ch, type) {
+  const p = state.project;
+  const base = `${ch.id.slice(0, 52)}-layer`;
+  let id = base;
+  let n = 2;
+  while (p.channels.some((c) => c.id === id)) {
+    id = `${base}${n}`;
+    n = n + 1;
+  }
+  const spec = deviceSpec(type, "instrument");
+  commit(() => {
+    p.channels.push({
+      id: id,
+      name: `${ch.name} · ${spec ? spec.label : type}`,
+      color: ch.color,
+      instrument: newDevice(type),
+      volume: ch.volume,
+      pan: ch.pan,
+      mute: false,
+      mixer: ch.mixer,
+      arp: noArp(),
+      layerOf: ch.id,
     });
   });
   selectChannel(id);
@@ -523,6 +627,8 @@ function deleteChannel(ch) {
   const p = state.project;
   commit(() => {
     p.channels = p.channels.filter((c) => c.id !== ch.id);
+    // Its layers keep their own notes and stop following it.
+    for (const c of p.channels) if (c.layerOf === ch.id) c.layerOf = "";
     for (const pat of p.patterns) pat.notes = pat.notes.filter((n) => n.channel !== ch.id);
     retargetLanes((t) => (t.startsWith(`channel/${ch.id}/`) ? "" : t));
   });

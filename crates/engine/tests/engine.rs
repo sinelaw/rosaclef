@@ -27,6 +27,7 @@ fn drum_project() -> Project {
         mute: false,
         mixer: InsertIx(1),
         arp: None,
+        layer_of: None,
     });
     p.patterns[0].notes.push(Note {
         channel: "k".into(),
@@ -134,8 +135,67 @@ fn solo_silences_other_inserts() {
 }
 
 #[test]
+fn a_layer_plays_the_notes_of_the_channel_it_layers() {
+    // The kick's notes, played again by a sine layer on its own (soloed) insert.
+    let with_layer = |layer_of: Option<&str>| {
+        let mut p = drum_project();
+        let mut sine = Device::new("analog");
+        sine.options.insert("wave1".into(), "sine".into());
+        sine.options.insert("filter".into(), "lowpass".into());
+        for (k, v) in [
+            ("osc2Mix", 0.0),
+            ("sub", 0.0),
+            ("drift", 0.0),
+            ("cutoff", 20000.0),
+        ] {
+            sine.params.insert(k.into(), v);
+        }
+        p.channels.push(Channel {
+            id: "body".into(),
+            name: "Body".into(),
+            color: "#ffffff".into(),
+            instrument: sine,
+            volume: 1.0,
+            pan: 0.0,
+            mute: false,
+            mixer: InsertIx(2),
+            arp: None,
+            layer_of: layer_of.map(String::from),
+        });
+        p.mixer.inserts[2].solo = true;
+        assert!(
+            validate::validate(&p).is_empty(),
+            "{:?}",
+            validate::validate(&p)
+        );
+        p
+    };
+    let mut e = Engine::new(48000.0);
+    e.set_project(with_layer(None));
+    assert!(
+        render(&mut e, &RenderScope::Song).peak() < 1e-6,
+        "no notes of its own"
+    );
+    e.set_project(with_layer(Some("k")));
+    let a = render(&mut e, &RenderScope::Song);
+    assert!(
+        a.peak() > 0.05,
+        "the layer plays the kick's notes: {}",
+        a.peak()
+    );
+
+    // Live notes reach the layer too.
+    let mut e = Engine::new(48000.0);
+    e.set_project(with_layer(Some("k")));
+    e.note_on("k", 60, 0.9);
+    let (mut l, mut r) = (vec![0.0; 4800], vec![0.0; 4800]);
+    e.process(&mut l, &mut r);
+    assert!(l.iter().any(|x| x.abs() > 0.05), "live note on the layer");
+}
+
+#[test]
 fn every_builtin_instrument_makes_sound() {
-    for kind in ["synth", "fm", "drum"] {
+    for kind in ["analog", "fm", "drum"] {
         let a = render_note(&Device::new(kind), 60, 0.9, 0.5, 48000.0);
         assert!(a.peak() > 0.05, "{kind} peak {}", a.peak());
     }
@@ -151,7 +211,7 @@ fn every_builtin_instrument_makes_sound() {
 fn project_updates_keep_instruments() {
     // Changing a parameter must not cut a sounding note (instrument reused).
     let mut p = drum_project();
-    p.channels[0].instrument = Device::new("synth");
+    p.channels[0].instrument = Device::new("analog");
     p.patterns[0].notes[0].length = 4.0;
     let mut e = Engine::new(48000.0);
     e.set_project(p.clone());

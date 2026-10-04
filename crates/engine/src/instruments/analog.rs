@@ -1,11 +1,16 @@
-//! "Cuivre": virtual analog synthesizer modelled on circuit behaviour.
+//! Bronze Bass (`analog`): virtual analog synthesizer modelled on circuit behaviour.
 //!
-//! Two PolyBLEP oscillators (saw / pulse / triangle), a square sub one
-//! octave down and noise feed a 2x oversampled filter: either a 4-pole
-//! zero-delay-feedback ladder with tanh stage saturation, or an aggressive
+//! Two PolyBLEP oscillators (saw / pulse / triangle / sine / noise), stacked up to
+//! seven times in unison across the stereo field, a square or sine sub one
+//! octave down and noise feed the filter: a 2x oversampled 4-pole
+//! zero-delay-feedback ladder with tanh stage saturation, an aggressive
 //! 2-pole "screamer" whose resonance loop has a nonlinear (van der Pol like)
-//! damping and saturating integrators. Each voice has static component
-//! tolerances and a slow random drift of pitch and cutoff.
+//! damping and saturating integrators, or a clean 2-pole state-variable
+//! low-, high- or band-pass. Each voice has static component tolerances and
+//! a slow random drift of pitch and cutoff.
+//!
+//! With unison the stack is split into a left and a right sum, each through
+//! its own copy of the filter (same coefficients), so the width survives.
 
 use super::{pick_voice, Instrument, NoteKind, MAX_VOICES};
 use crate::dsp::*;
@@ -21,33 +26,16 @@ const STACK: usize = 16;
 const OUT_SCALE: f32 = 0.42;
 /// Glide times below this jump straight to the target.
 const MIN_GLIDE: f32 = 0.0015;
-
-/// Cheap rational tanh approximation (exact +-1 at +-3, smooth).
-#[inline]
-fn ftanh(x: f32) -> f32 {
-    let x = x.clamp(-3.0, 3.0);
-    let x2 = x * x;
-    x * (27.0 + x2) / (27.0 + 9.0 * x2)
-}
-
-#[inline]
-fn blep(t: f32, dt: f32) -> f32 {
-    if t < dt {
-        let t = t / dt;
-        t + t - t * t - 1.0
-    } else if t > 1.0 - dt {
-        let t = (t - 1.0) / dt;
-        t * t + t + t + 1.0
-    } else {
-        0.0
-    }
-}
+/// Largest unison stack.
+const MAX_UNISON: usize = 7;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum VaWave {
     Saw,
     Pulse,
     Triangle,
+    Sine,
+    Noise,
 }
 
 impl VaWave {
@@ -55,6 +43,8 @@ impl VaWave {
         match s {
             "pulse" => VaWave::Pulse,
             "triangle" => VaWave::Triangle,
+            "sine" => VaWave::Sine,
+            "noise" => VaWave::Noise,
             _ => VaWave::Saw,
         }
     }
@@ -62,18 +52,20 @@ impl VaWave {
 
 /// Band-limited oscillator sample (DC-free) for a phase in [0, 1).
 #[inline]
-fn va_osc(w: VaWave, ph: f32, dt: f32, pw: f32) -> f32 {
+fn va_osc(w: VaWave, ph: f32, dt: f32, pw: f32, rng: &mut Rng) -> f32 {
     match w {
-        VaWave::Saw => 2.0 * ph - 1.0 - blep(ph, dt),
+        VaWave::Saw => blep_saw(ph, dt),
         VaWave::Pulse => {
             let mut p2 = ph - pw;
             if p2 < 0.0 {
                 p2 += 1.0;
             }
             let naive = if ph < pw { 1.0 } else { -1.0 };
-            naive + blep(ph, dt) - blep(p2, dt) - (2.0 * pw - 1.0)
+            naive + poly_blep(ph, dt) - poly_blep(p2, dt) - (2.0 * pw - 1.0)
         }
         VaWave::Triangle => 1.0 - 4.0 * (ph - 0.5).abs(),
+        VaWave::Sine => (ph * TAU).sin(),
+        VaWave::Noise => rng.bipolar(),
     }
 }
 
@@ -81,6 +73,18 @@ fn va_osc(w: VaWave, ph: f32, dt: f32, pw: f32) -> f32 {
 enum Model {
     Ladder,
     Screamer,
+    /// Clean 2-pole state-variable filter in the given mode.
+    Svf(FilterMode),
+}
+
+impl Model {
+    fn parse(s: &str) -> Model {
+        match s {
+            "screamer" => Model::Screamer,
+            "lowpass" | "highpass" | "bandpass" => Model::Svf(FilterMode::parse(s)),
+            _ => Model::Ladder,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,7 +103,10 @@ struct Params {
     osc2_ratio: f32,
     mix2: f32,
     pw: f32,
+    unison: usize,
+    spread: f32,
     sub: f32,
+    sub_sine: bool,
     noise: f32,
     drift: f32,
     cutoff: f32,
@@ -123,8 +130,9 @@ struct Voice {
     /// Current (gliding) pitch in semitones and its target.
     note: f32,
     target: f32,
-    ph1: f32,
-    ph2: f32,
+    /// Oscillator phases, one per unison copy (copy 0 without unison).
+    ph1: [f32; MAX_UNISON],
+    ph2: [f32; MAX_UNISON],
     phs: f32,
     dt1: f32,
     dt2: f32,
@@ -137,14 +145,11 @@ struct Voice {
     drift: [f32; 3],
     drift_tgt: [f32; 3],
     drift_timer: i32,
-    /// Filter state (ladder: 4 stages; screamer: ic1, ic2).
-    s: [f32; 4],
-    bp: f32,
+    /// Filter states: left (or mono) and right (unison only).
+    flt: [Flt; 2],
     g: f32,
     g_inc: f32,
     k: f32,
-    prev_in: f32,
-    dc: DcBlock,
     counter: usize,
     fresh: bool,
     /// Filter currently running 2x oversampled.
@@ -169,8 +174,8 @@ impl Voice {
             age: 0,
             note: 60.0,
             target: 60.0,
-            ph1: 0.0,
-            ph2: 0.0,
+            ph1: [0.0; MAX_UNISON],
+            ph2: [0.0; MAX_UNISON],
             phs: 0.0,
             dt1: 0.0,
             dt2: 0.0,
@@ -181,13 +186,10 @@ impl Voice {
             drift: [0.0; 3],
             drift_tgt: [0.0; 3],
             drift_timer: 0,
-            s: [0.0; 4],
-            bp: 0.0,
+            flt: Default::default(),
             g: 0.0,
             g_inc: 0.0,
             k: 0.0,
-            prev_in: 0.0,
-            dc: DcBlock::default(),
             counter: 0,
             fresh: true,
             os: false,
@@ -196,12 +198,11 @@ impl Voice {
 
     /// Clear the audio state of a silent voice before it starts.
     fn reset(&mut self) {
-        self.s = [0.0; 4];
-        self.bp = 0.0;
-        self.prev_in = 0.0;
-        self.dc = DcBlock::default();
-        self.ph1 = self.rng.unit();
-        self.ph2 = self.rng.unit();
+        self.flt = Default::default();
+        for u in 0..MAX_UNISON {
+            self.ph1[u] = self.rng.unit();
+            self.ph2[u] = self.rng.unit();
+        }
         self.phs = 0.0;
         self.fresh = true;
         self.vgain = -1.0;
@@ -216,6 +217,17 @@ impl Voice {
     fn is_sounding(&self) -> bool {
         self.active && !self.env.is_idle()
     }
+}
+
+/// The audio state of one filter path.
+#[derive(Clone, Default)]
+struct Flt {
+    /// Ladder: 4 stages; screamer: ic1, ic2.
+    s: [f32; 4],
+    bp: f32,
+    prev_in: f32,
+    svf: Svf,
+    dc: DcBlock,
 }
 
 /// Per-sample coefficients of the ladder.
@@ -285,7 +297,7 @@ fn screamer(s: &mut [f32; 4], bp: &mut f32, x: f32, g: f32, k: f32) -> f32 {
     v2
 }
 
-pub struct Cuivre {
+pub struct Analog {
     sr: f32,
     p: Params,
     voices: Vec<Voice>,
@@ -297,9 +309,9 @@ pub struct Cuivre {
     fenv_times: (f32, f32, f32),
 }
 
-impl Cuivre {
-    pub fn new(sr: f32) -> Cuivre {
-        Cuivre {
+impl Analog {
+    pub fn new(sr: f32) -> Analog {
+        Analog {
             sr,
             p: Params {
                 wave1: VaWave::Saw,
@@ -309,7 +321,10 @@ impl Cuivre {
                 osc2_ratio: 1.0,
                 mix2: 0.5,
                 pw: 0.5,
+                unison: 1,
+                spread: 12.0,
                 sub: 0.3,
+                sub_sine: false,
                 noise: 0.0,
                 drift: 0.3,
                 cutoff: 1200.0,
@@ -449,7 +464,7 @@ impl Cuivre {
     }
 }
 
-impl Instrument for Cuivre {
+impl Instrument for Analog {
     fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
         let f = |k: &str| d.param(k) as f32;
         let voicing = match d.option("mode") {
@@ -468,16 +483,15 @@ impl Instrument for Cuivre {
         self.p = Params {
             wave1: VaWave::parse(d.option("wave1")),
             wave2: VaWave::parse(d.option("wave2")),
-            model: if d.option("filter") == "screamer" {
-                Model::Screamer
-            } else {
-                Model::Ladder
-            },
+            model: Model::parse(d.option("filter")),
             voicing,
             osc2_ratio: 2f32.powf(f("osc2Semi").round() / 12.0) * cents(f("osc2Detune")),
-            mix2: f("mix2").clamp(0.0, 1.0),
+            mix2: f("osc2Mix").clamp(0.0, 1.0),
             pw: f("pulseWidth").clamp(0.05, 0.95),
+            unison: (f("unison").round() as usize).clamp(1, MAX_UNISON),
+            spread: f("detune").clamp(0.0, 100.0),
             sub: f("sub").clamp(0.0, 1.0),
+            sub_sine: d.option("subWave") == "sine",
             noise: f("noise").clamp(0.0, 1.0),
             drift: f("drift").clamp(0.0, 1.0),
             cutoff: f("cutoff").clamp(20.0, 20000.0),
@@ -539,7 +553,7 @@ impl Instrument for Cuivre {
         let sr = self.sr;
         let n = left.len().min(right.len());
         let ctrl_sr = sr / CONTROL as f32;
-        let k = Consts {
+        let mut k = Consts {
             sr,
             ctrl_sr,
             osr: 2.0 * sr,
@@ -555,8 +569,23 @@ impl Instrument for Cuivre {
             dc_r: DcBlock::coef(sr),
             ladder_in: 0.8 + 2.6 * p.drive,
             scream_in: 0.7 + 3.5 * p.drive,
+            svf_in: 1.0 + 3.0 * p.drive,
             mix1: 1.0 - 0.25 * p.mix2,
+            detune: [1.0; MAX_UNISON],
+            pan_l: [1.0; MAX_UNISON],
+            pan_r: [1.0; MAX_UNISON],
+            uni_norm: 1.0 / (p.unison as f32).sqrt(),
         };
+        if p.unison > 1 {
+            // Copies evenly spread over -1..1 in pitch (± spread) and pan.
+            for u in 0..p.unison {
+                let pos = u as f32 / (p.unison - 1) as f32 * 2.0 - 1.0;
+                k.detune[u] = cents(pos * p.spread);
+                let (l, r) = pan_gains(pos * 0.8);
+                k.pan_l[u] = l;
+                k.pan_r[u] = r;
+            }
+        }
         let mono = p.voicing != Voicing::Poly;
         // Velocity gain glides over ~3 ms (see Voice::vgain).
         let vg_c = settle_coef(0.003, sr);
@@ -566,47 +595,61 @@ impl Instrument for Cuivre {
                 v.vgain = target;
             }
             let amp = p.gain * OUT_SCALE;
+            // Poly voices sit slightly off-centre (component tolerance),
+            // fading to the centre as drift goes to 0.
             let (pl, pr) = if mono {
                 (1.0, 1.0)
             } else {
-                pan_gains(v.tol[3] * 0.3)
+                pan_gains(v.tol[3] * 0.3 * (p.drift * 4.0).min(1.0))
             };
             (target, amp * pl, amp * pr)
         };
-        // Voices are rendered in pairs: their filters are independent serial
-        // chains, so the CPU can overlap them.
-        let mut active = [0usize; MAX_VOICES];
-        let mut count = 0;
-        for (i, v) in self.voices.iter().enumerate() {
-            if v.active {
-                active[count] = i;
-                count += 1;
+        if p.unison > 1 {
+            for v in self.voices.iter_mut().filter(|v| v.active) {
+                let (tv, gl, gr) = out_gain(v);
+                for i in 0..n {
+                    v.vgain = tv + (v.vgain - tv) * vg_c;
+                    let (yl, yr) = tick_wide(v, &p, &k);
+                    left[i] += yl * v.vgain * gl;
+                    right[i] += yr * v.vgain * gr;
+                }
             }
-        }
-        let mut j = 0;
-        while j + 1 < count {
-            let (lo, hi) = self.voices.split_at_mut(active[j + 1]);
-            let (a, b) = (&mut lo[active[j]], &mut hi[0]);
-            let (ta, al, ar) = out_gain(a);
-            let (tb, bl, br) = out_gain(b);
-            for i in 0..n {
-                a.vgain = ta + (a.vgain - ta) * vg_c;
-                b.vgain = tb + (b.vgain - tb) * vg_c;
-                let ya = tick(a, &p, &k) * a.vgain;
-                let yb = tick(b, &p, &k) * b.vgain;
-                left[i] += ya * al + yb * bl;
-                right[i] += ya * ar + yb * br;
+        } else {
+            // Voices are rendered in pairs: their filters are independent
+            // serial chains, so the CPU can overlap them.
+            let mut active = [0usize; MAX_VOICES];
+            let mut count = 0;
+            for (i, v) in self.voices.iter().enumerate() {
+                if v.active {
+                    active[count] = i;
+                    count += 1;
+                }
             }
-            j += 2;
-        }
-        if j < count {
-            let v = &mut self.voices[active[j]];
-            let (tv, gl, gr) = out_gain(v);
-            for i in 0..n {
-                v.vgain = tv + (v.vgain - tv) * vg_c;
-                let y = tick(v, &p, &k) * v.vgain;
-                left[i] += y * gl;
-                right[i] += y * gr;
+            let mut j = 0;
+            while j + 1 < count {
+                let (lo, hi) = self.voices.split_at_mut(active[j + 1]);
+                let (a, b) = (&mut lo[active[j]], &mut hi[0]);
+                let (ta, al, ar) = out_gain(a);
+                let (tb, bl, br) = out_gain(b);
+                for i in 0..n {
+                    a.vgain = ta + (a.vgain - ta) * vg_c;
+                    b.vgain = tb + (b.vgain - tb) * vg_c;
+                    let ya = tick(a, &p, &k) * a.vgain;
+                    let yb = tick(b, &p, &k) * b.vgain;
+                    left[i] += ya * al + yb * bl;
+                    right[i] += ya * ar + yb * br;
+                }
+                j += 2;
+            }
+            if j < count {
+                let v = &mut self.voices[active[j]];
+                let (tv, gl, gr) = out_gain(v);
+                for i in 0..n {
+                    v.vgain = tv + (v.vgain - tv) * vg_c;
+                    let y = tick(v, &p, &k) * v.vgain;
+                    left[i] += y * gl;
+                    right[i] += y * gr;
+                }
             }
         }
         for v in self.voices.iter_mut().filter(|v| v.active) {
@@ -630,7 +673,13 @@ struct Consts {
     dc_r: f32,
     ladder_in: f32,
     scream_in: f32,
+    svf_in: f32,
     mix1: f32,
+    /// Unison copies: pitch ratio and pan gains.
+    detune: [f32; MAX_UNISON],
+    pan_l: [f32; MAX_UNISON],
+    pan_r: [f32; MAX_UNISON],
+    uni_norm: f32,
 }
 
 /// Control-rate update of a voice: glide, drift, cutoff and resonance.
@@ -663,6 +712,13 @@ fn control(v: &mut Voice, p: &Params, k: &Consts) {
         + p.key_track * (v.note - 60.0) / 12.0
         + d * (v.tol[2] * 0.15 + v.drift[2] * 0.12);
     let fc = (p.cutoff * 2f32.powf(oct)).clamp(16.0, k.fc_max);
+    let res = (p.resonance + d * v.tol[4] * 0.03).clamp(0.0, 1.0);
+    if let Model::Svf(_) = p.model {
+        for f in &mut v.flt {
+            f.svf.set(fc, res, k.sr);
+        }
+        return;
+    }
     // Oversample only when the cutoff is high enough to need it (with
     // hysteresis); the TPT integrator states carry over between rates.
     let os = if v.os { fc > k.os_off } else { fc > k.os_on };
@@ -676,14 +732,72 @@ fn control(v: &mut Voice, p: &Params, k: &Consts) {
     } else {
         v.g_inc = (g_new - v.g) * (1.0 / CONTROL as f32);
     }
-    let res = (p.resonance + d * v.tol[4] * 0.03).clamp(0.0, 1.0);
     v.k = match p.model {
         Model::Ladder => 4.25 * res,
-        Model::Screamer => 2.0 - 2.06 * res,
+        Model::Screamer | Model::Svf(_) => 2.0 - 2.06 * res,
     };
 }
 
-/// One output sample of a voice (before gain and pan).
+/// Sub oscillator and noise of a voice (shared by every unison copy).
+#[inline(always)]
+fn sub_noise(v: &mut Voice, p: &Params) -> f32 {
+    let dts = v.dt1 * 0.5;
+    let sub = if p.sub_sine {
+        (v.phs * TAU).sin()
+    } else {
+        let mut ps2 = v.phs + 0.5;
+        if ps2 >= 1.0 {
+            ps2 -= 1.0;
+        }
+        (if v.phs < 0.5 { 1.0 } else { -1.0 }) + poly_blep(v.phs, dts) - poly_blep(ps2, dts)
+    };
+    advance(&mut v.phs, dts);
+    let mut x = sub * p.sub;
+    if p.noise > 0.0 {
+        x += v.rng.bipolar() * p.noise * 0.8;
+    }
+    x
+}
+
+/// One filter step: the ladder and screamer run 2x oversampled at high
+/// cutoffs (linear interpolation up, average down).
+#[inline(always)]
+fn filter(f: &mut Flt, x: f32, p: &Params, k: &Consts, g: f32, kk: f32, os: bool) -> f32 {
+    let y = match p.model {
+        Model::Ladder => {
+            let x = x * k.ladder_in;
+            let c = LadderCoefs::new(g, kk);
+            let y = if os {
+                let ya = ladder(&mut f.s, 0.5 * (f.prev_in + x), &c);
+                0.5 * (ya + ladder(&mut f.s, x, &c))
+            } else {
+                ladder(&mut f.s, x, &c)
+            };
+            f.prev_in = x;
+            // Mild passband-loss compensation at high resonance.
+            y * (1.0 + 0.3 * kk)
+        }
+        Model::Screamer => {
+            let x = ftanh(x * k.scream_in);
+            let y = if os {
+                let ya = screamer(&mut f.s, &mut f.bp, 0.5 * (f.prev_in + x), g, kk);
+                0.5 * (ya + screamer(&mut f.s, &mut f.bp, x, g, kk))
+            } else {
+                screamer(&mut f.s, &mut f.bp, x, g, kk)
+            };
+            f.prev_in = x;
+            1.4 * ftanh(y * 0.9)
+        }
+        Model::Svf(mode) => {
+            // Clean unless driven: blend towards a saturated copy.
+            let x = x + p.drive * (ftanh(x * k.svf_in) - x);
+            f.svf.process(x, mode)
+        }
+    };
+    f.dc.process(y, k.dc_r)
+}
+
+/// One output sample of a voice without unison (before gain and pan).
 #[inline(always)]
 fn tick(v: &mut Voice, p: &Params, k: &Consts) -> f32 {
     if v.counter.is_multiple_of(CONTROL) {
@@ -691,61 +805,42 @@ fn tick(v: &mut Voice, p: &Params, k: &Consts) -> f32 {
     }
     v.counter += 1;
 
-    // Oscillators.
-    let o1 = va_osc(p.wave1, v.ph1, v.dt1, p.pw);
-    let o2 = va_osc(p.wave2, v.ph2, v.dt2, p.pw);
-    let dts = v.dt1 * 0.5;
-    let mut ps2 = v.phs + 0.5;
-    if ps2 >= 1.0 {
-        ps2 -= 1.0;
-    }
-    let sub = (if v.phs < 0.5 { 1.0 } else { -1.0 }) + blep(v.phs, dts) - blep(ps2, dts);
-    v.ph1 += v.dt1;
-    if v.ph1 >= 1.0 {
-        v.ph1 -= 1.0;
-    }
-    v.ph2 += v.dt2;
-    if v.ph2 >= 1.0 {
-        v.ph2 -= 1.0;
-    }
-    v.phs += dts;
-    if v.phs >= 1.0 {
-        v.phs -= 1.0;
-    }
-    let mut x = o1 * k.mix1 + o2 * p.mix2 + sub * p.sub;
-    if p.noise > 0.0 {
-        x += v.rng.bipolar() * p.noise * 0.8;
-    }
+    let o1 = va_osc(p.wave1, v.ph1[0], v.dt1, p.pw, &mut v.rng);
+    let o2 = va_osc(p.wave2, v.ph2[0], v.dt2, p.pw, &mut v.rng);
+    advance(&mut v.ph1[0], v.dt1);
+    advance(&mut v.ph2[0], v.dt2);
+    let x = o1 * k.mix1 + o2 * p.mix2 + sub_noise(v, p);
 
-    // Filter, 2x oversampled at high cutoffs (linear interpolation up,
-    // average down).
     v.g += v.g_inc;
-    let g = v.g;
-    let y = match p.model {
-        Model::Ladder => {
-            let x = x * k.ladder_in;
-            let c = LadderCoefs::new(g, v.k);
-            let y = if v.os {
-                let ya = ladder(&mut v.s, 0.5 * (v.prev_in + x), &c);
-                0.5 * (ya + ladder(&mut v.s, x, &c))
-            } else {
-                ladder(&mut v.s, x, &c)
-            };
-            v.prev_in = x;
-            // Mild passband-loss compensation at high resonance.
-            y * (1.0 + 0.3 * v.k)
-        }
-        Model::Screamer => {
-            let x = ftanh(x * k.scream_in);
-            let y = if v.os {
-                let ya = screamer(&mut v.s, &mut v.bp, 0.5 * (v.prev_in + x), g, v.k);
-                0.5 * (ya + screamer(&mut v.s, &mut v.bp, x, g, v.k))
-            } else {
-                screamer(&mut v.s, &mut v.bp, x, g, v.k)
-            };
-            v.prev_in = x;
-            1.4 * ftanh(y * 0.9)
-        }
-    };
-    v.dc.process(y, k.dc_r) * v.env.next()
+    let (g, kk, os) = (v.g, v.k, v.os);
+    filter(&mut v.flt[0], x, p, k, g, kk, os) * v.env.next()
+}
+
+/// One stereo output sample of a voice with a unison stack.
+#[inline(always)]
+fn tick_wide(v: &mut Voice, p: &Params, k: &Consts) -> (f32, f32) {
+    if v.counter.is_multiple_of(CONTROL) {
+        control(v, p, k);
+    }
+    v.counter += 1;
+
+    let (mut l, mut r) = (0.0, 0.0);
+    for u in 0..p.unison {
+        let dt1 = (v.dt1 * k.detune[u]).min(0.45);
+        let dt2 = (v.dt2 * k.detune[u]).min(0.45);
+        let o = va_osc(p.wave1, v.ph1[u], dt1, p.pw, &mut v.rng) * k.mix1
+            + va_osc(p.wave2, v.ph2[u], dt2, p.pw, &mut v.rng) * p.mix2;
+        advance(&mut v.ph1[u], dt1);
+        advance(&mut v.ph2[u], dt2);
+        l += o * k.pan_l[u];
+        r += o * k.pan_r[u];
+    }
+    let c = sub_noise(v, p);
+
+    v.g += v.g_inc;
+    let (g, kk, os) = (v.g, v.k, v.os);
+    let yl = filter(&mut v.flt[0], l * k.uni_norm + c, p, k, g, kk, os);
+    let yr = filter(&mut v.flt[1], r * k.uni_norm + c, p, k, g, kk, os);
+    let e = v.env.next();
+    (yl * e, yr * e)
 }
