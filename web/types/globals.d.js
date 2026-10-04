@@ -71,8 +71,8 @@
  * the camera [x, y, span, tilt, turn]; the desk's bounds [x0, y0, x1, y1],
  * color, texture and tile size (points); the paper's color, its texture's tiles
  * (tooth, formation, grain: image URLs) and their sizes (points), and the
- * page [width, height, staff space] (points); the sheets; glowing
- * notes [x, y, radius, amount]…; the spotlight [x, y, rx, ry, amount]; the lamp
+ * page [width, height, staff space] (points); the sheets; the notes playing
+ * [x, y, notehead half-width, brightness]… (up to 48); the spotlight [x, y, rx, ry, amount]; the lamp
  * [x, y, height]; effects [vignette, glow]; a seed for the grain. Desk units are points.
  */
 /** type GlFrame = { width: Number, height: Number, cam: Number[], desk: Number[], deskColor: String, deskTex: String, deskTile: Number, paper: String, paperTex: String[], paperSize: Number[], pageSize: Number[], sheets: GlSheet[], sparks: Number[], spot: Number[], light: Number[], fx: Number[], seed: Number } */

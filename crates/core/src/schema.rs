@@ -201,7 +201,7 @@ pub fn schema() -> Value {
                     "view": {"enum": FILM_VIEWS, "default": "score", "description": "What is filmed."},
                     "surface": {"enum": FILM_SURFACES, "default": "walnut", "description": "The desk the pages lie on."},
                     "energy": num(0.0, 1.0, "How much the self-directed camera moves: 0 calm, 1 restless (default 0.5)."),
-                    "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects over the whole film; unlisted ones keep their defaults (vignette 0.5, spotlight 0, glow 0)."},
+                    "effects": {"type": "array", "items": {"$ref": "#/$defs/filmEffect"}, "description": "Effects over the whole film; unlisted ones keep their defaults (vignette 0.5, spotlight 0, glow 1)."},
                     "shots": {"type": "array", "items": {"$ref": "#/$defs/shot"}}
                 }
             }
@@ -247,7 +247,7 @@ pub fn schema() -> Value {
                 "required": ["type"],
                 "additionalProperties": false,
                 "properties": {
-                    "type": {"enum": FILM_EFFECTS, "description": "vignette (dark edges), spotlight (a pool of light on the framed staves), glow (notes glow as they play)."},
+                    "type": {"enum": FILM_EFFECTS, "description": "vignette (dark edges), spotlight (a pool of light on the framed staves), glow (the notes playing light up, their ink glowing warm; 0 turns it off)."},
                     "amount": num(0.0, 1.0, "Strength; 0 turns the effect off (default 1).")
                 }
             },

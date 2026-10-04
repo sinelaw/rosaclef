@@ -161,9 +161,9 @@ the pages lie on a desk (walnut, oak, slate, felt or marble) and a camera in
 3D space above them plays the song — zooming in on a part, pulling back to
 the whole band, leaning and turning so the music runs diagonally across the
 picture, gliding to the next line as one ends — down to a single beat filling
-the picture. The pages look as they do on the paper view, lit by a lamp; a
-spotlight and a vignette finish the picture (the notes can glow as they play
-too). It draws fast, with or without a GPU.
+the picture. The pages look as they do on the paper view, lit by a lamp, and
+the notes light up as they play, their ink glowing warm; a spotlight and a
+vignette finish the picture. It draws fast, with or without a GPU.
 
 - **Auto**: the camera directs itself. It finds the lead, the rhythm section
   (drums and bass) and the background (chords and pads), cuts the song into

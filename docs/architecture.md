@@ -180,8 +180,9 @@
   shadows, the pages — each bitmap under the paper's texture (its tooth,
   formation and grain, tiled as on the paper view, and its toned edges, laid
   over in the shader, so tiles are drawn on plain paper and cost little) and
-  lit by the lamp — the playing notes in gold (the glow effect, off by
-  default), then a last pass: vignette, warmth and grain. `renderStill` draws
+  lit by the lamp, the notes playing lit up (their noteheads' ink glowing
+  warm amber, a soft glow on the paper around: the glow effect, on by
+  default) — then a last pass: vignette, warmth and grain. `renderStill` draws
   one frame offscreen (the camera button: a PNG); `encodeFilm` renders frame
   after frame offscreen and encodes them with WebCodecs (H.264/AAC, or
   VP9/Opus) into an MP4 (`web/vendor/mp4-muxer`), with the mixdown from

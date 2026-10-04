@@ -856,10 +856,12 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
   const glow = [];
   const fx = cam.fx;
   if (lit && fx.glow > 0.01) {
-    const r = 3.2 * f.lay.sp;
-    for (const s of sparks(f, beat, scene ? scene.staves : [])) {
+    // The notes playing (the brightest first, as many as the renderer lights).
+    const playing = sparks(f, beat, scene ? scene.staves : []);
+    playing.sort((x, y) => y.a - x.a);
+    for (const s of playing.slice(0, 48)) {
       const c = onDesk(d, s.page, s.x, s.y);
-      for (const x of [c[0], c[1], r, Math.min(1, s.a * fx.glow)]) glow.push(x);
+      for (const x of [c[0], c[1], s.r, Math.min(1, s.a * fx.glow)]) glow.push(x);
     }
   }
   // The lamp: up and to the left of what the camera looks at, high above the desk.
@@ -1355,9 +1357,9 @@ function effectSliders(b, fv, list, onSet) {
   const tips = [
     "Vignette: the picture darkens toward its edges",
     "Spotlight: a pool of light on the framed staves, the rest of the desk dimmed",
-    "Glow: notes light up as they play (off unless set)",
+    "Glow: the notes playing light up, their ink glowing warm",
   ];
-  const fx = [0.5, 0, 0];
+  const fx = [0.5, 0, 1];
   for (let i = 0; i < EFFECTS.length; i++) {
     const e = list.find((x) => x.type === EFFECTS[i]);
     const v = e ? e.amount : fx[i];

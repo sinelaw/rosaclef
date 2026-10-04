@@ -52,7 +52,7 @@ import { pdfLayout } from "./pdf.js";
 /** A song filmed: the printed layout, the desk, the score, the roles, the scenes, where each system lies, the picture's aspect (width / height) and the song's end (beats). */
 /** type Film = { lay: PdfLayout, desk: Desk, sc: Score, roles: Roles, scenes: Scene[], sys: SysAt[], aspect: Number, end: Number, bar: Number, onsets: Number[][] } */
 /** A note lit as it plays: its page, its notehead (page points) and how bright (0..1). */
-/** type Spark = { page: Int, x: Number, y: Number, a: Number } */
+/** type Spark = { page: Int, x: Number, y: Number, r: Number, a: Number } */
 
 /** Frames, widest first, and how many bars the following ones hold. */
 export const FRAMES = ["desk", "page", "system", "medium", "close", "detail"];
@@ -65,7 +65,7 @@ export const SURFACES = ["walnut", "oak", "slate", "felt", "marble"];
 /** The effects' amounts when the film does not set them. */
 /** function defaultFx() => Fx */
 export function defaultFx() {
-  return { vignette: 0.5, spotlight: 0, glow: 0 };
+  return { vignette: 0.5, spotlight: 0, glow: 1 };
 }
 
 /** The camera's lean for a frame when the shot does not set it: the closer, the more. */
@@ -983,7 +983,7 @@ export function sparks(f, beat, staves) {
       let a = beat < n.end ? 0.45 + 0.55 * attack : 0.45 * (1 - (beat - n.end) / tail);
       a = a * (0.6 + 0.4 * n.velocity);
       if (staves.length > 0 && !staves.includes(h.staff)) a = a * 0.45;
-      out.push({ page: at.page, x: f.lay.left + (h.x + h.w / 2) * sp, y: at.top + h.y * sp, a: a });
+      out.push({ page: at.page, x: f.lay.left + (h.x + h.w / 2) * sp, y: at.top + h.y * sp, r: (h.w / 2) * sp, a: a });
     }
   }
   return out;

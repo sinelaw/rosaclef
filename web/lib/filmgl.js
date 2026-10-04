@@ -8,6 +8,7 @@
 // on paper, as on the paper view), lit by the lamp; closer up, sharper tiles
 // of the page are drawn over it. The picture is drawn into a texture and
 // finished in a last pass: the vignette, the lamp's warmth and a fine grain.
+// The notes playing light up, their ink glowing warm.
 //
 // Not type-checked (WebGL is outside inty's library); web/types/platform.d.js
 // types what it exports, and GlFrame / GlSheet in web/types/globals.d.js
@@ -95,6 +96,9 @@ uniform vec3 uPaper;
 uniform vec3 uPaperSize;
 uniform vec4 uBox;
 uniform vec3 uPage;
+// The notes playing: desk point, notehead half-width (points), brightness.
+uniform vec4 uNotes[48];
+uniform int uNoteCount;
 ${LIGHT}
 out vec4 o;
 void main() {
@@ -115,21 +119,27 @@ void main() {
     // The bitmap's plain paper takes on the texture (its ink too, a little: it lies on the paper).
     base *= paper / uPaper;
   }
-  o = vec4(base * paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6), 1.0);
-}`;
-
-// A note as it plays: golden light on it and around it (added to the picture).
-const SPARK_FS = `#version 300 es
-precision highp float;
-in vec2 vWorld;
-in vec2 vUv;
-uniform float uA;
-out vec4 o;
-void main() {
-  float r = length(vUv * 2.0 - 1.0);
-  float core = pow(clamp(1.0 - r * 1.6, 0.0, 1.0), 1.5);
-  float halo = pow(clamp(1.0 - r, 0.0, 1.0), 2.5);
-  o = vec4(vec3(1.0, 0.68, 0.22) * uA * (0.55 * core + 0.22 * halo), 1.0);
+  vec3 c = base * paperLamp(vWorld) * mix(1.0, spotOn(vWorld), 0.6);
+  // The notes playing light up: the ink of each notehead glows warm amber (its
+  // printed shape, so the music stays readable), and a soft warm glow spreads
+  // on the paper around it.
+  float lit = 0.0;
+  float halo = 0.0;
+  for (int i = 0; i < 48; i++) {
+    if (i >= uNoteCount) break;
+    vec4 n = uNotes[i];
+    vec2 q = (vWorld - n.xy) / (n.z * vec2(1.15, 0.95));
+    float d2 = dot(q, q);
+    lit = max(lit, n.w * smoothstep(1.8, 1.0, d2));
+    halo = max(halo, n.w * exp(-d2 * 0.12));
+  }
+  if (lit + halo > 0.0) {
+    float inkness = smoothstep(0.6, 0.3, dot(base, vec3(0.299, 0.587, 0.114)));
+    // (A held note glows clearly too, the fresh attack the brightest.)
+    c = mix(c, vec3(1.0, 0.6, 0.12), sqrt(lit) * inkness * 0.92);
+    c = mix(c, c * vec3(1.0, 0.93, 0.78) + vec3(0.1, 0.06, 0.0), halo * (1.0 - inkness) * 0.7);
+  }
+  o = vec4(c, 1.0);
 }`;
 
 const POST_VS = `#version 300 es
@@ -271,7 +281,8 @@ function compile(gl, vs, fs) {
   const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
   for (let i = 0; i < n; i++) {
     const info = gl.getActiveUniform(p, i);
-    u[info.name] = gl.getUniformLocation(p, info.name);
+    // An array by its own name ("uNotes", not "uNotes[0]").
+    u[info.name.replace(/\[0\]$/, "")] = gl.getUniformLocation(p, info.name);
   }
   return { p, u };
 }
@@ -290,7 +301,6 @@ function renderer(canvas) {
     desk: compile(gl, VS, DESK_FS),
     shadow: compile(gl, VS, SHADOW_FS),
     page: compile(gl, VS, PAGE_FS),
-    spark: compile(gl, VS, SPARK_FS),
     post: compile(gl, POST_VS, POST_FS),
   };
   const buf = gl.createBuffer();
@@ -457,6 +467,10 @@ function renderer(canvas) {
     gl.uniform1f(pu.uHasPaper, hasPaper ? 1 : 0);
     gl.uniform3f(pu.uPaperSize, f.paperSize[0], f.paperSize[1], f.paperSize[2]);
     gl.uniform3f(pu.uPage, f.pageSize[0], f.pageSize[1], f.pageSize[2]);
+    // The notes playing.
+    const notes = Math.min(48, Math.floor(f.sparks.length / 4));
+    gl.uniform1i(pu.uNoteCount, notes);
+    if (notes > 0) gl.uniform4fv(pu.uNotes, new Float32Array(f.sparks.slice(0, notes * 4)));
     gl.uniform1i(pu.uColorTex, 0);
     gl.activeTexture(gl.TEXTURE0);
     for (const s of f.sheets) {
@@ -467,19 +481,6 @@ function renderer(canvas) {
       gl.uniform1f(pu.uHasColor, ct ? 1 : 0);
       gl.uniform4f(pu.uBox, s.box[0], s.box[1], s.box[2], s.box[3]);
       quad(s.quad, [0, 0, 1, 0, 1, 1, 0, 1]);
-    }
-
-    // Notes as they play, multiplied into the paper.
-    if (f.sparks.length > 0) {
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.ONE, gl.ONE);
-      common(progs.spark, f, vp);
-      for (let i = 0; i + 3 < f.sparks.length; i += 4) {
-        const [x, y, r, a] = f.sparks.slice(i, i + 4);
-        gl.uniform1f(progs.spark.u.uA, a);
-        quad([x - r, y - r, x + r, y - r, x + r, y + r, x - r, y + r], [0, 0, 1, 0, 1, 1, 0, 1]);
-      }
-      gl.disable(gl.BLEND);
     }
 
     // The finish, onto the canvas.
