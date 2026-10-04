@@ -208,3 +208,322 @@
   cursor: ew-resize;
   z-index: 4;
 }
+
+/* ---------------------------------------------------------------- plugins */
+
+.maestro-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  background: #0e0c11;
+}
+.maestro-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.maestro-tab .glyph {
+  width: 13px;
+  height: 13px;
+}
+.maestro-tab:hover {
+  color: var(--gold-hi);
+}
+.maestro-tab.on {
+  color: var(--gold-hi);
+  border-bottom-color: var(--gold);
+}
+.maestro-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(212, 175, 55, 0.18);
+  color: var(--gold-hi);
+  font-size: 9.5px;
+  line-height: 16px;
+  text-align: center;
+  letter-spacing: 0;
+}
+/* A plugin covers the terminal (which keeps its size and keeps running). */
+.maestro-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ---------------------------------------------------------------- critic */
+
+.critic {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(120% 50% at 50% 0%, rgba(212, 175, 55, 0.04), transparent 60%), #0b0a0d;
+}
+.crit-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.crit-seg {
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #131116;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.crit-seg:hover {
+  color: var(--gold-hi);
+  border-color: var(--line-3);
+}
+.crit-seg.on {
+  color: var(--gold-hi);
+  border-color: var(--line-3);
+  background: rgba(212, 175, 55, 0.12);
+}
+.crit-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 10px 16px;
+}
+.crit-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0 2px;
+}
+.crit-summary:empty {
+  display: none;
+}
+.crit-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+.crit-empty .glyph {
+  width: 26px;
+  height: 26px;
+  color: var(--gold);
+}
+.crit-empty h3 {
+  margin: 0;
+  font: italic 600 24px/1.1 var(--serif);
+  color: var(--gold-hi);
+}
+.crit-empty p {
+  margin: 0;
+  font: 14px/1.45 var(--serif);
+  max-width: 300px;
+}
+.crit-cat {
+  margin: 14px 0 6px;
+  font: italic 600 17px/1 var(--serif);
+  color: var(--gold-hi);
+  letter-spacing: 0.02em;
+}
+.crit-rulegroup {
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0f0d12;
+  overflow: hidden;
+}
+.crit-rulehead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.crit-rulehead:hover {
+  background: rgba(212, 175, 55, 0.05);
+}
+.crit-rulehead b {
+  color: var(--champagne);
+  font-size: 12px;
+}
+.crit-caret {
+  color: var(--dim);
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+.crit-caret.folded {
+  transform: rotate(-90deg);
+}
+.crit-count {
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #1b1820;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+.crit-fixall {
+  color: var(--gold);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.crit-fixall:hover {
+  color: var(--gold-hi);
+  text-decoration: underline;
+}
+.crit-why {
+  margin: 0;
+  padding: 0 12px 6px 27px;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.crit-item {
+  display: flex;
+  gap: 9px;
+  padding: 8px 10px 8px 12px;
+  border-top: 1px solid rgba(212, 175, 55, 0.07);
+}
+.crit-item.ignored {
+  opacity: 0.45;
+}
+.crit-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.crit-item.warn .crit-dot {
+  background: var(--rose);
+  box-shadow: 0 0 8px rgba(208, 138, 147, 0.6);
+}
+.crit-item.info.fixable .crit-dot {
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.5);
+}
+.crit-body {
+  flex: 1;
+  min-width: 0;
+}
+.crit-title {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.crit-detail {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.crit-acts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+.crit-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: #131116;
+  color: var(--champagne);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.crit-where .glyph {
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+.crit-where:hover {
+  border-color: var(--line-3);
+  color: var(--gold-hi);
+}
+.crit-where.static {
+  cursor: default;
+  color: var(--dim);
+}
+.crit-where span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crit-intro {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font: 14px/1.45 var(--serif);
+}
+.crit-rule {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--dim);
+}
+.crit-rule:hover {
+  background: rgba(212, 175, 55, 0.05);
+}
+.crit-rule input {
+  margin-top: 2px;
+  accent-color: var(--gold);
+}
+.crit-rule-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.crit-rule-text b {
+  font-size: 12px;
+  color: var(--muted);
+}
+.crit-rule.on .crit-rule-text b {
+  color: var(--champagne);
+}
+.crit-rule-text span {
+  font-size: 11px;
+  line-height: 1.4;
+}

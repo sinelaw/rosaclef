@@ -88,6 +88,23 @@
   sharing the playlist's zoom and scroll; controls bound to a target open an
   automation menu on right-click and show a gold dot when automated.
 
+### The Critic
+
+- `web/src/critic.js` lints the project with pure, deterministic checks (no
+  AI): `critique(project, off)` returns findings. Each finding has a level,
+  a stable key, the place it points at (notes of a pattern, a channel, an
+  insert, a bar, a lane) and, for a suggestion, a fix: a function that
+  mutates the project it is given. Pitches are read as they sound; channels
+  get a role (drums, bass, harmony, lead, ...) from their instrument and
+  notes. The song-wide checks expand the playlist the way `notation.js`
+  does. The checks and their thresholds are catalogued in
+  [`critic.md`](critic.md).
+- `web/src/ui/critic.js` is the panel: a plugin tab of the Maestro panel. It
+  covers the terminal, which stays mounted and keeps its size. Findings are
+  recomputed 350 ms after an edit (never during a drag). A fix runs inside
+  `commit`, so it is one undo step. Turned-off checks and ignored findings
+  live in `localStorage`.
+
 ### Voice to notes
 
 - `rosaclef_studio::transcribe` analyzes a take once: YIN pitch tracking on a

@@ -290,6 +290,7 @@ const ICONS = [
   { name: "export", d: "M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5M4.5 16.5v3h15v-3" },
   { name: "spark", d: "M12 2.5l2.1 6.2 6.4 1.3-5 4.2 1.5 6.5L12 17.2l-5 3.5 1.5-6.5-5-4.2 6.4-1.3z" },
   { name: "terminal", d: "M4 5.5h16v13H4zM7 9.5l3 2.5-3 2.5M12.5 15h4.5" },
+  { name: "critic", d: "M4 6.5l1.6 1.6L8.8 5M4 12.5l1.6 1.6 3.2-3.1M4 18.5l1.6 1.6 3.2-3.1M12 7h8M12 13h8M12 19h8" },
   { name: "restart", d: "M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4.5H15" },
   { name: "pattern", d: "M4.5 5h4v4h-4zM10 5h4v4h-4zM15.5 5h4v4h-4zM4.5 10.5h4v4h-4zM15.5 10.5h4v4h-4zM10 16h4v4h-4z" },
   { name: "song", d: "M3.5 6h9v3h-9zM8 11h12v3H8zM3.5 16h7v3h-7z" },

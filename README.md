@@ -83,6 +83,17 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef drums [DIR] [--groove G] [--kit K] [--guess] [--reset-edits]` | write the project's drum part into drum patterns and clips |
 | `rosaclef fmt`, `schema`, `catalog`, `guide` | formatting, JSON schema, device catalog, agent guides |
 
+## The Critic
+
+The **Critic** tab in the Maestro panel lints the song: 76 mechanical checks
+(no AI) of harmony, melody, rhythm, arrangement, low end, mix, stereo, effects
+and the master. Each check rests on a rule of thumb of production: muddy low
+voicings, notes out of key or beyond a real instrument's range, robotic
+velocities, loopitis, a bass panned off center, a limiter that isn't last.
+**Suggestions** apply with one click and undo with Ctrl+Z. **Issues** are for
+information, and in the native studio one click hands an issue to your agent.
+See [`docs/critic.md`](docs/critic.md).
+
 ## Voice to notes
 
 The **Voice** tab in the bottom dock (F8) turns the microphone into an

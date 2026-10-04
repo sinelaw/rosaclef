@@ -1,14 +1,19 @@
-// The agent panel: a terminal running the producer's own coding agent
-// (Claude Code, Codex, Gemini CLI, ...) inside the project folder, where
+// The agent panel (Maestro): a terminal running the producer's own coding
+// agent (Claude Code, Codex, Gemini CLI, ...) inside the project folder, where
 // AGENTS.md / CLAUDE.md teach it the project format. The browser-only studio
 // has no processes to run: there the terminal runs the Rosaclef shell (the
 // studio's command line, compiled into the page — see crates/local).
+//
+// Plugins share the panel with the terminal, one tab each: the Critic
+// (./critic.js) lints the project. The terminal stays mounted while another
+// tab shows, so the agent keeps running.
 
 import { connectRaw, wsUrl, createTerm, getJson } from "#platform";
 import { state, invalidate, currentPattern, currentChannel, hint, setFocus } from "../store.js";
 import { iconButton, button, select, glyph } from "./widgets.js";
 import { paneHeader, paneControls } from "./panes.js";
 import { insertIndex } from "#brands";
+import { criticPanel, criticCount } from "./critic.js";
 
 const agent = {
   running: false,
@@ -20,6 +25,22 @@ const agent = {
   choosing: false,
   autostarted: false,
 };
+
+/** The panel's plugins: the terminal and the Critic. */
+/** const PLUGINS: { id: String, label: String, icon: String, tip: String }[] */
+const PLUGINS = [
+  { id: "terminal", label: "Terminal", icon: "terminal", tip: "Your coding agent, in the project folder" },
+  { id: "critic", label: "Critic", icon: "critic", tip: "Mechanical checks of the project against production best practice, with one-click fixes" },
+];
+
+const maestro = { tab: localStorage.getItem("rosaclef.maestro.tab") ?? "terminal" };
+
+/** function setTab(id: String) => Undefined */
+function setTab(id) {
+  maestro.tab = id;
+  localStorage.setItem("rosaclef.maestro.tab", id);
+  invalidate();
+}
 
 /** const term: Term[] */
 const term = [];
@@ -201,6 +222,23 @@ export function agentPanel(b) {
   paneControls(b, "agent");
   b.close();
 
+  const tab = PLUGINS.some((x) => x.id === maestro.tab) ? maestro.tab : "terminal";
+  b.open("div", "tabs", "maestro-tabs");
+  for (const x of PLUGINS) {
+    b.open("button", x.id, tab === x.id ? "maestro-tab on" : "maestro-tab");
+    b.attr("title", x.tip);
+    b.on("pointerenter", (e) => hint(x.tip));
+    b.on("click", (e) => setTab(x.id));
+    glyph(b, x.icon);
+    b.leaf("span", "l", "", x.label);
+    if (x.id === "critic") {
+      const n = criticCount();
+      if (n > 0) b.leaf("span", "n", "maestro-count", String(n));
+    }
+    b.close();
+  }
+  b.close();
+
   // What the agent can see right now (also written to .rosaclef/context.json).
   b.open("div", "ctx", "agent-context");
   b.open("span", "c1", "chip");
@@ -239,6 +277,15 @@ export function agentPanel(b) {
     b.attr("title", state.diskIssues.map((i) => `${i.path}: ${i.message}`).join("\n"));
   }
   b.close();
+
+  // A plugin covers the terminal rather than replacing it: the terminal keeps its size.
+  b.open("div", "body", "maestro-body");
+  if (tab === "critic") {
+    criticPanel(b, (text) => {
+      setTab("terminal");
+      typeIntoAgent(text);
+    });
+  }
 
   b.open("div", "wrap", "term-wrap");
   b.on("resize", (e) => {
@@ -293,6 +340,7 @@ export function agentPanel(b) {
       typeIntoAgent(s);
     });
   }
+  b.close();
   b.close();
 
   b.close();

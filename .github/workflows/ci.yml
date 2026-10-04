@@ -96,3 +96,4 @@ jobs:
           node web/test/soundfont-smoke.mjs http://localhost:8765/
           node web/test/score-smoke.mjs http://localhost:8765/
           node web/test/film-smoke.mjs http://localhost:8765/
+          node web/test/critic-smoke.mjs http://localhost:8765/
