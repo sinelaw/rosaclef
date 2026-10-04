@@ -163,26 +163,127 @@ fn writes_a_song() {
 }
 
 #[test]
-fn writing_again_replaces_and_is_deterministic() {
+fn writing_again_is_deterministic() {
     let mut p = song("funk-16ths", "");
     write(&mut p).unwrap();
     let first = p.clone();
     write(&mut p).unwrap();
     assert_eq!(p, first);
     assert!(edited(&p).is_empty());
-    // A hand edit is noticed.
-    let id = p
+}
+
+/// The written pattern playing `slot`.
+fn written_id(p: &Project, slot: &str) -> String {
+    p.drums
+        .as_ref()
+        .unwrap()
+        .written
+        .iter()
+        .find(|(_, w)| w.slot == slot)
+        .map(|(id, _)| id.clone())
+        .unwrap_or_else(|| panic!("no pattern for {slot}"))
+}
+
+fn pattern_mut<'a>(p: &'a mut Project, id: &str) -> &'a mut Pattern {
+    p.patterns.iter_mut().find(|x| x.id == id).unwrap()
+}
+
+#[test]
+fn hand_edits_to_the_groove_are_kept_and_spread() {
+    let mut p = song("rock-8ths", "");
+    write(&mut p).unwrap();
+    // The producer adds a cowbell on every beat of groove A, in the piano roll.
+    let id = written_id(&p, "rock-8ths/a");
+    let ch = p.pattern(&id).unwrap().notes[0].channel.clone();
+    for beat in 0..4 {
+        pattern_mut(&mut p, &id).notes.push(Note {
+            channel: ch.clone(),
+            pitch: 56,
+            start: beat as f64,
+            length: 0.25,
+            velocity: 0.7,
+        });
+    }
+    assert_eq!(edited(&p), vec![id.clone()]);
+    let edited_notes = p.pattern(&id).unwrap().notes.clone();
+    // Writing again (say with another feel) keeps it note for note…
+    p.drums.as_mut().unwrap().feel = "tight".into();
+    let r = write(&mut p).unwrap();
+    assert!(r.kept >= 1);
+    let id = written_id(&p, "rock-8ths/a");
+    let mut now = p.pattern(&id).unwrap().notes.clone();
+    let mut was = edited_notes;
+    let key = |n: &Note| (n.start.to_bits(), n.pitch);
+    now.sort_by_key(key);
+    was.sort_by_key(key);
+    assert_eq!(now, was);
+    // …and the groove's other bars (crash, turnaround, fill) have the cowbell too.
+    let derived: Vec<(String, String)> = p
         .drums
         .as_ref()
         .unwrap()
         .written
-        .keys()
-        .next()
+        .iter()
+        .filter(|(_, w)| w.slot.starts_with("rock-8ths/a+"))
+        .map(|(id, w)| (id.clone(), w.slot.clone()))
+        .collect();
+    assert!(derived.len() >= 2, "{derived:?}");
+    for (id, slot) in derived {
+        let bells = p
+            .pattern(&id)
+            .unwrap()
+            .notes
+            .iter()
+            .filter(|n| n.pitch == 56)
+            .count();
+        assert!(bells >= 3, "{slot}: {bells} cowbells");
+    }
+    let edit = &p.drums.as_ref().unwrap().grooves["rock-8ths"];
+    assert!(edit.a.iter().any(|r| r[0] == "cowbell"), "{edit:?}");
+    // Nothing is edited any more until the producer edits again.
+    assert!(edited(&p).is_empty());
+}
+
+#[test]
+fn a_kept_fill_follows_a_kit_change() {
+    let mut p = song("rock-8ths", "");
+    write(&mut p).unwrap();
+    let slot = p
+        .drums
+        .as_ref()
         .unwrap()
+        .written
+        .values()
+        .find(|w| w.slot.contains("fill"))
+        .unwrap()
+        .slot
         .clone();
-    let pat = p.patterns.iter_mut().find(|x| x.id == id).unwrap();
-    pat.notes[0].velocity = 0.1;
-    assert_eq!(edited(&p), vec![id]);
+    let id = written_id(&p, &slot);
+    for n in &mut pattern_mut(&mut p, &id).notes {
+        n.velocity = 0.5;
+    }
+    write(&mut p).unwrap();
+    assert!(p.drums.as_ref().unwrap().kept.contains_key(&slot));
+    // On the drum machine the kept fill plays on its channels, velocities kept.
+    p.drums.as_mut().unwrap().kit = "Ebony".into();
+    write(&mut p).unwrap();
+    let id = written_id(&p, &slot);
+    let pat = p.pattern(&id).unwrap();
+    assert!(pat.notes.iter().all(|n| n.velocity == 0.5));
+    assert!(pat
+        .notes
+        .iter()
+        .all(|n| p.channel(&n.channel).unwrap().instrument.kind == "drum"));
+    // Reset: forgetting the kept pattern gives it back to the drummer.
+    p.drums.as_mut().unwrap().kept.remove(&slot);
+    write(&mut p).unwrap();
+    let id = written_id(&p, &slot);
+    assert!(p
+        .pattern(&id)
+        .unwrap()
+        .notes
+        .iter()
+        .any(|n| n.velocity != 0.5));
 }
 
 #[test]

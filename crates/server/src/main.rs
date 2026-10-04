@@ -110,9 +110,9 @@ enum Command {
         /// Guess the sections from the playlist (also when the part has none).
         #[arg(long)]
         guess: bool,
-        /// Replace drum patterns even if they were edited by hand.
+        /// Forget the hand edits (kept patterns and changed grooves) first.
         #[arg(long)]
-        force: bool,
+        reset_edits: bool,
     },
     /// List factory presets (optionally for one instrument type), or print one as JSON.
     Presets {
@@ -330,7 +330,7 @@ fn main() -> Result<()> {
             groove,
             kit,
             guess,
-            force,
+            reset_edits,
         } => {
             use rosaclef_core::drums;
             let file = project_file(path)?;
@@ -354,12 +354,11 @@ fn main() -> Result<()> {
                 part.start = start;
                 part.sections = sections;
             }
-            let edited = drums::edited(&p);
-            if !edited.is_empty() && !force {
-                bail!(
-                    "these drum patterns were edited by hand: {} (pass --force to replace them)",
-                    edited.join(", ")
-                );
+            if reset_edits {
+                let part = p.drums.as_mut().expect("drum part");
+                part.kept.clear();
+                part.grooves.clear();
+                part.written.clear();
             }
             let report = drums::write(&mut p).map_err(anyhow::Error::msg)?;
             let checked = validate::validate(&p);
@@ -371,11 +370,19 @@ fn main() -> Result<()> {
             }
             std::fs::write(&file, format::to_string(&p))?;
             println!(
-                "wrote {} drum patterns in {} clips on track {} ({})",
+                "wrote {} drum patterns in {} clips on track {} ({}){}",
                 report.patterns,
                 report.clips,
                 report.track + 1,
-                p.playlist.tracks[report.track].name
+                p.playlist.tracks[report.track].name,
+                if report.kept > 0 {
+                    format!(
+                        "; kept {} edited by hand (--reset-edits forgets them)",
+                        report.kept
+                    )
+                } else {
+                    String::new()
+                }
             );
             Ok(())
         }

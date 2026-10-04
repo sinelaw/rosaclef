@@ -73,7 +73,7 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
 | `rosaclef import-midi FILE.mid [--name N] [--library LIB] [--synth]` | import a Standard MIDI File as a new project: tempo and time signature changes, sustain pedal, program changes, volume/pan automation; played on the sampled General MIDI instruments (`--synth`: on Rosaclef's synthesizers) |
 | `rosaclef grooves` | list the drum grooves |
-| `rosaclef drums [DIR] [--groove G] [--kit K] [--guess] [--force]` | write the project's drum part into drum patterns and clips |
+| `rosaclef drums [DIR] [--groove G] [--kit K] [--guess] [--reset-edits]` | write the project's drum part into drum patterns and clips |
 | `rosaclef fmt`, `schema`, `catalog`, `guide` | formatting, JSON schema, device catalog, agent guides |
 
 ## Voice to notes
@@ -127,7 +127,11 @@ section and a crash on its first downbeat. The sections are guessed from the
 playlist. **▶** plays the song with the drums before anything changes (the
 arrows step through grooves while it plays); **Write drums** turns the part
 into ordinary patterns and clips on a Drums track, in one undoable step, with
-a turnaround every 4th bar and fills that do not repeat.
+a turnaround every 4th bar and fills that do not repeat. Edit the written
+patterns in the piano roll as you like (a drum kit's keys are named for their
+drums), or click the groove's step grid in the tab: writing again keeps your
+edits, follows them into the groove's crash and fill bars, and moves them to
+a new kit.
 
 The part lives in `project.json` under `drums`, so the agent can edit it
 too; `rosaclef grooves` lists the library and `rosaclef drums` writes it from

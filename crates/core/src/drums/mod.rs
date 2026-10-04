@@ -62,10 +62,58 @@ pub struct DrumPart {
     pub seed: u32,
     #[serde(default)]
     pub sections: Vec<DrumSection>,
-    /// Managed by Rosaclef: the patterns the last write made, with a
-    /// fingerprint of their notes (to notice hand edits before replacing).
+    /// Grooves changed for this song: groove id → its parts' rows, replacing
+    /// the library's (from the tab's grid, or from hand edits of the
+    /// groove's pattern).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub written: BTreeMap<String, String>,
+    pub grooves: BTreeMap<String, GrooveEdit>,
+    /// Patterns edited by hand, kept note for note when the part is written
+    /// again: slot (`rock-8ths/a+crash`) → their notes, by drum role.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub kept: BTreeMap<String, Kept>,
+    /// Managed by Rosaclef: the patterns the last write made — pattern id →
+    /// its slot and a fingerprint of its notes (to notice hand edits).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub written: BTreeMap<String, Written>,
+}
+
+/// A groove's parts as edited for one song: `[role, steps]` rows.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct GrooveEdit {
+    #[serde(default)]
+    pub a: Vec<[String; 2]>,
+    #[serde(default)]
+    pub b: Vec<[String; 2]>,
+}
+
+/// A pattern edited by hand.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Kept {
+    /// What the pattern is ("Straight 8ths A + crash").
+    pub name: String,
+    pub notes: Vec<KeptNote>,
+}
+
+/// A note of a kept pattern, by drum role so it follows a kit change:
+/// a role (`snare`), `gm:<key>` (a General MIDI drum key with no role), or
+/// `channel:<id>:<pitch>` (a channel outside the kit).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct KeptNote {
+    pub role: String,
+    pub start: f64,
+    pub length: f64,
+    pub velocity: f64,
+}
+
+/// A pattern the last write made.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Written {
+    pub slot: String,
+    pub print: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -131,6 +179,8 @@ impl DrumPart {
             variations: true,
             seed: 1,
             sections: vec![],
+            grooves: BTreeMap::new(),
+            kept: BTreeMap::new(),
             written: BTreeMap::new(),
         }
     }
@@ -228,6 +278,24 @@ pub fn steps(row: &str) -> Vec<char> {
     row.chars().filter(|c| *c != ' ' && *c != '|').collect()
 }
 
+/// A groove part's rows in this song: the part's edit, else the library's.
+fn part_rows(part: &DrumPart, g: &Groove, b: bool) -> Vec<(&'static str, Vec<char>)> {
+    if let Some(e) = part.grooves.get(g.id) {
+        let rows = if b { &e.b } else { &e.a };
+        if !rows.is_empty() {
+            return rows
+                .iter()
+                .filter(|r| ROLES.contains(&r[0].as_str()))
+                .map(|r| (role_static(&r[0]), steps(&r[1])))
+                .collect();
+        }
+    }
+    g.part(b)
+        .iter()
+        .map(|(r, s)| (role_static(r), steps(s)))
+        .collect()
+}
+
 /// One bar on the step grid: a stroke letter per role per step.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Bar {
@@ -250,17 +318,16 @@ impl Bar {
         self.rows.entry(role).or_insert_with(|| vec!['.'; n])[i] = c;
     }
     /// Bar `index` of a groove part.
-    fn of_groove(g: &Groove, part_b: bool, index: usize) -> Bar {
+    fn of_groove(part: &DrumPart, g: &Groove, part_b: bool, index: usize) -> Bar {
         let n = g.steps as usize;
         let mut bar = Bar::new(n);
-        for (role, row) in g.part(part_b) {
-            let s = steps(row);
+        for (role, s) in part_rows(part, g, part_b) {
             let bars = (s.len() / n).max(1);
             let from = (index % bars) * n;
             for i in 0..n {
                 let c = s.get(from + i).copied().unwrap_or('.');
                 if c != '.' {
-                    bar.set(role_static(role), i, c);
+                    bar.set(role, i, c);
                 }
             }
         }
@@ -364,10 +431,10 @@ impl SongBar {
             _ => 4,
         }
     }
-    fn grid(&self) -> Bar {
+    fn grid(&self, part: &DrumPart) -> Bar {
         let n = self.steps();
         let mut bar = match &self.body {
-            Body::Groove { groove, b, index } => Bar::of_groove(groove, *b, *index),
+            Body::Groove { groove, b, index } => Bar::of_groove(part, groove, *b, *index),
             Body::Hits | Body::End => {
                 let mut bar = Bar::new(n);
                 bar.set("kick", 0, 'X');
@@ -394,6 +461,33 @@ impl SongBar {
             bar.crash();
         }
         bar
+    }
+    /// Which pattern this bar plays, stably across writes: `rock-8ths/a`
+    /// (the plain groove), `rock-8ths/a+crash+fill3`, `hits`, `count`, `end`.
+    fn slot(&self) -> String {
+        let mut s = match &self.body {
+            Body::Groove { groove, b, index } => {
+                let mut s = format!("{}/{}", groove.id, if *b { "b" } else { "a" });
+                if groove_bars(groove) > 1 && !self.plain() {
+                    s.push_str(&format!("@{}", index + 1));
+                }
+                s
+            }
+            Body::Hits => "hits".into(),
+            Body::Count => "count".into(),
+            Body::Rest => "rest".into(),
+            Body::End => "end".into(),
+        };
+        if self.crash {
+            s.push_str("+crash");
+        }
+        if self.turn {
+            s.push_str("+turn");
+        }
+        if let Some(f) = self.fill {
+            s.push_str(&format!("+fill{f}"));
+        }
+        s
     }
     /// A readable name: "Straight 8ths A + crash + 1-beat fill 3".
     fn name(&self) -> String {
@@ -479,7 +573,7 @@ pub fn edited(p: &Project) -> Vec<String> {
     };
     part.written
         .iter()
-        .filter(|(id, fp)| p.pattern(id).is_some_and(|pat| fingerprint(pat) != **fp))
+        .filter(|(id, w)| p.pattern(id).is_some_and(|pat| fingerprint(pat) != w.print))
         .map(|(id, _)| id.clone())
         .collect()
 }
@@ -607,6 +701,99 @@ fn layout(p: &Project, part: &DrumPart) -> Result<Vec<SongBar>, String> {
 /// Where each role's notes go: a channel id and a pitch.
 struct Kit {
     map: HashMap<&'static str, (String, i32)>,
+    /// The General MIDI kit channel, when the kit is one.
+    gm: Option<String>,
+}
+
+impl Kit {
+    /// Where a kept note's role plays: a role, `gm:<key>` or
+    /// `channel:<id>:<pitch>` (see [`KeptNote`]).
+    fn resolve(&self, p: &Project, role: &str) -> Option<(String, i32)> {
+        if let Some(key) = role.strip_prefix("gm:") {
+            let key: i32 = key.parse().ok()?;
+            if let Some(ch) = &self.gm {
+                return Some((ch.clone(), key));
+            }
+            return self.map.get(gm_role(key)).cloned();
+        }
+        if let Some(rest) = role.strip_prefix("channel:") {
+            let (id, pitch) = rest.rsplit_once(':')?;
+            p.channel(id)?;
+            return Some((id.to_string(), pitch.parse().ok()?));
+        }
+        self.map.get(role).cloned()
+    }
+}
+
+/// The role nearest to a General MIDI drum key.
+fn gm_role(key: i32) -> &'static str {
+    match key {
+        35 | 36 => "kick",
+        37 => "rim",
+        38 | 40 => "snare",
+        39 => "clap",
+        42 => "hat",
+        44 => "pedal",
+        46 => "openhat",
+        49 | 52 | 55 | 57 => "crash",
+        51 | 59 => "ride",
+        53 => "bell",
+        48 | 50 => "tom1",
+        45 | 47 => "tom2",
+        41 | 43 => "tom3",
+        54 => "tamb",
+        56 => "cowbell",
+        69 | 70 | 82 => "shaker",
+        _ => "snare",
+    }
+}
+
+/// The base role a kept note needs a channel for (none for another channel).
+fn base_role(role: &str) -> Option<&'static str> {
+    if let Some(key) = role.strip_prefix("gm:") {
+        return key.parse().ok().map(gm_role);
+    }
+    ROLES.iter().find(|r| **r == role).copied()
+}
+
+/// The role of a note the last write's kit played, so it can follow a kit
+/// change (see [`KeptNote`]).
+fn role_of(p: &Project, n: &Note) -> String {
+    let Some(c) = p.channel(&n.channel) else {
+        return format!("channel:{}:{}", n.channel, n.pitch);
+    };
+    if c.instrument.kind == "soundfont" && is_drum_channel(c) {
+        let r = gm_role(n.pitch);
+        return if gm_key(r) == n.pitch {
+            r.to_string()
+        } else {
+            format!("gm:{}", n.pitch)
+        };
+    }
+    if c.instrument.kind == "drum" {
+        let name = c.name.to_ascii_lowercase();
+        let r = match c.instrument.option("kind") {
+            "kick" => "kick",
+            "snare" => "snare",
+            "rim" => "rim",
+            "clap" => "clap",
+            "hat" => "hat",
+            "cowbell" => "cowbell",
+            "shaker" => "shaker",
+            "tom" if n.pitch >= 63 => "tom1",
+            "tom" if n.pitch >= 58 => "tom2",
+            "tom" => "tom3",
+            "openhat" if name.contains("crash") => "crash",
+            "openhat" if name.contains("ride") && n.pitch > 63 => "bell",
+            "openhat" if name.contains("ride") => "ride",
+            "openhat" => "openhat",
+            _ => "",
+        };
+        if !r.is_empty() {
+            return r.to_string();
+        }
+    }
+    format!("channel:{}:{}", n.channel, n.pitch)
 }
 
 const PALETTE: [&str; 10] = [
@@ -724,8 +911,9 @@ fn kit(p: &mut Project, kit: &str, roles: &[&'static str]) -> Kit {
         for &role in roles {
             map.insert(role, (id.clone(), gm_key(role)));
         }
+        return Kit { map, gm: Some(id) };
     }
-    Kit { map }
+    Kit { map, gm: None }
 }
 
 /// Timing (ms) and velocity spread of a feel.
@@ -827,11 +1015,149 @@ pub struct Report {
     pub clips: usize,
     /// The playlist track the drums are on.
     pub track: usize,
+    /// Patterns kept as edited by hand.
+    pub kept: usize,
+}
+
+/// Take the hand edits of the patterns the last write made into the part:
+/// each edited pattern is kept note for note; an edited plain groove also
+/// becomes the song's version of that groove, so its crash, fill and
+/// turnaround bars follow. Returns the slots taken.
+pub fn capture(p: &mut Project) -> Vec<String> {
+    let Some(part) = p.drums.clone() else {
+        return vec![];
+    };
+    let mut part = part;
+    let mut taken = vec![];
+    for (id, w) in &part.written.clone() {
+        let Some(pat) = p.pattern(id) else {
+            continue;
+        };
+        if fingerprint(pat) == w.print {
+            continue;
+        }
+        let notes: Vec<KeptNote> = pat
+            .notes
+            .iter()
+            .map(|n| KeptNote {
+                role: role_of(p, n),
+                start: round(n.start),
+                length: round(n.length),
+                velocity: round(n.velocity),
+            })
+            .collect();
+        let name = pat
+            .name
+            .strip_prefix("Drums · ")
+            .unwrap_or(&pat.name)
+            .to_string();
+        // A plain groove: its grid follows the edit.
+        if let Some((gid, which)) = w.slot.split_once('/') {
+            if (which == "a" || which == "b") && !w.slot.contains('+') {
+                if let Some(g) = groove(gid) {
+                    let rows = grid_of(&part, g, which == "b", &notes, pat.length);
+                    let e = part.grooves.entry(gid.to_string()).or_default();
+                    let spb = g.steps_per_beat() as usize;
+                    if e.a.is_empty() {
+                        e.a = to_rows(&part_rows_owned(g, false), spb);
+                    }
+                    if e.b.is_empty() {
+                        e.b = to_rows(&part_rows_owned(g, true), spb);
+                    }
+                    if which == "b" {
+                        e.b = rows;
+                    } else {
+                        e.a = rows;
+                    }
+                }
+            }
+        }
+        part.kept.insert(w.slot.clone(), Kept { name, notes });
+        taken.push(w.slot.clone());
+    }
+    p.drums = Some(part);
+    taken
+}
+
+fn part_rows_owned(g: &Groove, b: bool) -> Vec<(&'static str, Vec<char>)> {
+    g.part(b)
+        .iter()
+        .map(|(r, s)| (role_static(r), steps(s)))
+        .collect()
+}
+
+/// Rows as stored: `[role, steps]`, a space between beats.
+fn to_rows(rows: &[(&'static str, Vec<char>)], per_beat: usize) -> Vec<[String; 2]> {
+    rows.iter()
+        .map(|(r, s)| [r.to_string(), spaced(s, per_beat)])
+        .collect()
+}
+
+/// Steps with a space between beats.
+fn spaced(steps: &[char], per_beat: usize) -> String {
+    steps
+        .chunks(per_beat.max(1))
+        .map(|c| c.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The step grid of a groove part's notes: each note on its nearest step,
+/// a stroke letter by its velocity; the groove's rows stay in order, new
+/// drums follow.
+fn grid_of(
+    part: &DrumPart,
+    g: &Groove,
+    b: bool,
+    notes: &[KeptNote],
+    length: f64,
+) -> Vec<[String; 2]> {
+    let old = part_rows(part, g, b);
+    let total = old
+        .first()
+        .map(|(_, s)| s.len())
+        .unwrap_or(g.steps as usize)
+        .max(1);
+    let step = length / total as f64;
+    let mut order: Vec<&'static str> = old.iter().map(|(r, _)| *r).collect();
+    let mut grid: HashMap<&'static str, Vec<(char, f64)>> = HashMap::new();
+    for n in notes {
+        let Some(role) = ROLES.iter().find(|r| **r == n.role).copied() else {
+            continue;
+        };
+        if !order.contains(&role) {
+            order.push(role);
+        }
+        let i = ((n.start / step).round() as usize) % total;
+        let c = if n.velocity >= 0.9 {
+            'X'
+        } else if n.velocity >= 0.55 {
+            'x'
+        } else if n.velocity >= 0.26 {
+            'g'
+        } else {
+            'f'
+        };
+        let row = grid.entry(role).or_insert_with(|| vec![('.', 0.0); total]);
+        if n.velocity > row[i].1 {
+            row[i] = (c, n.velocity);
+        }
+    }
+    order
+        .into_iter()
+        .filter_map(|r| {
+            let row = grid.get(r)?;
+            let chars: Vec<char> = row.iter().map(|(c, _)| *c).collect();
+            Some([r.to_string(), spaced(&chars, g.steps_per_beat() as usize)])
+        })
+        .collect()
 }
 
 /// Write the project's drum part into patterns and playlist clips, replacing
 /// what the last write made.
 pub fn write(p: &mut Project) -> Result<Report, String> {
+    p.drums.as_ref().ok_or("the project has no drum part")?;
+    capture(p);
     let part = p.drums.clone().ok_or("the project has no drum part")?;
     let kit_name = kit_of(&part);
     if !valid_kit(&kit_name) {
@@ -859,12 +1185,27 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
     p.patterns.retain(|pat| !old.contains(&pat.id));
 
     // The grids, and the channels for the roles they use.
-    let grids: Vec<Bar> = bars.iter().map(|b| b.grid()).collect();
+    let grids: Vec<Bar> = bars.iter().map(|b| b.grid(&part)).collect();
+    let slots: Vec<String> = bars.iter().map(|b| b.slot()).collect();
     let mut roles: Vec<&'static str> = vec![];
     for g in &grids {
         for (r, row) in &g.rows {
             if row.iter().any(|c| *c != '.') && !roles.contains(r) {
                 roles.push(r);
+            }
+        }
+    }
+    for slot in &slots {
+        for n in part
+            .kept
+            .get(slot)
+            .map(|k| k.notes.as_slice())
+            .unwrap_or(&[])
+        {
+            if let Some(r) = base_role(&n.role) {
+                if !roles.contains(&r) {
+                    roles.push(r);
+                }
             }
         }
     }
@@ -895,13 +1236,14 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
     // Patterns: one per distinct bar, and the whole groove for plain bars;
     // runs of the same bar become one looping clip.
     let bpm = p.transport.bpm;
-    let mut written: BTreeMap<String, String> = BTreeMap::new();
+    let mut written: BTreeMap<String, Written> = BTreeMap::new();
+    let mut kept_used = 0;
     let mut ids: HashMap<String, String> = HashMap::new();
     let mut clips: Vec<Clip> = vec![];
     let mut i = 0;
     while i < bars.len() {
         let b = &bars[i];
-        if grids[i].is_empty() {
+        if grids[i].is_empty() && !part.kept.contains_key(&slots[i]) {
             i += 1;
             continue;
         }
@@ -915,7 +1257,9 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         ) = (b.plain(), &b.body)
         {
             let n = groove_bars(groove);
-            let all: Vec<Bar> = (0..n).map(|k| Bar::of_groove(groove, *is_b, k)).collect();
+            let all: Vec<Bar> = (0..n)
+                .map(|k| Bar::of_groove(&part, groove, *is_b, k))
+                .collect();
             let mut j = i + 1;
             while j < bars.len()
                 && bars[j].plain()
@@ -926,7 +1270,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
                 j += 1;
             }
             (
-                format!("{} {}", groove.id, if *is_b { "b" } else { "a" }),
+                slots[i].clone(),
                 b.name(),
                 all,
                 *index as f64 * b.bar_beats,
@@ -934,7 +1278,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
             )
         } else {
             (
-                format!("{:?}", grids[i]),
+                slots[i].clone(),
                 b.name(),
                 vec![grids[i].clone()],
                 0.0,
@@ -943,8 +1287,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         };
         if !b.plain() {
             while j < bars.len()
-                && bars[j].name() == bars[i].name()
-                && grids[j] == grids[i]
+                && slots[j] == slots[i]
                 && (bars[j].start - (b.start + (j - i) as f64 * b.bar_beats)).abs() < 1e-9
             {
                 j += 1;
@@ -956,15 +1299,39 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
                 let mut taken: Vec<String> = p.patterns.iter().map(|x| x.id.clone()).collect();
                 taken.extend(ids.values().cloned());
                 let id = unique_id(&format!("drums {name}"), &taken);
-                let notes = notes_of(
-                    &pattern_grids,
-                    b.bar_beats,
-                    b.steps_per_beat(),
-                    &kit,
-                    &part,
-                    bpm,
-                    &id,
-                );
+                let notes = match part.kept.get(&key) {
+                    // Edited by hand: note for note, on this kit.
+                    Some(k) => {
+                        kept_used += 1;
+                        let mut notes: Vec<Note> = k
+                            .notes
+                            .iter()
+                            .filter_map(|n| {
+                                let (channel, pitch) = kit.resolve(p, &n.role)?;
+                                Some(Note {
+                                    channel,
+                                    pitch,
+                                    start: n.start,
+                                    length: n.length,
+                                    velocity: n.velocity,
+                                })
+                            })
+                            .collect();
+                        notes.sort_by(|a, b| {
+                            a.start.total_cmp(&b.start).then(a.pitch.cmp(&b.pitch))
+                        });
+                        notes
+                    }
+                    None => notes_of(
+                        &pattern_grids,
+                        b.bar_beats,
+                        b.steps_per_beat(),
+                        &kit,
+                        &part,
+                        bpm,
+                        &key,
+                    ),
+                };
                 let pat = Pattern {
                     id: id.clone(),
                     name: format!("Drums · {name}"),
@@ -972,7 +1339,13 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
                     length: pattern_grids.len() as f64 * b.bar_beats,
                     notes,
                 };
-                written.insert(id.clone(), fingerprint(&pat));
+                written.insert(
+                    id.clone(),
+                    Written {
+                        slot: key.clone(),
+                        print: fingerprint(&pat),
+                    },
+                );
                 p.patterns.push(pat);
                 ids.insert(key, id.clone());
                 id
@@ -994,6 +1367,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         patterns: written.len(),
         clips: clips.len(),
         track,
+        kept: kept_used,
     };
     p.playlist.clips.extend(clips);
     drop_unused(p, &old_channels);

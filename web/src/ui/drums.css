@@ -161,6 +161,12 @@
   border-radius: 2px;
   background: var(--ob-3);
 }
+.drums-cell {
+  cursor: pointer;
+}
+.drums-cell:hover {
+  outline: 1px solid var(--line-3);
+}
 .drums-cell.beat {
   margin-left: 3px;
   background: var(--ob-4);
@@ -177,6 +183,21 @@
 }
 .drums-cell.feather {
   background: #4a3c1d;
+}
+
+.drums-edited {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--rose-deep);
+  color: var(--ivory);
+  letter-spacing: 0.06em;
+}
+.select.drums-add {
+  margin-top: 4px;
+  max-width: 140px;
+  height: 22px;
+  font-size: 10.5px;
 }
 
 /* ---------------------------------------------------------------- sections */
@@ -251,6 +272,22 @@
 
 /* ---------------------------------------------------------------- write */
 
+.drums-kept {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drums-kept-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--champagne);
+}
+.drums-kept-row.gone {
+  color: var(--dim);
+}
 .drums-status {
   font-size: 11px;
   line-height: 1.35;

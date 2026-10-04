@@ -92,8 +92,6 @@ pub fn schema() -> Value {
         .iter()
         .map(|g| g.id)
         .collect();
-    let mut kits: Vec<&str> = crate::gm::KITS.iter().map(|k| k.0).collect();
-    kits.push(crate::drums::EBONY);
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": SCHEMA_ID,
@@ -211,24 +209,7 @@ pub fn schema() -> Value {
                     "shots": {"type": "array", "items": {"$ref": "#/$defs/shot"}}
                 }
             },
-            "drums": {
-                "type": "object",
-                "required": ["groove"],
-                "additionalProperties": false,
-                "description": "The drum part: a groove from the library, a kit and what each section plays. Writing it (the studio's Drums tab, or `rosaclef drums`) makes ordinary patterns and clips on a Drums track; by itself it changes nothing that plays.",
-                "properties": {
-                    "groove": {"type": "string", "enum": groove_ids, "description": "Groove id (`rosaclef grooves`)."},
-                    "kit": {"type": "string", "enum": kits, "description": "A General MIDI drum kit, or Ebony (one Ebony Drum Machine channel per drum). Missing: the groove's suggestion."},
-                    "feel": {"type": "string", "enum": crate::drums::FEELS, "default": "natural", "description": "tight: on the grid; natural: the backbeat a little late, small differences; loose: more of both."},
-                    "swing": num(0.0, 1.0, "Delays the off 16ths of straight grooves (1 = triplet swing)."),
-                    "start": {"type": "integer", "minimum": 1, "default": 1, "description": "Bar the first section starts on, counted from 1."},
-                    "ending": {"type": "string", "enum": crate::drums::ENDINGS, "default": "hit", "description": "hit: a crash and kick on the downbeat after the last section."},
-                    "variations": {"type": "boolean", "default": true, "description": "A small turnaround every 4th bar."},
-                    "seed": {"type": "integer", "minimum": 0, "default": 1, "description": "Picks the fills and the small timing and velocity differences."},
-                    "sections": {"type": "array", "items": {"$ref": "#/$defs/drumSection"}},
-                    "written": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Managed by Rosaclef: pattern id -> fingerprint of the patterns the last write made."}
-                }
-            }
+            "drums": drums_schema()
         },
         "$defs": {
             "shot": {
@@ -428,6 +409,11 @@ pub fn schema() -> Value {
                     "channels": {"type": "array", "items": {"type": "string"}, "description": "Channel ids to color; empty or missing = every staff."}
                 }
             },
+            "drumRows": {
+                "type": "array",
+                "description": "[drum, steps] rows: one character a step (X accent, x normal, g ghost, f feathered, . rest; spaces ignored), whole bars of the groove's grid.",
+                "items": {"type": "array", "prefixItems": [{"type": "string", "enum": crate::drums::ROLES}, {"type": "string"}], "minItems": 2, "maxItems": 2}
+            },
             "drumSection": {
                 "type": "object",
                 "required": ["bars"],
@@ -450,6 +436,79 @@ pub fn schema() -> Value {
                     "beat": {"type": "number", "minimum": 0, "description": "Absolute song time in beats."},
                     "value": {"type": "number", "description": "Target value in its natural units."},
                     "curve": num(-1.0, 1.0, "Shape of the segment ending at this point: 0 linear, > 0 slow start then fast (exponential rise), < 0 fast start then settling.")
+                }
+            }
+        }
+    })
+}
+
+/// The drum part (`drums`): its own function, to keep the `json!` above
+/// within the macro recursion limit.
+fn drums_schema() -> Value {
+    let groove_ids: Vec<&str> = crate::drums::library::GROOVES
+        .iter()
+        .map(|g| g.id)
+        .collect();
+    let mut kits: Vec<&str> = crate::gm::KITS.iter().map(|k| k.0).collect();
+    kits.push(crate::drums::EBONY);
+    json!({
+        "type": "object",
+        "required": ["groove"],
+        "additionalProperties": false,
+        "description": "The drum part: a groove from the library, a kit and what each section plays. Writing it (the studio's Drums tab, or `rosaclef drums`) makes ordinary patterns and clips on a Drums track; by itself it changes nothing that plays.",
+        "properties": {
+            "groove": {"type": "string", "enum": groove_ids, "description": "Groove id (`rosaclef grooves`)."},
+            "kit": {"type": "string", "enum": kits, "description": "A General MIDI drum kit, or Ebony (one Ebony Drum Machine channel per drum). Missing: the groove's suggestion."},
+            "feel": {"type": "string", "enum": crate::drums::FEELS, "default": "natural", "description": "tight: on the grid; natural: the backbeat a little late, small differences; loose: more of both."},
+            "swing": num(0.0, 1.0, "Delays the off 16ths of straight grooves (1 = triplet swing)."),
+            "start": {"type": "integer", "minimum": 1, "default": 1, "description": "Bar the first section starts on, counted from 1."},
+            "ending": {"type": "string", "enum": crate::drums::ENDINGS, "default": "hit", "description": "hit: a crash and kick on the downbeat after the last section."},
+            "variations": {"type": "boolean", "default": true, "description": "A small turnaround every 4th bar."},
+            "seed": {"type": "integer", "minimum": 0, "default": 1, "description": "Picks the fills and the small timing and velocity differences."},
+            "sections": {"type": "array", "items": {"$ref": "#/$defs/drumSection"}},
+            "grooves": {
+                "type": "object",
+                "description": "Grooves changed for this song (the Drums tab's grid, or hand edits of a groove's pattern): groove id -> its parts' rows, replacing the library's. Every bar of the groove follows, its crash, fill and turnaround bars too.",
+                "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "a": {"$ref": "#/$defs/drumRows"},
+                        "b": {"$ref": "#/$defs/drumRows"}
+                    }
+                }
+            },
+            "kept": {
+                "type": "object",
+                "description": "Patterns edited by hand, kept note for note when the part is written again: slot -> {name, notes}. Writing takes them from the written patterns; remove one to give it back to the drummer.",
+                "additionalProperties": {
+                    "type": "object",
+                    "required": ["name", "notes"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "name": {"type": "string"},
+                        "notes": {"type": "array", "items": {
+                            "type": "object",
+                            "required": ["role", "start", "length", "velocity"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "role": {"type": "string", "description": "A drum (kick, snare, ...), gm:<key> (a General MIDI drum key) or channel:<id>:<pitch> (a channel outside the kit)."},
+                                "start": {"type": "number", "minimum": 0},
+                                "length": {"type": "number", "exclusiveMinimum": 0},
+                                "velocity": {"type": "number", "minimum": 0, "maximum": 1}
+                            }
+                        }}
+                    }
+                }
+            },
+            "written": {
+                "type": "object",
+                "description": "Managed by Rosaclef: pattern id -> the slot it plays and a fingerprint of its notes, for the patterns the last write made.",
+                "additionalProperties": {
+                    "type": "object",
+                    "required": ["slot", "print"],
+                    "additionalProperties": false,
+                    "properties": {"slot": {"type": "string"}, "print": {"type": "string"}}
                 }
             }
         }

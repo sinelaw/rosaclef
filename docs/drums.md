@@ -113,7 +113,8 @@ Beatbox (Voice tab) is Dawson's "sing it first".
 | 3 | Library format | **Step strings per drum role**, one character per step: `X` accent, `x` normal, `g` ghost, `f` feathered, `.` rest. 16 steps per 4/4 bar (16ths) or 12 (triplet 8ths) per bar. | Readable and reviewable in a diff, writable by a drummer or the agent. Captures rhythm, orchestration (the row) and dynamics (the letter). Microtiming is not in the grid — it comes from the feel (decision 7). Finer tuplets (quintuplets, 32nd rolls) are out. |
 | 4 | The five layers in v1? | Rows are **roles** (rhythm + orchestration + dynamics). **Limbs** are derived from a fixed role → limb table and used only to test playability. **Feel** is separate. | A pragmatic subset that can grow into the full model (Four Limbs, linear mode) without changing stored grooves. |
 | 5 | Library source | **Hand-written, original grooves**, named descriptively ("half-time shuffle"), not after songs or drummers. Fill vocabularies shared per subdivision, not per groove. | Clean licensing; the method books' *ideas* (permutation, sticking groups) are free, their exercises are not copied. Fewer grooves to start (about two dozen) but each one is checked. Imported MIDI groove packs: later. |
-| 6 | Re-editing: one-shot generator or persisted spec? | **Persisted spec** (`drums` in `project.json`) + "Write" regenerates the drum patterns it owns. Patterns it wrote carry a fingerprint; if you edited one by hand, Write asks before replacing it. Ctrl+Z undoes a Write. | Changing the chorus from A to B or a fill size is one click, not a redo. Costs a small schema addition and the hand-edit check. |
+| 6 | Re-editing: one-shot generator or persisted spec? | **Persisted spec** (`drums` in `project.json`) + "Write" regenerates the drum patterns it owns. Changing the chorus from A to B or a fill size is one click, not a redo. Costs a small schema addition. | |
+| 6b | Hand edits to written patterns? | **Yours, kept.** Written patterns are ordinary patterns, edited in place in the piano roll. Writing again keeps an edited pattern note for note (`kept`, notes stored by drum role so they follow a kit change), and an edit to a groove's plain pattern also becomes the song's version of the groove (`grooves`), so its crash, fill and turnaround bars follow. The groove grid in the tab edits the same thing directly. **Reset** gives a pattern (or a groove) back to the drummer. | The tool and the piano roll never fight: no dialog, nothing lost. A kept pattern no longer follows feel changes (it is yours); folding an edit into the grid snaps it to the groove's steps and four stroke levels — the kept pattern itself stays exact. |
 | 7 | Humanize | **Deterministic, structured feel**: *Tight*, *Natural* or *Loose* sets per-role timing (snare backbeat a few ms late, ghosts a little later, kick on the grid) and a small seeded variation in time and velocity. Optional swing for straight grooves; shuffles are written in triplets. | Repeatable output (same spec → same notes), no "random" button. Because patterns are reused, each repetition of a pattern is identical — accepted for v1. |
 | 8 | Pattern granularity | **Reuse**: one pattern for the plain groove, and one-bar patterns for bars that differ (crash bar, fill bar, turnaround bar). Runs of identical bars become one looping clip. | The playlist reads like a chart, and editing the main groove once changes it everywhere. A per-bar "re-roll" would need one pattern per bar — not in v1. |
 | 9 | Sound | **Both sound sources** through a role map: a General MIDI kit (one Grand Orchestra channel, GM drum map) or the Ebony Drum Machine (one channel per drum, crash and ride approximated as in the MIDI importer). Each groove suggests a kit. | One library plays on acoustic and electronic sounds. Ebony has no real cymbals, so acoustic styles default to a GM kit. |
@@ -195,6 +196,32 @@ are named for what they are ("Drums · Straight 8ths A", "… A + crash",
 Drum channels the previous write used that nothing plays any more (after a
 kit change) are removed. Other drums already in the song are left alone, and
 the tab says which tracks hold them, since they will play along.
+
+### 4.3b Editing by hand
+
+Written drum patterns are ordinary patterns: open one from the playlist or the
+pattern list and change it in the piano roll (a General MIDI kit's keys are
+named for their drums: Kick, Snare, Closed Hat…). The plain groove pattern is
+shared by every plain bar of its part, so one edit changes the whole song,
+the way a drummer changes the groove.
+
+When the part is written again (to change a section, the kit, the feel):
+
+- every written pattern that was edited is **kept note for note** (in
+  `kept`, by slot). Its notes are stored by drum role (`snare`, `gm:50`,
+  `channel:<id>:<pitch>`), so a kit change moves them to the new kit;
+- an edited **plain groove** also becomes the song's version of that groove
+  (in `grooves`, as step rows), so its crash, fill and turnaround bars carry
+  the same change;
+- the groove grid in the tab shows and edits those rows directly (click a
+  step: hit → accent → ghost → rest; **+ Drum…** adds a row). Editing the grid
+  makes it the groove's source again, replacing a kept copy of its plain
+  pattern;
+- **Reset** next to a kept pattern, or **Reset groove**, gives it back to
+  the drummer; `rosaclef drums --reset-edits` forgets them all.
+
+Arrangement changes stay with the sections: moving or deleting clips on the
+Drums track is undone by the next write.
 
 ### 4.4 `project.json`
 

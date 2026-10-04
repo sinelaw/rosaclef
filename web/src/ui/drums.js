@@ -5,7 +5,7 @@
 // edit it too; the writing is done by the server (POST /api/drums), the same
 // code the command line and the browser-only studio run.
 
-import { getJson, sendJson, now, audioPost, confirmBox } from "#platform";
+import { getJson, sendJson, now, audioPost } from "#platform";
 import { state, commit, invalidate, hint, currentPattern } from "../store.js";
 import { decodeProject, encodeProject, projectJson, meterMap } from "../model.js";
 import { startAudio } from "../audio.js";
@@ -214,18 +214,6 @@ export function writeDrums() {
         writeDrums();
         return false;
       }
-      const edited = r.edited.map((x) => String(x));
-      if (edited.length > 0) {
-        const names = edited.map((id) => state.project.patterns.find((x) => x.id === id)?.name ?? id);
-        if (
-          !confirmBox(
-            `These drum patterns were edited by hand:\n\n${names.join("\n")}\n\nWriting the drums replaces them (Ctrl+Z brings them back). Write anyway?`
-          )
-        ) {
-          invalidate();
-          return false;
-        }
-      }
       const np = decodeProject(r.project);
       commit(() => {
         const p = state.project;
@@ -236,7 +224,7 @@ export function writeDrums() {
       });
       toast(
         "Drums written",
-        `${Number(r.report.patterns)} patterns in ${Number(r.report.clips)} clips on track ${Math.round(Number(r.report.track)) + 1} (${np.playlist.tracks[Math.round(Number(r.report.track))]?.name ?? "Drums"}). Ctrl+Z undoes it.`,
+        `${Number(r.report.patterns)} patterns in ${Number(r.report.clips)} clips on track ${Math.round(Number(r.report.track)) + 1} (${np.playlist.tracks[Math.round(Number(r.report.track))]?.name ?? "Drums"})${Number(r.report.kept) > 0 ? `, ${Number(r.report.kept)} kept as you edited them` : ""}. Ctrl+Z undoes it.`,
         "info"
       );
       return true;
@@ -337,25 +325,116 @@ function stepper(b, key, label, value, tip, onStep) {
   b.close();
 }
 
-/** The groove's parts as step grids: what a groove is, at a glance. */
-/** function grooveGrid(b: Builder, key: String, title: String, g: GrooveInfo, rows: String[][]) => Undefined */
-function grooveGrid(b, key, title, g, rows) {
+/** The rows of a groove part in this song: its edit, else the library's. */
+/** function partRows(d: DrumPart, g: GrooveInfo, isB: Boolean) => String[][] */
+function partRows(d, g, isB) {
+  const e = d.grooves.find((x) => x.groove === g.id);
+  if (e) {
+    const rows = isB ? e.b : e.a;
+    if (rows.length > 0) return rows;
+  }
+  return isB ? g.b : g.a;
+}
+
+/** Do two parts have the same strokes (spacing aside)? */
+/** function sameRows(x: String[][], y: String[][]) => Boolean */
+function sameRows(x, y) {
+  const flat = (rows) => rows.map((r) => `${r[0]}:${r[1].replace(/[ |]/g, "")}`).join(",");
+  return flat(x) === flat(y);
+}
+
+/** function copyRows(rows: String[][]) => String[][] */
+function copyRows(rows) {
+  return rows.map((r) => [r[0], r[1]]);
+}
+
+/** Change a groove part's rows for this song (copied from the library on the
+ * first change). The grid is then the groove's source: a hand-kept copy of
+ * its plain pattern goes (its edits are already in the grid). */
+/** function editRows(g: GrooveInfo, isB: Boolean, fn: (String[][]) => Undefined) => Undefined */
+function editRows(g, isB, fn) {
+  edit((d) => {
+    const found = d.grooves.find((x) => x.groove === g.id);
+    /** const e: GrooveEdit */
+    const e = found ?? { groove: g.id, a: copyRows(g.a), b: copyRows(g.b) };
+    if (!found) d.grooves.push(e);
+    if (e.a.length === 0) e.a = copyRows(g.a);
+    if (e.b.length === 0) e.b = copyRows(g.b);
+    fn(isB ? e.b : e.a);
+    const slot = `${g.id}/${isB ? "b" : "a"}`;
+    d.kept = d.kept.filter((k) => k.slot !== slot);
+  });
+}
+
+/** Steps as stored: a space between beats. */
+/** function grouped(steps: String, perBeat: Number) => String */
+function grouped(steps, perBeat) {
+  /** const out: String[] */
+  const out = [];
+  for (let i = 0; i < steps.length; i += perBeat) out.push(steps.slice(i, i + perBeat));
+  return out.join(" ");
+}
+
+/** The next stroke of a clicked cell: rest → hit → accent → ghost → rest. */
+/** function nextStroke(c: String) => String */
+function nextStroke(c) {
+  if (c === "x") return "X";
+  if (c === "X") return "g";
+  if (c === "g" || c === "f") return ".";
+  return "x";
+}
+
+/** A groove part as a step grid you can click: what the groove is, and the
+ * place to change it for the whole song. */
+/** function grooveGrid(b: Builder, key: String, title: String, g: GrooveInfo, isB: Boolean, rows: String[][], edited: Boolean) => Undefined */
+function grooveGrid(b, key, title, g, isB, rows, edited) {
   const perBeat = g.steps / g.barBeats;
   b.open("div", key, "drums-grid");
-  b.leaf("div", "t", "drums-grid-title", title);
+  b.open("div", "t", "drums-grid-title");
+  b.text(title);
+  if (edited) b.leaf("span", "e", "drums-edited", "edited");
+  b.close();
   for (const row of rows) {
+    const role = row[0];
     const steps = row[1].replace(/[ |]/g, "");
-    b.open("div", row[0], "drums-row");
-    b.leaf("span", "r", "drums-role", labelOf(ROLE_LABELS, row[0]));
+    b.open("div", role, "drums-row");
+    b.leaf("span", "r", "drums-role", labelOf(ROLE_LABELS, role));
     b.open("div", "c", "drums-cells");
     for (let i = 0; i < steps.length; i++) {
       const c = steps[i];
       const kind = c === "X" ? "acc" : c === "x" ? "hit" : c === "g" ? "ghost" : c === "f" ? "feather" : "rest";
-      b.leaf("span", `${i}`, `drums-cell ${kind}${i % perBeat === 0 ? " beat" : ""}`, "");
+      b.open("span", `${i}`, `drums-cell ${kind}${i % perBeat === 0 ? " beat" : ""}`);
+      b.attr("title", `${labelOf(ROLE_LABELS, role)}, step ${i + 1}: click for a hit, then an accent, a ghost note, a rest`);
+      b.on("click", (e) => {
+        editRows(g, isB, (rs) => {
+          const k = rs.findIndex((x) => x[0] === role);
+          if (k < 0) return undefined;
+          const st = rs[k][1].replace(/[ |]/g, "");
+          rs[k] = [role, grouped(st.slice(0, i) + nextStroke(st.charAt(i)) + st.slice(i + 1), perBeat)];
+        });
+      });
+      b.close();
     }
     b.close();
     b.close();
   }
+  /** const free: String[] */
+  const free = [""];
+  /** const freeLabels: String[] */
+  const freeLabels = ["+ Drum…"];
+  for (const e of ROLE_LABELS) {
+    if (!rows.some((r) => r[0] === e.key)) {
+      free.push(e.key);
+      freeLabels.push(e.value);
+    }
+  }
+  select(b, "add", "drums-add", "", free, freeLabels, "Add a drum to this part", (v) => {
+    if (v === "") return undefined;
+    const len = rows.length > 0 ? rows[0][1].replace(/[ |]/g, "").length : g.steps;
+    editRows(g, isB, (rs) => {
+      rs.push([v, grouped(".".repeat(len), perBeat)]);
+    });
+  });
   b.close();
 }
 
@@ -443,9 +522,18 @@ function grooveView(b, d) {
   }
   b.close();
   if (g) {
+    const changed = d.grooves.some((x) => x.groove === g.id);
     b.open("div", "grids", "drums-grids");
-    grooveGrid(b, "a", "A · verse", g, g.a);
-    grooveGrid(b, "b", "B · chorus", g, g.b);
+    grooveGrid(b, "a", "A · verse", g, false, partRows(d, g, false), changed && !sameRows(partRows(d, g, false), g.a));
+    grooveGrid(b, "b", "B · chorus", g, true, partRows(d, g, true), changed && !sameRows(partRows(d, g, true), g.b));
+    if (changed) {
+      button(b, "reset", "small", "Reset groove", `Back to the library's ${g.name} (your changes to this groove, and its kept patterns, go)`, () =>
+        edit((x) => {
+          x.grooves = x.grooves.filter((e) => e.groove !== g.id);
+          x.kept = x.kept.filter((k) => !k.slot.startsWith(`${g.id}/`));
+        })
+      );
+    }
     b.close();
   }
   b.close();
@@ -649,6 +737,22 @@ function writeView(b, d) {
   b.close();
   b.close();
   const written = d.written.length;
+  if (d.kept.length > 0) {
+    b.open("div", "kept", "drums-kept");
+    b.leaf("div", "t", "drums-label", "Edited by hand — kept as you left them");
+    for (const k of d.kept) {
+      const inSong = d.written.some((w) => w.slot === k.slot);
+      b.open("div", k.slot, inSong ? "drums-kept-row" : "drums-kept-row gone");
+      b.leaf("span", "n", "drums-kept-name", inSong ? k.name : `${k.name} (not in the song now)`);
+      button(b, "reset", "small", "Reset", "Give this pattern back to the drummer: the next write makes it from the groove again", () =>
+        edit((x) => {
+          x.kept = x.kept.filter((e) => e.slot !== k.slot);
+        })
+      );
+      b.close();
+    }
+    b.close();
+  }
   const others = otherDrumTracks(d);
   if (others.length > 0) {
     b.leaf(
@@ -663,7 +767,7 @@ function writeView(b, d) {
     "status",
     "drums-status",
     written > 0
-      ? `Written: ${written} pattern${written === 1 ? "" : "s"}. Writing again replaces them.`
+      ? `Written: ${written} pattern${written === 1 ? "" : "s"}. Edit them in the piano roll as you like: writing again keeps your edits.`
       : "Not written yet: the song plays no drums from this part until you write it."
   );
   button(
@@ -697,7 +801,7 @@ function isDrumChannel(c) {
 /** function otherDrumTracks(d: DrumPart) => Number[] */
 function otherDrumTracks(d) {
   const p = state.project;
-  const ours = d.written.map((w) => w.key);
+  const ours = d.written.map((w) => w.id);
   /** const out: Number[] */
   const out = [];
   for (const c of p.playlist.clips) {

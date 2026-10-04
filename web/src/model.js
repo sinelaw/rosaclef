@@ -340,14 +340,38 @@ export function decodeDrums(d) {
       crash: x.crash === true,
       groove: String(x.groove ?? ""),
     })),
-    written: decodeStrs(d.written),
+    grooves: Object.keys(d.grooves ?? {}).map((k) => ({
+      groove: k,
+      a: (d.grooves[k].a ?? []).map((r) => [String(r[0]), String(r[1])]),
+      b: (d.grooves[k].b ?? []).map((r) => [String(r[0]), String(r[1])]),
+    })),
+    kept: Object.keys(d.kept ?? {}).map((k) => ({
+      slot: k,
+      name: String(d.kept[k].name ?? k),
+      notes: (d.kept[k].notes ?? []).map((n) => ({ role: String(n.role), start: Number(n.start), length: Number(n.length), velocity: Number(n.velocity) })),
+    })),
+    written: Object.keys(d.written ?? {}).map((k) => ({ id: k, slot: String(d.written[k].slot ?? ""), print: String(d.written[k].print ?? "") })),
   };
 }
 
 /** A project without a drum part. */
 /** function noDrums() => DrumPart */
 export function noDrums() {
-  return { on: false, groove: "", kit: "", feel: "natural", swing: 0, start: 1, ending: "hit", variations: true, seed: 1, sections: [], written: [] };
+  return {
+    on: false,
+    groove: "",
+    kit: "",
+    feel: "natural",
+    swing: 0,
+    start: 1,
+    ending: "hit",
+    variations: true,
+    seed: 1,
+    sections: [],
+    grooves: [],
+    kept: [],
+    written: [],
+  };
 }
 
 /** function decodeScore<T>(s: T) => ScoreSettings */
@@ -507,7 +531,23 @@ function encodeDrums(d) {
     if (x.groove !== "") sec.groove = x.groove;
     return sec;
   });
-  if (d.written.length > 0) o.written = encodeStrs(d.written);
+  if (d.grooves.length > 0) {
+    o.grooves = JSON.parse("{}");
+    for (const e of d.grooves) o.grooves[e.groove] = { a: e.a, b: e.b };
+  }
+  if (d.kept.length > 0) {
+    o.kept = JSON.parse("{}");
+    for (const k of d.kept) {
+      o.kept[k.slot] = {
+        name: k.name,
+        notes: k.notes.map((n) => ({ role: n.role, start: round6(n.start), length: round6(n.length), velocity: round6(n.velocity) })),
+      };
+    }
+  }
+  if (d.written.length > 0) {
+    o.written = JSON.parse("{}");
+    for (const w of d.written) o.written[w.id] = { slot: w.slot, print: w.print };
+  }
   return o;
 }
 
@@ -628,6 +668,66 @@ export function newDevice(type) {
 // ------------------------------------------------------------------ music
 
 const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+
+/** General MIDI drum sounds, from key 35. */
+const GM_DRUMS = [
+  "Kick 2",
+  "Kick",
+  "Side Stick",
+  "Snare",
+  "Clap",
+  "Snare 2",
+  "Floor Tom 2",
+  "Closed Hat",
+  "Floor Tom",
+  "Pedal Hat",
+  "Low Tom",
+  "Open Hat",
+  "Low-Mid Tom",
+  "Mid Tom",
+  "Crash",
+  "High Tom",
+  "Ride",
+  "China",
+  "Ride Bell",
+  "Tambourine",
+  "Splash",
+  "Cowbell",
+  "Crash 2",
+  "Vibraslap",
+  "Ride 2",
+  "High Bongo",
+  "Low Bongo",
+  "Mute Conga",
+  "High Conga",
+  "Low Conga",
+  "High Timbale",
+  "Low Timbale",
+  "High Agogo",
+  "Low Agogo",
+  "Cabasa",
+  "Maracas",
+  "Whistle",
+  "Long Whistle",
+  "Guiro",
+  "Long Guiro",
+  "Claves",
+  "High Block",
+  "Low Block",
+  "Mute Cuica",
+  "Open Cuica",
+  "Mute Triangle",
+  "Open Triangle",
+];
+
+/** The drum a key plays on a General MIDI drum kit channel, or "" (not a kit, or no drum there). */
+/** function drumName(ch: Channel, pitch: Number) => String */
+export function drumName(ch, pitch) {
+  if (ch.instrument.type !== "soundfont") return "";
+  if (!optionValue(ch.instrument, "program").endsWith(" Kit")) return "";
+  const i = Math.round(pitch) - 35;
+  return i >= 0 && i < GM_DRUMS.length ? GM_DRUMS[i] : "";
+}
 
 /** function noteName(pitch: Number) => String */
 export function noteName(pitch) {

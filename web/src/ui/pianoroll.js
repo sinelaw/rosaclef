@@ -8,7 +8,7 @@
 
 import { drag, fmt, pressOrTap } from "#platform";
 import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, invalidate, reportContext, hint } from "../store.js";
-import { isBlackKey, noteName, snapTo, snapDown, barAt, barLines } from "../model.js";
+import { isBlackKey, noteName, drumName, snapTo, snapDown, barAt, barLines } from "../model.js";
 import { preview, noteOn, noteOff, seek } from "../audio.js";
 import { select, iconButton } from "./widgets.js";
 import { followButton } from "./playlist.js";
@@ -367,7 +367,10 @@ function keysView(b, g, ch) {
         }
       );
     });
-    if (p % 12 === 0) b.leaf("span", "l", "", noteName(p));
+    // A drum kit's keys are named for their drums.
+    const drum = drumName(ch, p);
+    if (drum !== "" && g.rowH >= 9) b.leaf("span", "l", "drum", drum);
+    else if (p % 12 === 0) b.leaf("span", "l", "", noteName(p));
     b.close();
   }
   b.close();
@@ -410,7 +413,9 @@ function gridView(b, g, pat, ch) {
     const y = e.clientY - e.targetTop + e.scrollTop;
     const pitch = 127 - Math.floor(y / g.rowH);
     const beat = (e.clientX - e.targetLeft + e.scrollLeft) / g.zoom;
-    hint(`${noteName(pitch)} · beat ${fmt(beat, 2)} — click to draw, drag to move, right-click to delete, Shift-drag to select, Ctrl+wheel to zoom`);
+    hint(
+      `${drumName(ch, pitch) || noteName(pitch)} · beat ${fmt(beat, 2)} — click to draw, drag to move, right-click to delete, Shift-drag to select, Ctrl+wheel to zoom`
+    );
   });
   if (view.centered) b.prop("scrollTop", String(view.scrollTop));
   b.prop("scrollLeft", String(view.scrollLeft));
@@ -482,7 +487,7 @@ function gridView(b, g, pat, ch) {
     b.style("height", `${r.h - 1}px`);
     b.style("--c", ch.color);
     b.style("--vel", fmt(n.velocity, 2));
-    if (r.w > 30 && g.rowH >= 12) b.text(noteName(n.pitch));
+    if (r.w > 30 && g.rowH >= 12) b.text(drumName(ch, n.pitch) || noteName(n.pitch));
     b.leaf("div", "edge", "note-edge", "");
     b.close();
   }

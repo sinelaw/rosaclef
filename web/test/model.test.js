@@ -30,14 +30,21 @@ p.drums = {
     { name: "Verse", bars: 8, play: "a", fill: "beat", crash: false, groove: "" },
     { name: "Bridge", bars: 4, play: "b", fill: "none", crash: true, groove: "rock-halftime" },
   ],
-  written: [{ key: "drums-straight-8ths-a", value: "0badf00d" }],
+  grooves: [{ groove: "rock-8ths", a: [["kick", "X... ...."]], b: [] }],
+  kept: [{ slot: "rock-8ths/a+crash", name: "Straight 8ths A + crash", notes: [{ role: "snare", start: 1, length: 0.25, velocity: 0.5 }] }],
+  written: [{ id: "drums-straight-8ths-a", slot: "rock-8ths/a", print: "0badf00d" }],
 };
 const text = projectJson(p);
 const back = decodeProject(JSON.parse(text));
 check("drum part round-trips", JSON.stringify(back.drums) === JSON.stringify(p.drums));
 const wire = JSON.parse(text).drums;
 check("defaults are left out of sections", wire.sections[0].crash === undefined && wire.sections[1].fill === undefined);
-check("written is an object of fingerprints", wire.written["drums-straight-8ths-a"] === "0badf00d");
+check(
+  "written maps pattern ids to slot and fingerprint",
+  wire.written["drums-straight-8ths-a"].print === "0badf00d" && wire.written["drums-straight-8ths-a"].slot === "rock-8ths/a"
+);
+check("kept patterns are keyed by slot", wire.kept["rock-8ths/a+crash"].notes[0].role === "snare");
+check("groove edits are keyed by groove", wire.grooves["rock-8ths"].a[0][1] === "X... ....");
 
 // The server's defaults fill a sparse part.
 const sparse = decodeProject(JSON.parse(projectJson(emptyProject())));

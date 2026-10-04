@@ -153,6 +153,22 @@
   font: 700 9px/1 var(--sans);
   color: #6d5a33;
 }
+/* A drum kit's keys carry their drums' names. */
+.key span.drum {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: 600 8.5px/1 var(--sans);
+  color: #5a4a2b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.key.black span.drum {
+  color: #d9cfbd;
+}
 .key.down {
   background: var(--metal) !important;
 }

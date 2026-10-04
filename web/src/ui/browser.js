@@ -213,6 +213,20 @@ export function browser(b) {
     b.on("click", (e) => {
       selectPattern(pat.id);
       followPattern();
+      // Show its notes: the channel playing most of them, unless the
+      // selected one plays some.
+      if (pat.notes.length > 0 && !pat.notes.some((n) => n.channel === state.channel)) {
+        let best = "";
+        let bestCount = 0;
+        for (const ch of state.project.channels) {
+          const n = pat.notes.filter((x) => x.channel === ch.id).length;
+          if (n > bestCount) {
+            best = ch.id;
+            bestCount = n;
+          }
+        }
+        if (best !== "") selectChannel(best);
+      }
     });
     b.on("dblclick", (e) => {
       revealDock("piano");

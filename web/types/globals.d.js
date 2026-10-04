@@ -83,7 +83,17 @@
 // The drum part (crates/core/src/drums): `on` false = the project has none.
 /** type DrumSection = { name: String, bars: Number, play: String, fill: String, crash: Boolean, groove: String } */
 
-/** type DrumPart = { on: Boolean, groove: String, kit: String, feel: String, swing: Number, start: Number, ending: String, variations: Boolean, seed: Number, sections: DrumSection[], written: KS[] } */
+// A groove changed for the song: its parts' [drum, steps] rows.
+/** type GrooveEdit = { groove: String, a: String[][], b: String[][] } */
+
+// A pattern edited by hand, kept note for note: notes by drum role.
+/** type KeptNote = { role: String, start: Number, length: Number, velocity: Number } */
+
+/** type KeptPattern = { slot: String, name: String, notes: KeptNote[] } */
+
+/** type WrittenRef = { id: String, slot: String, print: String } */
+
+/** type DrumPart = { on: Boolean, groove: String, kit: String, feel: String, swing: Number, start: Number, ending: String, variations: Boolean, seed: Number, sections: DrumSection[], grooves: GrooveEdit[], kept: KeptPattern[], written: WrittenRef[] } */
 
 /** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[], animation: Animation, drums: DrumPart } */
 

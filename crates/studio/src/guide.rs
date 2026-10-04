@@ -403,7 +403,14 @@ and clips on a Drums track, replacing what the last write made.
 ```
 
 - Edit the part, then run `rosaclef drums`; `--guess` re-derives `start` and `sections` from the
-  playlist. It refuses to replace drum patterns the producer edited by hand unless `--force`.
+  playlist.
+- Drum patterns it wrote may be edited like any pattern (by you or the producer): writing again
+  keeps an edited pattern note for note (in `drums.kept`, by drum role, so it follows a kit
+  change), and an edit to a groove's plain pattern also changes that groove for the song
+  (`drums.grooves`), so its crash, fill and turnaround bars follow. To change a groove for the
+  whole song, edit its rows in `drums.grooves` (`"rock-8ths": {"a": [["kick", "X... .... X.X. ...."], ...], "b": [...]}`);
+  to give a pattern back to the drummer, remove its entry from `drums.kept`;
+  `rosaclef drums --reset-edits` forgets all of them.
 - Sections follow each other bar by bar from `start`; a groove only plays in its own meter.
 - `written` is managed by Rosaclef; leave it alone.
 
