@@ -65,7 +65,7 @@ export const SURFACES = ["walnut", "oak", "slate", "felt", "marble"];
 /** The effects' amounts when the film does not set them. */
 /** function defaultFx() => Fx */
 export function defaultFx() {
-  return { vignette: 0.5, spotlight: 0, focus: 0.4, glow: 0 };
+  return { vignette: 0.5, spotlight: 0, focus: 0, glow: 0 };
 }
 
 /** The camera's lean for a frame when the shot does not set it: the closer, the more. */
@@ -593,8 +593,6 @@ export function autoScenes(sc, roles, film, pages, bar) {
       glide = Math.min(0.75, len * 0.3);
     }
     const fx = fxOf([film.effects]);
-    // Low and close, the lens holds a thin slice in focus.
-    if (!wide && !film.effects.some((e) => e.type === "focus")) fx.focus = Math.max(fx.focus, frame === "detail" ? 0.6 : 0.5);
     out.push({
       start: start,
       end: end,

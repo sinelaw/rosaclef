@@ -114,6 +114,7 @@ ${LIGHT}
 out vec4 o;
 const float PI = 3.14159265;
 const float F0 = 0.045;
+const float GRAZING = 0.08;
 float ink(vec2 uv) { return 1.0 - texture(uInkTex, uv).r; }
 // The photographed room (an equirectangular HDR image), by direction (z up),
 // blurrier the rougher the ink; the made-up one until it has loaded.
@@ -251,7 +252,9 @@ void main() {
       float rough = mix(0.45, mix(0.12, 0.04, uShine), clamp(uGloss, 0.0, 1.0));
       float a = rough * rough;
       vec3 r = reflect(-v, n);
-      float fe = F0 + (max(1.0 - rough, F0) - F0) * pow(1.0 - nv, 5.0);
+      // Seen low down, a gloss mirrors ever more (Fresnel); held back here, or
+      // the far ink of a leaning shot mirrors the window as a sheet (chrome).
+      float fe = F0 + (min(max(1.0 - rough, F0), GRAZING) - F0) * pow(1.0 - nv, 5.0);
       vec3 gloss = env(r, rough) * fe;
       if (uHasEnv < 0.5) {
         vec3 hv = normalize(l + v);
@@ -260,7 +263,9 @@ void main() {
         float fl = F0 + (1.0 - F0) * pow(1.0 - vh, 5.0);
         gloss += vec3(1.0, 0.95, 0.86) * ggx(nh, a) * smith(nv, nl, a) * fl / (4.0 * nv * max(nl, 1e-3)) * nl * 4.0 * lamp;
       }
-      c += gloss * onInk * max(uGloss, 0.25);
+      // The brightest reflections roll off below half the paper's white.
+      vec3 shine = gloss * onInk * max(uGloss, 0.25);
+      c += shine / (1.0 + shine / 0.5);
     }
   }
   o = vec4(c, 1.0);
