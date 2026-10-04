@@ -536,9 +536,15 @@ function drawPart(lay, p, info, look, scale, box, mask) {
     `<rect width="${n(W)}" height="${n(H)}" fill="url(#tooth)"/>`,
     `<rect width="${n(W)}" height="${n(H)}" fill="url(#mottle)"/>`,
     `<rect width="${n(W)}" height="${n(H)}" fill="url(#grain)"/>`,
-    // Edges warmed a little, as paper tones with age.
-    `<rect width="${n(W)}" height="${n(H)}" fill="none" stroke="rgb(150,106,38)" stroke-opacity="0.22" stroke-width="${n(6 * sp)}" filter="url(#edge)"/>`,
   ];
+  // Edges warmed a little, as paper tones with age. The toning reaches about a
+  // dozen staff spaces in: a tile inside that leaves it out (its blur, wide at
+  // a close-up's scale, is most of what drawing the tile costs).
+  const band = 14 * sp;
+  if (box[0] < band || box[1] < band || box[0] + box[2] > W - band || box[1] + box[3] > H - band)
+    paper.push(
+      `<rect width="${n(W)}" height="${n(H)}" fill="none" stroke="rgb(150,106,38)" stroke-opacity="0.22" stroke-width="${n(6 * sp)}" filter="url(#edge)"/>`
+    );
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(box[2] * scale)}" height="${Math.round(box[3] * scale)}" viewBox="${n(box[0])} ${n(box[1])} ${n(box[2])} ${n(box[3])}">` +
     `<defs>${defs.join("")}</defs>${paper.join("")}${body.join("")}</svg>`
