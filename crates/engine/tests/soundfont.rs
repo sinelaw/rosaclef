@@ -156,3 +156,25 @@ fn dump_piano_a4() {
         }
     }
 }
+
+#[test]
+fn every_program_choice_is_in_the_soundfont() {
+    let sf = SoundFont::parse(&std::fs::read(dir().join("index.sf2")).unwrap()).unwrap();
+    for name in rosaclef_core::gm::CHOICES {
+        let (bank, program) = rosaclef_core::gm::lookup(name).unwrap();
+        let i = sf
+            .find(bank, program as u16)
+            .unwrap_or_else(|| panic!("{name} ({bank}:{program}) is not in the soundfont"));
+        assert!(!sf.pieces(i).is_empty(), "{name} has no samples");
+    }
+}
+
+#[test]
+fn a_variation_and_another_kit_play() {
+    for (name, pitch) in [("Celli Pizzicato", 48u8), ("Jazz Kit 2", 51)] {
+        let (bank, prog) = rosaclef_core::gm::lookup(name).unwrap();
+        let p = load(bank, prog as u16);
+        assert!(!p.regions.is_empty(), "{name}");
+        let _ = pitch;
+    }
+}

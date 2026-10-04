@@ -198,7 +198,7 @@ pub fn kit_of(part: &DrumPart) -> String {
 
 /// Is `kit` a kit a part can name?
 pub fn valid_kit(kit: &str) -> bool {
-    kit == EBONY || crate::gm::KITS.iter().any(|k| k.0 == kit)
+    kit == EBONY || crate::gm::is_kit(kit)
 }
 
 // ------------------------------------------------------------------- roles
@@ -884,10 +884,7 @@ fn kit(p: &mut Project, kit: &str, roles: &[&'static str]) -> Kit {
         }
     } else {
         let is_kit = |c: &Channel| {
-            c.instrument.kind == "soundfont"
-                && crate::gm::KITS
-                    .iter()
-                    .any(|k| k.0 == c.instrument.option("program"))
+            c.instrument.kind == "soundfont" && crate::gm::is_kit(c.instrument.option("program"))
         };
         let found = p
             .channels
@@ -1398,10 +1395,7 @@ pub fn api_write(text: &str, guess: bool, write_it: bool) -> Result<serde_json::
 /// Does a channel play drums (an Ebony channel or a General MIDI kit)?
 pub fn is_drum_channel(c: &Channel) -> bool {
     c.instrument.kind == "drum"
-        || (c.instrument.kind == "soundfont"
-            && crate::gm::KITS
-                .iter()
-                .any(|k| k.0 == c.instrument.option("program")))
+        || (c.instrument.kind == "soundfont" && crate::gm::is_kit(c.instrument.option("program")))
 }
 
 /// Shortest section a guess makes, in bars: shorter changes join the
@@ -1593,7 +1587,7 @@ pub fn catalog() -> serde_json::Value {
     let rows = |rs: &[(&str, &str)]| -> serde_json::Value {
         rs.iter().map(|(r, s)| json!([r, s])).collect()
     };
-    let mut kits: Vec<&str> = crate::gm::KITS.iter().map(|k| k.0).collect();
+    let mut kits: Vec<&str> = crate::gm::kit_names().collect();
     kits.push(EBONY);
     json!({
         "grooves": GROOVES.iter().map(|g| json!({

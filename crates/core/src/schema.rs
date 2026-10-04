@@ -449,7 +449,7 @@ fn drums_schema() -> Value {
         .iter()
         .map(|g| g.id)
         .collect();
-    let mut kits: Vec<&str> = crate::gm::KITS.iter().map(|k| k.0).collect();
+    let mut kits: Vec<&str> = crate::gm::kit_names().collect();
     kits.push(crate::drums::EBONY);
     json!({
         "type": "object",

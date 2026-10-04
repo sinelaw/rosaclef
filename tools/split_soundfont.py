@@ -16,8 +16,12 @@ the pieces covering them (`offset // PIECE`). The samples are reordered so
 each preset's samples sit together: a song with a piano and a bass downloads
 the piano's pieces and the bass's, not the whole bank.
 
-Only bank 0 (General MIDI) and bank 128 (drum kits) are kept. The format is
-read by crates/engine/src/soundfont.rs (see `PIECE` there).
+Every bank is kept (General MIDI on bank 0, drum kits on bank 128, and the
+variations on the other banks) except MuseScore General's "Expr." presets,
+whose loudness follows MIDI controller 2, which Rosaclef does not send. The
+samples of banks 0 and 128 come first, so adding the other banks leaves their
+pieces as they were. The format is read by crates/engine/src/soundfont.rs
+(see `PIECE` there).
 """
 
 import struct
@@ -25,7 +29,8 @@ import sys
 from pathlib import Path
 
 PIECE = 1 << 20
-BANKS = (0, 128)
+# MuseScore General's expressive banks: loudness from CC2, which Rosaclef does not send.
+EXPRESSIVE = (17, 18, 21, 26, 31, 41, 51)
 
 # Record layouts of the pdta sub-chunks.
 LAYOUT = {
@@ -98,8 +103,9 @@ def main():
     src, out = sys.argv[1], Path(sys.argv[2])
     info, smpl, pdta = read(src)
     shdr = pdta["shdr"]
-    presets = [i for i, p in enumerate(pdta["phdr"][:-1]) if p[2] in BANKS]
-    presets.sort(key=lambda i: (pdta["phdr"][i][2], pdta["phdr"][i][1]))
+    presets = [i for i, p in enumerate(pdta["phdr"][:-1]) if p[2] not in EXPRESSIVE]
+    # General MIDI and the drum kits first, then the variations.
+    presets.sort(key=lambda i: (pdta["phdr"][i][2] not in (0, 128), pdta["phdr"][i][2], pdta["phdr"][i][1]))
 
     # Sample order: by first use, following the presets; stereo partners
     # right after each other.
