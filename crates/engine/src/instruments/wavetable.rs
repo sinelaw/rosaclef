@@ -1,4 +1,4 @@
-//! Sapphire Plucks & Leads (`wavetable`): wavetable synthesizer.
+//! Sapphire Plucks (`wavetable`): wavetable synthesizer.
 //!
 //! The selected table is generated procedurally when it changes (never per
 //! note): 32 frames, each defined by a harmonic spectrum (built directly, or

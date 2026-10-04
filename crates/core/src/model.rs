@@ -347,6 +347,12 @@ pub struct Channel {
     /// run of notes (see [`crate::arp`]). The notes stay as written.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub arp: Option<Arpeggio>,
+    /// A layer: the id of another channel whose notes this channel also
+    /// plays (through its own instrument, arpeggiator, volume and mixer
+    /// route). Layering two instruments thickens a part without copying
+    /// notes. A layer cannot itself be layered on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer_of: Option<String>,
 }
 
 /// An arpeggiator: while a note is held it plays the notes of `chord`

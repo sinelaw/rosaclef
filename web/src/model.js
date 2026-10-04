@@ -129,6 +129,7 @@ export function decodeProject(raw) {
       mute: c.mute === true,
       mixer: insertIx(Math.round(Number(c.mixer ?? 0))),
       arp: decodeArp(c.arp),
+      layerOf: String(c.layerOf ?? ""),
     })),
     patterns: (raw.patterns ?? []).map((p) => ({
       id: String(p.id),
@@ -283,6 +284,7 @@ export function encodeProject(p) {
     ch.mixer = insertIndex(c.mixer);
     const a = c.arp;
     if (a.on) ch.arp = { chord: a.chord, octaves: a.octaves, rate: round6(a.rate), direction: a.direction, gate: round6(a.gate), mode: a.mode };
+    if (c.layerOf !== "") ch.layerOf = c.layerOf;
     return ch;
   });
   o.patterns = p.patterns.map((pt) => ({
@@ -635,6 +637,7 @@ export function describeChange(a, b) {
     if (old.mixer !== c.mixer) out.push(`channel "${c.id}" rerouted to another insert`);
     if (old.arp.on !== c.arp.on) out.push(`channel "${c.id}" arpeggiator ${c.arp.on ? "on" : "off"}`);
     else if (c.arp.on && JSON.stringify(old.arp) !== JSON.stringify(c.arp)) out.push(`channel "${c.id}" arpeggiator changed`);
+    if (old.layerOf !== c.layerOf) out.push(c.layerOf === "" ? `channel "${c.id}" is no longer a layer` : `channel "${c.id}" layers "${c.layerOf}"`);
     deviceDiff(`channel "${c.id}"`, old.instrument, c.instrument, out);
   }
   for (const c of a.channels) if (!b.channels.some((x) => x.id === c.id)) out.push(`removed channel "${c.id}"`);

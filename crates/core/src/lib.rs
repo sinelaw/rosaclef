@@ -49,9 +49,13 @@ pub fn summary(p: &Project) -> String {
             "plugin" => format!("plugin {}", c.instrument.option("path")),
             k => k.to_string(),
         };
+        let layer = match &c.layer_of {
+            Some(of) => format!(" (layer of {of})"),
+            None => String::new(),
+        };
         let _ = writeln!(
             s,
-            "  [{i}] {:<14} {:<22} → insert {}{}",
+            "  [{i}] {:<14} {:<22} → insert {}{}{layer}",
             c.id,
             detail,
             c.mixer,
@@ -287,11 +291,39 @@ mod tests {
             mute: false,
             mixer: InsertIx(99),
             arp: None,
+            layer_of: None,
         });
         let issues = validate::validate(&p);
         let paths: Vec<&str> = issues.iter().map(|i| i.path.as_str()).collect();
         assert!(paths.contains(&"channels[0].mixer"));
         assert!(paths.contains(&"channels[0].instrument.params.cutoff"));
+    }
+
+    #[test]
+    fn layers_must_point_at_a_plain_channel() {
+        let mut p = with_pad();
+        let mut layer = p.channels[0].clone();
+        layer.id = "air".into();
+        layer.layer_of = Some("pad".into());
+        p.channels.push(layer);
+        assert!(validate::validate(&p).is_empty());
+        let bad = |of: &str| {
+            let mut q = p.clone();
+            let mut c = q.channels[0].clone();
+            c.id = "x".into();
+            c.layer_of = Some(of.into());
+            q.channels.push(c);
+            validate::validate(&q)
+                .iter()
+                .map(|i| i.path.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(bad("nope"), ["channels[2].layerOf"], "unknown channel");
+        assert_eq!(bad("x"), ["channels[2].layerOf"], "itself");
+        assert_eq!(bad("air"), ["channels[2].layerOf"], "a layer of a layer");
+        let text = format::to_string(&p);
+        assert!(text.contains(r#""layerOf": "pad""#), "{text}");
+        assert!(summary(&p).contains("(layer of pad)"));
     }
 
     #[test]
@@ -357,6 +389,7 @@ mod tests {
             mute: false,
             mixer: InsertIx(1),
             arp: None,
+            layer_of: None,
         });
         p
     }

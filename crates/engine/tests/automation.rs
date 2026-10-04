@@ -54,6 +54,7 @@ fn blips(beats: f64) -> Project {
         mute: false,
         mixer: InsertIx(1),
         arp: None,
+        layer_of: None,
     });
     p.patterns[0].length = 1.0;
     p.patterns[0].notes.push(Note {
@@ -103,6 +104,7 @@ fn pad(beats: f64) -> Project {
         mute: false,
         mixer: InsertIx(1),
         arp: None,
+        layer_of: None,
     });
     p.patterns[0].length = beats;
     p.patterns[0].notes.push(Note {

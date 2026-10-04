@@ -86,7 +86,7 @@ CHANNELS = [
     ("bell", "Silver Cathedral Bell", CHAMPAGNE, preset("Silver Cathedral Bell"), 10, 0.3, 0),
     ("ascent", "Milky Way Riser", CHAMPAGNE, preset("Milky Way Riser"), 8, 0.36, 0),
     ("riser", "Golden Ascent Riser", CHAMPAGNE, preset("Golden Ascent Riser"), 8, 0.32, 0),
-    ("impact", "Météore", BRONZE, preset("Basalt Meteor Impact"), 8, 0.5, 0),
+    ("impact", "Basalt Meteor Impact", BRONZE, preset("Basalt Meteor Impact"), 8, 0.5, 0),
     ("subdrop", "Ink Abyss Sub Drop", ONYX, preset("Ink Abyss Sub Drop"), 8, 0.5, 0),
     ("fall", "Moonfall Downlifter", CHAMPAGNE, preset("Moonfall Downlifter"), 8, 0.32, 0),
 ]

@@ -59,6 +59,7 @@ fn song(arp: Option<Arpeggio>) -> Project {
         mute: false,
         mixer: InsertIx::MASTER,
         arp,
+        layer_of: None,
     });
     let pat = &mut p.patterns[0];
     pat.length = 4.0;

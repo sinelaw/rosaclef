@@ -272,12 +272,20 @@ pub fn merge_into(base: &mut Project, add: Project) -> Vec<String> {
     }
     let remap_insert = |ix: InsertIx| insert_map.get(&ix.0).copied().unwrap_or(InsertIx::MASTER);
 
+    let first_added = base.channels.len();
     for mut ch in add.channels {
         let id = channel_ids.keep(&ch.id);
         channel_map.insert(ch.id.clone(), id.clone());
         ch.id = id;
         ch.mixer = remap_insert(ch.mixer);
         base.channels.push(ch);
+    }
+    for ch in &mut base.channels[first_added..] {
+        if let Some(of) = ch.layer_of.as_mut() {
+            if let Some(c) = channel_map.get(of) {
+                *of = c.clone();
+            }
+        }
     }
     for mut pat in add.patterns {
         let id = pattern_ids.keep(&pat.id);

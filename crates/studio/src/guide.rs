@@ -202,6 +202,11 @@ Rules and conventions:
   "mode": "free" }` — `rate` in beats between run notes (0.25 = 16ths), `gate` each note's length as
   a share of the rate, `direction` up / down / updown / downup / random, `mode` "sort" makes notes
   struck together take turns. Chords: `rosaclef schema` lists them (`octave` = the note itself).
+- A channel may be a **layer** of another, `"layerOf": "lead"` (omit it for none): it also plays
+  every note written for `lead`, through its own instrument, arpeggiator, volume and mixer insert.
+  Use it to thicken a part without copying notes (e.g. an `additive` pad layered with a `granular`
+  string texture, a `soundfont` piano with an `fm` electric piano). A layer may have notes of its
+  own; a layer cannot be layered on. Deleting a channel means removing its layers' `layerOf`.
 - Time-signature changes go in `transport.meters`, sorted by bar (counted from 1):
   `"meters": [ { "bar": 9, "numerator": 3, "denominator": 4 }, { "bar": 17, "numerator": 7, "denominator": 8 } ]`.
   A bar lasts `4 × numerator / denominator` beats (3/4 → 3, 6/8 → 3, 7/8 → 3.5); bars before the

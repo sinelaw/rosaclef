@@ -495,6 +495,7 @@ mod tests {
             mute: false,
             mixer: InsertIx(1),
             arp: None,
+            layer_of: None,
         });
         let t: AutomationTarget = "channel/pad/cutoff".parse().unwrap();
         let info = t.resolve(&p).unwrap();

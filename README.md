@@ -155,7 +155,7 @@ key, hide parts or color a chorus too.
 
 ## Sampled instruments
 
-**Grand Orchestra & Band** (`"type": "soundfont"`) plays sampled instruments: the 128
+**Grand Orchestra** (`"type": "soundfont"`) plays sampled instruments: the 128
 General MIDI programs (pianos, strings, brass, winds, guitars, basses,
 choirs, …) and 8 drum kits, from the built-in
 [MuseScore General](web/soundfonts/gm/LICENSE.md) soundfont (MIT). Pick one

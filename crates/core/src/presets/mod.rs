@@ -109,6 +109,7 @@ mod tests {
                 mute: false,
                 mixer: InsertIx::MASTER,
                 arp: None,
+                layer_of: None,
             });
         }
         let issues = validate::validate(&p);

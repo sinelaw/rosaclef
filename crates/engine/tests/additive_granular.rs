@@ -21,6 +21,7 @@ fn project(dev: &Device) -> Project {
         mute: false,
         mixer: InsertIx::MASTER,
         arp: None,
+        layer_of: None,
     });
     p.mixer.inserts[0].effects.clear();
     p

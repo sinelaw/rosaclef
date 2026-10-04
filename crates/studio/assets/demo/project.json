@@ -561,7 +561,7 @@
     },
     {
       "id": "impact",
-      "name": "Météore",
+      "name": "Basalt Meteor Impact",
       "color": "#b08d57",
       "instrument": {
         "type": "transition",

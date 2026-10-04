@@ -33,7 +33,8 @@
 /** A channel's arpeggiator; `on` false = none (only written to the project when on).
  * Held notes play `chord` above them over `octaves` octaves, one every `rate` beats. */
 /** type Arp = { on: Boolean, chord: String, octaves: Int, rate: Number, direction: String, gate: Number, mode: String } */
-/** type Channel = { id: String, name: String, color: String, instrument: Device, volume: Number, pan: Number, mute: Boolean, mixer: InsertIx, arp: Arp } */
+/** A channel; `layerOf` is the id of the channel whose notes it also plays ("" = none). */
+/** type Channel = { id: String, name: String, color: String, instrument: Device, volume: Number, pan: Number, mute: Boolean, mixer: InsertIx, arp: Arp, layerOf: String } */
 /** type Note = { channel: String, pitch: Number, start: Number, length: Number, velocity: Number } */
 /** type Pattern = { id: String, name: String, color: String, length: Number, notes: Note[] } */
 /** type Track = { name: String, mute: Boolean } */
@@ -73,8 +74,8 @@
 // ---------------------------------------------------------------- catalog
 
 /** type ParamSpec = { key: String, label: String, min: Number, max: Number, default: Number, unit: String, curve: String, integer: Boolean, doc: String } */
-/** type OptionSpec = { key: String, label: String, choices: String[], default: String, doc: String } */
-/** type DeviceSpec = { type: String, label: String, category: String, doc: String, params: ParamSpec[], options: OptionSpec[], openParams: Boolean } */
+/** type OptionSpec = { key: String, label: String, choices: String[], choiceDocs: String[], default: String, doc: String } */
+/** type DeviceSpec = { type: String, label: String, category: String, doc: String, bestFor: String, params: ParamSpec[], options: OptionSpec[], openParams: Boolean } */
 /** type PluginInfo = { format: String, path: String, id: String, name: String, vendor: String, version: String, description: String, features: String[], instrument: Boolean, effect: Boolean } */
 /** type PresetInfo = { name: String, type: String, tags: String, doc: String, params: KV[], options: KS[] } */
 /** type ArpCatalog = { chords: String[], directions: String[], modes: String[], rateMin: Number, rateMax: Number, gateMin: Number, gateMax: Number, octavesMax: Int } */

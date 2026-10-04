@@ -34,7 +34,7 @@
 //! | Kicker | `drum` kick |
 //! | AudioFileProcessor | `sampler` (Vault Sampler); DrumSynth `.ds` patches become `drum` voices |
 //! | LB302 | `analog` acid bass (ladder / screamer filter, mono, legato glide) |
-//! | Sf2 Player | `soundfont` (Grand Orchestra & Band) playing the same General MIDI patch |
+//! | Sf2 Player | `soundfont` (Grand Orchestra) playing the same General MIDI patch |
 //! | OpulenZ (OPL2) | `fm` with the two-operator `duo` algorithm |
 //! | Mallets | `fm` "Crystal Mallet" |
 //! | NES, BitInvader | `analog` with the nearest waveforms |
@@ -1149,6 +1149,7 @@ impl<'o> Importer<'o> {
             mute: flag(track, "muted"),
             mixer,
             arp,
+            layer_of: None,
         });
         Some(ChannelInfo {
             id,

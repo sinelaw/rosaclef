@@ -1,4 +1,4 @@
-//! Gilded Risers & Impacts (`transition`): cinematic transition effects.
+//! Gilded Risers & FX (`transition`): cinematic transition effects.
 //!
 //! A note-on fires a one-shot effect lasting `length` beats (note-offs are
 //! ignored): riser, downlifter, impact, sweep or sub drop. The `intensity`

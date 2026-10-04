@@ -174,9 +174,15 @@ struct ChannelRt {
     /// Semitones its notes sound away from their written pitch (the master
     /// transpose for a pitched instrument, 0 for drums).
     shift: i32,
+    /// The channel this one layers (it also plays that channel's notes).
+    layer_of: Option<String>,
 }
 
 impl ChannelRt {
+    /// Whether notes written for (or played on) `channel` sound here.
+    fn plays(&self, channel: &str) -> bool {
+        self.id == channel || self.layer_of.as_deref() == Some(channel)
+    }
     fn update_gains(&mut self) {
         let (pl, pr) = pan_gains(self.pan);
         let v = if self.mute { 0.0 } else { self.volume };
@@ -439,6 +445,7 @@ impl Engine {
                         buf_r: vec![0.0; MAX_BLOCK],
                         peak: 0.0,
                         shift: 0,
+                        layer_of: None,
                     }
                 }
             };
@@ -450,6 +457,7 @@ impl Engine {
             rt.mute = ch.mute;
             rt.update_gains();
             rt.mixer = clamp_insert(ch.mixer, &project);
+            rt.layer_of = ch.layer_of.clone();
             rt.shift = if pitched(&ch.instrument) {
                 project.transport.transpose.clamp(-12, 12)
             } else {
@@ -517,10 +525,15 @@ impl Engine {
             .patterns
             .iter()
             .map(|p| {
-                // A channel's arpeggiator plays its notes as runs of notes.
+                // A channel's arpeggiator plays its notes as runs of notes. A
+                // layer plays the notes of the channel it layers too.
                 let mut played: Vec<(usize, f64, f64, i32, f64)> = vec![];
                 for (channel, ch) in project.channels.iter().enumerate() {
-                    let mine = p.notes.iter().filter(|n| n.channel == ch.id);
+                    let layered = ch.layer_of.as_deref();
+                    let mine = p
+                        .notes
+                        .iter()
+                        .filter(|n| n.channel == ch.id || layered == Some(n.channel.as_str()));
                     match &ch.arp {
                         None => played.extend(
                             mine.map(|n| (channel, n.start, n.length, n.pitch, n.velocity)),
@@ -868,8 +881,9 @@ impl Engine {
 
     /// Live note input (UI keyboard, piano roll preview, MIDI), shifted by
     /// the master transpose like the sequenced notes.
+    /// Start a live note on a channel (and on the channels layering it).
     pub fn note_on(&mut self, channel: &str, key: u8, velocity: f32) {
-        if let Some(ch) = self.channels.iter_mut().find(|c| c.id == channel) {
+        for ch in self.channels.iter_mut().filter(|c| c.plays(channel)) {
             let sounding = (key as i32 + ch.shift).clamp(0, 127) as u8;
             // The key releases what it started, even if the transpose changes meanwhile.
             self.held.retain(|h| !(h.0 == ch.handle && h.1 == key));
@@ -885,7 +899,7 @@ impl Engine {
     }
 
     pub fn note_off(&mut self, channel: &str, key: u8) {
-        if let Some(ch) = self.channels.iter_mut().find(|c| c.id == channel) {
+        for ch in self.channels.iter_mut().filter(|c| c.plays(channel)) {
             let sounding = match self
                 .held
                 .iter()

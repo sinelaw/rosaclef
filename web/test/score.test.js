@@ -27,6 +27,7 @@ function song(notes, length) {
     mute: false,
     mixer: insertIx(0),
     arp: noArp(),
+    layerOf: "",
   });
   p.patterns.push({
     id: "a",

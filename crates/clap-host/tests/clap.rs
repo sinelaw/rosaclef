@@ -255,6 +255,7 @@ fn engine_renders_plugin_instrument() {
         mute: false,
         mixer: rosaclef_core::InsertIx(1),
         arp: None,
+        layer_of: None,
     });
     project.patterns[0].notes.push(Note {
         channel: "sine".into(),

@@ -1,4 +1,4 @@
-//! Grand Orchestra & Band (`soundfont`): plays a SoundFont preset (by default the built-in General
+//! Grand Orchestra (`soundfont`): plays a SoundFont preset (by default the built-in General
 //! MIDI soundfont).
 //!
 //! The preset arrives decoded ([`crate::soundfont::LoadedPreset`], through

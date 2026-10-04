@@ -385,7 +385,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     // ---------------------------------------------------------------- instruments
     DeviceSpec {
         kind: "soundfont",
-        label: "Grand Orchestra & Band",
+        label: "Grand Orchestra",
         category: Category::Instrument,
         doc: "Sampled General MIDI instruments from the built-in soundfont (MuseScore General): pianos, strings, brass, winds, guitars, basses, choirs and drum kits. options.program names a GM program (\"Acoustic Grand Piano\", \"String Ensemble 1\", ...) or a drum kit (\"Standard Kit\", ...; notes follow the GM drum map: 36 kick, 38 snare, 42 closed hat, 46 open hat, 49 crash). Velocity shapes loudness and tone as on the real instrument. The sounds load on first use.",
         best_for: "Real instruments: acoustic and electric pianos, guitars, basses, strings, brass, woodwinds, choirs, organs, orchestral and band drum kits.",
@@ -505,7 +505,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "wavetable",
-        label: "Sapphire Plucks & Leads",
+        label: "Sapphire Plucks",
         category: Category::Instrument,
         doc: "Wavetable synthesizer: sweeps through band-limited wavetables with envelope and LFO, warps the waveform, stacks unison voices across the stereo field, then filters and drives.",
         best_for: "Plucks, supersaw and wide leads, growl and modern basses, evolving vocal pads.",
@@ -564,7 +564,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "granular",
-        label: "Opal Strings & Ambience",
+        label: "Opal Strings & Pads",
         category: Category::Instrument,
         doc: "Granular texture instrument. Clouds of grains from a built-in synthesized source (choir, singing bowls, ember crackle, strings, air) or from any project sample (options.source = sample, options.sample = path).",
         best_for: "Frozen strings, choir washes, ambient pads, drones and atmospheres; granulated recordings.",
@@ -638,7 +638,7 @@ pub static DEVICES: &[DeviceSpec] = &[
     },
     DeviceSpec {
         kind: "transition",
-        label: "Gilded Risers & Impacts",
+        label: "Gilded Risers & FX",
         category: Category::Instrument,
         doc: "Cinematic transition effects: risers, downlifters, impacts, sweeps and sub drops. One 'intensity' macro scales pitch travel, filter sweep, drive and space together. A note triggers the effect; length is set in beats.",
         best_for: "Risers, downlifters, impacts, noise sweeps and sub drops between sections.",

@@ -204,7 +204,8 @@ pub fn schema() -> Value {
                     "pan": num(-1.0, 1.0, "-1 left, 0 centre, 1 right."),
                     "mute": {"type": "boolean"},
                     "mixer": {"type": "integer", "minimum": 0, "description": "Mixer insert index (0 = master)."},
-                    "arp": {"$ref": "#/$defs/arp"}
+                    "arp": {"$ref": "#/$defs/arp"},
+                    "layerOf": {"type": "string", "description": "Make this channel a layer: the id of another channel whose notes it also plays, through its own instrument, arpeggiator, volume and mixer route (e.g. a granular pad under an additive pad). That channel must not be a layer itself."}
                 }
             },
             "arp": {
