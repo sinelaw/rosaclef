@@ -18,6 +18,8 @@
 // types what it exports, and GlFrame / GlSheet in web/types/globals.d.js
 // describe a frame.
 
+import { inkHeights } from "./inkdrops.js";
+
 const VS = `#version 300 es
 in vec2 aPos;
 in vec2 aUv;
@@ -671,9 +673,52 @@ function renderer(canvas) {
     .catch((e) => console.warn("film: no room to reflect", e));
   let target = null;
 
+  /** The ink's heights (web/lib/inkdrops.js), at 16 bits: a half-float texture, its mipmaps made here. */
+  function heightTexture(hm) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
+    let w = hm.w;
+    let h = hm.h;
+    let level = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) level[i] = hm.data[i] / 65535;
+    for (let i = 0; ; i++) {
+      const half = new Uint16Array(w * h);
+      for (let k = 0; k < half.length; k++) half[k] = toHalf(level[k]);
+      gl.texImage2D(gl.TEXTURE_2D, i, gl.R16F, w, h, 0, gl.RED, gl.HALF_FLOAT, half);
+      if (w === 1 && h === 1) break;
+      const w2 = Math.max(1, w >> 1);
+      const h2 = Math.max(1, h >> 1);
+      const next = new Float32Array(w2 * h2);
+      for (let y = 0; y < h2; y++)
+        for (let x = 0; x < w2; x++) {
+          const x0 = Math.min(w - 1, x * 2),
+            x1 = Math.min(w - 1, x * 2 + 1);
+          const y0 = Math.min(h - 1, y * 2),
+            y1 = Math.min(h - 1, y * 2 + 1);
+          next[y * w2 + x] = (level[y0 * w + x0] + level[y0 * w + x1] + level[y1 * w + x0] + level[y1 * w + x1]) / 4;
+        }
+      level = next;
+      w = w2;
+      h = h2;
+    }
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (aniso) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+    return tex;
+  }
+
   function texture(url, repeat) {
     if (!url) return null;
     let t = textures.get(url);
+    if (!t && url.startsWith("ink:")) {
+      const hm = inkHeights(url);
+      t = { tex: hm ? heightTexture(hm) : null, w: hm ? hm.w : 0, h: hm ? hm.h : 0, failed: !hm, promise: null };
+      textures.set(url, t);
+    }
     if (!t) {
       t = { tex: null, w: 0, h: 0, failed: false, promise: null };
       textures.set(url, t);

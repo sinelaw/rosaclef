@@ -7,6 +7,7 @@ import { Terminal } from "../vendor/xterm/xterm.mjs";
 import { FitAddon } from "../vendor/xterm/addon-fit.mjs";
 import { WebLinksAddon } from "../vendor/xterm/addon-web-links.mjs";
 import { backend, request, localSocket, resolveUrl } from "./backend.js";
+import { forgetInk } from "./inkdrops.js";
 
 // ------------------------------------------------------------------ events
 
@@ -764,7 +765,8 @@ export { filmDraw, filmForget, encodeFilm, renderStill } from "./filmgl.js";
 export { rasterInk } from "./inkdrops.js";
 
 export function dropUrl(url) {
-  URL.revokeObjectURL(url);
+  if (url.startsWith("ink:")) forgetInk(url);
+  else URL.revokeObjectURL(url);
 }
 
 export function toggleFullscreen(selector) {

@@ -6,8 +6,10 @@
 // stroke, its surface is an arc of a circle meeting the paper at a contact
 // angle (a spherical cap, as a small drop on a surface is). So:
 //
-//  1. Each ink pixel's distance to the nearest paper (an exact Euclidean
-//     distance transform, two 1D passes — Felzenszwalb & Huttenlocher).
+//  1. Each ink pixel's distance to the nearest paper: an anti-aliased
+//     Euclidean distance transform (Gustavson & Strand), the edge placed
+//     within its pixels by their coverage, so a slanting stroke's sides are
+//     straight, not the staircase of its pixels.
 //  2. The half-width of the stroke it belongs to: the distance on the
 //     stroke's ridge, carried down to the edge (pixels taken from the
 //     farthest in, each one takes the largest half-width of its neighbours
@@ -23,71 +25,170 @@
 
 /** Contact angle of the ink on the paper (radians). */
 const CONTACT = (58 * Math.PI) / 180;
-/** The tallest a bead of ink stands (points), and the height a full 255 encodes (web/lib/filmgl.js reads it so). */
+/** The tallest a bead of ink stands (points), and the full scale of the heights kept (web/lib/filmgl.js reads them so). */
 const DEEPEST = 0.8;
 export const INK_UNIT = 1;
 
-/** Squared distance transform of one line (Felzenszwalb & Huttenlocher), in place over `f` read through `get`/`set`. */
-function dt1(f, n, v, z, d) {
-  let k = 0;
-  v[0] = 0;
-  z[0] = -Infinity;
-  z[1] = Infinity;
-  for (let q = 1; q < n; q++) {
-    let s;
-    for (;;) {
-      const p = v[k];
-      s = (f[q] + q * q - (f[p] + p * p)) / (2 * q - 2 * p);
-      if (s > z[k]) break;
-      k--;
-    }
-    k++;
-    v[k] = q;
-    z[k] = s;
-    z[k + 1] = Infinity;
+/**
+ * How far a pixel's centre lies from the edge crossing it, given the edge's
+ * direction (its gradient, gx, gy) and how much of the pixel the object
+ * covers (`a`): positive outside the object. (Gustavson & Strand, "Anti-aliased
+ * Euclidean distance transform", 2011.)
+ */
+function edgeOffset(gx, gy, a) {
+  if (gx === 0 || gy === 0) return 0.5 - a;
+  const len = Math.hypot(gx, gy);
+  gx = Math.abs(gx / len);
+  gy = Math.abs(gy / len);
+  if (gx < gy) {
+    const t = gx;
+    gx = gy;
+    gy = t;
   }
-  k = 0;
-  for (let q = 0; q < n; q++) {
-    while (z[k + 1] < q) k++;
-    const p = v[k];
-    d[q] = (q - p) * (q - p) + f[p];
-  }
+  const a1 = (0.5 * gy) / gx;
+  if (a < a1) return 0.5 * (gx + gy) - Math.sqrt(2 * gx * gy * a);
+  if (a < 1 - a1) return (0.5 - a) * gx;
+  return -0.5 * (gx + gy) + Math.sqrt(2 * gx * gy * (1 - a));
 }
 
-/** Squared Euclidean distance from each pixel to the nearest pixel where `grid` is 0. */
-function edt(grid, w, h) {
-  const n = Math.max(w, h);
-  const f = new Float64Array(n);
-  const d = new Float64Array(n);
-  const v = new Int32Array(n);
-  const z = new Float64Array(n + 1);
-  for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) f[y] = grid[y * w + x];
-    dt1(f, h, v, z, d);
-    for (let y = 0; y < h; y++) grid[y * w + x] = d[y];
+/**
+ * The anti-aliased Euclidean distance transform (Gustavson & Strand): for each
+ * pixel, how far its centre is from the edge of the object `img` covers
+ * (0..1 a pixel), the edge placed within its pixels by their coverage, so a
+ * slanting edge is straight, not the staircase of its pixels (whose ripples a
+ * drop's slope would catch as stripes of light). 0 inside the object.
+ */
+function edtaa(img, w, h) {
+  const n = w * h;
+  const gx = new Float32Array(n);
+  const gy = new Float32Array(n);
+  const R2 = Math.SQRT2;
+  // The edge's direction where it crosses a pixel (Sobel over the coverage).
+  for (let y = 1; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (img[i] <= 0 || img[i] >= 1) continue;
+      const ax = -img[i - w - 1] - R2 * img[i - 1] - img[i + w - 1] + img[i - w + 1] + R2 * img[i + 1] + img[i + w + 1];
+      const ay = -img[i - w - 1] - R2 * img[i - w] - img[i - w + 1] + img[i + w - 1] + R2 * img[i + w] + img[i + w + 1];
+      const len = Math.hypot(ax, ay);
+      if (len > 0) {
+        gx[i] = ax / len;
+        gy[i] = ay / len;
+      }
+    }
+  // Each pixel's offset to its nearest edge pixel, and its distance.
+  const dx = new Int32Array(n);
+  const dy = new Int32Array(n);
+  const dist = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    if (img[i] <= 0) dist[i] = 1e6;
+    else if (img[i] < 1) dist[i] = edgeOffset(gx[i], gy[i], img[i]);
+    else dist[i] = 0;
   }
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) f[x] = grid[y * w + x];
-    dt1(f, w, v, z, d);
-    for (let x = 0; x < w; x++) grid[y * w + x] = d[x];
+  /** The distance from a pixel to the edge in pixel `c`, `ox, oy` from it. */
+  function via(c, ox, oy) {
+    const a = Math.min(1, Math.max(0, img[c]));
+    if (a === 0) return 1e6;
+    const d = Math.hypot(ox, oy);
+    return d + (d === 0 ? edgeOffset(gx[c], gy[c], a) : edgeOffset(ox, oy, a));
   }
-  return grid;
+  /** Try pixel `i` against its neighbour `j`, `sx, sy` from it toward `i`. */
+  function relax(i, j, sx, sy) {
+    const ox = dx[j] + sx;
+    const oy = dy[j] + sy;
+    const c = i - ox - oy * w;
+    const d = via(c, ox, oy);
+    if (d < dist[i] - 1e-3) {
+      dx[i] = ox;
+      dy[i] = oy;
+      dist[i] = d;
+      return true;
+    }
+    return false;
+  }
+  for (let changed = true, round = 0; changed && round < 8; round++) {
+    changed = false;
+    // Down the image: from above and the left, then from the right.
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (dist[i] <= 0) continue;
+        if (y > 0) {
+          if (relax(i, i - w, 0, 1)) changed = true;
+          if (x > 0 && relax(i, i - w - 1, 1, 1)) changed = true;
+          if (x < w - 1 && relax(i, i - w + 1, -1, 1)) changed = true;
+        }
+        if (x > 0 && relax(i, i - 1, 1, 0)) changed = true;
+      }
+      for (let x = w - 2; x >= 0; x--) {
+        const i = y * w + x;
+        if (dist[i] > 0 && relax(i, i + 1, -1, 0)) changed = true;
+      }
+    }
+    // Up the image: from below and the right, then from the left.
+    for (let y = h - 1; y >= 0; y--) {
+      for (let x = w - 1; x >= 0; x--) {
+        const i = y * w + x;
+        if (dist[i] <= 0) continue;
+        if (y < h - 1) {
+          if (relax(i, i + w, 0, -1)) changed = true;
+          if (x < w - 1 && relax(i, i + w + 1, -1, -1)) changed = true;
+          if (x > 0 && relax(i, i + w - 1, 1, -1)) changed = true;
+        }
+        if (x < w - 1 && relax(i, i + 1, -1, 0)) changed = true;
+      }
+      for (let x = 1; x < w; x++) {
+        const i = y * w + x;
+        if (dist[i] > 0 && relax(i, i - 1, 1, 0)) changed = true;
+      }
+    }
+  }
+  return dist;
+}
+
+/** Average `v` over the pixels within `r` (along rows, then columns), counting only those where `on` is above 0. */
+function smoothOver(v, on, w, h, r) {
+  const tmp = new Float32Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (on[i] <= 0) continue;
+      let sum = 0;
+      let n = 0;
+      for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++)
+        if (on[y * w + k] > 0) {
+          sum += v[y * w + k];
+          n++;
+        }
+      tmp[i] = sum / n;
+    }
+  for (let x = 0; x < w; x++)
+    for (let y = 0; y < h; y++) {
+      const i = y * w + x;
+      if (on[i] <= 0) continue;
+      let sum = 0;
+      let n = 0;
+      for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++)
+        if (on[k * w + x] > 0) {
+          sum += tmp[k * w + x];
+          n++;
+        }
+      v[i] = sum / n;
+    }
 }
 
 /** Heights (points) of the drops over a mask of ink coverage (0..1), `ppt` pixels a point. */
 export function drops(cover, w, h, ppt) {
-  const INF = 1e20;
-  const grid = new Float64Array(w * h);
-  for (let i = 0; i < w * h; i++) grid[i] = cover[i] >= 0.5 ? INF : 0;
-  edt(grid, w, h);
   // Distance to the edge, in pixels: from the pixel's centre to the boundary
-  // between it and the nearest paper (the antialiased coverage nudges it).
+  // between the ink and the nearest paper (the paper is the object measured to).
+  const paper = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) paper[i] = 1 - cover[i];
+  const toPaper = edtaa(paper, w, h);
   const dist = new Float32Array(w * h);
   let max = 0;
   for (let i = 0; i < w * h; i++) {
-    if (grid[i] === 0) continue;
-    const e = Math.sqrt(grid[i]) - 0.5 + (cover[i] - 0.5) * 0.5;
-    dist[i] = Math.max(0.05, e);
+    if (toPaper[i] <= 0 || toPaper[i] >= 1e5) continue;
+    dist[i] = Math.max(0.05, toPaper[i]);
     if (dist[i] > max) max = dist[i];
   }
   // The stroke's half-width, from its ridge outward (bucketed by distance, farthest first).
@@ -119,6 +220,10 @@ export function drops(cover, w, h, ppt) {
       }
     half[i] = r;
   }
+  // A stroke's half-width changes slowly along it, but read off its pixelated
+  // ridge it wobbles by up to half a pixel where the stroke slants: averaged
+  // over the ink a few pixels around (along rows, then columns), it is smooth.
+  smoothOver(half, dist, w, h, 3);
   // The cap: an arc of radius rho = R / sin(contact) over the stroke's width.
   const out = new Float32Array(w * h);
   const sinC = Math.sin(CONTACT);
@@ -137,10 +242,24 @@ export function drops(cover, w, h, ppt) {
   return out;
 }
 
+/** The drops' heights, by key: kept here (not as an image, whose 8 bits a pixel would terrace a gentle dome into stripes of light). */
+const heights = new Map();
+let made = 0;
+
+/** The heights a key names (`w` by `h`, 0..65535 for 1 − height / INK_UNIT: paper 65535), or undefined. */
+export function inkHeights(key) {
+  return heights.get(key);
+}
+
+/** Let go of the heights a key names. */
+export function forgetInk(key) {
+  heights.delete(key);
+}
+
 /**
  * Rasterize the ink's mask (an SVG of `w` by `h` pixels, `ppt` pixels a
- * point) and shape its drops: a PNG's object URL, its red channel
- * 255 × (1 − height / INK_UNIT) (paper white, the deepest ink darkest).
+ * point) and shape its drops: a key ("ink:…") to their heights, kept at 16
+ * bits (inkHeights; web/lib/filmgl.js uploads them as a half-float texture).
  */
 export async function rasterInk(svg, w, h, ppt) {
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
@@ -159,17 +278,11 @@ export async function rasterInk(svg, w, h, ppt) {
     const cover = new Float32Array(w * h);
     for (let i = 0; i < w * h; i++) cover[i] = 1 - px.data[i * 4] / 255;
     const height = drops(cover, w, h, ppt);
-    for (let i = 0; i < w * h; i++) {
-      const v = Math.round(255 * (1 - Math.min(1, height[i] / INK_UNIT)));
-      px.data[i * 4] = v;
-      px.data[i * 4 + 1] = v;
-      px.data[i * 4 + 2] = v;
-      px.data[i * 4 + 3] = 255;
-    }
-    g.putImageData(px, 0, 0);
-    const blob = await new Promise((done) => canvas.toBlob(done, "image/png"));
-    if (!blob) throw new Error("the ink could not be drawn");
-    return URL.createObjectURL(blob);
+    const data = new Uint16Array(w * h);
+    for (let i = 0; i < w * h; i++) data[i] = Math.round(65535 * (1 - Math.min(1, height[i] / INK_UNIT)));
+    const key = `ink:${++made}`;
+    heights.set(key, { w, h, data });
+    return key;
   } finally {
     URL.revokeObjectURL(url);
   }
