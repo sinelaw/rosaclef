@@ -778,7 +778,7 @@ export async function rasterSvg(svg, w, h, type) {
   }
 }
 
-export { filmDraw, filmForget, encodeFilm, renderStill } from "./filmgl.js";
+export { filmDraw, filmLive, filmForget, encodeFilm, renderStill } from "./filmgl.js";
 
 export function dropUrl(url) {
   URL.revokeObjectURL(url);

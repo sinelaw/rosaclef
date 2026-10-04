@@ -531,6 +531,32 @@ function renderer(canvas) {
 const screens = new Map();
 const pending = new Map();
 let scheduled = false;
+// Canvases drawn every animation frame (selector → the frame for now), and whether that loop runs.
+const live = new Map();
+let looping = false;
+
+/** Draw a frame on the canvas matching `selector` now. */
+function drawOn(sel, f) {
+  const canvas = document.querySelector(sel);
+  if (!canvas) return false;
+  let r = screens.get(sel);
+  if (!r || r.canvas !== canvas) {
+    try {
+      r = renderer(canvas);
+    } catch (e) {
+      console.error("film renderer", e);
+      r = null;
+    }
+    if (!r) return false;
+    screens.set(sel, r);
+  }
+  const dpr = Math.min(f.ratio, window.devicePixelRatio || 1);
+  f.width = Math.round(canvas.clientWidth * dpr);
+  f.height = Math.round(canvas.clientHeight * dpr);
+  r.onLoad = () => filmDraw(sel, f);
+  r.draw(f);
+  return true;
+}
 
 /** Draw a frame on the canvas matching `selector` (at the next animation frame; the latest frame wins). */
 export function filmDraw(selector, frame) {
@@ -539,27 +565,37 @@ export function filmDraw(selector, frame) {
   scheduled = true;
   requestAnimationFrame(() => {
     scheduled = false;
+    // A canvas drawn every frame shows its own (this one waits, for when it comes to rest).
     for (const [sel, f] of pending) {
-      const canvas = document.querySelector(sel);
-      if (!canvas) continue;
-      let r = screens.get(sel);
-      if (!r || r.canvas !== canvas) {
-        try {
-          r = renderer(canvas);
-        } catch (e) {
-          console.error("film renderer", e);
-          r = null;
-        }
-        if (!r) continue;
-        screens.set(sel, r);
-      }
-      const dpr = Math.min(f.ratio, window.devicePixelRatio || 1);
-      f.width = Math.round(canvas.clientWidth * dpr);
-      f.height = Math.round(canvas.clientHeight * dpr);
-      r.onLoad = () => filmDraw(sel, f);
-      r.draw(f);
+      if (live.has(sel)) continue;
+      drawOn(sel, f);
+      pending.delete(sel);
     }
-    pending.clear();
+  });
+}
+
+/**
+ * Draw the canvas matching `selector` every animation frame, a frame from
+ * `next` each time, until it gives none: the picture moves smoothly however
+ * seldom the page around it is rebuilt.
+ */
+export function filmLive(selector, next) {
+  live.set(selector, next);
+  if (looping) return;
+  looping = true;
+  requestAnimationFrame(function tick() {
+    for (const [sel, next] of live) {
+      const f = next();
+      if (f) pending.delete(sel);
+      if (f && drawOn(sel, f)) continue;
+      live.delete(sel);
+      // At rest: the page's latest frame, if one came in meanwhile.
+      const last = pending.get(sel);
+      pending.delete(sel);
+      if (last) drawOn(sel, last);
+    }
+    if (live.size > 0) requestAnimationFrame(tick);
+    else looping = false;
   });
 }
 

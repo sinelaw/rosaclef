@@ -184,8 +184,13 @@
   warm amber, a soft glow on the paper around: the glow effect, on by
   default) — then a last pass: vignette, warmth and grain. The frame says
   what the screen leaves out (the panel's *On screen*: Performance drops the
-  effects, the paper's texture, the last pass and half the pixels, and draws
-  close-ups half as sharp; exports and stills draw everything). `renderStill` draws
+  effects, the paper's texture, the ink's filters (Firefox runs an SVG filter
+  on the main thread as the image is drawn: a tile with them takes hundreds of
+  milliseconds there), the last pass and half the pixels, and draws close-ups
+  half as sharp; exports and stills draw everything). While the music plays
+  or the camera glides, `filmLive` draws the canvas every animation frame at
+  the live playhead, and the page around it is rebuilt ten times a second
+  (and when the engine reports) rather than every frame. `renderStill` draws
   one frame offscreen (the camera button: a PNG); `encodeFilm` renders frame
   after frame offscreen and encodes them with WebCodecs (H.264/AAC, or
   VP9/Opus) into an MP4 (`web/vendor/mp4-muxer`), with the mixdown from

@@ -368,8 +368,13 @@ export function scorePdf(sc, info, paper, hideEmpty, m) {
 
 // ------------------------------------------------------------------ as on screen
 
-/** The look of a page drawn as on screen: wet or dry ink, and the wet ink's knobs (see ink.js). */
-/** type PageLook = { wet: Boolean, gloss: Number, shine: Number } */
+/**
+ * The look of a page drawn as on screen: wet or dry ink, the wet ink's knobs
+ * (see ink.js), and whether the ink is drawn through its filters (its soft
+ * edges, the wet ink's glints). Plain ink is the same shapes, crisp, and draws
+ * many times faster (in Firefox, a filter is run as the image is drawn).
+ */
+/** type PageLook = { wet: Boolean, gloss: Number, shine: Number, filters: Boolean } */
 
 /** "r g b" (0..1) as a CSS color. */
 /** function css(c: String) => String */
@@ -451,7 +456,7 @@ export function pagePart(lay, p, info, look, scale, box, textured) {
       body.push(`<rect x="${n(b.x)}" y="${n(b.y)}" width="${n(b.w)}" height="${n(b.h)}" rx="0.8" fill="${css(rgb(b.color, 1))}" fill-opacity="0.16"/>`);
     // Staff lines are hairlines: drawn plainly, as on screen.
     for (const ink of s.inks) if (ink.color === "staff" && ink.d !== "") body.push(`<path d="${ink.d}" fill="${fillOf(STAFF)}"/>`);
-    body.push(`<g filter="url(#ink)">`);
+    body.push(look.filters ? `<g filter="url(#ink)">` : "<g>");
     for (const ink of s.inks) {
       if (ink.color === GLOSS || ink.color === SHEEN || ink.color === "staff") continue;
       const fill = fillOf(inkRgb(ink.color));
@@ -480,7 +485,7 @@ export function pagePart(lay, p, info, look, scale, box, textured) {
     }
     body.push("</g>");
     // The wet ink's glints, in light over the music.
-    if (look.wet) {
+    if (look.wet && look.filters) {
       for (const run of [SHEEN, GLOSS]) {
         const ink = s.inks.find((x) => x.color === run);
         if (ink) body.push(`<path d="${ink.d}" fill="#fffcf2" fill-opacity="${n(0.9 * glintOpacity(run, look.gloss, look.shine))}" filter="url(#${run})"/>`);

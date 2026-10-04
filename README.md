@@ -190,7 +190,7 @@ the picture. The pages look as they do on the paper view, lit by a lamp, and
 the notes light up as they play, their ink glowing warm; a spotlight and a
 vignette finish the picture. It draws fast, with or without a GPU. **On
 screen** picks how it draws in this browser: *Quality* (everything),
-*Performance* (no effects, plain paper, fewer pixels: for slower machines,
+*Performance* (no effects, plain paper and ink, fewer pixels: for slower machines,
 chosen at first everywhere but Chrome on a GPU) or *Custom*, each part on or
 off; exports always draw everything.
 

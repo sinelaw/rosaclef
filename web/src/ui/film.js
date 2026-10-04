@@ -33,6 +33,7 @@ import {
   pixelRatio,
   paperSize,
   filmDraw,
+  filmLive,
   filmForget,
   encodeFilm,
   renderStill,
@@ -91,7 +92,7 @@ import { toast } from "./toast.js";
  * hand, an export under way (its progress, 0..1; -1: none), and what the
  * picture on screen leaves out to draw faster (DRAWING keys).
  */
-/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], tiles: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, export: Number, off: String[] } */
+/** type FilmView = { id: String, width: Number, height: Number, side: Boolean, cinema: Boolean, shot: Int, auto: Number, films: Film[], sc: Score[], sig: String, plan: String, pageKeys: String[], pages: Bitmap[], tiles: Bitmap[], desk: Bitmap[], busy: Boolean, last: Cam[], lastBeat: Number, from: Cam[], fromAt: Number, look: Look, gesture: Boolean, export: Number, off: String[], ticking: Boolean } */
 
 /** function newFilmView(id: String) => FilmView */
 export function newFilmView(id) {
@@ -120,6 +121,7 @@ export function newFilmView(id) {
     gesture: false,
     export: -1,
     off: drawingOff(),
+    ticking: false,
   };
 }
 
@@ -134,6 +136,11 @@ const DRAWING = [
   ["spotlight", "Spotlight", "The pool of light on the framed staves"],
   ["vignette", "Vignette", "The picture darkening toward its edges"],
   ["finish", "Finish", "The lamp's warmth, soft highlights and film grain over the picture"],
+  [
+    "ink",
+    "Ink look",
+    "The ink as on the paper view: its soft edges and the wet ink's glints (off: crisp plain ink, drawn many times faster — in Firefox above all)",
+  ],
   ["paper", "Paper texture", "The paper's tooth, formation, grain and toned edges (off: plain paper)"],
   ["sharp", "Full resolution", "As many pixels as the screen has (off: one a CSS pixel — a quarter of them on a high-density screen)"],
   ["detail", "Sharp close-ups", "Close up, the page as sharp as the screen shows it (off: half as sharp, a quarter of the drawing)"],
@@ -226,20 +233,20 @@ function lookKey(inp) {
   return `${inp.look.wet}|${fmt(inp.look.gloss, 2)}|${fmt(inp.look.shine, 2)}`;
 }
 
-/** The pages' color: the paper view's ink, without its painted gloss (the film's ink is lit in 3D instead). */
-/** function paperLook(inp: FilmInput) => PageLook */
-function paperLook(inp) {
-  return { wet: inp.look.wet, gloss: 0, shine: inp.look.shine };
+/** The pages' color: the paper view's ink, without its painted gloss (the film's ink is lit in 3D instead); plain ink where the screen leaves the ink's look out. */
+/** function paperLook(fv: FilmView, inp: FilmInput) => PageLook */
+function paperLook(fv, inp) {
+  return { wet: inp.look.wet, gloss: 0, shine: inp.look.shine, filters: !fv.off.includes("ink") };
 }
 
 /** What each page shows (its SVG's hash): bitmaps are kept while it stays the same. */
 /** function pageKeys(fv: FilmView, f: Film, inp: FilmInput) => String[] */
 function pageKeys(fv, f, inp) {
-  const key = `${fv.sig}|${lookKey(inp)}`;
+  const key = `${fv.sig}|${lookKey(inp)}|${fv.off.includes("ink") ? "plain" : "inked"}`;
   if (fv.pageKeys.length === f.lay.pages.length + 1 && fv.pageKeys[0] === key) return fv.pageKeys;
   /** const keys: String[] */
   const keys = [key];
-  for (let i = 0; i < f.lay.pages.length; i++) keys.push(hashText(pagePart(f.lay, i, inp.info, paperLook(inp), 1, [0, 0, f.lay.w, f.lay.h], false)));
+  for (let i = 0; i < f.lay.pages.length; i++) keys.push(hashText(pagePart(f.lay, i, inp.info, paperLook(fv, inp), 1, [0, 0, f.lay.w, f.lay.h], false)));
   fv.pageKeys = keys;
   return keys;
 }
@@ -360,7 +367,7 @@ async function drawBitmap(fv, f, inp, b) {
     const page = b.page;
     const box = b.box;
     // On plain paper: the renderer lays the paper's texture over it.
-    svg = pagePart(lay, page, inp.info, paperLook(inp), b.scale, box, false);
+    svg = pagePart(lay, page, inp.info, paperLook(fv, inp), b.scale, box, false);
     w = Math.round(box[2] * b.scale);
     h = Math.round(box[3] * b.scale);
   }
@@ -837,8 +844,31 @@ export function filmView(b, fv, inp) {
   b.close();
 
   tellAgent(fv, f, scene);
-  // Keep moving while the music plays, a glide finishes or bitmaps arrive.
-  if (state.playing || fv.from.length > 0 || fv.busy || fv.export >= 0) invalidate();
+  // While the music plays or the camera glides, the picture draws itself every
+  // frame, at the live playhead; the page around it (the timeline, the words
+  // over the picture, the bitmaps wanted next) is rebuilt ten times a second.
+  // Rebuilding all of it every frame is what slows the picture down.
+  if (inp.showing && fv.export < 0 && (state.playing || fv.from.length > 0)) {
+    filmLive(`canvas[data-film="${fv.id}"]`, () => liveFrame(fv, f, inp));
+    if (!fv.ticking) {
+      fv.ticking = true;
+      setTimeout(() => {
+        fv.ticking = false;
+        invalidate();
+      }, 100);
+    }
+  }
+  if (fv.export >= 0) invalidate();
+}
+
+/** The picture now, while it moves by itself (the music playing, the camera gliding); none once it rests. */
+/** function liveFrame(fv: FilmView, f: Film, inp: FilmInput) => GlFrame | Undefined */
+function liveFrame(fv, f, inp) {
+  if (!inp.showing || fv.export >= 0 || !(state.playing || fv.from.length > 0)) return undefined;
+  const beat = state.playing ? livePosition() : state.position;
+  const cam = presented(fv, f, beat);
+  const ti = sceneAt(f.scenes, beat);
+  return glFrame(fv, f, inp, cam, beat, ti >= 0 ? f.scenes[ti] : undefined, state.playing || state.position > 0, fv.off);
 }
 
 /** A frame of the film for the renderer: the camera, the desk, the pages and their bands, the notes lit, the light. */
@@ -1028,6 +1058,8 @@ function exportView(fv) {
   vf.pages = fv.pages;
   vf.tiles = fv.tiles;
   vf.desk = fv.desk;
+  // Exports draw everything, whatever the screen leaves out.
+  vf.off = [];
   return vf;
 }
 

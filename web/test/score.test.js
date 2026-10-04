@@ -276,7 +276,7 @@ check("PDF strings escape and spell out", pdfString("A (b) ♭ é Œ") === "(A \
   // As on screen: each page as SVG, on paper and through the ink filter.
   const lay = pdfLayout(sc, "a4", false);
   check("the pages as on screen are the PDF's pages", lay.pages.length === pages.length);
-  const wet = pageSvg(lay, 0, { title: "Étude & co", subtitle: "", author: "", bpm: 96 }, { wet: true, gloss: 1, shine: 0.75 }, 2);
+  const wet = pageSvg(lay, 0, { title: "Étude & co", subtitle: "", author: "", bpm: 96 }, { wet: true, gloss: 1, shine: 0.75, filters: true }, 2);
   check(
     "a page drawn as on screen is an SVG of its size in pixels",
     wet.startsWith("<svg") && wet.includes('width="1191" height="1684"') && wet.endsWith("</svg>")
@@ -287,7 +287,7 @@ check("PDF strings escape and spell out", pdfString("A (b) ♭ é Œ") === "(A \
   );
   check("its glyphs are defined once and placed", wet.includes('<path id="G') && wet.includes('<use href="#G'));
   check("its text is escaped", wet.includes("Étude &amp; co"));
-  const dry = pageSvg(lay, 1, { title: "x", subtitle: "", author: "", bpm: 0 }, { wet: false, gloss: 1, shine: 0.75 }, 1);
+  const dry = pageSvg(lay, 1, { title: "x", subtitle: "", author: "", bpm: 0 }, { wet: false, gloss: 1, shine: 0.75, filters: true }, 1);
   check("dry ink has no glints", dry.includes("feDisplacementMap") && !dry.includes('filter="url(#gloss)"'));
 }
 
