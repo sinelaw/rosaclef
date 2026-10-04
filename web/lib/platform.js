@@ -8,6 +8,8 @@ import { FitAddon } from "../vendor/xterm/addon-fit.mjs";
 import { WebLinksAddon } from "../vendor/xterm/addon-web-links.mjs";
 import { backend, request, localSocket, resolveUrl } from "./backend.js";
 import { forgetInk } from "./inkdrops.js";
+import * as filmGl from "./filmgl.js";
+import * as filmThree from "./filmthree.js";
 
 // ------------------------------------------------------------------ events
 
@@ -759,7 +761,20 @@ export async function rasterSvg(svg, w, h, type) {
   }
 }
 
-export { filmDraw, filmForget, encodeFilm, renderStill } from "./filmgl.js";
+// The film's renderer: ours (web/lib/filmgl.js), or three.js's (web/lib/filmthree.js) with ?renderer=three.
+const film = new URLSearchParams(location.search).get("renderer") === "three" ? filmThree : filmGl;
+export function filmDraw(selector, frame) {
+  return film.filmDraw(selector, frame);
+}
+export function filmForget(url) {
+  return film.filmForget(url);
+}
+export function encodeFilm(w, h, fps, frames, frameAt, audio, offset, progress) {
+  return film.encodeFilm(w, h, fps, frames, frameAt, audio, offset, progress);
+}
+export function renderStill(frame) {
+  return film.renderStill(frame);
+}
 export { rasterInk } from "./inkdrops.js";
 
 export function dropUrl(url) {

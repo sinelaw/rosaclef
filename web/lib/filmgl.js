@@ -1066,6 +1066,16 @@ function resample(audio) {
  * hears the fraction done. Resolves to the file's object URL and its codecs.
  */
 export async function encodeFilm(w, h, fps, frames, frameAt, audio, offset, progress) {
+  if (!offscreen) {
+    const canvas = document.createElement("canvas");
+    offscreen = renderer(canvas);
+    if (!offscreen) throw new Error("WebGL 2 is not available");
+  }
+  return encodeWith(offscreen, w, h, fps, frames, frameAt, audio, offset, progress);
+}
+
+/** encodeFilm, the frames drawn by `painter` ({ ready(frame), draw(frame), canvas }): this renderer's, or another's (web/lib/filmthree.js). */
+export async function encodeWith(painter, w, h, fps, frames, frameAt, audio, offset, progress) {
   if (typeof VideoEncoder === "undefined") throw new Error("this browser cannot encode video (WebCodecs)");
   const { Muxer, ArrayBufferTarget } = await import("../vendor/mp4-muxer/mp4-muxer.mjs");
   const W = Math.round(w / 2) * 2;
@@ -1087,19 +1097,14 @@ export async function encodeFilm(w, h, fps, frames, frameAt, audio, offset, prog
     error: (e) => (failure = e),
   });
   venc.configure(v.cfg);
-  if (!offscreen) {
-    const canvas = document.createElement("canvas");
-    offscreen = renderer(canvas);
-    if (!offscreen) throw new Error("WebGL 2 is not available");
-  }
   for (let i = 0; i < frames; i++) {
     if (failure) throw failure;
     const f = await frameAt(i);
     f.width = W;
     f.height = H;
-    await offscreen.ready(f);
-    offscreen.draw(f);
-    const frame = new VideoFrame(offscreen.canvas, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
+    await painter.ready(f);
+    painter.draw(f);
+    const frame = new VideoFrame(painter.canvas, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
     venc.encode(frame, { keyFrame: i % (fps * 2) === 0 });
     frame.close();
     while (venc.encodeQueueSize > 4) await new Promise((r) => setTimeout(r, 1));

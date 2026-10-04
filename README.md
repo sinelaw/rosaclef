@@ -272,5 +272,6 @@ Known inty rough edges are tracked in [`docs/inty-notes.md`](docs/inty-notes.md)
 
 GPL-3.0-or-later. `web/vendor/xterm` is MIT (xterm.js). `web/soundfonts/gm`
 is MuseScore General (MIT; see its [license](web/soundfonts/gm/LICENSE.md)).
-`web/vendor/mp4-muxer` is MIT (mp4-muxer, by Vanilagy). `web/vendor/hdri` is CC0
-(Poly Haven's "Artist Workshop").
+`web/vendor/mp4-muxer` is MIT (mp4-muxer, by Vanilagy). `web/vendor/three` is
+MIT (three.js; the film's alternative renderer, `?renderer=three`).
+`web/vendor/hdri` is CC0 (Poly Haven's "Artist Workshop").

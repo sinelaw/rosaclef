@@ -1,0 +1,1 @@
+three.js 0.186.1 (https://threejs.org, MIT): build/three.core.js, build/three.module.js and examples/jsm/loaders/HDRLoader.js (its 'three' import pointed at ./three.module.js), minified with esbuild.
