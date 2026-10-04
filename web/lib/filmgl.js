@@ -114,7 +114,6 @@ ${LIGHT}
 out vec4 o;
 const float PI = 3.14159265;
 const float F0 = 0.045;
-const float GRAZING = 0.08;
 float ink(vec2 uv) { return 1.0 - texture(uInkTex, uv).r; }
 // The photographed room (an equirectangular HDR image), by direction (z up),
 // blurrier the rougher the ink; the made-up one until it has loaded.
@@ -144,6 +143,16 @@ vec3 roomOf(vec3 r, float rough) {
   c += vec3(4.0, 4.3, 4.9) * side;
   return c;
 }
+// How much of the room a rough dielectric mirrors, seen at nv (Fresnel, with
+// the masking and shadowing of its microfacets): Karis's fit of the split-sum
+// environment BRDF, as F0 * x + y.
+vec2 envBrdf(float nv, float rough) {
+  const vec4 c0 = vec4(-1.0, -0.0275, -0.572, 0.022);
+  const vec4 c1 = vec4(1.0, 0.0425, 1.04, -0.04);
+  vec4 r = rough * c0 + c1;
+  float a004 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
+  return vec2(-1.04, 1.04) * a004 + r.zw;
+}
 float ggx(float nh, float a) {
   float a2 = a * a;
   float d = nh * nh * (a2 - 1.0) + 1.0;
@@ -161,7 +170,8 @@ void main() {
   // across the picture, so its near and far parts look alike.
   float onScreen = 1.0 / max(max(length(dFdx(vWorld)), length(dFdy(vWorld))), 1e-6);
   float relief = uRelief * smoothstep(1.8, 3.5, onScreen);
-  float lift = 0.7 * relief;
+  // The height map's full scale, in points (web/lib/inkdrops.js INK_UNIT).
+  float lift = 1.0 * relief;
   float cr = cos(uRot), sr = sin(uRot);
   vec3 v0 = normalize(uEye - vec3(vWorld, 0.0));
   if (uHasInk > 0.5 && relief > 0.0) {
@@ -247,15 +257,14 @@ void main() {
       float nl = max(dot(n, l), 0.0);
       float nv = max(dot(n, v), 1e-3);
       c = mix(c, base * (0.5 + 0.5 * nl) * lamp, onInk);
-      // …and its gloss: a dielectric's reflection of the room (Schlick's Fresnel,
-      // blurred by roughness), and the lamp's GGX highlight when there is no room yet.
+      // …and its gloss: a dielectric's reflection of the room (blurred by
+      // roughness, weighed by the split-sum BRDF), and the lamp's GGX highlight
+      // when there is no room yet. Wet ink is smooth, dry ink satin.
       float rough = mix(0.45, mix(0.12, 0.04, uShine), clamp(uGloss, 0.0, 1.0));
       float a = rough * rough;
       vec3 r = reflect(-v, n);
-      // Seen low down, a gloss mirrors ever more (Fresnel); held back here, or
-      // the far ink of a leaning shot mirrors the window as a sheet (chrome).
-      float fe = F0 + (min(max(1.0 - rough, F0), GRAZING) - F0) * pow(1.0 - nv, 5.0);
-      vec3 gloss = env(r, rough) * fe;
+      vec2 ab = envBrdf(nv, rough);
+      vec3 gloss = env(r, rough) * (F0 * ab.x + ab.y);
       if (uHasEnv < 0.5) {
         vec3 hv = normalize(l + v);
         float nh = max(dot(n, hv), 0.0);
@@ -263,9 +272,7 @@ void main() {
         float fl = F0 + (1.0 - F0) * pow(1.0 - vh, 5.0);
         gloss += vec3(1.0, 0.95, 0.86) * ggx(nh, a) * smith(nv, nl, a) * fl / (4.0 * nv * max(nl, 1e-3)) * nl * 4.0 * lamp;
       }
-      // The brightest reflections roll off below half the paper's white.
-      vec3 shine = gloss * onInk * max(uGloss, 0.25);
-      c += shine / (1.0 + shine / 0.5);
+      c += gloss * onInk;
     }
   }
   o = vec4(c, 1.0);
@@ -435,9 +442,8 @@ function lookAt(eye, at, up) {
 }
 
 const FOV = (32 * Math.PI) / 180;
-/** The room's turn about the vertical (radians: its windows behind the page) and its brightness. */
+/** The room's turn about the vertical (radians: its windows behind the page). */
 const ENV_ROT = 2.4;
-const ENV_GAIN = 1.6;
 
 /**
  * The camera of a frame: in the desk's space (x right, y down, z *into* the
@@ -558,7 +564,23 @@ function roomImage() {
           img = { w, h, data: d };
           levels.push(img);
         }
-        return levels;
+        // The room's light in the paper's units: a white page lit by the room
+        // alone shows as bright as the lamp shows the paper (1). Its window,
+        // mirrored in the ink, is then as much brighter than the paper as it
+        // would be in that room, not by a free gain.
+        const L = levels[Math.min(levels.length - 1, 3)];
+        let sum = 0;
+        for (let y = 0; y < L.h; y++) {
+          const el = (0.5 - (y + 0.5) / L.h) * Math.PI;
+          const up = Math.sin(el);
+          if (up <= 0) continue;
+          const dA = ((2 * Math.PI) / L.w) * (Math.PI / L.h) * Math.cos(el);
+          for (let x = 0; x < L.w; x++) {
+            const k = (y * L.w + x) * 3;
+            sum += (0.2126 * L.data[k] + 0.7152 * L.data[k + 1] + 0.0722 * L.data[k + 2]) * up * dA;
+          }
+        }
+        return { levels, gain: sum > 0 ? Math.PI / sum : 1 };
       });
   return roomPromise;
 }
@@ -620,8 +642,10 @@ function renderer(canvas) {
   const textures = new Map();
   // The room the ink reflects (none until it has loaded).
   let envTex = null;
+  let envGain = 1;
   roomImage()
-    .then((levels) => {
+    .then(({ levels, gain }) => {
+      envGain = gain;
       const tex = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
@@ -791,7 +815,7 @@ function renderer(canvas) {
     gl.uniform1f(pu.uHasEnv, envTex ? 1 : 0);
     // The room turned so its windows are behind the page.
     gl.uniform1f(pu.uEnvRot, ENV_ROT);
-    gl.uniform1f(pu.uEnvGain, ENV_GAIN);
+    gl.uniform1f(pu.uEnvGain, envGain);
     for (const s of f.sheets) {
       const ct = texture(s.color, false);
       const it = texture(s.height, false);

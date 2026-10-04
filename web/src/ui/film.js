@@ -879,7 +879,8 @@ function glFrame(fv, f, inp, cam, beat, scene, lit) {
     spot: [cam.rx, cam.ry, Math.max(cam.rw, d.pw * 0.55) * 0.62, cam.rh * 0.72, fx.spotlight],
     light: [cam.x + lx, cam.y + ly, 1.15 * cam.span],
     fx: [fx.vignette, fx.focus, fx.glow],
-    ink: [fv.relief, look.wet ? Math.min(1, look.gloss) : 0, look.shine],
+    // The film's ink is wet: beads fresh from the pen, glossy.
+    ink: [fv.relief, 1, look.shine],
     seed: Math.floor(beat * 97) % 1000,
   };
 }
