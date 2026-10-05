@@ -16,7 +16,8 @@
 //    bottom navigation bar; `view` says which.
 
 import { loadPref, savePref } from "#platform";
-import { invalidate, hint, showDock } from "../store.js";
+import { invalidate, hint, showDock, selectInsert } from "../store.js";
+import { insertIndex } from "#brands";
 import { glyph } from "./widgets.js";
 
 /** Width of a collapsed side panel (its rail). */
@@ -182,6 +183,17 @@ export function revealDock(name) {
     saveLayout();
   }
   showDock(name);
+}
+
+/** The mixer insert whose strip scrolls into view on the mixer's next draw (-1: none). */
+export const reveal = { insert: -1 };
+
+/** Show an insert in the mixer (a channel's, from the rack or the score): select it, open the mixer and bring its strip into view. */
+/** function showInsert(ix: InsertIx) => Undefined */
+export function showInsert(ix) {
+  selectInsert(ix);
+  reveal.insert = insertIndex(ix);
+  openDock("mixer");
 }
 
 /** Phone layout: show one view ("browser", "playlist", "dock" or "agent"). */

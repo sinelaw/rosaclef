@@ -63,6 +63,151 @@ for (let i = 0; i < 3; i++) await page.keyboard.press("Control+z");
 await page.waitForFunction(() => document.querySelector(".score-top .score-rep") === null && document.querySelector(".score-top text.volta") === null);
 ok("Ctrl+Z takes the repeat back");
 
+// A staff's name: lit under the pointer, and a click opens its part's menu.
+const partNames = () => page.locator(".score-top .score-part-name.hot").allTextContents();
+const nameBox = await page.locator(".score-top .score-sys text.sname").first().boundingBox();
+const partName = await page.locator(".score-top .score-sys text.sname").first().textContent();
+await page.mouse.move(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-top text.name-hot");
+await page.waitForSelector(".score-top .score-scroll.over-name");
+ok(`hovering "${partName}" lights and underlines it`);
+await page.mouse.click(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-partmenu");
+ok("clicking it opens the part's menu");
+await page.click(".score-partmenu button:has-text('Show in the mixer')");
+await page.waitForSelector(".mixer .strip.sel");
+ok(`its channel's insert shows in the mixer (${await page.textContent(".mixer .strip.sel .strip-num")})`);
+// From the channel rack too: a click on a row's insert number.
+await page.keyboard.press("F6");
+await page.waitForSelector(".rack .ch-ins");
+const lastIns = page.locator(".rack .ch-ins").last();
+const insNo = await lastIns.textContent();
+await lastIns.click();
+await page.waitForSelector(".mixer .strip.sel");
+const strip = await page.textContent(".mixer .strip.sel .strip-num");
+if (!strip.endsWith(insNo === "M" ? "MASTER" : ` ${insNo}`)) throw new Error(`the rack's insert ${insNo} showed ${strip}`);
+ok(`a click on a rack row's insert shows it in the mixer (${strip})`);
+// Move the whole part to another instrument, and back with Ctrl+Z.
+await page.mouse.click(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-partmenu");
+await page.click(".score-partmenu button:has-text('Open in the channel rack')");
+await page.waitForSelector(".rack .rack-row.sel");
+ok(`"Open in the channel rack" selects ${await page.textContent(".rack .rack-row.sel .ch-name")}`);
+const partsBefore = await partNames();
+await page.mouse.click(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-partmenu");
+const dest = await page.locator(".score-partmenu-dest").first().locator("span").first().textContent();
+await page.click(".score-partmenu-dest >> nth=0");
+await page.waitForFunction((n) => ![...document.querySelectorAll(".score-top .score-part-name.hot")].some((e) => e.textContent === n), partName);
+ok(`${partName}'s part moves to ${dest} (parts: ${(await partNames()).join(", ")})`);
+await page.keyboard.press("Control+z");
+await page.waitForFunction((n) => [...document.querySelectorAll(".score-top .score-part-name.hot")].length === n, partsBefore.length);
+ok("Ctrl+Z gives it back");
+// A passage of it: the rest of the song keeps its instrument.
+await page.waitForFunction(() => document.querySelector(".toast") === null, null, { timeout: 15000 });
+await dragAcross(0.3, 0.75);
+await page.selectOption(".score-top .score-rangebar select.score-range-move", { index: 1 });
+await page.waitForSelector(".toast:has-text('→')");
+ok(`a chosen passage moves to another instrument: ${(await page.locator(".toast:has-text('→')").first().innerText()).replace(/\s+/g, " ")}`);
+await page.keyboard.press("Control+z");
+await page.waitForFunction((n) => [...document.querySelectorAll(".score-top .score-part-name.hot")].length === n, partsBefore.length);
+// A note lights under the pointer, ready to be grabbed.
+const sys0 = await page.locator(".score-top .score-sys").first().boundingBox();
+let lit = false;
+for (let fy = 0.1; fy < 0.9 && !lit; fy += 0.02) {
+  for (let fx = 0.2; fx < 0.9 && !lit; fx += 0.01) {
+    await page.mouse.move(sys0.x + sys0.width * fx, sys0.y + sys0.height * fy);
+    lit = (await page.locator(".score-top text.hov").count()) > 0;
+  }
+}
+if (!lit) throw new Error("no note lit under the pointer");
+await page.waitForSelector(".score-top .score-scroll.over-note");
+ok("a note under the pointer lights up, ready to be grabbed");
+
+// Scrolled down the song, choosing a passage or opening a part's menu keeps the place.
+const scrollOf = () => page.evaluate(() => document.querySelector(".score-top .score-scroll").scrollTop);
+const view0 = await page.locator(".score-top .score-scroll").boundingBox();
+await page.mouse.move(view0.x + view0.width / 2, view0.y + view0.height / 2);
+for (let i = 0; i < 4; i++) await page.mouse.wheel(0, 120);
+await page.waitForFunction(() => document.querySelector(".score-top .score-scroll").scrollTop > 200);
+// (wheel scrolling glides: wait until it holds still)
+let down = await scrollOf();
+for (let still = 0; still < 4; ) {
+  await page.waitForTimeout(100);
+  const now = await scrollOf();
+  still = now === down ? still + 1 : 0;
+  down = now;
+}
+await page.mouse.down();
+await page.mouse.move(view0.x + view0.width * 0.75, view0.y + view0.height / 2, { steps: 6 });
+await page.mouse.up();
+await page.waitForSelector(".score-top .score-rangebar");
+if ((await scrollOf()) !== down) throw new Error(`choosing a passage scrolled the score from ${down} to ${await scrollOf()}`);
+await page.keyboard.press("Escape");
+const lowName = page.locator(".score-top .score-sys text.sname").last();
+const lowBox = await lowName.boundingBox();
+await page.mouse.click(lowBox.x + lowBox.width / 2, Math.min(lowBox.y + lowBox.height / 2, view0.y + view0.height - 8));
+if ((await page.locator(".score-partmenu").count()) > 0) {
+  if ((await scrollOf()) !== down) throw new Error("opening a part's menu scrolled the score");
+  // Opened low, it opens upward: every destination shows.
+  const all = await page.locator(".score-partmenu-to").evaluate((e) => e.scrollHeight <= e.clientHeight + 1);
+  const box = await page.locator(".score-partmenu").boundingBox();
+  if (!all || box.y + box.height > 950) throw new Error("the part's menu does not fit in the window");
+  await page.keyboard.press("Escape");
+}
+ok(`scrolled down the song (${down}px), a passage or a part's menu keeps the place`);
+for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -400);
+// The mixer comes to a channel's insert without scrolling when it shows already.
+await page.mouse.click(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-partmenu");
+await page.click(".score-partmenu button:has-text('Show in the mixer')");
+await page.waitForSelector(".mixer .strip.sel");
+await page.waitForTimeout(100);
+if ((await page.evaluate(() => document.querySelector(".strips").scrollLeft)) !== 0) throw new Error("the mixer scrolled to an insert that showed already");
+ok("the mixer shows a channel's insert without scrolling when it fits");
+await page.keyboard.press("Escape");
+
+// A click in a panel takes the keys back from a menu or the agent's terminal: Space plays and stops.
+const music = await page.locator(".score-top .score-sys").first().boundingBox();
+/** Give the keys to `sel`, press at (x, y) (`button`), then Space plays and Space stops. */
+async function spaceAfter(sel, what, where, x, y, button) {
+  await page.focus(sel);
+  if (!(await page.evaluate((q) => document.activeElement === document.querySelector(q) || document.activeElement?.closest(q) !== null, sel)))
+    throw new Error(`${what} did not take the keys`);
+  await page.mouse.click(x, y, { button: button });
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => document.querySelector("button.play.on") !== null, null, { timeout: 5000 });
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => document.querySelector("button.play.on") === null, null, { timeout: 5000 });
+  ok(`after ${what} had the keys, a click on ${where} and Space plays and stops`);
+}
+const onMusic = [music.x + music.width * 0.5, music.y + music.height * 0.5];
+await spaceAfter(".score-top .score-ribbon select", "the Key menu", "the music", onMusic[0], onMusic[1], "left");
+if (
+  await page
+    .locator(".term-empty")
+    .isVisible()
+    .catch(() => false)
+) {
+  await page.click("button:has-text('Rosaclef shell')");
+  await page.waitForFunction(() => {
+    const e = document.querySelector(".term-empty");
+    return !e || e.offsetParent === null;
+  });
+}
+const TERM = ".xterm textarea";
+await spaceAfter(TERM, "the terminal", "the music", onMusic[0], onMusic[1], "left");
+// The same in the piano roll (a right-click on its grid adds nothing) and in the playlist.
+await page.click("button.tab:has-text('Piano Roll')");
+const roll = await page.locator(".pane-dock .dock-body").boundingBox();
+await spaceAfter(TERM, "the terminal", "the piano roll", roll.x + roll.width * 0.7, roll.y + roll.height * 0.5, "right");
+await page.click("button.tab:has-text('Playlist')");
+const arrangement = await page.locator(".pane-top .dock-body").boundingBox();
+await spaceAfter(TERM, "the terminal", "the playlist", arrangement.x + arrangement.width * 0.8, arrangement.y + arrangement.height * 0.85, "right");
+await page.click("button.tab:has-text('Score')");
+await page.waitForSelector(".score-top .score-sys");
+await page.keyboard.press("Escape");
+
 // The pattern of the piano roll, in the dock (F10); write a note into it.
 await page.keyboard.press("Control+Alt+KeyP");
 await page.keyboard.press("F10");

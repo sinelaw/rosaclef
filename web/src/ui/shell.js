@@ -1,6 +1,6 @@
 // The studio shell: composes every panel into one description tree.
 
-import { drag, fmt } from "#platform";
+import { drag, fmt, releaseFocus } from "#platform";
 import { state, invalidate, setFocus, dockName } from "../store.js";
 import { scoreView, scoreTools, topScore, dockScore } from "./score.js";
 import { topbar } from "./topbar.js";
@@ -40,6 +40,15 @@ import {
 /** function px(v: Number) => String */
 function px(v) {
   return `${fmt(v, 0)}px`;
+}
+
+/** A press in the playlist or the dock: that panel gets the studio's keys. Off a control (a field,
+ * a menu, a button), it also takes the keyboard back from where it was (the agent's terminal, a
+ * field), so Space plays and stops, Delete and the arrows edit, right away. */
+/** function paneDown(e: Ev, name: String) => Undefined */
+function paneDown(e, name) {
+  setFocus(name);
+  if (!e.typing && !e.onControl) releaseFocus();
 }
 
 /** function tab(b: Builder, id: String, label: String, icon: String, key: String) => Undefined */
@@ -140,7 +149,7 @@ export function studio(b) {
   const plMode = compact ? "open" : workMode("playlist");
   const top = layoutState.top;
   b.open("section", "top", `pane pane-top ${plMode}`);
-  b.on("pointerdown", (e) => setFocus(top === "score" ? "score" : "playlist"));
+  b.on("pointerdown", (e) => paneDown(e, top === "score" ? "score" : "playlist"));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "playlist");
   topTab(b, "playlist", "Playlist", "playlist", plMode);
@@ -179,7 +188,7 @@ export function studio(b) {
   });
 
   b.open("section", "dock", `pane pane-dock ${compact ? "open" : workMode("dock")}`);
-  b.on("pointerdown", (e) => setFocus(dockName(state.dock)));
+  b.on("pointerdown", (e) => paneDown(e, dockName(state.dock)));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "dock");
   tab(b, "rack", "Channel Rack", "rack", "F6");

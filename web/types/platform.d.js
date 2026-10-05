@@ -92,6 +92,10 @@ export const encodeFilm;
 /** const textWidth: (String, String) => Number */
 export const textWidth;
 
+/** Take the keyboard focus from whatever holds it (a text field, a menu, a button, the terminal): the studio's keys work again. */
+/** const releaseFocus: () => Undefined */
+export const releaseFocus;
+
 /** "letter" where US Letter is the paper size (the US and Canada), else "a4". */
 /** const paperSize: () => String */
 export const paperSize;
