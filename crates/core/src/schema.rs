@@ -216,7 +216,7 @@ pub fn schema() -> Value {
                 "description": "What the Critic (`rosaclef critic`, the studio's Critic tab) runs and leaves out: checks turned on or off, and findings suppressed. Changes nothing that plays.",
                 "properties": {
                     "off": {"type": "array", "items": {"type": "string", "enum": crate::critic::RULES.iter().map(|r| r.id).collect::<Vec<_>>()}, "description": "Checks turned off, by rule id."},
-                    "on": {"type": "array", "items": {"type": "string", "enum": crate::critic::RULES.iter().map(|r| r.id).collect::<Vec<_>>()}, "description": "Checks that are off by default (the classical theory ones: keys, voice leading, singable melodies) turned on, by rule id."},
+                    "on": {"type": "array", "items": {"type": "string", "enum": crate::critic::RULES.iter().map(|r| r.id).collect::<Vec<_>>()}, "description": "Checks that are off by default (the classical theory ones: keys, counterpoint, singable melodies) turned on, by rule id."},
                     "suppress": {"type": "array", "items": {"type": "string"}, "description": "Findings suppressed one by one, by key (rule|place, as `rosaclef critic` prints it)."}
                 }
             }

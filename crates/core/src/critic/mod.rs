@@ -93,7 +93,7 @@ pub struct Rule {
     pub name: &'static str,
     pub why: &'static str,
     /// On unless the project turns it off. The checks of classical theory
-    /// (keys, voice leading, singable melodies) are off by default: most
+    /// (keys, counterpoint, singable melodies) are off by default: most
     /// modern tracks break them on purpose. A project turns them on.
     #[serde(rename = "defaultOn")]
     pub default_on: bool,

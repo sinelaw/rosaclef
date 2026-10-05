@@ -71,7 +71,7 @@ enum Command {
         #[arg(long)]
         unsuppress: Vec<String>,
         /// Turn a check on, by rule id: the classical theory checks (keys,
-        /// voice leading, singable melodies) are off by default (repeatable).
+        /// counterpoint, singable melodies) are off by default (repeatable).
         #[arg(long)]
         enable: Vec<String>,
         /// Turn a check off, by rule id (repeatable).
