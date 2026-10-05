@@ -9,16 +9,34 @@ use super::report::{master_numbers, MasterOut};
 use crate::folder::Folder;
 use serde_json::{json, Value};
 
-/// Measure the recording at `path` (in the project folder, or anywhere).
-pub fn measure(folder: &Folder, path: &str) -> Result<(MasterOut, f64), String> {
+/// The largest recording measured (a decoded hour of stereo is ~1.4 GB).
+const MAX_BYTES: u64 = 512 << 20;
+
+/// Measure the recording at `path`: in the project folder, or (`any_file`,
+/// the command line) anywhere.
+pub fn measure(folder: &Folder, path: &str, any_file: bool) -> Result<(MasterOut, f64), String> {
     let p = folder
         .resolve(path)
-        .filter(|p| folder.fs.exists(p))
+        .filter(|p| folder.fs.is_file(p))
         .or_else(|| {
             let abs = std::path::PathBuf::from(path);
-            folder.fs.exists(&abs).then_some(abs)
+            (any_file && folder.fs.is_file(&abs)).then_some(abs)
         })
-        .ok_or_else(|| format!("reference: no file {path:?}"))?;
+        .ok_or_else(|| {
+            if any_file {
+                format!("reference: no file {path:?}")
+            } else {
+                format!("reference: no file {path:?} in the project folder")
+            }
+        })?;
+    let size = folder.fs.metadata(&p).map(|m| m.len).unwrap_or(0);
+    if size > MAX_BYTES {
+        return Err(format!(
+            "reference: {path:?} is too large ({} MB; at most {} MB)",
+            size >> 20,
+            MAX_BYTES >> 20
+        ));
+    }
     let data = crate::decode::decode_file(folder.fs.as_ref(), &p)
         .map_err(|e| format!("reference: {e}"))?;
     let l = data.channels.first().cloned().unwrap_or_default();

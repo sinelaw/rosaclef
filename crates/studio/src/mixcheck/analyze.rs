@@ -363,7 +363,10 @@ pub fn run(
     let mut hops = vec![];
     let mut lblocks = vec![];
     let mut warnings = vec![];
-    let total: f64 = segments.iter().map(|s| s.to - s.from + preroll).sum();
+    let total: f64 = segments
+        .iter()
+        .map(|s| s.to - (s.from - preroll).max(0.0))
+        .sum();
     let mut done_beats = 0.0;
 
     for (si, seg) in segments.iter().enumerate() {
@@ -401,7 +404,12 @@ pub fn run(
             }
             last_perf = perf;
             clock.push((frame, fa as u32, pos));
-            engine.process(&mut out_l, &mut out_r);
+            // The last block stops at the segment's end: at the song's end the
+            // engine would go on with its start.
+            let bpf = engine.bpm() / 60.0 / sr as f64;
+            let left = ((seg.to - perf) / bpf).ceil().max(1.0) as usize;
+            let n = block.min(left);
+            engine.process(&mut out_l[..n], &mut out_r[..n]);
             for (k, key) in streams.iter().enumerate() {
                 let (l, r): (&[f32], &[f32]) = match key {
                     StreamKey::Channel(c) => engine.tap_channel(*c),
@@ -414,19 +422,19 @@ pub fn run(
                     StreamKey::MasterLimiter => engine.tap_master_limiter(),
                     StreamKey::MasterOut => (&out_l, &out_r),
                 };
-                chunks[k][0][filled..filled + block].copy_from_slice(&l[..block]);
-                chunks[k][1][filled..filled + block].copy_from_slice(&r[..block]);
+                chunks[k][0][filled..filled + n].copy_from_slice(&l[..n]);
+                chunks[k][1][filled..filled + n].copy_from_slice(&r[..n]);
             }
             for (d, (i, j, _)) in dynamics.iter().enumerate() {
                 if let Some((mx, mean)) = engine.take_gain_reduction(*i, *j) {
                     let a = &mut grh[d];
                     a.0 = a.0.max(mx);
-                    a.1 += mean as f64 * block as f64;
-                    a.2 += block;
+                    a.1 += mean as f64 * n as f64;
+                    a.2 += n;
                 }
             }
-            filled += block;
-            frame += block;
+            filled += n;
+            frame += n;
             if frame.is_multiple_of(HOP) {
                 for (d, a) in grh.iter_mut().enumerate() {
                     gr[d].max.push(a.0);

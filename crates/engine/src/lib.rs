@@ -772,6 +772,12 @@ impl Engine {
         self.relink_samples();
     }
 
+    /// [`Engine::set_sample`] for audio shared with other engines (not copied).
+    pub fn set_sample_shared(&mut self, path: &str, data: Arc<SampleData>) {
+        self.samples.insert_shared(path, data);
+        self.relink_samples();
+    }
+
     pub fn remove_sample(&mut self, path: &str) {
         self.samples.remove(path);
         self.relink_samples();

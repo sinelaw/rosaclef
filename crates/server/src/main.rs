@@ -410,9 +410,26 @@ fn main() -> Result<()> {
                     })
                 };
                 let mut doc = serde_json::to_value(&p)?;
+                // Each was measured on the song as it is: one that touches what an
+                // earlier one changed (a fader, an effect chain) waits for a new
+                // measurement rather than overwriting it.
+                let mut touched: Vec<String> = vec![];
+                let place = |path: &str| match path.find("/effects/") {
+                    Some(i) => path[..i + 8].to_string(),
+                    None => path.to_string(),
+                };
                 for f in heard.iter().filter(|f| wanted(f)) {
                     let Some(fx) = &f.fix else { continue };
+                    let places: Vec<String> = fx.ops.iter().map(|o| place(&o.path)).collect();
+                    if places.iter().any(|x| touched.contains(x)) {
+                        println!(
+                            "skipped: {} (it changes what an earlier fix changed; run `rosaclef critic --audio` again to re-measure)",
+                            fx.label
+                        );
+                        continue;
+                    }
                     critic::apply_ops(&mut doc, &fx.ops).map_err(|e| anyhow!("{}: {e}", f.key))?;
+                    touched.extend(places);
                     done_audio.push(fx.label.clone());
                 }
                 if !done_audio.is_empty() {
@@ -753,6 +770,7 @@ fn audio_findings(
         setup: &server::install_plugin_host,
         progress: &|_| {},
         disk_cache: true,
+        any_file: true,
     };
     let mut all = p.clone();
     all.critic.suppress.clear();
@@ -835,6 +853,7 @@ fn mixcheck_cli(a: MixcheckArgs) -> Result<i32> {
         setup: &server::install_plugin_host,
         progress: &progress,
         disk_cache: true,
+        any_file: true,
     };
     let load = |f: &Path| -> Result<rosaclef_core::Project> {
         let text =
@@ -851,7 +870,13 @@ fn mixcheck_cli(a: MixcheckArgs) -> Result<i32> {
         let (pa, pb) = (load(&file)?, load(&fb)?);
         let la = file.display().to_string();
         let lb = fb.display().to_string();
-        mixcheck::compare(&env, &pa, &pb, (&la, &lb), &o)
+        // B plays its own folder's samples (and caches there).
+        let folder_b = Folder::on_disk(fb.parent().unwrap_or(Path::new(".")));
+        let env_b = Env {
+            folder: &folder_b,
+            ..env
+        };
+        mixcheck::compare((&env, &pa), (&env_b, &pb), (&la, &lb), &o)
     } else {
         mixcheck::run(&env, &load(&file)?, &o)
     };

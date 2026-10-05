@@ -159,8 +159,8 @@ right before editing it, and never rewrite the whole file from memory.
   harmonic clashes with the exact notes (`pattern`, `noteIndex`). `findings` are ranked, each with
   a JSON Patch `fix`; elements carry `suggestions` with the predicted effect.
   `--what-if '[{"op":"replace","path":"/mixer/inserts/4/volume","value":0.5}]'` (or `@file.json`)
-  measures a change without writing it (the report gets `whatIf` with the differences); `--verify`
-  re-measures each suggestion. Also `--by bar|section|8-beats`, `--focus rbass,4,master`,
+  measures a change without writing it (the report gets `whatIf` with the differences; that report's
+  own fixes are for the patched project); `--verify` re-measures each suggestion. Also `--by bar|section|8-beats`, `--focus rbass,4,master`,
   `--checks levels,audibility,masking,dynamics,gainreduction,clashes,spectrum,stereo`,
   `--target spotify|apple|youtube|ebu-r128|…`, `--reference samples/ref.wav` (level-matched A/B),
   `--history`, `--compare A.json B.json`, `--threshold strict|loose`, `--max-findings N`.

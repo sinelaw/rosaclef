@@ -77,9 +77,17 @@ what-if is a second render; `--verify`, one per suggestion.
   the sample rate, the version), in memory and in `.rosaclef/mixcheck/`. A
   repeated question, or another question about the same range, renders nothing
   (`"render": {"cached": true, "renders": 0}`).
-- The render is the one `rosaclef render` makes (same engine, same seeds) and
-  uses every core; the measurements of each chunk are made on every core too.
-  The numbers are deterministic: the same song gives the same report.
+- The render uses the engine `rosaclef render` uses, on every core; the
+  measurements of each chunk are made on every core too. A range starts a new
+  engine at its pre-roll, so instruments with randomness (drift, shimmer,
+  generative parts) are not sample-identical to a whole-song render there —
+  the measured levels agree within a fraction of a dB (a test checks it). The
+  numbers are deterministic: the same song and range give the same report.
+- The key does not cover the installed soundfonts or a plugin's binary (both
+  change with the installation, not the song): after updating them, pass
+  `--no-cache` (or `"cache": false`).
+- One mix check runs at a time (each render takes every core); `--verify`
+  re-measures at most 10 suggestions.
 
 ## What it measures
 
@@ -164,7 +172,12 @@ silent parts are left out.
 - `target`: the delivery target's verdict (`pass`, `warn`, `fail`), the gain
   the platform applies and why. `reference`: the recording's numbers and the
   differences, the spectrum level-matched (the reference moved to the mix's
-  loudness, so tone is compared, not loudness).
+  loudness, so tone is compared, not loudness). Over HTTP the reference must
+  be a file in the project folder (at most 512 MB); the command line takes any
+  file.
+- A report made with `--what-if` is the report of the *patched* project: its
+  fixes and suggestions point into that project (`whatIf.note` says so). Apply
+  the what-if first, or measure again without it, before applying them.
 
 ## Findings and the Critic
 
@@ -183,7 +196,9 @@ rule of the Critic (category *Mix check*), with a JSON Patch `fix`:
 | `section-loudness-flat` | three or more sections all within 1.5 LU (strict 2.5, loose 1.0) | a master volume lane: the sparse sections 1.5–3 dB down |
 
 `rosaclef critic --audio` adds them to the Critic's findings (a whole-song mix
-check, cached): `--fix KEY` or `--fix RULE` applies them, `--suppress KEY`
+check, cached): `--fix KEY` or `--fix RULE` applies them (each was measured on
+the song as it was, so a fix that touches what an earlier one in the same run
+changed is skipped until the next measurement), `--suppress KEY`
 suppresses one, `--disable RULE` turns one off — saved in the project's `critic`
 section, which a mix check follows too.
 
@@ -208,7 +223,8 @@ The **Mix check** tab of the Maestro panel reads like a mastering meter:
 
 **Try** runs a what-if (the song is not touched) and shows what changed;
 **Apply** makes the change, one undo step. The report is marked stale when the
-song changes; **Measure again** renders it anew (or reads the cache).
+song changes, and its Try and Apply wait for **Measure again** (its fixes point
+at notes and devices by position).
 
 ## Speed
 
@@ -231,8 +247,18 @@ schema, `mixcheck.schema.json`), `findings` (rules, fixes, suggestions),
 meters, span seeking and note chasing are in `crates/engine`. The panel is
 `web/src/ui/mixcheck.js`.
 
-Tests: `crates/studio/tests/mixcheck.rs` (a golden report of a small project, a
-quiet pluck masked by a loud sub, gain reduction of signals of known level,
-bars through a meter change and a repeat, what-if, clashes and their fixes),
-unit tests of the FFT, K-weighting, true peak and JSON Patch, and
-`web/test/mixcheck-smoke.mjs` (the panel in the browser-only studio).
+Tests:
+
+- `crates/studio/tests/mixcheck.rs`: a golden report of a small project
+  (checked against `mixcheck.schema.json`), a quiet pluck masked by a loud sub,
+  gain reduction of signals of known level, bars through a meter change and a
+  repeat, a range measured like the same bars of the whole song (a repeat's
+  second pass too), the cache in memory and on disk, what-if, clashes and their
+  fixes, and bad requests (ranges, a reference outside the folder, a fix to a
+  song read only in part) refused by name.
+- Unit tests: the FFT, K-weighting, true peak, loudness and loudness range of
+  signals of known loudness (after EBU Tech 3341 / 3342), JSON Patch.
+- `crates/server/tests/mixcheck_cli.rs`: the command line's exit status and
+  errors, and that a what-if never writes the project.
+- `web/test/mixcheck-smoke.mjs`: the panel in the browser-only studio —
+  measure, try, apply (the note moves), a stale report refused, undo.

@@ -69,7 +69,7 @@ impl Timeline {
         beat - self.transport.bar_at(beat).1
     }
 
-    /// The bar after the last one that sounds.
+    /// The last bar that sounds (from 1).
     pub fn last_bar(&self) -> u32 {
         self.bar_of((self.written_end - EPS).max(0.0))
     }
@@ -195,7 +195,9 @@ fn parse_pair(s: &str, what: &str) -> Result<(f64, f64), String> {
     let num = |x: &str| {
         x.trim()
             .parse::<f64>()
-            .map_err(|_| format!("{what}: {s:?} is not FROM:TO"))
+            .ok()
+            .filter(|v| v.is_finite())
+            .ok_or_else(|| format!("{what}: {s:?} is not FROM:TO"))
     };
     Ok((num(a)?, num(b)?))
 }
@@ -226,10 +228,11 @@ pub fn resolve(
             ));
         }
         let last = t.last_bar();
-        if a as u32 > last {
+        if a > last as f64 {
             return Err(format!("range: the song has {last} bars"));
         }
-        vec![(t.bar_start(a as u32), t.bar_start(b as u32 + 1).min(end))]
+        let b = b.min(last as f64) as u32;
+        vec![(t.bar_start(a as u32), t.bar_start(b + 1).min(end))]
     } else if let Some(r) = beats {
         let (a, b) = parse_pair(r, "beats")?;
         if a < 0.0 || b <= a {

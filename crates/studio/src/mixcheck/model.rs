@@ -112,7 +112,9 @@ pub struct Loudness<'a> {
 
 impl Loudness<'_> {
     /// Mean K-weighted energy of the `n` blocks ending at block `b` (within
-    /// its segment), with `kms` giving a block's energy.
+    /// its segment), with `kms` giving a block's energy. A window that is not
+    /// full yet (the start of a render or a recording) is not measured: 0,
+    /// which every gate drops, as BS.1770 takes only whole windows.
     pub fn window(&self, kms: &dyn Fn(usize) -> f64, b: usize, n: usize) -> f64 {
         let seg = self.a.lblocks[b].seg;
         let mut sum = 0.0;
@@ -123,7 +125,7 @@ impl Loudness<'_> {
             k += 1;
             i -= 1;
         }
-        if k == 0 {
+        if k < n {
             0.0
         } else {
             sum / k as f64

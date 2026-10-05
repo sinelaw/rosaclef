@@ -65,6 +65,9 @@ impl Threshold {
     }
 }
 
+/// The most findings a report lists.
+pub const MAX_FINDINGS: usize = 100;
+
 #[derive(Clone, Debug)]
 pub struct Options {
     /// `--range BAR:BAR` (bars from 1, both included).
@@ -238,7 +241,7 @@ impl Options {
             if n < 0.0 {
                 return Err("maxFindings: expected a count".into());
             }
-            o.max_findings = n as usize;
+            o.max_findings = (n as usize).min(MAX_FINDINGS);
         }
         if let Some(n) = num("prerollBeats")? {
             if !(0.0..=64.0).contains(&n) {

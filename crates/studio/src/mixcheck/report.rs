@@ -259,6 +259,8 @@ pub struct NoteRef {
 #[serde(rename_all = "camelCase")]
 pub struct ClashOut {
     pub bar: u32,
+    /// The written beat where the notes start to overlap.
+    pub beat: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pass: Option<u32>,
     pub beat_in_bar: f64,
@@ -293,6 +295,9 @@ pub struct FindingOut {
     pub from_bar: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_bar: Option<u32>,
+    /// The written beat `fromBar` starts on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_beat: Option<f64>,
     pub fix: Vec<Value>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub fix_label: String,
@@ -527,7 +532,12 @@ fn focused(mix: &Mix, p: &Project, focus: &[String]) -> Result<(Vec<Element>, bo
             }
         }
     }
-    out.dedup_by(|a, b| a.id == b.id);
+    let mut seen: Vec<String> = vec![];
+    out.retain(|e| {
+        let fresh = !seen.contains(&e.id);
+        seen.push(e.id.clone());
+        fresh
+    });
     Ok((out, master))
 }
 
@@ -930,7 +940,7 @@ pub fn build<'a>(
                     masker: None,
                 })
                 .collect();
-            let cut = super::findings::masker_cut(&mix, au);
+            let cut = super::findings::masker_cut(&mix, au, &elements[ei]);
             if let Some((u, bands, _, _)) = &cut {
                 t.push(Change {
                     gain_db: 0.0,
@@ -1101,6 +1111,7 @@ fn clash_out(p: &Project, t: &Timeline, c: &clashes::Clash, notes: &[clashes::Pl
     let fix = super::findings::clash_fix(p, c, notes);
     ClashOut {
         bar,
+        beat: (beat * 1000.0).round() / 1000.0,
         pass: (t.repeats_in(beat, beat + 1e-3) || pass > 1).then_some(pass),
         beat_in_bar: (t.beat_in_bar(beat) * 1000.0).round() / 1000.0,
         a: r(&c.a, c.a_db),
@@ -1158,11 +1169,69 @@ fn history(
             let pos = a.lblocks[*b];
             let bar = (t.bar_of(pos.beat), t.pass_of(pos.span as usize, pos.beat));
             if last_bar != Some(bar) {
-                h.bars
-                    .push(json!({"t": r1(t0), "bar": bar.0, "pass": bar.1}));
+                h.bars.push(
+                    json!({"t": r1(t0), "bar": bar.0, "pass": bar.1, "beat": t.bar_start(bar.0)}),
+                );
                 last_bar = Some(bar);
             }
         }
     }
     h
+}
+
+#[cfg(test)]
+mod tests {
+    //! Loudness against signals of known loudness (after EBU Tech 3341 and
+    //! 3342): a 1 kHz stereo sine at -23 dBFS reads -23 LUFS.
+    use super::*;
+    use crate::mixcheck::analyze::measure_audio;
+
+    const SR: f32 = 48000.0;
+
+    fn sine(db: f64, seconds: f64) -> Vec<f32> {
+        let a = 10f64.powf(db / 20.0);
+        (0..(seconds * SR as f64) as usize)
+            .map(|i| (a * (std::f64::consts::TAU * 1000.0 * i as f64 / SR as f64).sin()) as f32)
+            .collect()
+    }
+
+    fn numbers(x: &[f32]) -> MasterOut {
+        let a = measure_audio(x, x, SR);
+        let hops: Vec<usize> = (0..a.hops.len()).collect();
+        let blocks: Vec<usize> = (0..a.lblocks.len()).collect();
+        master_numbers(&a, 0, &hops, &blocks, &Options::default())
+    }
+
+    fn near(x: Option<f64>, want: f64, tol: f64) {
+        let v = x.expect("a value");
+        assert!((v - want).abs() <= tol, "{v} is not {want} ± {tol}");
+    }
+
+    #[test]
+    fn a_steady_tone_reads_its_loudness() {
+        let m = numbers(&sine(-23.0, 20.0));
+        near(m.integrated_lufs.flatten(), -23.0, 0.1);
+        near(m.momentary_lufs_max.flatten(), -23.0, 0.1);
+        near(m.short_term_lufs_max.flatten(), -23.0, 0.1);
+        near(m.true_peak_dbtp, -23.0, 0.1);
+    }
+
+    #[test]
+    fn windows_are_whole() {
+        // A 100 ms burst at the very start: the 400 ms window around it is a
+        // quarter full of it (-6 dB), not the burst alone.
+        let mut x = sine(-23.0, 0.1);
+        x.extend(vec![0.0; (3.0 * SR) as usize]);
+        let m = numbers(&x);
+        near(m.momentary_lufs_max.flatten(), -23.0 - 6.02, 0.2);
+    }
+
+    #[test]
+    fn loudness_range_of_two_levels() {
+        // EBU Tech 3342 case 1: 20 s at -20 LUFS, then 20 s at -30: LRA 10.
+        let mut x = sine(-20.0, 20.0);
+        x.extend(sine(-30.0, 20.0));
+        let m = numbers(&x);
+        near(m.lra.flatten(), 10.0, 1.0);
+    }
 }

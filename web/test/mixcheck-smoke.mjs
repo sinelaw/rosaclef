@@ -48,17 +48,32 @@ const tried = await page.textContent(".mx-tried");
 if (!tried.includes("resolved")) throw new Error(`the what-if says: ${tried}`);
 ok(`a fix can be tried without making it (${tried.trim()})`);
 
+// The note the fix moves: the piano's F#3 in its "Head" pattern.
 const pitch = () =>
-  page.evaluate(() =>
-    fetch("/api/project")
-      .then((r) => r.json())
-      .catch(() => null)
-  );
+  page.evaluate(async () => {
+    const { state } = await import("./src/store.js");
+    const p = state.project.patterns.find((x) => x.id === "piano-head");
+    return p ? p.notes[19].pitch : -1;
+  });
+const before = await pitch();
 await clash.locator(".btn:has-text('Apply fix')").click();
 await page.waitForSelector(".mx-status.stale", { timeout: 15000 });
-ok("applying the fix changes the song (the report is marked stale)");
+const after = await pitch();
+if (after === before) throw new Error(`the fix did not move the note (${before})`);
+ok(`applying the fix moves the note (${before} → ${after}); the report is marked stale`);
+await clash.locator(".btn:has-text('Apply fix')").click();
+await page.waitForSelector(".toast:has-text('The song changed since this report')", { timeout: 5000 });
+if ((await pitch()) !== after) throw new Error("a stale report's fix was applied");
+ok("a stale report's fixes are refused until it is measured again");
 await page.click("button[title^='Undo']");
-ok("and Ctrl+Z (undo) takes it back");
+await page.waitForFunction(
+  (p) => import("./src/store.js").then((m) => m.state.project.patterns.find((x) => x.id === "piano-head").notes[19].pitch === p),
+  before,
+  {
+    timeout: 5000,
+  }
+);
+ok("Ctrl+Z (undo) puts the note back");
 
 if (errors.length > 0) throw new Error(`page errors:\n${errors.join("\n")}`);
 await browser.close();

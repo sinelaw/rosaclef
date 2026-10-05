@@ -751,11 +751,16 @@
           },
           "fixLabel": {
             "type": "string"
+          },
+          "beat": {
+            "type": "number",
+            "description": "The written beat where the notes start to overlap."
           }
         },
         "additionalProperties": false,
         "required": [
           "bar",
+          "beat",
           "beatInBar",
           "a",
           "b",
@@ -840,6 +845,10 @@
           },
           "fixLabel": {
             "type": "string"
+          },
+          "fromBeat": {
+            "type": "number",
+            "description": "The written beat fromBar starts on."
           }
         },
         "additionalProperties": false,
@@ -924,6 +933,9 @@
         },
         "b": {
           "type": "string"
+        },
+        "note": {
+          "type": "string"
         }
       },
       "additionalProperties": false
@@ -969,6 +981,9 @@
           "type": "string"
         },
         "b": {
+          "type": "string"
+        },
+        "note": {
           "type": "string"
         }
       },

@@ -89,6 +89,20 @@ fn remove(doc: &mut Value, path: &str) -> Result<Value, String> {
     }
 }
 
+/// JSON equality as RFC 6902 `test` means it: numbers by value (120 = 120.0).
+fn same(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q))
+        }
+        (Value::Object(x), Value::Object(y)) => {
+            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| same(v, w)))
+        }
+        _ => a == b,
+    }
+}
+
 /// Apply operations in order; on an error the document is left as it was.
 /// `what` names the list in messages (`whatIf`, `suggestion`).
 pub fn apply(doc: &mut Value, ops: &[Value], what: &str) -> Result<(), String> {
@@ -133,7 +147,7 @@ pub fn apply(doc: &mut Value, ops: &[Value], what: &str) -> Result<(), String> {
                 add(&mut work, &path, v).map_err(fail)?;
             }
             "test" => {
-                if *get(&work, &path).map_err(fail)? != value()? {
+                if !same(get(&work, &path).map_err(fail)?, &value()?) {
                     return Err(fail("the value differs".into()));
                 }
             }
@@ -185,6 +199,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(d, json!({"a": [9, 3, 4], "b": {"d": 1}, "e": 1}));
+        // `test` compares numbers by value.
+        let mut f = json!({"bpm": 120.0});
+        apply(
+            &mut f,
+            &[json!({"op": "test", "path": "/bpm", "value": 120})],
+            "whatIf",
+        )
+        .unwrap();
         let e = apply(
             &mut d,
             &[json!({"op": "replace", "path": "/a/7", "value": 0})],

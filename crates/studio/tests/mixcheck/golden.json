@@ -30,7 +30,7 @@
     },
     "plrDb": 6.4,
     "crestFactorDb": 7.3,
-    "lra": 0.9,
+    "lra": 0.7,
     "correlation": {
       "mean": 0.93,
       "min": 0.75,
@@ -308,6 +308,7 @@
   "clashes": [
     {
       "bar": 2,
+      "beat": 6.0,
       "beatInBar": 2.0,
       "a": {
         "channel": "lead",
@@ -339,6 +340,7 @@
     },
     {
       "bar": 2,
+      "beat": 6.0,
       "beatInBar": 2.0,
       "a": {
         "channel": "lead",
@@ -370,6 +372,7 @@
     },
     {
       "bar": 2,
+      "beat": 6.0,
       "beatInBar": 2.0,
       "a": {
         "channel": "lead",
@@ -409,6 +412,7 @@
       "detail": "pre-limiter peaks +8.0 dBFS; the limiter reduces up to 8.1 dB, above 3 dB 5% of the time. Top contributors: Kick (insert 1, fader +1.6 dB) 68%, Pad (insert 4, fader -1.9 dB) 15%, Bass (insert 2, fader +0.0 dB) 10%.",
       "fromBar": 2,
       "toBar": 3,
+      "fromBeat": 4.0,
       "fix": [
         {
           "op": "add",
@@ -427,6 +431,7 @@
       "element": "insert:0/Master",
       "fromBar": 2,
       "toBar": 3,
+      "fromBeat": 4.0,
       "fix": [
         {
           "op": "add",
@@ -450,6 +455,7 @@
       "element": "channel:lead",
       "fromBar": 2,
       "toBar": 2,
+      "fromBeat": 4.0,
       "fix": [
         {
           "op": "replace",
@@ -468,6 +474,7 @@
       "element": "channel:lead",
       "fromBar": 2,
       "toBar": 2,
+      "fromBeat": 4.0,
       "fix": [
         {
           "op": "replace",
@@ -525,10 +532,10 @@
       -6.9
     ],
     "shortTerm": [
-      -7.7,
-      -7.6,
-      -7.4,
-      -7.5,
+      null,
+      null,
+      null,
+      null,
       -7.5,
       -7.6,
       -7.4,
@@ -594,12 +601,14 @@
       {
         "t": 0.0,
         "bar": 2,
-        "pass": 1
+        "pass": 1,
+        "beat": 4.0
       },
       {
         "t": 2.0,
         "bar": 3,
-        "pass": 1
+        "pass": 1,
+        "beat": 8.0
       }
     ]
   },

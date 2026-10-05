@@ -34,6 +34,7 @@ fn check(dir: &std::path::Path, p: &Project, req: Value) -> Report {
         setup: &|_| {},
         progress: &|_| {},
         disk_cache: true,
+        any_file: true,
     };
     let mut req = req;
     req["cache"] = json!(false);
@@ -109,7 +110,7 @@ fn golden_report_of_the_fixture() {
         got == want,
         "the report changed (UPDATE_GOLDEN=1 cargo test -p rosaclef-studio --test mixcheck to accept it):\n{got}"
     );
-    // The same numbers again (and from the cache, quantized the same way).
+    // The same numbers when rendered again.
     let mut again = check(
         &dir,
         &p,
@@ -117,11 +118,11 @@ fn golden_report_of_the_fixture() {
     );
     again.render.ms = 0;
     assert_eq!(serde_json::to_string_pretty(&again).unwrap() + "\n", want);
-    // The report validates against its schema's top-level shape.
+    // The report validates against its schema.
     let schema: Value = serde_json::from_str(mixcheck::SCHEMA).unwrap();
     let v = serde_json::to_value(&r).unwrap();
-    for k in schema["required"].as_array().unwrap() {
-        assert!(v.get(k.as_str().unwrap()).is_some(), "missing {k}");
+    if let Err(e) = conforms(&v, &schema, "") {
+        panic!("the report does not follow mixcheck.schema.json: {e}");
     }
 }
 
@@ -137,6 +138,7 @@ fn a_cached_report_is_the_same() {
         setup: &|_| {},
         progress: &|_| {},
         disk_cache: true,
+        any_file: true,
     };
     let o = Options::from_json(&json!({"range": "1:2"})).unwrap();
     let mut a = mixcheck::run(&env, &p, &o).unwrap();
@@ -154,6 +156,14 @@ fn a_cached_report_is_the_same() {
         .unwrap()
         .count();
     assert_eq!(key_files, 1);
+    mixcheck::cache::forget();
+    let mut c = mixcheck::run(&env, &p, &o).unwrap();
+    assert!(c.render.cached, "read back from the disk");
+    c.render = Default::default();
+    assert_eq!(
+        serde_json::to_value(&a).unwrap(),
+        serde_json::to_value(&c).unwrap()
+    );
 }
 
 // ------------------------------------------------------------ masking
@@ -360,6 +370,7 @@ fn bars_follow_the_meters_and_each_pass_of_a_repeat() {
         setup: &|_| {},
         progress: &|_| {},
         disk_cache: true,
+        any_file: true,
     };
     let o = Options::from_json(&json!({"section": "Chorus"})).unwrap();
     assert!(mixcheck::run(&env, &p, &o)
@@ -394,6 +405,7 @@ fn what_if_never_touches_the_project_and_reports_the_change() {
         setup: &|_| {},
         progress: &|_| {},
         disk_cache: true,
+        any_file: true,
     };
     let o = Options::from_json(
         &json!({"whatIf": [{"op": "replace", "path": "/channels/9/volume", "value": 1}]}),
@@ -433,4 +445,167 @@ fn a_clash_names_the_notes_and_its_fix_resolves_it() {
             && x.a.note_index == c.a.note_index
             && x.b.note_index == c.b.note_index
             && x.interval == "m9"));
+}
+
+/// A small JSON Schema checker for what mixcheck.schema.json uses: type,
+/// properties, required, additionalProperties: false, items, enum, const.
+fn conforms(v: &Value, s: &Value, at: &str) -> Result<(), String> {
+    if let Some(t) = s.get("type") {
+        let names: Vec<&str> = match t {
+            Value::String(x) => vec![x.as_str()],
+            Value::Array(a) => a.iter().filter_map(|x| x.as_str()).collect(),
+            _ => vec![],
+        };
+        let ok = names.iter().any(|n| match *n {
+            "object" => v.is_object(),
+            "array" => v.is_array(),
+            "string" => v.is_string(),
+            "number" => v.is_number(),
+            "integer" => v.as_f64().is_some_and(|x| x.fract() == 0.0),
+            "boolean" => v.is_boolean(),
+            "null" => v.is_null(),
+            _ => true,
+        });
+        if !ok {
+            return Err(format!("{at}: {v} is not {names:?}"));
+        }
+    }
+    if let Some(e) = s.get("enum").and_then(|e| e.as_array()) {
+        if !e.contains(v) {
+            return Err(format!("{at}: {v} is not one of {e:?}"));
+        }
+    }
+    if let Some(c) = s.get("const") {
+        let same = match (c.as_f64(), v.as_f64()) {
+            (Some(x), Some(y)) => x == y,
+            _ => c == v,
+        };
+        if !same {
+            return Err(format!("{at}: {v} is not {c}"));
+        }
+    }
+    if let Some(o) = v.as_object() {
+        for r in s
+            .get("required")
+            .and_then(|r| r.as_array())
+            .into_iter()
+            .flatten()
+        {
+            if !o.contains_key(r.as_str().unwrap_or("")) {
+                return Err(format!("{at}: missing {r}"));
+            }
+        }
+        if let Some(props) = s.get("properties").and_then(|p| p.as_object()) {
+            for (k, x) in o {
+                match props.get(k) {
+                    Some(ps) => conforms(x, ps, &format!("{at}/{k}"))?,
+                    None if s.get("additionalProperties") == Some(&Value::Bool(false)) => {
+                        return Err(format!("{at}: unexpected {k:?}"))
+                    }
+                    None => {}
+                }
+            }
+        }
+    }
+    if let (Some(a), Some(items)) = (v.as_array(), s.get("items")) {
+        for (i, x) in a.iter().enumerate() {
+            conforms(x, items, &format!("{at}/{i}"))?;
+        }
+    }
+    Ok(())
+}
+
+// ------------------------------------------------- ranges and their render
+
+#[test]
+fn a_range_measures_like_the_same_bars_of_the_whole_song() {
+    // Pre-roll, seeking and held notes: bars 3–4 measured alone read like
+    // bars 3–4 of the whole song (reverb tails and the pad's held chord
+    // included) — and so does the second pass of a repeat.
+    let dir = scratch("ranges");
+    let p: Project = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    let whole = check(&dir, &p, json!({}));
+    let part = check(&dir, &p, json!({"range": "3:4"}));
+    let row = |r: &Report, bar: u32, pass: u32| {
+        r.per_bar
+            .iter()
+            .find(|x| x.bar == Some(bar) && x.pass.unwrap_or(1) == pass)
+            .cloned()
+            .unwrap_or_else(|| panic!("no bar {bar}"))
+    };
+    let close = |a: Option<f64>, b: Option<f64>| (a.unwrap() - b.unwrap()).abs() <= 0.3;
+    for bar in [3, 4] {
+        let (a, b) = (row(&whole, bar, 1), row(&part, bar, 1));
+        assert!(
+            close(
+                a.lufs_momentary_max.flatten(),
+                b.lufs_momentary_max.flatten()
+            ) && close(a.pre_limiter_peak_dbfs, b.pre_limiter_peak_dbfs),
+            "bar {bar}: {a:?} vs {b:?}"
+        );
+    }
+    let p = meter_song();
+    let whole = check(&dir, &p, json!({}));
+    let part = check(&dir, &p, json!({"range": "6:6"}));
+    let (a, b) = (row(&whole, 6, 2), row(&part, 6, 2));
+    assert!(
+        close(
+            a.lufs_momentary_max.flatten(),
+            b.lufs_momentary_max.flatten()
+        ),
+        "bar 6, pass 2: {a:?} vs {b:?}"
+    );
+}
+
+#[test]
+fn bad_requests_are_refused_by_name() {
+    let p = meter_song();
+    let t = timeline::Timeline::new(&p);
+    for (bars, beats) in [
+        (Some("1:4294967296"), None),
+        (Some("1:99999999999999999999"), None),
+        (Some("NaN:3"), None),
+        (Some("0:3"), None),
+        (Some("40:41"), None),
+        (None, Some("NaN:5")),
+        (None, Some("1:inf")),
+        (None, Some("5:2")),
+    ] {
+        let r = timeline::resolve(&p, &t, bars, beats, None);
+        match (bars, &r) {
+            // A range past the end ends with the song.
+            (Some("1:4294967296" | "1:99999999999999999999"), Ok(x)) => assert_eq!(x.to_bar, 8),
+            (_, Err(e)) => assert!(e.starts_with("range:") || e.starts_with("beats:"), "{e}"),
+            _ => panic!("{bars:?} {beats:?} gave {r:?}"),
+        }
+    }
+
+    // A reference outside the project folder, over HTTP.
+    let dir = scratch("refuse");
+    let folder = Folder::on_disk(&dir);
+    let fonts = fonts();
+    let env = Env {
+        folder: &folder,
+        fonts: &fonts,
+        setup: &|_| {},
+        progress: &|_| {},
+        disk_cache: false,
+        any_file: false,
+    };
+    let e = mixcheck::api(&env, &p, r#"{"reference": "/etc/hostname"}"#).unwrap_err();
+    assert!(e.0.contains("in the project folder"), "{e}");
+    let e = mixcheck::api(&env, &p, r#"{"reference": "../x.wav"}"#).unwrap_err();
+    assert!(e.0.contains("in the project folder"), "{e}");
+
+    // A fix is not applied to a song this version reads only in part…
+    let mut doc = serde_json::to_value(&p).unwrap();
+    doc["fromTheFuture"] = json!(true);
+    let body = json!({"project": doc, "apply": [{"op": "replace", "path": "/transport/bpm", "value": 100}]});
+    let e = mixcheck::api(&env, &p, &body.to_string()).unwrap_err();
+    assert!(e.0.contains("doesn't know"), "{e}");
+    // …and is to one it reads whole.
+    let body =
+        json!({"project": p, "apply": [{"op": "replace", "path": "/transport/bpm", "value": 100}]});
+    let v = mixcheck::api(&env, &p, &body.to_string()).unwrap();
+    assert_eq!(v["project"]["transport"]["bpm"], json!(100.0));
 }

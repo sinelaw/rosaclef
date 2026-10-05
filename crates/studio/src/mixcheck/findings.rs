@@ -63,6 +63,20 @@ pub fn level_ops(p: &Project, channel: Option<usize>, insert: usize, db: f64) ->
     ops
 }
 
+/// The most an element's level can rise: its channel volume to 1.5, then its
+/// insert's fader to 2 (none for the master's).
+pub fn max_gain_db(p: &Project, channel: Option<usize>, insert: usize) -> f64 {
+    let ch = channel
+        .map(|c| dsp::amp_db(1.5 / p.channels[c].volume.max(1e-4)))
+        .unwrap_or(0.0);
+    let ins = if insert > 0 {
+        dsp::amp_db(2.0 / p.mixer.inserts[insert].volume.max(1e-4))
+    } else {
+        0.0
+    };
+    (ch.max(0.0) + ins.max(0.0)).max(0.0)
+}
+
 /// Where a new effect goes on an insert: before a limiter that ends it.
 fn effect_slot(p: &Project, insert: usize) -> String {
     let fx = &p.mixer.inserts[insert].effects;
@@ -100,9 +114,28 @@ fn eq_ops(p: &Project, insert: usize, band: &str, params: &[(&str, f64)]) -> Vec
 
 /// The masker to cut for an element: its strongest masker on an insert of
 /// its own, the bands to cut (power factors) and the bell's frequency and Q.
-pub fn masker_cut(mix: &Mix, au: &Audibility) -> Option<(usize, [f64; BARKS], f64, f64)> {
+pub fn masker_cut(
+    mix: &Mix,
+    au: &Audibility,
+    e: &Element,
+) -> Option<(usize, [f64; BARKS], f64, f64)> {
     let m = au.maskers.first()?;
-    if mix.units[m.unit].insert == 0 {
+    let unit = &mix.units[m.unit];
+    let k = unit.insert;
+    // The EQ goes on the masker's insert: only when that insert carries the
+    // masker alone (not the masked part, nor other parts of a bus).
+    let p = mix.p;
+    let channels = p.channels.iter().filter(|c| c.mixer.index() == k).count();
+    let clips = p
+        .playlist
+        .clips
+        .iter()
+        .any(|c| !c.sample.is_empty() && c.mixer.index() == k);
+    let alone = match unit.channel {
+        Some(_) => channels == 1 && !clips,
+        None => channels == 0,
+    };
+    if k == 0 || k == e.insert || !alone {
         return None;
     }
     let (lo, hi) = band_span(&m.bands, 0.15);
@@ -165,11 +198,15 @@ pub fn suggestions(
             });
         }
     }
+    // Only as much gain as the faders can give (channel ≤ 1.5, insert ≤ 2).
+    let most = max_gain_db(p, e.channel, e.insert);
+    let reachable = |g: &&f64| **g <= most + 0.05;
     let pick = gains
         .iter()
         .zip(fractions)
+        .filter(|(g, _)| reachable(g))
         .find(|(_, f)| **f >= ok_at)
-        .or_else(|| gains.iter().zip(fractions).next_back());
+        .or_else(|| gains.iter().zip(fractions).rfind(|(g, _)| reachable(g)));
     if let Some((g, f)) = pick {
         s.push(Suggestion {
             why: format!("{:.1} dB louder it comes through the parts covering it", g),
@@ -269,19 +306,28 @@ fn bars_key(from: u32, to: u32, pass: Option<u32>) -> String {
     }
 }
 
-/// Runs of consecutive rows (in playing order) where `hit` holds.
+/// Runs of consecutive rows (in playing order) where `hit` holds. A run
+/// breaks where the rows do not follow each other in the song (another
+/// passage of a section, another pass of a repeat).
 fn runs(report: &Report, hit: &dyn Fn(usize) -> bool) -> Vec<(usize, usize)> {
+    let rows = &report.per_bar;
+    let follows = |i: usize| {
+        i > 0
+            && (rows[i].from_beat - rows[i - 1].to_beat).abs() < 1e-6
+            && rows[i].pass == rows[i - 1].pass
+    };
     let mut out = vec![];
-    let mut start = None;
-    for i in 0..=report.per_bar.len() {
-        let on = i < report.per_bar.len() && hit(i);
-        match (on, start) {
-            (true, None) => start = Some(i),
-            (false, Some(s)) => {
+    let mut start: Option<usize> = None;
+    for i in 0..=rows.len() {
+        let on = i < rows.len() && hit(i);
+        if let Some(s) = start {
+            if !on || !follows(i) {
                 out.push((s, i - 1));
                 start = None;
             }
-            _ => {}
+        }
+        if on && start.is_none() {
+            start = Some(i);
         }
     }
     out
@@ -335,6 +381,23 @@ fn short_name(p: &Project, mix: &Mix, u: usize) -> String {
 /// The gain ops lowering a contributor by `db`.
 fn lower_unit(p: &Project, mix: &Mix, u: usize, db: f64) -> Vec<Value> {
     let unit = &mix.units[u];
+    // Audio clips straight to the master: the master fader comes after the
+    // limiter, so the clips themselves come down.
+    if unit.insert == 0 && unit.channel.is_none() {
+        return p
+            .playlist
+            .clips
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !c.sample.is_empty() && c.mixer.index() == 0)
+            .map(|(i, c)| {
+                set(
+                    format!("/playlist/clips/{i}/gain"),
+                    json!(round3(c.gain * gain(-db))),
+                )
+            })
+            .collect();
+    }
     let alone = unit.insert > 0
         && p.channels
             .iter()
@@ -500,6 +563,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     element: None,
                     from_bar: Some(fb),
                     to_bar: Some(tb),
+                    from_beat: None,
                     fix,
                     fix_label,
                 },
@@ -571,6 +635,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     element: Some(model::insert_id(p, 0)),
                     from_bar: Some(report.range.from_bar),
                     to_bar: Some(report.range.to_bar),
+                    from_beat: None,
                     fix,
                     fix_label: "a slower release and less drive".into(),
                 },
@@ -629,6 +694,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     element: Some(e.id.clone()),
                     from_bar: Some(report.range.from_bar),
                     to_bar: Some(report.range.to_bar),
+                    from_beat: None,
                     fix: first_fix.map(|s| s.patch.clone()).unwrap_or_default(),
                     fix_label: first_fix.map(|s| s.why.clone()).unwrap_or_default(),
                 },
@@ -666,6 +732,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     element: Some(e.id.clone()),
                     from_bar: Some(report.range.from_bar),
                     to_bar: Some(report.range.to_bar),
+                    from_beat: None,
                     fix: gain_fix.map(|s| s.patch.clone()).unwrap_or_default(),
                     fix_label: gain_fix.map(|s| s.why.clone()).unwrap_or_default(),
                 },
@@ -687,6 +754,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                         element: Some(e.id.clone()),
                         from_bar: None,
                         to_bar: None,
+                        from_beat: None,
                         fix: vec![],
                         fix_label: String::new(),
                     },
@@ -698,19 +766,34 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
 
     // harmonic-clash
     if let Some(cl) = &report.clashes {
-        let focus: Vec<&str> = o
-            .focus
-            .iter()
-            .map(|f| f.strip_prefix("channel:").unwrap_or(f))
-            .collect();
+        // The channels in focus: those reported, and those on inserts reported.
+        let focus: Vec<String> = if o.focus.is_empty() {
+            vec![]
+        } else {
+            let inserts: Vec<usize> = report
+                .elements
+                .iter()
+                .filter(|e| e.kind == "insert")
+                .map(|e| e.insert)
+                .collect();
+            p.channels
+                .iter()
+                .filter(|c| {
+                    report
+                        .elements
+                        .iter()
+                        .any(|e| e.id == format!("channel:{}", c.id))
+                        || inserts.contains(&c.mixer.index())
+                })
+                .map(|c| c.id.clone())
+                .collect()
+        };
         for c in cl {
             let wanted = c.severity == "high" || (strict && c.severity == "medium");
             if !wanted {
                 continue;
             }
-            if !focus.is_empty()
-                && !focus.contains(&c.a.channel.as_str())
-                && !focus.contains(&c.b.channel.as_str())
+            if !o.focus.is_empty() && !focus.contains(&c.a.channel) && !focus.contains(&c.b.channel)
             {
                 continue;
             }
@@ -744,6 +827,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     element: Some(format!("channel:{}", if c.a.level_db <= c.b.level_db { &c.a.channel } else { &c.b.channel })),
                     from_bar: Some(c.bar),
                     to_bar: Some(c.bar),
+                    from_beat: None,
                     fix: c.fix.clone().unwrap_or_default(),
                     fix_label: c.fix_label.clone().unwrap_or_default(),
                 },
@@ -862,6 +946,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     element: None,
                     from_bar: Some(fb),
                     to_bar: Some(tb),
+                    from_beat: None,
                     fix,
                     fix_label: label,
                 },
@@ -891,6 +976,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                         element: Some(model::insert_id(p, 0)),
                         from_bar: None,
                         to_bar: None,
+                        from_beat: None,
                         fix: vec![],
                         fix_label: String::new(),
                     },
@@ -1069,6 +1155,7 @@ fn flat_sections(report: &Report, ctx: &Context, spread_at: f64) -> Option<(Find
             element: None,
             from_bar: Some(report.range.from_bar),
             to_bar: Some(report.range.to_bar),
+            from_beat: None,
             fix,
             fix_label: if lane_exists {
                 String::new()

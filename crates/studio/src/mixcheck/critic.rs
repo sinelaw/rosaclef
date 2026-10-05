@@ -29,8 +29,8 @@ pub fn ops(fix: &[Value]) -> Option<Vec<Op>> {
         .collect()
 }
 
-pub fn finding(f: &FindingOut, p: &rosaclef_core::Project) -> Finding {
-    let r = rule(f.rule);
+pub fn finding(f: &FindingOut, p: &rosaclef_core::Project) -> Option<Finding> {
+    let r = rule(f.rule)?;
     let beat = f
         .from_bar
         .map(|b| p.transport.bar_start(b.max(1) - 1))
@@ -49,14 +49,12 @@ pub fn finding(f: &FindingOut, p: &rosaclef_core::Project) -> Finding {
         .next()
         .map(|c| c.to_uppercase().collect::<String>())
         .unwrap_or_default();
-    Finding {
+    Some(Finding {
         key: f.key.clone(),
-        rule: r.map(|r| r.id).unwrap_or("master-overload"),
+        rule: r.id,
         category: "Mix check",
         level: f.severity,
-        title: r
-            .map(|r| r.name.to_string())
-            .unwrap_or_else(|| f.rule.to_string()),
+        title: r.name.to_string(),
         detail: first
             + f.detail
                 .get(f.detail.chars().next().map(|c| c.len_utf8()).unwrap_or(0)..)
@@ -77,10 +75,10 @@ pub fn finding(f: &FindingOut, p: &rosaclef_core::Project) -> Finding {
         },
         fix,
         suppressed: p.critic.suppress.contains(&f.key),
-    }
+    })
 }
 
 /// The findings of a report, as the Critic's.
 pub fn findings(r: &Report, p: &rosaclef_core::Project) -> Vec<Finding> {
-    r.findings.iter().map(|f| finding(f, p)).collect()
+    r.findings.iter().filter_map(|f| finding(f, p)).collect()
 }

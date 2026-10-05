@@ -60,7 +60,17 @@ pub struct Env<'a> {
     pub progress: &'a dyn Fn(f64),
     /// Keep renders on disk too (`.rosaclef/mixcheck/`), not only in memory.
     pub disk_cache: bool,
+    /// A `reference` may be any file (the command line, run by its user);
+    /// otherwise only one in the project folder (HTTP).
+    pub any_file: bool,
 }
+
+/// One mix check at a time: each render takes every core, and a burst of
+/// requests would only queue for them anyway (and hold their memory).
+static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Renders `--verify` may add.
+const MAX_VERIFY: usize = 10;
 
 /// An error, naming the JSON path or the option at fault.
 #[derive(Debug, Clone, PartialEq)]
@@ -89,7 +99,7 @@ struct Factory<'a> {
     env: &'a Env<'a>,
     project: &'a Project,
     sr: f32,
-    samples: Vec<(String, SampleData)>,
+    samples: Vec<(String, Arc<SampleData>)>,
     warnings: Vec<String>,
 }
 
@@ -100,7 +110,7 @@ impl EngineFactory for Factory<'_> {
         (self.env.setup)(&mut e);
         e.set_project(self.project.clone());
         for (path, data) in &self.samples {
-            e.set_sample(path, data.clone());
+            e.set_sample_shared(path, data.clone());
         }
         let w = self.env.fonts.provide(&mut e);
         if self.warnings.is_empty() {
@@ -142,7 +152,11 @@ pub fn measure(
         if let Some(a) = cache::remembered(&key) {
             return Ok((a, t, res, true));
         }
-        if let Some(a) = cache::load(env.folder, &key).filter(|_| env.disk_cache) {
+        if let Some(a) = env
+            .disk_cache
+            .then(|| cache::load(env.folder, &key))
+            .flatten()
+        {
             let a = Arc::new(a);
             cache::remember(&key, a.clone());
             return Ok((a, t, res, true));
@@ -157,7 +171,7 @@ pub fn measure(
             .ok_or_else(|| anyhow::anyhow!("invalid path"))
             .and_then(|p| crate::decode::decode_file(env.folder.fs.as_ref(), &p))
         {
-            Ok(d) => decoded.push((path, d)),
+            Ok(d) => decoded.push((path, Arc::new(d))),
             Err(e) => warnings.push(format!("sample {path}: {e}")),
         }
     }
@@ -195,8 +209,11 @@ fn report_of(env: &Env, project: &Project, o: &Options) -> Result<Report, Error>
     let (a, t, res, cached) = measure(env, project, o)?;
     let (mut r, ctx) = report::build(&a, project, &t, &res, o)?;
     r.findings = findings::derive(&r, &ctx, o);
+    for f in &mut r.findings {
+        f.from_beat = f.from_bar.map(|b| t.bar_start(b));
+    }
     if let Some(path) = &o.reference {
-        let (m, secs) = reference::measure(env.folder, path)?;
+        let (m, secs) = reference::measure(env.folder, path, env.any_file)?;
         r.reference = Some(reference::compare(path, &r.master, &m, secs));
     }
     r.render.cached = cached;
@@ -225,6 +242,7 @@ pub fn patched(project: &Project, ops: &[Value], what: &str) -> Result<Project, 
 /// Run a mix check: what `o` asks, with its what-if patch and the
 /// verification of the suggestions.
 pub fn run(env: &Env, project: &Project, o: &Options) -> Result<Report, Error> {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     let t0 = env.folder.fs.now_ms();
     let mut r = if o.what_if.is_empty() {
         report_of(env, project, o)?
@@ -235,6 +253,10 @@ pub fn run(env: &Env, project: &Project, o: &Options) -> Result<Report, Error> {
         let mut d = diff::diff(&base, &r);
         if let Some(m) = d.as_object_mut() {
             m.insert("ops".into(), json!(o.what_if.len()));
+            m.insert(
+                "note".into(),
+                json!("the report is of the project with the what-if applied: its fixes and suggestions are for that project"),
+            );
         }
         r.what_if = Some(d);
         r.render.renders += base.render.renders;
@@ -256,7 +278,7 @@ pub fn run(env: &Env, project: &Project, o: &Options) -> Result<Report, Error> {
 /// Re-measure each suggestion under its own patch (one render each, at
 /// most `max_findings`).
 fn verify(env: &Env, project: &Project, o: &Options, r: &mut Report) -> Result<(), Error> {
-    let mut left = o.max_findings.max(1);
+    let mut left = o.max_findings.clamp(1, MAX_VERIFY);
     for e in &mut r.elements {
         for s in &mut e.suggestions {
             if left == 0 {
@@ -293,15 +315,15 @@ fn verify(env: &Env, project: &Project, o: &Options, r: &mut Report) -> Result<(
 }
 
 /// Compare two projects: the report of `b`, with what changed from `a`.
+/// Each is measured in its own environment (its folder's samples and cache).
 pub fn compare(
-    env: &Env,
-    a: &Project,
-    b: &Project,
+    (env_a, a): (&Env, &Project),
+    (env_b, b): (&Env, &Project),
     labels: (&str, &str),
     o: &Options,
 ) -> Result<Report, Error> {
-    let ra = run(env, a, o)?;
-    let mut rb = run(env, b, o)?;
+    let ra = run(env_a, a, o)?;
+    let mut rb = run(env_b, b, o)?;
     let mut d = diff::diff(&ra, &rb);
     if let Some(m) = d.as_object_mut() {
         m.insert("a".into(), json!(labels.0));
@@ -357,7 +379,12 @@ pub fn apply_request(current: &Project, body: &str) -> Result<Option<Project>, E
         return Ok(None);
     };
     let ops = options::ops_of(ops, "apply")?;
-    let project = request_project(current, body)?;
+    let (project, lossy) = request_playable(current, body)?;
+    if lossy {
+        return Err(Error(
+            "the song holds content this version of Rosaclef doesn't know; fixes are off so that nothing of it is lost".into(),
+        ));
+    }
     patched(&project, &ops, "apply").map(Some)
 }
 
@@ -377,6 +404,12 @@ pub fn catalog() -> Value {
 /// The project a request is about (`project` in it, or `current`), and the
 /// samples it plays: for hosts that load files lazily.
 pub fn request_project(current: &Project, body: &str) -> Result<Project, Error> {
+    request_playable(current, body).map(|p| p.0)
+}
+
+/// [`request_project`], and whether reading it for playback left out
+/// content this version does not know (a patched copy would lose it).
+fn request_playable(current: &Project, body: &str) -> Result<(Project, bool), Error> {
     let req: Value = if body.trim().is_empty() {
         json!({})
     } else {
@@ -384,7 +417,10 @@ pub fn request_project(current: &Project, body: &str) -> Result<Project, Error> 
     };
     match req.get("project") {
         Some(v) if !v.is_null() => rosaclef_core::compat::value_for_playback(v.clone())
-            .map(|p| p.project)
+            .map(|p| {
+                let lossy = rosaclef_core::compat::lossy(&p);
+                (p.project, lossy)
+            })
             .map_err(|c| {
                 Error(format!(
                     "the project is invalid: {}",
@@ -394,6 +430,6 @@ pub fn request_project(current: &Project, body: &str) -> Result<Project, Error> 
                         .join("; ")
                 ))
             }),
-        _ => Ok(current.clone()),
+        _ => Ok((current.clone(), false)),
     }
 }

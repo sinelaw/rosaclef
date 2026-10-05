@@ -253,6 +253,7 @@ function decodeReport(r) {
     gr: (r.gainReduction ?? []).map((g) => decodeGr(g)),
     clashes: (r.clashes ?? []).map((c) => ({
       bar: int(c.bar),
+      beat: num(c.beat),
       pass: int(c.pass),
       beatInBar: num(c.beatInBar),
       a: { channel: str(c.a.channel), pattern: str(c.a.pattern), note: int(c.a.noteIndex), pitch: str(c.a.pitch), level: num(c.a.levelDb) },
@@ -272,6 +273,7 @@ function decodeReport(r) {
       detail: str(f.detail),
       element: str(f.element),
       fromBar: int(f.fromBar),
+      fromBeat: num(f.fromBeat),
       patch: patchText(f.fix),
       label: str(f.fixLabel),
     })),
@@ -285,7 +287,7 @@ function decodeReport(r) {
             s: nums(h.shortTerm),
             tp: nums(h.truePeak),
             gr: nums(h.limiterGr),
-            bars: (h.bars ?? []).map((x) => ({ t: num(x.t), bar: int(x.bar), pass: int(x.pass) })),
+            bars: (h.bars ?? []).map((x) => ({ t: num(x.t), bar: int(x.bar), pass: int(x.pass), beat: num(x.beat) })),
           },
     whatIf: r.whatIf === undefined || r.whatIf === null ? "" : str(r.whatIf.summary),
     cached: r.render.cached === true,
@@ -378,10 +380,19 @@ export function runMixcheck() {
     });
 }
 
+/** Whether the report is about the song as it is now: its fixes point at
+ * notes and devices by their position, which an edit since may have moved. */
+/** function fresh() => Boolean */
+function fresh() {
+  if (view.edits === state.edits) return true;
+  toast("The song changed since this report", "Measure again first: its fixes point at notes and devices by position.", "info");
+  return false;
+}
+
 /** Measure a change without making it (a what-if: the project is not touched). */
 /** function tryPatch(patch: String) => Undefined */
 function tryPatch(patch) {
-  if (view.busy) return undefined;
+  if (view.busy || !fresh()) return undefined;
   view.busy = true;
   invalidate();
   const q = request();
@@ -405,6 +416,7 @@ function tryPatch(patch) {
  * one undo step. If the song changed meanwhile, nothing is applied. */
 /** function applyPatch(patch: String, what: String) => Undefined */
 function applyPatch(patch, what) {
+  if (!fresh()) return undefined;
   const edits = state.edits;
   sendJson("/api/mixcheck", "POST", { project: encodeProject(state.project), apply: patch })
     .then((r) => {
@@ -834,7 +846,7 @@ function clashRow(b, c, i) {
   b.open("div", `c${i}`, `mx-clash ${c.severity}`);
   b.open("button", "bar", "mx-link mx-barref");
   b.attr("title", "Show the bar in the playlist");
-  b.on("click", (e) => revealBar(barStart(c.bar)));
+  b.on("click", (e) => revealBar(c.beat - c.beatInBar));
   b.text(`bar ${c.bar}${c.pass > 1 ? `′${c.pass}` : ""} · ${fmt(c.beatInBar + 1, 2)}`);
   b.close();
   b.open("span", "notes", "mx-clash-notes");
@@ -856,27 +868,6 @@ function clashRow(b, c, i) {
   b.leaf("span", "sp", "spacer", "");
   if (c.patch !== "") button(b, "fix", "small ghost", "Fix", c.label, () => applyPatch(c.patch, c.label));
   b.close();
-}
-
-/** The written beat where `bar` (from 1) starts, following the meters. */
-/** function barStart(bar: Int) => Number */
-function barStart(bar) {
-  const t = state.project.transport;
-  let beat = 0;
-  let len = t.beatsPerBar;
-  /** const changes: Meter[] */
-  const changes = t.meters.slice().sort((a, b) => a.bar - b.bar);
-  let k = 1;
-  let ci = 0;
-  while (k < bar) {
-    while (ci < changes.length && changes[ci].bar <= k) {
-      len = (4 * changes[ci].numerator) / Math.max(1, changes[ci].denominator);
-      ci++;
-    }
-    beat += len;
-    k++;
-  }
-  return beat;
 }
 
 // ------------------------------------------------------------------ the panel
@@ -1010,7 +1001,7 @@ export function mixcheckPanel(b, ask) {
         const t = hs.t[0] + (e.offsetX / e.targetWidth) * (n <= 1 ? 0 : hs.t[n - 1] - hs.t[0]);
         let best = hs.bars[0];
         for (const m of hs.bars) if (m.t <= t) best = m;
-        revealBar(barStart(best.bar));
+        revealBar(best.beat);
       });
       b.on("pointerenter", (e) => hint("Click to show that bar in the playlist"));
     }
@@ -1125,7 +1116,7 @@ function findingsView(b, r, ask) {
     b.attr("title", "Show it");
     b.on("click", (e) => {
       if (f.element !== "") revealElement(f.element);
-      else if (f.fromBar > 0) revealBar(barStart(f.fromBar));
+      else if (Number.isFinite(f.fromBeat)) revealBar(f.fromBeat);
     });
     b.text(f.where);
     b.close();

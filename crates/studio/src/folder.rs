@@ -112,7 +112,10 @@ impl Folder {
         )?;
         let gitignore = self.dir.join(STATE_DIR).join(".gitignore");
         if !fs.exists(&gitignore) {
-            fs.write(&gitignore, b"*\n!context.schema.json\n")?;
+            fs.write(
+                &gitignore,
+                b"*\n!context.schema.json\n!mixcheck.schema.json\n",
+            )?;
         }
         Ok(())
     }

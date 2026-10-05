@@ -9,7 +9,7 @@ use crate::soundfont::LoadedPreset;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SampleData {
     pub sample_rate: f32,
     /// One or two channels of equal length.
@@ -62,6 +62,9 @@ impl SampleBank {
     }
     pub fn insert(&mut self, path: &str, data: SampleData) {
         self.map.insert(path.to_string(), Arc::new(data));
+    }
+    pub fn insert_shared(&mut self, path: &str, data: SampleRef) {
+        self.map.insert(path.to_string(), data);
     }
     pub fn remove(&mut self, path: &str) {
         self.map.remove(path);

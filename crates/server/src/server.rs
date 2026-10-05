@@ -928,6 +928,7 @@ async fn mixcheck(State(app): State<Shared>, headers: HeaderMap, body: String) -
             setup: &install_plugin_host,
             progress: &|_| {},
             disk_cache: true,
+            any_file: false,
         };
         rosaclef_studio::mixcheck::api(&env, &project, &body)
     })

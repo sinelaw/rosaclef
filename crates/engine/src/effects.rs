@@ -30,7 +30,8 @@ impl GrMeter {
     fn add(&mut self, db: f32) {
         self.max = self.max.max(db);
         self.sum += db as f64;
-        self.n += 1;
+        // Never read while playing live: it must not overflow then.
+        self.n = self.n.saturating_add(1);
     }
     fn take(&mut self) -> Option<(f32, f32)> {
         let m = std::mem::take(self);

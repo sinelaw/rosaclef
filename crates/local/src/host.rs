@@ -778,6 +778,7 @@ impl Host {
             setup: &|_| {},
             progress: &|_| {},
             disk_cache: false,
+            any_file: false,
         };
         let out = mixcheck::run_request(&env, &self.doc.project, body);
         // The browser holds this memory: keep only the soundfont indexes.

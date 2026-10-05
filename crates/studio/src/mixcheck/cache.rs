@@ -20,7 +20,11 @@ use std::sync::{Arc, Mutex};
 /// Bumped whenever the measurements change.
 const FORMAT: u32 = 3;
 const MAGIC: &[u8; 8] = b"RCMIXCK\0";
-const MEMORY: usize = 6;
+/// Memory the remembered analyses may hold (the browser's worker less).
+#[cfg(not(target_arch = "wasm32"))]
+const MEMORY_BYTES: usize = 384 << 20;
+#[cfg(target_arch = "wasm32")]
+const MEMORY_BYTES: usize = 64 << 20;
 const DISK: usize = 24;
 
 /// 128-bit FNV-1a (two lanes): stable across builds and platforms.
@@ -37,7 +41,8 @@ impl Hasher {
     pub fn bytes(&mut self, b: &[u8]) {
         for x in b {
             self.0 = (self.0 ^ *x as u64).wrapping_mul(0x100000001b3);
-            self.1 = (self.1 ^ *x as u64).wrapping_mul(0x100000001b3 ^ 0x9e3779b97f4a7c15);
+            // An odd multiplier, so every byte keeps mattering.
+            self.1 = (self.1 ^ *x as u64).wrapping_mul(0x9e3779b97f4a7c15);
         }
         // Lengths separate fields.
         self.0 = self
@@ -141,9 +146,23 @@ pub fn remember(key: &str, a: Arc<Analysis>) {
     let mut m = MEMO.lock().unwrap_or_else(|e| e.into_inner());
     m.retain(|(k, _)| k != key);
     m.push((key.to_string(), a));
-    while m.len() > MEMORY {
+    // The oldest go first; the newest stays even if it alone is over.
+    while m.len() > 1 && m.iter().map(|(_, a)| bytes(a)).sum::<usize>() > MEMORY_BYTES {
         m.remove(0);
     }
+}
+
+/// Forget the remembered analyses (the disk keeps its own).
+pub fn forget() {
+    MEMO.lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
+/// About how much memory an analysis holds.
+fn bytes(a: &Analysis) -> usize {
+    let floats: usize = a.frames.iter().map(Vec::len).sum::<usize>()
+        + a.kms.iter().map(Vec::len).sum::<usize>()
+        + a.gr.iter().map(|g| g.max.len() * 2).sum::<usize>();
+    floats * 4 + (a.hops.len() + a.lblocks.len()) * std::mem::size_of::<super::analyze::Pos>()
 }
 
 // -------------------------------------------------------------- disk

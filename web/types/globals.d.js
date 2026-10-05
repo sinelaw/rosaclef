@@ -270,13 +270,13 @@
 /** type MixSuggestion = { why: String, patch: String, expRel: Number, expAud: Number, verified: String } */
 /** type MixElement = { id: String, name: String, kind: String, role: String, insert: Int, rms: Number, peak: Number, lufs: Number, rel: Number, share: Number, active: Number, corr: Number, audible: Number, maskers: MixMasker[], domLo: Number, domHi: Number, fader: Number, verdict: String, suggestions: MixSuggestion[] } */
 /** type MixNote = { channel: String, pattern: String, note: Int, pitch: String, level: Number } */
-/** type MixClash = { bar: Int, pass: Int, beatInBar: Number, a: MixNote, b: MixNote, interval: String, overlap: Number, severity: String, also: Int[], patch: String, label: String } */
-/** type MixFinding = { severity: String, rule: String, key: String, where: String, detail: String, element: String, fromBar: Int, patch: String, label: String } */
+/** type MixClash = { bar: Int, beat: Number, pass: Int, beatInBar: Number, a: MixNote, b: MixNote, interval: String, overlap: Number, severity: String, also: Int[], patch: String, label: String } */
+/** type MixFinding = { severity: String, rule: String, key: String, where: String, detail: String, element: String, fromBar: Int, fromBeat: Number, patch: String, label: String } */
 /** type MixMaster = { integrated: Number, shortMax: Number, momentaryMax: Number, truePeak: Number, samplePeak: Number, rms: Number, preLimiter: Number, preEffects: Number, limGr: MixGr, compGr: MixGr, plr: Number, crest: Number, lra: Number, corrMean: Number, corrMin: Number, monoLoss: Number, spectrum: Number[] } */
 /** A delivery target's verdict: `status` pass, warn or fail; `gain` what the platform applies (dB). */
 /** type MixTarget = { id: String, name: String, lufs: Number, truePeak: Number, status: String, gain: Number, notes: String[] } */
 /** The master over time: momentary and short-term LUFS, true peak (dBTP) and limiter GR (dB) every `step` seconds. */
-/** type MixHistory = { step: Number, t: Number[], m: Number[], s: Number[], tp: Number[], gr: Number[], bars: { t: Number, bar: Int, pass: Int }[] } */
+/** type MixHistory = { step: Number, t: Number[], m: Number[], s: Number[], tp: Number[], gr: Number[], bars: { t: Number, bar: Int, pass: Int, beat: Number }[] } */
 /** A reference recording, level-matched: `spectrumDiff` = the mix minus the reference per band (dB). */
 /** type MixReference = { file: String, levelMatch: Number, spectrumDiff: Number[], summary: String, master: MixMaster } */
 /** type MixReport = { ok: Boolean, fromBar: Int, toBar: Int, fromBeat: Number, toBeat: Number, seconds: Number, repeats: Boolean, master: MixMaster, target: MixTarget, reference: MixReference, rows: MixRow[], elements: MixElement[], gr: MixGr[], clashes: MixClash[], findings: MixFinding[], history: MixHistory, whatIf: String, cached: Boolean, ms: Number, renders: Int, warnings: String[] } */
