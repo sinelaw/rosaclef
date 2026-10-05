@@ -738,8 +738,8 @@
 /* ---------------------------------------------------------------- a part's menu */
 
 .score-partmenu {
+  /* (its top and max-height are set where it opens) */
   width: 280px;
-  max-height: min(560px, calc(100vh - 24px));
   display: flex;
   flex-direction: column;
 }

@@ -164,10 +164,14 @@
   `crates/core/src/model.rs`) holds the key, hidden channels and tracks,
   clefs and colored passages. A staff's name opens its part's menu (the
   channel in the rack, the piano roll, the mixer), and a part, or a passage
-  of it, moves to another channel with `moveRole` (`web/src/model.js`): in
-  the song it splits the clips at the passage's edges and copies a pattern
-  that also plays elsewhere, so nothing outside the passage changes. The page is laid out to fit the view at the
-  music's size; the zoom only magnifies it. `web/src/ink.js` holds the look
+  of it, moves to another channel with `moveRole` (`web/src/model.js`). A
+  note counts where the score writes it (its start on the grid). In the
+  song, a pattern whose clips lie wholly in the passage is retagged in place
+  (or copied, if it also plays elsewhere); a clip that runs past an edge
+  gets a pattern of its own, written out note for note over the clip, so no
+  clip is cut and the song sounds as before but for the part's instrument.
+  The page is laid out to fit the view at the music's size; the zoom only
+  magnifies it. `web/src/ink.js` holds the look
   of ink and paper: the SVG filter the engraving is drawn through (wet ink lit
   as a raised, glossy surface; dry ink with wicked edges and a pooled rim) and
   the paper's textures (tiles of noise).

@@ -690,7 +690,8 @@ function movePart(v, parts, to, t0, t1, where) {
   const scope = scopeOf(v);
   const dest = channelById(to);
   if (!dest) return undefined;
-  const role = { from: parts, to: to, t0: t0, t1: t1 };
+  // A note counts where the score writes it: its start rounded to the grid.
+  const role = { from: parts, to: to, t0: t0, t1: t1, snap: v.grid / TPQ };
   const names = parts.map((id) => {
     const c = channelById(id);
     return c ? c.name : id;
@@ -701,18 +702,29 @@ function movePart(v, parts, to, t0, t1, where) {
     toast("Nothing to move", `${what} has no notes ${where}.`, "warn");
     return undefined;
   }
-  let res = { notes: 0, splits: 0, copies: 0 };
+  // A whole part going to a channel with no notes of its own takes its clef along.
+  const settings = state.project.score;
+  const clef = settings.clefs.find((x) => parts.length === 1 && x.key === parts[0]);
+  const fresh = !state.project.patterns.some((pat) => pat.notes.some((n) => n.channel === to));
+  const keepClef = clef !== undefined && t0 <= 0 && t1 === Infinity && fresh && !settings.clefs.some((x) => x.key === to);
+  let res = { notes: 0, unrolled: 0, copies: 0 };
   commit(() => {
     res = moveRole(state.project, scope, role);
     // The part stays in view on its new staff.
-    state.project.score.hidden = state.project.score.hidden.filter((x) => x !== to);
+    settings.hidden = settings.hidden.filter((x) => x !== to);
+    if (keepClef && clef) settings.clefs.push({ key: to, value: clef.value });
   });
   selectChannel(to);
   /** const how: String[] */
   const how = [];
   if (res.copies > 0)
     how.push(res.copies === 1 ? `a pattern copied: where else it plays keeps ${what}` : `${res.copies} patterns copied: where else they play keeps ${what}`);
-  if (res.splits > 0) how.push(`${res.splits === 1 ? "a clip" : `${res.splits} clips`} split at the chosen bars`);
+  if (res.unrolled > 0)
+    how.push(
+      res.unrolled === 1
+        ? "a clip that runs past the chosen bars got a pattern of its own"
+        : `${res.unrolled} clips that run past the chosen bars got patterns of their own`
+    );
   toast(
     `${what} → ${dest.name}`,
     `${res.notes} note${res.notes === 1 ? "" : "s"} moved ${where}${how.length > 0 ? ` (${how.join("; ")})` : ""}. Ctrl+Z undoes.`,
@@ -749,7 +761,12 @@ function menuItem(b, v, key, icon, label, tip, onClick) {
 function partMenu(b, v, c) {
   const m = v.menu;
   const ch = channelById(m.channel);
-  if (!m.on || !ch) return undefined;
+  if (!m.on) return undefined;
+  if (!ch) {
+    // Its channel is gone (an undo, the agent): the menu closes.
+    m.on = false;
+    return undefined;
+  }
   const p = state.project;
   b.leaf("div", "menu-back", "auto-backdrop", "");
   b.on("pointerdown", (e) => {
@@ -762,7 +779,10 @@ function partMenu(b, v, c) {
   });
   b.open("div", "menu", "auto-menu score-partmenu");
   b.style("left", `min(${m.x}px, calc(100vw - 290px))`);
-  b.style("top", `min(${m.y}px, calc(100vh - 420px))`);
+  // At the pointer, moved up only as far as it must to leave the list room; never past the window's bottom.
+  const top = `max(12px, min(${m.y}px, 100vh - 340px))`;
+  b.style("top", top);
+  b.style("max-height", `min(560px, calc(100vh - ${top} - 12px))`);
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });
@@ -1619,7 +1639,11 @@ function sideView(b, v, c, sc, geo) {
     const tip = `${ch.name} (${instrumentLabel(ch.instrument)}) — its instrument in the channel rack, the piano roll or the mixer, or move the part to another instrument`;
     b.attr("title", tip);
     b.on("pointerenter", (e) => hint(tip));
-    b.on("click", (e) => openPartMenu(v, [ch.id], e.clientX + 4, e.clientY + 8));
+    b.on("click", (e) => {
+      // From the keyboard (Enter) there is no pointer: open it under the name.
+      const keyed = e.clientX === 0 && e.clientY === 0;
+      openPartMenu(v, [ch.id], keyed ? e.targetLeft : e.clientX + 4, keyed ? e.targetTop + e.targetHeight + 4 : e.clientY + 8);
+    });
     const set = settings.clefs.find((x) => x.key === ch.id);
     select(b, "clef", "score-clef", set ? set.value : "auto", CLEF_IDS, CLEF_NAMES, `Clef for ${ch.name}`, (val) => {
       commit(() => {
@@ -1887,8 +1911,11 @@ function rangeChannels(v, sc) {
   for (let k = r.s0; k <= r.s1 && k < sc.staves.length; k++) for (const id of sc.staves[k].channels) if (!staffed.includes(id)) staffed.push(id);
   /** const out: String[] */
   const out = [];
+  const snap = v.grid / TPQ;
   for (const n of sc.notes) {
-    if (n.start < t0 - 1e-6 || n.start >= t1 - 1e-6 || !staffed.includes(n.channel) || out.includes(n.channel)) continue;
+    // Where the score writes it: its start rounded to the grid.
+    const at = Math.round(n.start / snap) * snap;
+    if (at < t0 - 1e-6 || at >= t1 - 1e-6 || !staffed.includes(n.channel) || out.includes(n.channel)) continue;
     out.push(n.channel);
   }
   return out;
@@ -1940,6 +1967,7 @@ function setScope(v, scope) {
   v.scope = scope;
   v.scrollTop = 0;
   v.range.on = false;
+  v.menu.on = false;
   savePrefs(v);
   invalidate();
 }
@@ -2271,6 +2299,7 @@ function ribbon(b, v) {
   }
   iconButton(b, "film", "small", "film", "Film: the camera plays the song over the pages on a desk, zooming in on the parts that carry it", () => {
     v.film = true;
+    v.menu.on = false;
     v.range.on = false;
     savePrefs(v);
     invalidate();
