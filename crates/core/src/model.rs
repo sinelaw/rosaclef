@@ -644,6 +644,10 @@ pub struct Pattern {
     pub length: f64,
     #[serde(default)]
     pub notes: Vec<Note>,
+    /// A drum pattern made from a groove (the Drums tab): how it was made, so
+    /// it can be made again with other settings ([`crate::drums::render_pattern`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drums: Option<crate::drums::PatternDrums>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -791,6 +795,7 @@ impl Project {
                 color: default_color(),
                 length: 4.0,
                 notes: vec![],
+                drums: None,
             }],
             playlist: Playlist {
                 tracks: (1..=8)

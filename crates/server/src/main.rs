@@ -140,6 +140,10 @@ enum Command {
         /// Forget the hand edits (kept patterns and changed grooves) first.
         #[arg(long)]
         reset_edits: bool,
+        /// Instead: make drum pattern ID again from its recipe
+        /// (`patterns[].drums`, the studio's Drums tab).
+        #[arg(long, value_name = "ID")]
+        pattern: Option<String>,
     },
     /// List factory presets (optionally for one instrument type), or print one as JSON.
     Presets {
@@ -462,10 +466,30 @@ fn main() -> Result<()> {
             kit,
             guess,
             reset_edits,
+            pattern,
         } => {
             use rosaclef_core::drums;
             let file = project_file(path)?;
             let mut p = load_project(&file)?;
+            if let Some(id) = pattern {
+                drums::render_pattern(&mut p, &id).map_err(anyhow::Error::msg)?;
+                let checked = validate::validate(&p);
+                if let Some(e) = checked
+                    .iter()
+                    .find(|i| i.severity == validate::Severity::Error)
+                {
+                    bail!("the made pattern is invalid: {e}");
+                }
+                std::fs::write(&file, format::to_string(&p))?;
+                let pat = p.pattern(&id).expect("made pattern");
+                println!(
+                    "made {} ({} notes, {} beats)",
+                    pat.name,
+                    pat.notes.len(),
+                    format::format_f64(pat.length)
+                );
+                return Ok(());
+            }
             let Some(first) = groove
                 .clone()
                 .or_else(|| p.drums.as_ref().map(|d| d.groove.clone()))

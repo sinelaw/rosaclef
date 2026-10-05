@@ -36,7 +36,9 @@
 /** A channel; `layerOf` is the id of the channel whose notes it also plays ("" = none). */
 /** type Channel = { id: String, name: String, color: String, instrument: Device, volume: Number, pan: Number, mute: Boolean, mixer: InsertIx, arp: Arp, layerOf: String } */
 /** type Note = { channel: String, pitch: Number, start: Number, length: Number, velocity: Number } */
-/** type Pattern = { id: String, name: String, color: String, length: Number, notes: Note[] } */
+/** A drum pattern's recipe (the Drums tab): `on` false = an ordinary pattern. */
+/** type PatternDrums = { on: Boolean, groove: String, play: String, fill: String, crash: Boolean, turnaround: Boolean, kit: String, feel: String, swing: Number, seed: Int, edited: Boolean } */
+/** type Pattern = { id: String, name: String, color: String, length: Number, notes: Note[], drums: PatternDrums } */
 /** type Track = { name: String, mute: Boolean } */
 /** type Clip = { pattern: String, sample: String, track: TrackIx, start: Number, length: Number, offset: Number, gain: Number, mixer: InsertIx } */
 /** type Playlist = { tracks: Track[], clips: Clip[] } */

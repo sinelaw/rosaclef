@@ -423,6 +423,21 @@ and clips on a Drums track, replacing what the last write made.
 - Sections follow each other bar by bar from `start`; a groove only plays in its own meter.
 - `written` is managed by Rosaclef; leave it alone.
 
+A single drum pattern can also be made from a groove on its own (the Drums tab works this
+way: it always edits one pattern, the one at the song cursor). Its recipe is the pattern's
+`drums` object; `rosaclef drums --pattern ID` makes its notes again from it, as many bars as the
+pattern is long (on the kit's channels, made if needed). Place it with clips like any pattern.
+
+```jsonc
+{ "id": "drums-verse", "name": "Drums · Verse", "length": 16, "notes": [],
+  "drums": { "groove": "rock-8ths", "play": "a",   // a | b | hits | count | rest
+             "fill": "beat", "crash": true,         // a fill at its end, a crash on its 1
+             "turnaround": false, "kit": "Standard Kit", "feel": "natural", "swing": 0, "seed": 1 } }
+```
+
+- Change the recipe, then run `rosaclef drums --pattern drums-verse`; `edited: true` means the
+  notes were changed by hand since (making it again replaces them).
+
 ## Musical craft
 
 - Think like a producer: groove (velocity variation, swing), voice-leading in chords,

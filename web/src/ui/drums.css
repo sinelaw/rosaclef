@@ -1,7 +1,11 @@
-/* The Drums dock (drums.js): the groove, the sections, and Write drums.
+/* The Drums dock (drums.js): one screen. The target (what it edits and
+   where that plays) on top, the groove library on the left, the pattern in
+   the middle, the song's drum clips below, and the song drummer folded
+   under them.
 
-   Laid out by the room the dock gives it (container queries):
-   - wide: groove | sections | write, side by side, each scrolling on its own;
+   The song drummer (groove | sections | write) is laid out by the room the
+   dock gives it (container queries):
+   - wide: side by side, each scrolling on its own;
    - medium: the groove on the left, the sections over Write on the right;
    - narrow (a phone): one column, in order, the panel scrolling. */
 
@@ -14,13 +18,332 @@
   container-type: size;
   container-name: drums;
 }
+/* ---------------------------------------------------------------- the screen */
+
+.drums-screen {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "target target"
+    "lib pattern"
+    "map map";
+  /* The dock's height, but never so short the pattern has no room: the
+     panel scrolls instead (the song drummer's header follows below). */
+  height: max(calc(100% - 34px), 340px);
+  min-height: 0;
+}
+.drums.arranging .drums-screen {
+  height: 420px;
+}
+.drums-target {
+  grid-area: target;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 235, 190, 0.04), transparent);
+}
+.drums-target-pick .select {
+  max-width: 240px;
+  font-weight: 600;
+}
+.drums-where {
+  font-size: 11.5px;
+  color: var(--champagne);
+}
+.drums-where.none {
+  color: var(--muted);
+  font-style: italic;
+}
+.drums-badge {
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  font: 600 10px/1.4 var(--mono);
+  color: var(--gold);
+  white-space: nowrap;
+}
+.drums-target .drums-actions {
+  align-items: center;
+}
+.drums-busy {
+  font-size: 10.5px;
+  color: var(--gold-hi);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* The groove library. */
+.drums-lib {
+  grid-area: lib;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: linear-gradient(180deg, #17141b, #0f0d12);
+}
+.drums-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px 6px;
+}
+.drums-search > .glyph {
+  position: absolute;
+  left: 18px;
+  width: 13px;
+  height: 13px;
+  color: var(--dim);
+  pointer-events: none;
+}
+.drums-search .text-input {
+  height: 26px;
+  padding-left: 28px;
+}
+.drums-lib-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 6px 10px;
+}
+.drums-lib-style {
+  margin: 8px 6px 3px;
+  font: 600 9px/1 var(--sans);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.drums-lib-other {
+  margin: 14px 6px 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 10px;
+  font-style: italic;
+  color: var(--muted);
+}
+.drums-lib-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 2px 2px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.drums-lib-item:hover {
+  background: rgba(212, 175, 55, 0.07);
+  border-color: var(--line);
+}
+.drums-lib-item.on {
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.18), rgba(212, 175, 55, 0.03));
+  border-color: var(--line-2);
+}
+.drums-lib-item.on .drums-lib-name {
+  color: var(--gold-hi);
+}
+.drums-lib-item.misfit {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.drums-lib-item .btn {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+.drums-lib-item .btn .glyph {
+  width: 11px;
+  height: 11px;
+}
+.drums-lib-item.trying .btn {
+  color: var(--gold-hi);
+  border-color: var(--line-3);
+}
+.drums-lib-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+.drums-lib-meta {
+  flex: none;
+  font: 500 9.5px/1 var(--mono);
+  color: var(--dim);
+}
+
+/* The pattern. */
+.drums-pattern {
+  grid-area: pattern;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px 14px 14px;
+  overflow: auto;
+}
+.drums-pattern-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.drums-pattern-groove {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-right: 6px;
+}
+.drums-seg {
+  display: flex;
+}
+.drums-seg button {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--line-2);
+  border-left-width: 0;
+  background: var(--ob-1);
+  color: var(--text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.drums-seg button:first-child {
+  border-left-width: 1px;
+  border-radius: 6px 0 0 6px;
+}
+.drums-seg button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+.drums-seg button:hover {
+  color: var(--gold-hi);
+}
+.drums-seg button.on {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 34%, var(--ob-1)), var(--ob-1));
+  color: var(--gold-hi);
+  border-color: var(--line-3);
+}
+.drums-pattern-grid .drums-row {
+  height: 16px;
+}
+.drums-pattern-grid .drums-cell {
+  min-width: 5px;
+  height: 12px;
+}
+.drums-pattern-grid .drums-cell.bar {
+  margin-left: 7px;
+}
+
+/* The song. */
+.drums-map {
+  grid-area: map;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--line);
+}
+.drums-map-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.drums-map-lanes {
+  position: relative;
+  padding-top: 14px;
+  cursor: pointer;
+}
+.drums-map-ruler {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 12px;
+}
+.drums-map-bar {
+  position: absolute;
+  top: 0;
+  padding-left: 2px;
+  border-left: 1px solid var(--line-2);
+  font: 500 9px/12px var(--mono);
+  color: var(--dim);
+}
+.drums-map-lane {
+  position: relative;
+  height: 22px;
+  margin-top: 2px;
+  border-radius: 4px;
+  background: var(--ob-0);
+}
+.drums-map-clip {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  min-width: 3px;
+  padding: 0 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  background: linear-gradient(180deg, #6d2c38, #4a1d26);
+  font: 600 9.5px/19px var(--sans);
+  color: var(--ivory);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.drums-map-clip:hover {
+  filter: brightness(1.25);
+}
+.drums-map-clip.on {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 70%, #6d2c38), #5b3a12);
+  border-color: var(--gold-hi);
+  color: #1a1206;
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+}
+.drums-map-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--gold-hi);
+  box-shadow: 0 0 6px var(--gold);
+  pointer-events: none;
+}
+
+/* The song drummer, folded under the song. */
+.drums-arrange {
+  border-top: 1px solid var(--line-2);
+}
+.drums-arrange-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  height: 34px;
+  padding: 8px 12px 0;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.drums-arrange-head .drums-title {
+  font-size: 14px;
+}
+.drums-arrange-head .drums-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drums-arrange-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px 14px;
+}
 .drums-flow {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr) 240px;
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: "groove sections write";
-  height: 100%;
+  height: 420px;
   min-height: 0;
+  border-top: 1px solid var(--line);
 }
 .drums-groove {
   grid-area: groove;
@@ -304,38 +627,6 @@
   opacity: 0.75;
 }
 
-/* ---------------------------------------------------------------- start */
-
-.drums-start {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  max-width: 980px;
-}
-.drums-styles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 12px;
-}
-.drums-style {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.drums-style-grooves {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-/* A groove in another time signature than the song's: greyed out, its
-   tooltip says why. */
-.drums-style-grooves .btn.misfit,
-.drums-style-grooves .btn.misfit:hover {
-  opacity: 0.38;
-  cursor: not-allowed;
-  filter: grayscale(1);
-}
 .drums-field option.misfit {
   color: var(--muted);
 }
@@ -368,6 +659,20 @@
 /* ---------------------------------------------------------------- narrow */
 
 @container drums (max-width: 759px) {
+  .drums-screen {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas: "target" "lib" "pattern" "map";
+    height: auto;
+  }
+  .drums-lib {
+    max-height: 220px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .drums-pattern {
+    overflow: visible;
+  }
   .drums-flow {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto auto;

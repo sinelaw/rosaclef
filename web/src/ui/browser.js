@@ -6,7 +6,7 @@
 
 import { uploadFile, pickFiles } from "#platform";
 import { state, commit, selectPattern, selectChannel, invalidate, hint, setFocus, currentChannel } from "../store.js";
-import { uniqueId, paletteColor } from "../model.js";
+import { uniqueId, paletteColor, noPatternDrums } from "../model.js";
 import { followPattern } from "../audio.js";
 import { glyph, iconButton, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
@@ -23,7 +23,7 @@ export function addPattern() {
     p.patterns.map((x) => x.id)
   );
   commit(() => {
-    p.patterns.push({ id: id, name: `Pattern ${n}`, color: paletteColor(n + 2), length: 4, notes: [] });
+    p.patterns.push({ id: id, name: `Pattern ${n}`, color: paletteColor(n + 2), length: 4, notes: [], drums: noPatternDrums() });
   });
   selectPattern(id);
   followPattern();

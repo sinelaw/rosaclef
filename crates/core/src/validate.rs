@@ -537,8 +537,39 @@ fn check_animation(v: &mut V, p: &Project) {
     }
 }
 
+/// The recipes of drum patterns (`patterns[].drums`).
+fn check_pattern_drums(v: &mut V, p: &Project) {
+    use crate::drums;
+    for (i, pat) in p.patterns.iter().enumerate() {
+        let Some(r) = &pat.drums else {
+            continue;
+        };
+        let path = format!("patterns[{i}].drums");
+        if drums::groove(&r.groove).is_none() {
+            v.err(
+                format!("{path}.groove"),
+                format!("unknown groove {:?} (see `rosaclef grooves`)", r.groove),
+            );
+        }
+        if !r.kit.is_empty() && !drums::valid_kit(&r.kit) {
+            v.err(
+                format!("{path}.kit"),
+                format!(
+                    "unknown kit {:?}: use a General MIDI drum kit (\"Standard Kit\", ...) or \"Ebony\"",
+                    r.kit
+                ),
+            );
+        }
+        one_of(v, format!("{path}.play"), &r.play, drums::PLAYS, false);
+        one_of(v, format!("{path}.fill"), &r.fill, drums::FILL_SIZES, false);
+        one_of(v, format!("{path}.feel"), &r.feel, drums::FEELS, false);
+        v.range(&format!("{path}.swing"), r.swing, 0.0, 1.0);
+    }
+}
+
 fn check_drums(v: &mut V, p: &Project) {
     use crate::drums;
+    check_pattern_drums(v, p);
     let Some(d) = &p.drums else {
         return;
     };

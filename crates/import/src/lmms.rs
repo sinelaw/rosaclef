@@ -1859,6 +1859,7 @@ impl<'o> Importer<'o> {
                         color: color.clone(),
                         length,
                         notes,
+                        drums: None,
                     });
                     self.dedupe.insert(key, id.clone());
                     id
@@ -1942,6 +1943,7 @@ impl<'o> Importer<'o> {
                     color: color(self.project.patterns.len() + 3),
                     length: bars * self.bar_beats,
                     notes: ns,
+                    drums: None,
                 });
                 Some(id)
             })

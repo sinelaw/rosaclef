@@ -133,13 +133,19 @@ await page.evaluate(async () => {
   });
 });
 await page.keyboard.press("F4");
-await page.waitForSelector(".drums-groove .drums-label");
-const label = () => page.textContent(".drums-groove .drums-label");
+await page.waitForSelector(".drums-target .drums-badge");
+const label = () => page.textContent(".drums-target .drums-badge");
 const seek = (beat) => page.evaluate(async (b) => (await import("./src/audio.js")).seek(b), beat);
 await seek(8 * 4 + 12 * 3);
-await until(() => document.querySelector(".drums-groove .drums-label")?.textContent.includes("3/4"), null, "the groove picker reads 3/4 in the waltz");
+await until(() => document.querySelector(".drums-target .drums-badge")?.textContent.includes("3/4"), null, "the drums read 3/4 in the waltz");
 await seek(2 * 4);
-await until(() => document.querySelector(".drums-groove .drums-label")?.textContent.includes("4/4"), null, "the groove picker reads 4/4 in the intro");
+await until(
+  () =>
+    document.querySelector(".drums-target .drums-badge")?.textContent.includes("4/4") &&
+    document.querySelector(".drums-search input")?.placeholder.includes("4/4"),
+  null,
+  "the drums and their grooves read 4/4 in the intro"
+);
 ok(`the drummer follows the time signature at the song cursor (${(await label()).trim()})`);
 
 if (errors.length > 0) throw new Error(`page errors: ${errors.join("\n")}`);

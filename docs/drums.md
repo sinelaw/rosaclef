@@ -309,8 +309,8 @@ for an 8th-note grid) by up to a triplet, like the transport's swing.
 |---|---|
 | spec types, groove and fill library, kit map, writer | `crates/core/src/drums/` (native + wasm) |
 | `drums` in the model, schema and validation | `crates/core/src/model.rs`, `schema.rs`, `validate.rs` |
-| API: `GET /api/grooves`, `POST /api/drums[?guess=true]` (project in → written project + hand-edited pattern ids out) | `crates/server`, `crates/local` (browser-only build) |
-| CLI: `rosaclef grooves`, `rosaclef drums [DIR]` | `crates/server` |
+| API: `GET /api/grooves`, `POST /api/drums[?guess=true]` (project in → written project + hand-edited pattern ids out), `POST /api/drums/pattern?id=` (project in → that pattern made from its recipe) | `crates/server`, `crates/local` (browser-only build) |
+| CLI: `rosaclef grooves`, `rosaclef drums [DIR] [--pattern ID]` | `crates/server` |
 | agent guide | the generated `AGENTS.md` |
 | the Drums tab | `web/src/ui/drums.js`, `drums.css` |
 
@@ -323,6 +323,65 @@ Per-bar re-roll; live triggering; displacement / re-voicing buttons; linear
 mode and the Four Limbs editor; Interpret the band; clave direction; odd or
 changing meters; tempo-specific groove variants; user groove libraries and
 MIDI groove import; brushes.
+
+## 4.10 The tab, one screen (v2)
+
+The first tab was a wizard: a start screen to pick a style, then an editing
+screen for the whole song's part, and nothing on either said where the notes
+would go. The tab is now one screen, built on a single idea: **it always
+works on a drum pattern, and says where that pattern plays.**
+
+```
+┌ TARGET ─────────────────────────────────────────────────────────────┐
+│ DRUMS [Drums · Waltz ▾] → Drums track, bars 3–6  3/4  Jazz Kit      │
+│                                  [−] 4 bars [+]  ▶  ⧉ copy  🗑       │
+├ GROOVES ──────────┬ PATTERN ────────────────────────────────────────┤
+│ 🔍 Grooves in 3/4 │ Jazz waltz · 3/4 · 110–220 BPM          ‹ ›      │
+│ WALTZ             │ Plays [A][B][Hits][Count-in][Rest]  Fill [..]   │
+│ ▶ Waltz           │ Crash [On the 1]  Turnaround [Off]              │
+│ JAZZ              │ Pattern bars 4  Kit [Jazz Kit▾]  Feel  Swing    │
+│ ▶ Jazz waltz  ✓   │ Ride  ▮▯▯▮▯▮ ▮▯▯▮▯▮ …   (the pattern's notes)    │
+│ Not in 3/4 …      │ Kick  ▮▯▯▯▯▯ ▮▯▯▯▯▯ …   [+ Drum…]               │
+├ SONG ─────────────┴─────────────────────────────────────────────────┤
+│ 1   5   9   13  …   ▕Waltz▏ ▕A▏▕A▏▕B+fill▏ …    (drum clips, cursor) │
+├─────────────────────────────────────────────────────────────────────┤
+│ ▸ Song drummer  14 sections, bars 1–141 · 24 patterns written       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**The target** is the drum pattern at the song cursor or the selected clip
+(clicking a clip in the playlist or on the song strip, or moving the cursor
+while stopped, retargets it), or one picked from the list. With no drums at
+the cursor it says so and offers **+ New pattern at bar N**.
+
+**The flows:**
+
+1. *No drums yet:* put the cursor where they should start (or select the
+   clip of the section), click a groove. A pattern is made there: four bars
+   (or the selected clip's, or up to the next drum clip), its clip on the
+   Drums track (made if needed), the kit the last pattern used.
+2. *Drums for this chorus:* select the chorus clip, click a groove (or
+   **Copy** the verse's pattern there), then B and a fill.
+3. *Edit drums:* click a drum clip; change the recipe (the pattern is made
+   again, one undo step) or click its notes (marked as edited by hand: a
+   recipe change makes it again, Ctrl+Z brings the edits back).
+4. *Try before choosing:* ▶ on a groove plays it in the target, looping,
+   without changing the song; ▶ in the target bar loops the pattern itself.
+5. *Mixed time signatures:* the target's bars decide its time signature; the
+   grooves that fit come first and the others are greyed out.
+6. *The whole song at once:* open **Song drummer** (the v1 part, unchanged:
+   sections, Write drums). Its patterns show on the strip and can be
+   targeted like any other; picking a groove for one makes it a pattern of
+   its own (the song drummer leaves it alone after).
+7. *Remove:* the trash removes the target with its clips (Ctrl+Z).
+
+**In the project** a pattern made this way carries its recipe
+(`patterns[].drums`: groove, play, fill, crash, turnaround, kit, feel, swing,
+seed, edited); `POST /api/drums/pattern?id=` — and `rosaclef drums --pattern
+ID` — make its notes from it with the song drummer's own code (grids, fills,
+feel, kit channels), so the agent can make and edit drum patterns too. A kit
+change switches the kit channel the pattern plays on (the patterns sharing
+it follow).
 
 ## 5. After v1
 

@@ -67,9 +67,10 @@ await page.dblclick(".lcd.transpose .lcd-label");
 await transposed(page, "0");
 ok("the song transposes by semitones, and stays transposed");
 
-// The Drums tab: the demo's drum part is a jazz waltz; writing it again
-// keeps it in the song.
+// The Drums tab: the demo's drum part (the song drummer, folded under the
+// song) is a jazz waltz; writing it again keeps it in the song.
 await page.keyboard.press("F4");
+await page.click(".drums-arrange-head");
 await page.waitForSelector(".drums-sec");
 await hasText(page, "Jazz waltz");
 await page.click(".drums-writebtn");
