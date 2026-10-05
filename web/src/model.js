@@ -920,6 +920,200 @@ export function songLength(p) {
   return end;
 }
 
+// ------------------------------------------------------------------ moving a part
+
+/** What notation.js writes down, and where a part moves: the "song", one playlist "track" or one "pattern". */
+/** type Scope = { kind: String, track: Int, pattern: String } */
+
+/** Give the notes of channels `from` that start in beats [t0, t1) of a scope (the song, a
+ * playlist track or a pattern) to channel `to`: the part moves to another instrument. `t1`
+ * may be Infinity (to the end). A note's start is first rounded to `snap` beats (the grid the
+ * score writes it on; 0: as it is), so a note played a little early counts in the bar it is
+ * written in.
+ *
+ * In a pattern, its notes there move (wherever the pattern plays). In the song or a track,
+ * nothing else changes, by ear: a clip whose notes of the part all fall in the window plays a
+ * pattern retagged in place, or a copy of it when the pattern also plays outside the window;
+ * a clip with notes of the part on both sides of an edge gets a pattern of its own, written
+ * out note for note over the clip (loops unrolled, its offset dropped), so no clip is cut and
+ * no held note stops early. */
+/** type RoleMove = { from: String[], to: String, t0: Number, t1: Number, snap: Number } */
+/** What a move did: notes given to `to`, clips given a pattern of their own, patterns copied. */
+/** type Moved = { notes: Int, unrolled: Int, copies: Int } */
+
+const EDGE = 1e-6;
+/** The longest pattern the format allows (beats). */
+const MAX_PATTERN = 4096;
+
+/** function moveRole(p: Project, scope: Scope, m: RoleMove) => Moved */
+export function moveRole(p, scope, m) {
+  const out = { notes: 0, unrolled: 0, copies: 0 };
+  if (m.from.length === 0 || !(m.t1 > m.t0) || !p.channels.some((c) => c.id === m.to)) return out;
+  if (scope.kind === "pattern") {
+    const pat = p.patterns.find((x) => x.id === scope.pattern);
+    if (!pat) return out;
+    for (const n of pat.notes) {
+      if (!moves(n, m) || !inWindow(n.start, m)) continue;
+      n.channel = m.to;
+      out.notes = out.notes + 1;
+    }
+    return out;
+  }
+  const hidden = p.score.hiddenTracks.map(trackIndex);
+  /** Clips whose notes of the part all fall in the window. */
+  /** const whole: Clip[] */
+  const whole = [];
+  for (const c of p.playlist.clips) {
+    if (c.pattern === "") continue;
+    const tr = trackIndex(c.track);
+    if (scope.kind === "track" ? tr !== scope.track : hidden.includes(tr)) continue;
+    const pat = p.patterns.find((x) => x.id === c.pattern);
+    if (!pat || pat.length <= 0) continue;
+    let inside = 0;
+    let outside = 0;
+    for (const h of heard(pat, c)) {
+      if (!moves(pat.notes[h.i], m)) continue;
+      if (inWindow(h.t, m)) inside = inside + 1;
+      else outside = outside + 1;
+    }
+    if (inside === 0) continue;
+    if (outside === 0) whole.push(c);
+    else if (c.length <= MAX_PATTERN) {
+      unroll(p, pat, c, m);
+      out.unrolled = out.unrolled + 1;
+      out.notes = out.notes + inside;
+    }
+  }
+  /** const done: String[] */
+  const done = [];
+  for (const c of whole) {
+    if (done.includes(c.pattern)) continue;
+    const id = c.pattern;
+    done.push(id);
+    const pat = p.patterns.find((x) => x.id === id);
+    if (!pat) continue;
+    const mine = whole.filter((x) => x.pattern === id);
+    let target = pat;
+    // Played elsewhere too (outside the window, on another track, on a hidden one): a copy for the clips inside.
+    if (p.playlist.clips.some((x) => x.pattern === id && !mine.includes(x))) {
+      target = copyPattern(p, pat, pat.notes.map(copyNote), pat.length);
+      for (const x of mine) x.pattern = target.id;
+      out.copies = out.copies + 1;
+    }
+    for (const n of target.notes) {
+      if (!moves(n, m)) continue;
+      n.channel = m.to;
+      out.notes = out.notes + 1;
+    }
+  }
+  return out;
+}
+
+/** Whether a note belongs to the part that moves. */
+/** function moves(n: Note, m: RoleMove) => Boolean */
+function moves(n, m) {
+  return m.from.includes(n.channel) && n.channel !== m.to;
+}
+
+/** Whether a start (beats) falls in the window, as the score writes it (rounded to `snap`). */
+/** function inWindow(t: Number, m: RoleMove) => Boolean */
+function inWindow(t, m) {
+  const q = m.snap > 0 ? Math.round(t / m.snap) * m.snap : t;
+  return q >= m.t0 - EDGE && q < m.t1 - EDGE;
+}
+
+/** A note a clip plays: the pattern note `i`, at song beat `t`. */
+/** type Heard = { i: Int, t: Number } */
+
+/** The notes a clip plays, as the engine plays them: its pattern looped from the clip's offset,
+ * each note that starts inside the clip (and inside the pattern). */
+/** function heard(pat: Pattern, c: Clip) => Heard[] */
+function heard(pat, c) {
+  /** const out: Heard[] */
+  const out = [];
+  const L = pat.length;
+  const base = c.start - c.offset;
+  const end = c.start + c.length;
+  for (let k = Math.max(0, Math.floor(c.offset / L)); base + k * L < end - EDGE; k++) {
+    for (let i = 0; i < pat.notes.length; i++) {
+      const n = pat.notes[i];
+      if (n.start >= L - EDGE) continue;
+      const t = base + k * L + n.start;
+      if (t >= c.start - EDGE && t < end - EDGE) out.push({ i: i, t: t });
+    }
+  }
+  return out;
+}
+
+/** Give a clip a pattern of its own: what it plays, written out from its start (offset 0), with
+ * the notes of the part in the window given to `m.to`. Each note keeps its time and length (the
+ * engine ends notes at the clip's end, not at a loop of the pattern). Swing, which delays the
+ * pattern's off-beat 16ths, still falls on the same notes while the offset and the pattern's
+ * length are whole 8ths, as clips placed on the grid are. */
+/** function unroll(p: Project, pat: Pattern, c: Clip, m: RoleMove) => Undefined */
+function unroll(p, pat, c, m) {
+  const end = c.start + c.length;
+  /** const notes: Note[] */
+  const notes = [];
+  for (const h of heard(pat, c)) {
+    const n = pat.notes[h.i];
+    notes.push({
+      channel: moves(n, m) && inWindow(h.t, m) ? m.to : n.channel,
+      pitch: n.pitch,
+      start: h.t - c.start,
+      length: Math.min(n.length, end - h.t),
+      velocity: n.velocity,
+    });
+  }
+  const own = copyPattern(p, pat, notes, c.length);
+  c.pattern = own.id;
+  c.offset = 0;
+}
+
+/** function copyNote(n: Note) => Note */
+function copyNote(n) {
+  return { channel: n.channel, pitch: n.pitch, start: n.start, length: n.length, velocity: n.velocity };
+}
+
+/** A copy of a pattern with these notes and length, added to the project after it (named after it). */
+/** function copyPattern(p: Project, pat: Pattern, notes: Note[], length: Number) => Pattern */
+function copyPattern(p, pat, notes, length) {
+  const id = uniqueId(
+    `${pat.id}-2`,
+    p.patterns.map((x) => x.id)
+  );
+  let name = `${pat.name} 2`;
+  let k = 3;
+  while (p.patterns.some((x) => x.name === name)) {
+    name = `${pat.name} ${k}`;
+    k = k + 1;
+  }
+  const d = pat.drums;
+  const copy = {
+    id: id,
+    name: name,
+    color: pat.color,
+    length: length,
+    notes: notes,
+    drums: {
+      on: d.on,
+      groove: d.groove,
+      play: d.play,
+      fill: d.fill,
+      crash: d.crash,
+      turnaround: d.turnaround,
+      kit: d.kit,
+      feel: d.feel,
+      swing: d.swing,
+      seed: d.seed,
+      // A drummer's pattern whose notes were changed by hand: kept as it is.
+      edited: d.edited || d.on,
+    },
+  };
+  p.patterns.splice(p.patterns.indexOf(pat) + 1, 0, copy);
+  return copy;
+}
+
 /** function dbText(gain: Number) => String */
 export function dbText(gain) {
   if (gain <= 0.00001) return "-∞ dB";

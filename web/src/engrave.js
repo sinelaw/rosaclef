@@ -50,7 +50,8 @@ const STEM_Y = 0.168;
 
 /** type Prim = { kind: Int, color: String, nums: Number[], ch: String } */
 /** type Ink = { color: String, d: String, text: String, xs: String, ys: String } */
-/** type Label = { x: Number, y: Number, text: String, cls: String, anchor: String, color: String } */
+/** `staff`: the staff a name stands for (-1: not a name). */
+/** type Label = { x: Number, y: Number, text: String, cls: String, anchor: String, color: String, staff: Int } */
 /** A brace: its glyph's origin (bottom left) and its scale (one staff high is 1). */
 /** type Brace = { x: Number, y: Number, s: Number } */
 /** type Band = { x: Number, y: Number, w: Number, h: Number, color: String, label: String, mark: Int, first: Boolean } */
@@ -787,6 +788,7 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
         cls: first ? "sname" : "sname short",
         anchor: "end",
         color: "",
+        staff: shown[k],
       });
     }
   }
@@ -797,10 +799,10 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
     glyph(sysP, G.bracketBottom, bx, bottom + 0.5, "");
   }
   emit(runs, sysP.prims, 0);
-  if (!first) labels.push({ x: indent + 0.1, y: top - 2.3, text: String(sc.measures[a].number), cls: "mnum", anchor: "start", color: "" });
+  if (!first) labels.push({ x: indent + 0.1, y: top - 2.3, text: String(sc.measures[a].number), cls: "mnum", anchor: "start", color: "", staff: -1 });
   // Repeats played more than twice say how often over the end sign.
   for (let m = a; m < b; m++) {
-    if (mcs[m].endRep > 2) labels.push({ x: bars[m - a] - 0.2, y: top - 1.1, text: `×${mcs[m].endRep}`, cls: "reptimes", anchor: "end", color: "" });
+    if (mcs[m].endRep > 2) labels.push({ x: bars[m - a] - 0.2, y: top - 1.1, text: `×${mcs[m].endRep}`, cls: "reptimes", anchor: "end", color: "", staff: -1 });
   }
   // Voltas: a line over the top staff (above its ink), a hook down where the ending starts
   // (and where it closes at the repeat sign), the passes it plays.
@@ -811,7 +813,7 @@ function engraveSystem(sc, opts, geos, mcs, firstEv, a, b, first, last) {
     if (v.open) rect(vp, v.x0, vy, 0.12, 1.8, "");
     if (v.close) rect(vp, v.x1 - 0.12, vy, 0.12, 1.8, "");
     emit(runs, vp.prims, 0);
-    if (v.text !== "") labels.push({ x: v.x0 + 0.45, y: vy + 1.45, text: v.text, cls: "volta", anchor: "start", color: "" });
+    if (v.text !== "") labels.push({ x: v.x0 + 0.45, y: vy + 1.45, text: v.text, cls: "volta", anchor: "start", color: "", staff: -1 });
   }
 
   // ---- colored passages

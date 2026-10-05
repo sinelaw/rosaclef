@@ -794,6 +794,14 @@ export function toggleFullscreen(selector) {
   if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {});
 }
 
+// A press on the music (not on a control) takes the keyboard back from a
+// text field, a menu or the agent's terminal, so the studio's keys (Space
+// plays) work at once.
+export function releaseFocus() {
+  const el = document.activeElement;
+  if (el && el !== document.body && typeof el.blur === "function") el.blur();
+}
+
 export function textWidth(face, text) {
   if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
   const style = face.includes("Italic") ? "italic " : "";
@@ -880,6 +888,12 @@ export function domBackend(rootId) {
             el.focus();
             if (k === "select" && el instanceof HTMLInputElement) el.select();
           }, 0);
+      } else if (k === "reveal") {
+        // "reveal": scroll the node into view, only as far as it takes (not at all when it shows).
+        if (v === "true")
+          requestAnimationFrame(() => {
+            if (el.isConnected) el.scrollIntoView({ block: "nearest", inline: "nearest" });
+          });
       } else if (k === "scrollLeft" || k === "scrollTop") {
         // Scrolling a node that is not in the document yet is ignored.
         if (el.isConnected) el[k] = Number(v);

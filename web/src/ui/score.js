@@ -18,10 +18,16 @@
 //    the paper selects a passage to color; a click there moves the playhead.
 //  - Write (Shift+P): click on a staff to add a note of the chosen value.
 //  - Delete, ↑/↓ (Shift: octave) act on the selection, as in the piano roll.
+//  - A staff's name (on the page or in the sidebar) opens its part's menu: the
+//    channel in the rack, its sound, its notes in the piano roll, its mixer
+//    insert, or the whole part given to another channel (`moveRole` in
+//    model.js). A chosen passage can be given to another channel too.
+//  - Under the pointer, what a click would act on is lit: a name glows and is
+//    underlined, a note lights up, and a line shows where the playhead would go.
 
 import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, downloadImagePdf, textWidth, paperSize, pixelRatio } from "#platform";
-import { state, commit, begin, changed, invalidate, hint, setFocus, reportContext, currentPattern } from "../store.js";
-import { PALETTE, semitonesText } from "../model.js";
+import { state, commit, begin, changed, invalidate, hint, setFocus, reportContext, currentPattern, selectChannel } from "../store.js";
+import { PALETTE, semitonesText, moveRole, cloneProject } from "../model.js";
 import {
   buildScore,
   TPQ,
@@ -44,10 +50,12 @@ import { scorePdf, pdfLayout, pageSvg, pdfInfo } from "../pdf.js";
 import { preview, seek } from "../audio.js";
 import { select, iconButton, glyph, textInput } from "./widgets.js";
 import { followButton } from "./playlist.js";
-import { revealDock } from "./panes.js";
+import { revealDock, openDock, showInsert } from "./panes.js";
+import { instrumentLabel } from "./instruments.js";
+import { browseInstrument } from "./browser.js";
 import { toast } from "./toast.js";
 import { filmView, newFilmView } from "./film.js";
-import { trackIx, trackIndex, noteIx, noteIndex } from "#brands";
+import { trackIx, trackIndex, noteIx, noteIndex, insertIndex } from "#brands";
 
 // ------------------------------------------------------------------ state
 
@@ -55,13 +63,19 @@ import { trackIx, trackIndex, noteIx, noteIndex } from "#brands";
 /** type Range = { on: Boolean, t0: Number, t1: Number, s0: Int, s1: Int } */
 /** Where Write would put a note: a system, a staff row, a step and a tick (-1: nowhere). */
 /** type Ghost = { sys: Int, row: Int, step: Int, tick: Number, x: Number } */
+/** What the pointer is over, and so what a click there would do: a staff's "name" (label `idx`), a
+ * "note" (head `idx`), the "paper" (the playhead would move to `x`), the "desk" beside the page; "" nothing. */
+/** type Hover = { kind: String, sys: Int, idx: Int, x: Number } */
+/** The menu of a part, opened from its name (on the page or in the sidebar): the channels of its staff,
+ * the one it acts on, and where it opens (client pixels). */
+/** type PartMenu = { on: Boolean, channels: String[], channel: String, x: Number, y: Number } */
 /** The engraved score of the last flush, and what it was built from. */
 /** `score` keeps its colored passages (the sidebar lists them); `ink` is what is engraved and printed (without them when colors are hidden). */
 /** type Cached = { key: String, score: Score, ink: Score, page: Page } */
 /** The notation the film is made of, and what it was built from. */
 /** type FilmScore = { key: String, score: Score } */
 /** `size`: a staff space in pixels at 100% (the music's size, laid out to fit); `zoom`: magnification of that page. */
-/** type ScoreView = { id: String, scope: String, size: Number, zoom: Number, width: Number, height: Number, scrollTop: Number, scrollLeft: Number, panning: Boolean, pdfMenu: Boolean, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, colors: Boolean, ink: String, gloss: Number, shine: Number, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, cache: Cached[], film: Boolean, fv: FilmView, filmCache: FilmScore[] } */
+/** type ScoreView = { id: String, scope: String, size: Number, zoom: Number, width: Number, height: Number, scrollTop: Number, scrollLeft: Number, panning: Boolean, pdfMenu: Boolean, tool: String, value: Int, dot: Boolean, grid: Int, night: Boolean, colors: Boolean, ink: String, gloss: Number, shine: Number, side: Boolean, condense: Boolean, range: Range, ghost: Ghost, hover: Hover, menu: PartMenu, cache: Cached[], film: Boolean, fv: FilmView, filmCache: FilmScore[] } */
 
 /** function newView(id: String, scope: String) => ScoreView */
 function newView(id, scope) {
@@ -89,6 +103,8 @@ function newView(id, scope) {
     condense: true,
     range: { on: false, t0: 0, t1: 0, s0: 0, s1: 0 },
     ghost: { sys: -1, row: -1, step: 0, tick: -1, x: 0 },
+    hover: { kind: "", sys: -1, idx: -1, x: 0 },
+    menu: { on: false, channels: [], channel: "", x: 0, y: 0 },
     cache: [],
     film: false,
     fv: newFilmView(id),
@@ -272,6 +288,33 @@ function headAt(s, x, y) {
     }
   }
   return best;
+}
+
+/** The width of a staff name (staff spaces), as the sidebar's serif sets it. */
+/** function nameWidth(l: Label) => Number */
+function nameWidth(l) {
+  return textWidth("Times-Italic", l.text) * (l.cls.includes("short") ? 1.3 : 1.55);
+}
+
+/** The staff name under a point of a system (staff spaces): its label's index, or -1. */
+/** function nameAt(s: Sys, x: Number, y: Number) => Int */
+function nameAt(s, x, y) {
+  for (let i = 0; i < s.labels.length; i++) {
+    const l = s.labels[i];
+    if (l.staff < 0) continue;
+    const w = nameWidth(l);
+    if (x >= l.x - w - 0.5 && x <= l.x + 0.4 && y >= l.y - 1.6 && y <= l.y + 0.6) return i;
+  }
+  return -1;
+}
+
+/** Point the hover at something else (redrawn only when it changes). */
+/** function setHover(v: ScoreView, kind: String, sys: Int, idx: Int, x: Number) => Undefined */
+function setHover(v, kind, sys, idx, x) {
+  const h = v.hover;
+  if (h.kind === kind && h.sys === sys && h.idx === idx && h.x === x) return undefined;
+  v.hover = { kind: kind, sys: sys, idx: idx, x: x };
+  invalidate();
 }
 
 // ------------------------------------------------------------------ colors
@@ -606,6 +649,244 @@ function endingRange(v, sc) {
   v.range.on = false;
 }
 
+// ------------------------------------------------------------------ parts
+
+/** function channelById(id: String) => Channel? */
+function channelById(id) {
+  return state.project.channels.find((c) => c.id === id);
+}
+
+/** Open the menu of a part (the channels of one staff) at a point of the window; its channel is selected. */
+/** function openPartMenu(v: ScoreView, channels: String[], x: Number, y: Number) => Undefined */
+function openPartMenu(v, channels, x, y) {
+  if (channels.length === 0) return undefined;
+  const pick = channels.includes(state.channel) ? state.channel : channels[0];
+  v.menu = { on: true, channels: channels, channel: pick, x: x, y: y };
+  v.range.on = false;
+  v.hover = { kind: "", sys: -1, idx: -1, x: 0 };
+  selectChannel(pick);
+}
+
+/** function closePartMenu(v: ScoreView) => Undefined */
+function closePartMenu(v) {
+  if (!v.menu.on) return undefined;
+  v.menu.on = false;
+  invalidate();
+}
+
+/** Where a move applies, in words. */
+/** function scopeWords(sc: Scope) => String */
+function scopeWords(sc) {
+  if (sc.kind === "pattern") return `in the pattern ${scopeTitle(sc)}`;
+  if (sc.kind === "track") return `on the track ${scopeTitle(sc)}`;
+  return "throughout the song";
+}
+
+/** Give the notes of channels `parts` starting in beats [t0, t1) of what the view shows to channel
+ * `to` (moveRole in model.js: clips are split and patterns copied so nothing else changes). One undo step. */
+/** `where` says where, in words ("throughout the song", "in bars 5–8"). */
+/** function movePart(v: ScoreView, parts: String[], to: String, t0: Number, t1: Number, where: String) => Undefined */
+function movePart(v, parts, to, t0, t1, where) {
+  const scope = scopeOf(v);
+  const dest = channelById(to);
+  if (!dest) return undefined;
+  // A note counts where the score writes it: its start rounded to the grid.
+  const role = { from: parts, to: to, t0: t0, t1: t1, snap: v.grid / TPQ };
+  const names = parts.map((id) => {
+    const c = channelById(id);
+    return c ? c.name : id;
+  });
+  const what = names.length === 1 ? names[0] : `${names.length} parts`;
+  // A dry run first: nothing to move makes no undo step.
+  if (moveRole(cloneProject(state.project), scope, role).notes === 0) {
+    toast("Nothing to move", `${what} has no notes ${where}.`, "warn");
+    return undefined;
+  }
+  // A whole part going to a channel with no notes of its own takes its clef along.
+  const settings = state.project.score;
+  const clef = settings.clefs.find((x) => parts.length === 1 && x.key === parts[0]);
+  const fresh = !state.project.patterns.some((pat) => pat.notes.some((n) => n.channel === to));
+  const keepClef = clef !== undefined && t0 <= 0 && t1 === Infinity && fresh && !settings.clefs.some((x) => x.key === to);
+  let res = { notes: 0, unrolled: 0, copies: 0 };
+  commit(() => {
+    res = moveRole(state.project, scope, role);
+    // The part stays in view on its new staff.
+    settings.hidden = settings.hidden.filter((x) => x !== to);
+    if (keepClef && clef) settings.clefs.push({ key: to, value: clef.value });
+  });
+  selectChannel(to);
+  /** const how: String[] */
+  const how = [];
+  if (res.copies > 0)
+    how.push(res.copies === 1 ? `a pattern copied: where else it plays keeps ${what}` : `${res.copies} patterns copied: where else they play keeps ${what}`);
+  if (res.unrolled > 0)
+    how.push(
+      res.unrolled === 1
+        ? "a clip that runs past the chosen bars got a pattern of its own"
+        : `${res.unrolled} clips that run past the chosen bars got patterns of their own`
+    );
+  toast(
+    `${what} → ${dest.name}`,
+    `${res.notes} note${res.notes === 1 ? "" : "s"} moved ${where}${how.length > 0 ? ` (${how.join("; ")})` : ""}. Ctrl+Z undoes.`,
+    "info"
+  );
+}
+
+/** The pattern the piano roll opens for a part: the scope's, or where the part first plays. */
+/** function partPattern(v: ScoreView, sc: Score, id: String) => String */
+function partPattern(v, sc, id) {
+  const scope = scopeOf(v);
+  if (scope.kind === "pattern") return scope.pattern;
+  const n = sc.notes.find((x) => x.channel === id);
+  return n ? n.pattern : state.pattern;
+}
+
+/** function menuItem(b: Builder, v: ScoreView, key: String, icon: String, label: String, tip: String, onClick: () => Undefined) => Undefined */
+function menuItem(b, v, key, icon, label, tip, onClick) {
+  b.open("button", key, "auto-menu-item");
+  b.attr("title", tip);
+  b.on("pointerenter", (e) => hint(tip));
+  b.on("click", (e) => {
+    v.menu.on = false;
+    onClick();
+    invalidate();
+  });
+  glyph(b, icon);
+  b.leaf("span", "l", "", label);
+  b.close();
+}
+
+/** The part's menu: reach its instrument (the rack, the piano roll, the mixer), or give the part to another channel. */
+/** function partMenu(b: Builder, v: ScoreView, c: Cached) => Undefined */
+function partMenu(b, v, c) {
+  const m = v.menu;
+  const ch = channelById(m.channel);
+  if (!m.on) return undefined;
+  if (!ch) {
+    // Its channel is gone (an undo, the agent): the menu closes.
+    m.on = false;
+    return undefined;
+  }
+  const p = state.project;
+  b.leaf("div", "menu-back", "auto-backdrop", "");
+  b.on("pointerdown", (e) => {
+    e.preventDefault();
+    closePartMenu(v);
+  });
+  b.on("contextmenu", (e) => {
+    e.preventDefault();
+    closePartMenu(v);
+  });
+  b.open("div", "menu", "auto-menu score-partmenu");
+  b.style("left", `min(${m.x}px, calc(100vw - 290px))`);
+  // Below the pointer, or above it when the window has more room there; never past its edges (the list scrolls).
+  const winH = window.innerHeight;
+  const up = m.y > winH / 2;
+  b.style("top", up ? "auto" : `${Math.round(m.y)}px`);
+  b.style("bottom", up ? `${Math.round(winH - m.y + 16)}px` : "auto");
+  b.style("max-height", `${Math.round(Math.min(560, up ? m.y - 28 : winH - m.y - 12))}px`);
+  b.on("contextmenu", (e) => {
+    e.preventDefault();
+  });
+  b.open("div", "t", "auto-menu-title score-partmenu-title");
+  b.leaf("i", "sw", "swatch", "");
+  b.style("--c", ch.color);
+  b.leaf("span", "n", "", ch.name);
+  b.close();
+  b.leaf("div", "s", "auto-menu-sub", `${instrumentLabel(ch.instrument)} · ${insertIndex(ch.mixer) === 0 ? "Master" : `Insert ${insertIndex(ch.mixer)}`}`);
+  // A drum staff holds several channels: choose the one to act on.
+  if (m.channels.length > 1) {
+    b.open("div", "chs", "score-partmenu-chs");
+    for (const id of m.channels) {
+      const cc = channelById(id);
+      if (!cc) continue;
+      b.open("button", id, id === m.channel ? "score-partmenu-ch on" : "score-partmenu-ch");
+      b.attr("title", `Act on ${cc.name}`);
+      b.on("click", (e) => {
+        m.channel = id;
+        selectChannel(id);
+      });
+      b.leaf("i", "sw", "swatch", "");
+      b.style("--c", cc.color);
+      b.leaf("span", "n", "", cc.name);
+      b.close();
+    }
+    b.close();
+  }
+  const id = ch.id;
+  menuItem(b, v, "rack", "rack", "Open in the channel rack", `Select ${ch.name} in the channel rack: its instrument, sound and settings`, () => {
+    selectChannel(id);
+    openDock("rack");
+  });
+  menuItem(b, v, "sound", "swap", "Change its sound…", `Show sounds like ${ch.name}'s in the browser: ⇄ on any of them swaps it in, the notes stay`, () => {
+    selectChannel(id);
+    openDock("rack");
+    browseInstrument(ch.instrument.type);
+    hint(`In the browser, ⇄ on any instrument swaps it into ${ch.name} — or drag it onto the channel's row`);
+  });
+  menuItem(b, v, "roll", "piano", "Edit its notes in the piano roll", `Open ${ch.name}'s notes in the piano roll (F7)`, () => {
+    const pat = partPattern(v, c.score, id);
+    if (pat !== "" && state.pattern !== pat) {
+      state.pattern = pat;
+      state.selection = [];
+    }
+    selectChannel(id);
+    revealDock("piano");
+  });
+  menuItem(
+    b,
+    v,
+    "mix",
+    "mixer",
+    insertIndex(ch.mixer) === 0 ? "Show in the mixer (Master)" : `Show in the mixer (Insert ${insertIndex(ch.mixer)})`,
+    "The mixer insert this channel plays through: its level, pan and effects (F9)",
+    () => {
+      showInsert(ch.mixer);
+    }
+  );
+  menuItem(
+    b,
+    v,
+    "mute",
+    ch.mute ? "speaker" : "mute",
+    ch.mute ? "Unmute" : "Mute",
+    ch.mute ? `Let ${ch.name} play again` : `Silence ${ch.name} (the score still shows it)`,
+    () => {
+      commit(() => {
+        ch.mute = !ch.mute;
+      });
+    }
+  );
+  menuItem(b, v, "hide", "close", "Hide in the score", `Leave ${ch.name} out of the score (the sidebar's eye brings it back)`, () => {
+    commit(() => {
+      if (!p.score.hidden.includes(id)) p.score.hidden.push(id);
+    });
+  });
+  // Give the part to another instrument.
+  const others = p.channels.filter((x) => x.id !== id);
+  if (others.length > 0) {
+    b.leaf("div", "mh", "score-partmenu-h", `Move ${ch.name}'s part to… ${scopeWords(scopeOf(v))}`);
+    b.open("div", "to", "score-partmenu-to");
+    for (const o of others) {
+      b.open("button", o.id, "auto-menu-item score-partmenu-dest");
+      const tip = `Give every note of ${ch.name} ${scopeWords(scopeOf(v))} to ${o.name} (${instrumentLabel(o.instrument)}) — Ctrl+Z undoes`;
+      b.attr("title", tip);
+      b.on("pointerenter", (e) => hint(tip));
+      b.on("click", (e) => {
+        v.menu.on = false;
+        movePart(v, [id], o.id, 0, Infinity, scopeWords(scopeOf(v)));
+      });
+      b.leaf("i", "sw", "swatch", "");
+      b.style("--c", o.color);
+      b.leaf("span", "l", "", o.name);
+      b.leaf("span", "i", "score-partmenu-ins", instrumentLabel(o.instrument));
+      b.close();
+    }
+    b.close();
+  }
+  b.close();
+}
+
 // ------------------------------------------------------------------ pointer
 
 /** function onPaperDown(e: Ev, v: ScoreView, c: Cached, geo: PageGeo) => Undefined */
@@ -622,6 +903,14 @@ function onPaperDown(e, v, c, geo) {
   const s = page.systems[si];
   const x = (px - geo.left - geo.padX) / geo.sp;
   const y = (py - sysY(geo, s)) / geo.sp;
+  // A staff's name: the menu of its part (its instrument, or move it to another).
+  const ni = nameAt(s, x, y);
+  if (ni >= 0) {
+    e.preventDefault();
+    v.range.on = false;
+    openPartMenu(v, c.score.staves[s.labels[ni].staff].channels, e.clientX + 4, e.clientY + 8);
+    return undefined;
+  }
   const hi = headAt(s, x, y);
   if (v.tool === "select" || e.button === 2 || hi >= 0) {
     if (hi >= 0) {
@@ -664,12 +953,25 @@ function onPaperDown(e, v, c, geo) {
       if (!dragging) {
         v.range.on = false;
         state.selection = [];
-        seekScore(v, xTick(s.times, x) / TPQ);
+        seekScore(v, seekTick(v, s, x) / TPQ);
         reportContext();
         invalidate();
       }
     }
   );
+}
+
+/** Where a click on the paper moves the playhead: the nearest grid line. */
+/** function seekTick(v: ScoreView, s: Sys, x: Number) => Number */
+function seekTick(v, s, x) {
+  return Math.max(s.start, Math.round(xTick(s.times, x) / v.grid) * v.grid);
+}
+
+/** Whether a click on the paper moves the playhead (in pattern mode, only the pattern playing). */
+/** function canSeek(v: ScoreView) => Boolean */
+function canSeek(v) {
+  const sc = scopeOf(v);
+  return sc.kind === "pattern" ? state.mode === "pattern" && state.pattern === sc.pattern : state.mode === "song";
 }
 
 /** function snapTick(t: Number, grid: Int, up: Boolean) => Number */
@@ -693,24 +995,69 @@ function onPaperMove(e, v, c, geo) {
   const page = c.page;
   const si = sysAt(geo, page, py);
   const g = v.ghost;
+  // While a button is held (a drag), what is under the pointer is not what a click would do.
+  if (e.buttons !== 0 || v.tool === "pan") {
+    setHover(v, "", -1, -1, 0);
+    return undefined;
+  }
+  if (px < geo.left || px > geo.left + geo.paperW) {
+    setHover(v, "desk", -1, -1, 0);
+    hint("Drag to move the page about");
+  }
   if (si < 0) {
+    if (g.sys >= 0) {
+      v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
+      invalidate();
+    }
+    if (px >= geo.left && px <= geo.left + geo.paperW) setHover(v, "", -1, -1, 0);
+    return undefined;
+  }
+  const s = page.systems[si];
+  const x = (px - geo.left - geo.padX) / geo.sp;
+  const y = (py - sysY(geo, s)) / geo.sp;
+  const ni = nameAt(s, x, y);
+  if (ni >= 0) {
+    setHover(v, "name", si, ni, 0);
+    const st = c.score.staves[s.labels[ni].staff];
+    const ch = channelById(st.channel);
+    hint(
+      `${ch ? ch.name : st.name}${ch ? ` (${instrumentLabel(ch.instrument)})` : ""} — click: its instrument in the channel rack, the piano roll or the mixer, or move the part to another instrument`
+    );
     if (g.sys >= 0) {
       v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
       invalidate();
     }
     return undefined;
   }
-  const s = page.systems[si];
-  const x = (px - geo.left - geo.padX) / geo.sp;
-  const y = (py - sysY(geo, s)) / geo.sp;
+  if (px < geo.left || px > geo.left + geo.paperW) {
+    if (g.sys >= 0) {
+      v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
+      invalidate();
+    }
+    return undefined;
+  }
   const hi = headAt(s, x, y);
   if (v.tool === "select") {
     if (hi >= 0) {
+      setHover(v, "note", si, hi, 0);
       const n = c.score.notes[s.heads[hi].src];
-      hint(`${spelledName(n.pitch, c.score.fifths)} · ${n.channel} — drag to move, double-click for the piano roll, right-click to delete`);
-    } else hint("Click to move the playhead · drag across the music to color a passage · Write (Shift+P) adds notes");
+      const ch = channelById(n.channel);
+      hint(
+        `${spelledName(n.pitch, c.score.fifths)} · ${ch ? ch.name : n.channel} — click to select, drag to move, double-click for the piano roll, right-click to delete`
+      );
+    } else if (x >= s.x0 - 0.5 && x <= s.x1 && canSeek(v)) {
+      setHover(v, "paper", si, -1, seekTick(v, s, x));
+      hint(
+        `Click to move the playhead to bar ${barOf(c.score, seekTick(v, s, x))} · drag across the music to choose a passage (color it, repeat it, move it to another instrument)`
+      );
+    } else {
+      setHover(v, "", -1, -1, 0);
+      hint("Drag across the music to choose a passage (color it, repeat it, move it to another instrument) · Write (Shift+P) adds notes");
+    }
     return undefined;
   }
+  // Write: a note under the pointer is still grabbed (and lit); elsewhere the ghost shows the note to write.
+  setHover(v, hi >= 0 ? "note" : "", hi >= 0 ? si : -1, hi, 0);
   const r = rowAt(s, y);
   if (r < 0 || x < s.x0 - 0.5 || x > s.x1) {
     if (g.sys >= 0) {
@@ -750,12 +1097,14 @@ function paperView(b, v, c, geo, sc) {
   const total = geo.top * 2 + paperH(geo, page);
   // The scroller, under a lamp that stays put while the paper slides beneath it.
   b.open("div", "view", "score-view");
-  b.open("div", "scroll", `score-scroll${v.tool === "write" ? " writing" : v.tool === "pan" ? " hand" : ""}${v.panning ? " grabbing" : ""}`);
+  const over = v.hover.kind === "" ? "" : ` over-${v.hover.kind}`;
+  b.open("div", "scroll", `score-scroll${v.tool === "write" ? " writing" : v.tool === "pan" ? " hand" : ""}${v.panning ? " grabbing" : ""}${over}`);
   // The width the page is laid out for: it matches the element once the layout has caught up with a resize.
   b.attr("data-width", String(Math.round(v.width)));
   b.on("scroll", (e) => {
     v.scrollTop = e.scrollTop;
     v.scrollLeft = e.scrollLeft;
+    v.menu.on = false;
     invalidate();
   });
   b.on("resize", (e) => {
@@ -786,6 +1135,7 @@ function paperView(b, v, c, geo, sc) {
       v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
       invalidate();
     }
+    setHover(v, "", -1, -1, 0);
   });
   b.on("dblclick", (e) => {
     const px = e.clientX - e.targetLeft + e.scrollLeft;
@@ -1128,6 +1478,7 @@ function systemView(b, v, c, geo, i, y, sel) {
     b.attr("x", xs.join(" "));
     b.attr("y", ys.join(" "));
   }
+  hoverView(b, v, s, i);
   // The gloss of the wet ink, over the music (and the selection): the soft sheen, then the glints.
   if (v.ink === "wet") {
     for (const run of [SHEEN, GLOSS]) {
@@ -1166,6 +1517,44 @@ function systemView(b, v, c, geo, i, y, sel) {
     }
   }
   b.close();
+}
+
+/** What a click would act on, lit under the pointer: a staff's name (underlined, glowing), a note
+ * (lit to be grabbed), or the line on the paper the playhead would move to. */
+/** function hoverView(b: Builder, v: ScoreView, s: Sys, i: Int) => Undefined */
+function hoverView(b, v, s, i) {
+  const h = v.hover;
+  if (h.sys !== i || v.menu.on) return undefined;
+  if (h.kind === "name" && h.idx < s.labels.length) {
+    const l = s.labels[h.idx];
+    const w = nameWidth(l);
+    b.leaf("rect", "hname-line", "name-line", "");
+    b.attr("x", fmt(l.x - w, 2));
+    b.attr("y", fmt(l.y + 0.3, 2));
+    b.attr("width", fmt(w, 2));
+    b.attr("height", "0.13");
+    b.attr("rx", "0.06");
+    b.leaf("text", "hname", `${l.cls} name-hot`, l.text);
+    b.attr("x", fmt(l.x, 2));
+    b.attr("y", fmt(l.y, 2));
+    b.attr("text-anchor", l.anchor);
+  }
+  if (h.kind === "note" && h.idx < s.heads.length) {
+    const hd = s.heads[h.idx];
+    b.leaf("text", "hnote", "glyphs hov", hd.glyph);
+    b.attr("x", fmt(hd.x, 2));
+    b.attr("y", fmt(hd.y, 2));
+  }
+  if (h.kind === "paper" && s.rows.length > 0) {
+    const y0 = s.rows[0].y - 2;
+    const y1 = s.rows[s.rows.length - 1].y + 6;
+    b.leaf("rect", "hseek", "seek-line", "");
+    b.attr("x", fmt(timeX(s.times, h.x) + 0.59 - 0.07, 2));
+    b.attr("y", fmt(y0, 2));
+    b.attr("width", "0.14");
+    b.attr("height", fmt(y1 - y0, 2));
+    b.attr("rx", "0.07");
+  }
 }
 
 /** The playhead: a line through the system that is playing. */
@@ -1248,8 +1637,15 @@ function sideView(b, v, c, sc, geo) {
     });
     b.leaf("span", "dot", "score-dot", "");
     b.style("--c", ch.color);
-    b.leaf("span", "name", "score-part-name", ch.name);
-    b.attr("title", ch.name);
+    b.leaf("button", "name", "score-part-name hot", ch.name);
+    const tip = `${ch.name} (${instrumentLabel(ch.instrument)}) — its instrument in the channel rack, the piano roll or the mixer, or move the part to another instrument`;
+    b.attr("title", tip);
+    b.on("pointerenter", (e) => hint(tip));
+    b.on("click", (e) => {
+      // From the keyboard (Enter) there is no pointer: open it under the name.
+      const keyed = e.clientX === 0 && e.clientY === 0;
+      openPartMenu(v, [ch.id], keyed ? e.targetLeft : e.clientX + 4, keyed ? e.targetTop + e.targetHeight + 4 : e.clientY + 8);
+    });
     const set = settings.clefs.find((x) => x.key === ch.id);
     select(b, "clef", "score-clef", set ? set.value : "auto", CLEF_IDS, CLEF_NAMES, `Clef for ${ch.name}`, (val) => {
       commit(() => {
@@ -1490,6 +1886,7 @@ function rangeBar(b, v, c) {
   b.leaf("button", "clear", "btn small ghost", "Clear colors");
   b.attr("title", "Remove the colors that touch this passage");
   b.on("click", (e) => clearRange(v, c.score));
+  moveRangeSelect(b, v, c);
   if (scopeOf(v).kind !== "pattern") {
     b.leaf("button", "repeat", "btn small ghost", "Repeat");
     b.attr("title", "Repeat these bars (play them twice; set how many times under Repeats)");
@@ -1505,6 +1902,66 @@ function rangeBar(b, v, c) {
   b.close();
 }
 
+/** The channels with notes in the chosen passage, on the chosen staves. */
+/** function rangeChannels(v: ScoreView, sc: Score) => String[] */
+function rangeChannels(v, sc) {
+  const r = v.range;
+  const t0 = Math.min(r.t0, r.t1) / TPQ;
+  const t1 = Math.max(r.t0, r.t1) / TPQ;
+  /** const staffed: String[] */
+  const staffed = [];
+  for (let k = r.s0; k <= r.s1 && k < sc.staves.length; k++) for (const id of sc.staves[k].channels) if (!staffed.includes(id)) staffed.push(id);
+  /** const out: String[] */
+  const out = [];
+  const snap = v.grid / TPQ;
+  for (const n of sc.notes) {
+    // Where the score writes it: its start rounded to the grid.
+    const at = Math.round(n.start / snap) * snap;
+    if (at < t0 - 1e-6 || at >= t1 - 1e-6 || !staffed.includes(n.channel) || out.includes(n.channel)) continue;
+    out.push(n.channel);
+  }
+  return out;
+}
+
+/** Give the chosen passage's part (the chosen staves) to another instrument. */
+/** function moveRangeSelect(b: Builder, v: ScoreView, c: Cached) => Undefined */
+function moveRangeSelect(b, v, c) {
+  const parts = rangeChannels(v, c.score);
+  if (parts.length === 0) return undefined;
+  /** const ids: String[] */
+  const ids = [""];
+  /** const names: String[] */
+  const names = ["Move to…"];
+  for (const ch of state.project.channels) {
+    if (parts.length === 1 && parts[0] === ch.id) continue;
+    ids.push(ch.id);
+    names.push(ch.name);
+  }
+  if (ids.length === 1) return undefined;
+  const who = parts.map((id) => {
+    const ch = channelById(id);
+    return ch ? ch.name : id;
+  });
+  select(
+    b,
+    "move",
+    "score-range-move",
+    "",
+    ids,
+    names,
+    `Give these bars of ${who.join(", ")} to another instrument (the rest of the song keeps ${parts.length === 1 ? "it" : "them"}; Ctrl+Z undoes)`,
+    (val) => {
+      if (val === "") return undefined;
+      const r = v.range;
+      v.range.on = false;
+      const bar0 = barOf(c.score, Math.min(r.t0, r.t1));
+      const bar1 = barOf(c.score, Math.max(r.t0, r.t1) - 1);
+      const bars = bar0 === bar1 ? `in bar ${bar0}` : `in bars ${bar0}–${bar1}`;
+      movePart(v, parts, val, Math.min(r.t0, r.t1) / TPQ, Math.max(r.t0, r.t1) / TPQ, scopeOf(v).kind === "pattern" ? `${bars} of the pattern` : bars);
+    }
+  );
+}
+
 // ------------------------------------------------------------------ public
 
 /** function setScope(v: ScoreView, scope: String) => Undefined */
@@ -1512,6 +1969,7 @@ function setScope(v, scope) {
   v.scope = scope;
   v.scrollTop = 0;
   v.range.on = false;
+  v.menu.on = false;
   savePrefs(v);
   invalidate();
 }
@@ -1634,12 +2092,21 @@ export function scoreView(b, v) {
   b.on("pointerdown", (e) => setFocus("score"));
   const geo = pageGeo(v, sc);
   const c = cached(v, sc, geo);
+  // Every child here is always described, in the same order: when the children of a node change,
+  // the tree attaches them all again, and a scrolled view attached again is back at its top. So
+  // what comes and goes (the sidebar, the passage's bar, the menus) lives in containers that stay.
   if (v.side) sideView(b, v, c, sc, geo);
+  else b.leaf("aside", "side", "score-side off", "");
   b.open("div", "main", "score-main");
   ribbon(b, v);
   paperView(b, v, c, geo, sc);
+  b.open("div", "over", "score-over");
   rangeBar(b, v, c);
   if (v.pdfMenu) pdfMenu(b, v);
+  b.close();
+  b.close();
+  b.open("div", "menus", "score-over");
+  partMenu(b, v, c);
   b.close();
   b.close();
 }
@@ -1842,6 +2309,7 @@ function ribbon(b, v) {
   }
   iconButton(b, "film", "small", "film", "Film: the camera plays the song over the pages on a desk, zooming in on the parts that carry it", () => {
     v.film = true;
+    v.menu.on = false;
     v.range.on = false;
     savePrefs(v);
     invalidate();
@@ -1868,9 +2336,15 @@ export function setScoreTool(tool) {
   invalidate();
 }
 
-/** Escape: drop the chosen passage. Returns true when there was one. */
+/** Escape: close a part's menu, or drop the chosen passage. Returns true when there was one. */
 /** function cancelScoreRange() => Boolean */
 export function cancelScoreRange() {
+  for (const v of [topScore, dockScore]) {
+    if (v.menu.on) {
+      closePartMenu(v);
+      return true;
+    }
+  }
   for (const v of [topScore, dockScore]) {
     if (v.range.on) {
       v.range.on = false;

@@ -7,6 +7,7 @@ import { faderAt, knobAt, meter, button, iconButton, select } from "./widgets.js
 import { deviceControls } from "./rack.js";
 import { shownValue, remapEffects } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
+import { reveal } from "./panes.js";
 
 /** Fader travel: 0..1 maps to -inf..+6 dB with a musical curve. */
 /** function volToFader(v: Number) => Number */
@@ -30,6 +31,8 @@ function strip(b, ins, i) {
   const users = state.project.channels.filter((c) => insertIndex(c.mixer) === i).map((c) => c.name);
 
   b.open("div", `s${i}`, cls);
+  // Asked for from a channel (the rack, the score): brought into view.
+  if (reveal.insert === i) b.prop("reveal", "true");
   b.on("pointerdown", (e) => {
     if (!sel) selectInsert(ix);
   });
@@ -179,6 +182,7 @@ export function mixer(b) {
   b.open("div", "strips", "strips");
   const inserts = state.project.mixer.inserts;
   for (let i = 0; i < inserts.length; i++) strip(b, inserts[i], i);
+  reveal.insert = -1;
   b.close();
   fxPanel(b);
   b.close();

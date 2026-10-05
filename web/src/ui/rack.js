@@ -17,6 +17,7 @@ import { insertIx, insertIndex } from "#brands";
 import { sampleCredit } from "./credits.js";
 import { dragPick, replaceInstrument, addPick } from "./instruments.js";
 import { browseInstrument } from "./browser.js";
+import { showInsert } from "./panes.js";
 
 const STEP = 0.25;
 const EPS = 0.000001;
@@ -162,22 +163,30 @@ function rackRow(b, pat, ch, idx) {
   });
 
   b.leaf("div", "ins", "ch-ins", insertIndex(ch.mixer) === 0 ? "M" : String(insertIndex(ch.mixer)));
-  b.attr("title", "Mixer insert — drag up/down to reroute");
-  b.on("pointerenter", (e) => hint("Mixer insert this channel plays through — drag to change, M = master"));
+  b.attr("title", "Mixer insert — click to show it in the mixer, drag up/down to reroute");
+  b.on("pointerenter", (e) => hint("Mixer insert this channel plays through — click to show it in the mixer, drag to change, M = master"));
   b.on("pointerdown", (e) => {
     e.preventDefault();
-    begin();
     const y0 = e.clientY;
     const i0 = insertIndex(ch.mixer);
     const max = state.project.mixer.inserts.length - 1;
+    let moved = false;
     drag(
       e,
       (m) => {
         const i = Math.max(0, Math.min(max, i0 + Math.round((y0 - m.clientY) / 12)));
+        if (!moved && i === i0) return undefined;
+        if (!moved) {
+          moved = true;
+          begin();
+        }
         ch.mixer = insertIx(i);
         changed(true);
       },
-      (u) => undefined
+      (u) => {
+        // A click without a drag: go to the insert.
+        if (!moved) showInsert(ch.mixer);
+      }
     );
   });
 
@@ -556,6 +565,16 @@ function inspector(b) {
   button(b, "roll", "small", "Piano roll", "Edit this channel's notes (F7)", () => {
     showDock("piano");
   });
+  button(
+    b,
+    "mix",
+    "small",
+    insertIndex(ch.mixer) === 0 ? "Mixer · Master" : `Mixer · Insert ${insertIndex(ch.mixer)}`,
+    "Show the mixer insert this channel plays through: its level, pan and effects (F9)",
+    () => {
+      showInsert(ch.mixer);
+    }
+  );
   button(b, "dup", "small", "Duplicate", "Duplicate this channel", () => {
     duplicateChannel(ch);
   });
