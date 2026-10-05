@@ -794,6 +794,14 @@ export function toggleFullscreen(selector) {
   if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {});
 }
 
+// A press on the music (not on a control) takes the keyboard back from a
+// text field, a menu or the agent's terminal, so the studio's keys (Space
+// plays) work at once.
+export function releaseFocus() {
+  const el = document.activeElement;
+  if (el && el !== document.body && typeof el.blur === "function") el.blur();
+}
+
 export function textWidth(face, text) {
   if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
   const style = face.includes("Italic") ? "italic " : "";

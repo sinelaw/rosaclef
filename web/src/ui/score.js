@@ -25,7 +25,7 @@
 //  - Under the pointer, what a click would act on is lit: a name glows and is
 //    underlined, a note lights up, and a line shows where the playhead would go.
 
-import { drag, fmt, loadPref, savePref, pressOrTap, downloadPdf, downloadImagePdf, textWidth, paperSize, pixelRatio } from "#platform";
+import { drag, fmt, loadPref, savePref, pressOrTap, releaseFocus, downloadPdf, downloadImagePdf, textWidth, paperSize, pixelRatio } from "#platform";
 import { state, commit, begin, changed, invalidate, hint, setFocus, reportContext, currentPattern, selectChannel } from "../store.js";
 import { PALETTE, semitonesText, moveRole, cloneProject } from "../model.js";
 import {
@@ -2042,13 +2042,22 @@ function filmOf(b, v, sc) {
   });
 }
 
+/** A press anywhere in the score makes it the focus of the keys; off a control (a field, a menu,
+ * a button), it also takes the keyboard back from where it was (the terminal, a field), so Space
+ * plays and stops, Delete and the arrows edit, Shift+P/E/H change tools. */
+/** function grabKeys(e: Ev) => Undefined */
+function grabKeys(e) {
+  setFocus("score");
+  if (!e.typing && !e.onControl) releaseFocus();
+}
+
 /** The score in a pane: `id` "top" (beside the playlist) or "dock". */
 /** function scoreView(b: Builder, v: ScoreView) => Undefined */
 export function scoreView(b, v) {
   const sc = scopeOf(v);
   if (v.film) {
     b.open("div", `score-${v.id}`, `score score-${v.id} filming`);
-    b.on("pointerdown", (e) => setFocus("score"));
+    b.on("pointerdown", (e) => grabKeys(e));
     filmOf(b, v, sc);
     b.close();
     return undefined;
@@ -2059,7 +2068,7 @@ export function scoreView(b, v) {
   b.style("--tooth", `url("${paper.tooth.url}")`);
   b.style("--mottle", `url("${paper.mottle.url}")`);
   b.style("--grain", `url("${paper.grain.url}")`);
-  b.on("pointerdown", (e) => setFocus("score"));
+  b.on("pointerdown", (e) => grabKeys(e));
   const geo = pageGeo(v, sc);
   const c = cached(v, sc, geo);
   if (v.side) sideView(b, v, c, sc, geo);

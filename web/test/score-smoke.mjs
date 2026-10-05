@@ -125,6 +125,28 @@ await page.waitForSelector(".score-top .score-scroll.over-note");
 ok("a note under the pointer lights up, ready to be grabbed");
 await page.keyboard.press("Escape");
 
+// A click on the music takes the keys back from a menu or the agent's terminal: Space plays and stops.
+const music = await page.locator(".score-top .score-sys").first().boundingBox();
+/** Give the keys to `sel`, click the music, then Space plays and Space stops. */
+async function spaceAfter(sel, what) {
+  await page.focus(sel);
+  if (!(await page.evaluate((q) => document.activeElement === document.querySelector(q) || document.activeElement?.closest(q) !== null, sel)))
+    throw new Error(`${what} did not take the keys`);
+  await page.mouse.click(music.x + music.width * 0.5, music.y + music.height * 0.5);
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => document.querySelector("button.play.on") !== null, null, { timeout: 5000 });
+  await page.keyboard.press("Space");
+  await page.waitForFunction(() => document.querySelector("button.play.on") === null, null, { timeout: 5000 });
+  ok(`after ${what} had the keys, a click on the music and Space plays and stops`);
+}
+await spaceAfter(".score-top .score-ribbon select", "the Key menu");
+if ((await page.locator(".xterm textarea").count()) === 0 && (await page.locator("button:has-text('Rosaclef shell')").count()) > 0) {
+  await page.click("button:has-text('Rosaclef shell')");
+  await page.waitForSelector(".xterm textarea", { timeout: 15000 });
+}
+if ((await page.locator(".xterm textarea").count()) > 0) await spaceAfter(".xterm textarea", "the terminal");
+await page.keyboard.press("Escape");
+
 // The pattern of the piano roll, in the dock (F10); write a note into it.
 await page.keyboard.press("Control+Alt+KeyP");
 await page.keyboard.press("F10");
