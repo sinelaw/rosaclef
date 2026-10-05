@@ -19,8 +19,7 @@ export const TPQ = 48;
 /** A note as it sounds in the score's time: `origin` is where its pattern's beat 0 falls. */
 /** type SrcNote = { pitch: Int, start: Number, end: Number, velocity: Number, channel: String, pattern: String, index: Int, origin: Number } */
 
-/** What to write down: the "song", one playlist "track" or one "pattern". */
-/** type Scope = { kind: String, track: Int, pattern: String } */
+/** What to write down (`Scope`, in model.js): the "song", one playlist "track" or one "pattern". */
 
 /** A notehead. `acc`: the accidental to draw (-2..2), or NO_ACC. `head`: "" (normal), "x" or "o" (drums). */
 /** type Head = { pitch: Int, step: Int, alter: Int, acc: Int, head: String, src: Int, tieIn: Boolean, tieOut: Boolean } */

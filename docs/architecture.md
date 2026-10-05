@@ -162,7 +162,11 @@
   itself draws the glyphs), caches the engraving by `state.edits`, and maps
   edits back to pattern notes. `project.score` (`Score` in
   `crates/core/src/model.rs`) holds the key, hidden channels and tracks,
-  clefs and colored passages. The page is laid out to fit the view at the
+  clefs and colored passages. A staff's name opens its part's menu (the
+  channel in the rack, the piano roll, the mixer), and a part, or a passage
+  of it, moves to another channel with `moveRole` (`web/src/model.js`): in
+  the song it splits the clips at the passage's edges and copies a pattern
+  that also plays elsewhere, so nothing outside the passage changes. The page is laid out to fit the view at the
   music's size; the zoom only magnifies it. `web/src/ink.js` holds the look
   of ink and paper: the SVG filter the engraving is drawn through (wet ink lit
   as a raised, glossy surface; dry ink with wicked edges and a pooled rim) and

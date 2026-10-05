@@ -16,6 +16,7 @@
   --sel: #b0283f;
   --range: rgba(176, 40, 63, 0.1);
   --range-line: rgba(176, 40, 63, 0.55);
+  --hot-glow: rgba(176, 40, 63, 0.45);
   --desk: radial-gradient(120% 90% at 50% 0%, #2a2430 0%, #17141b 55%, #0e0c11 100%);
   display: flex;
   height: 100%;
@@ -31,6 +32,7 @@
   --sel: #ff9fae;
   --range: rgba(212, 175, 55, 0.1);
   --range-line: rgba(212, 175, 55, 0.6);
+  --hot-glow: rgba(255, 159, 174, 0.5);
   --desk: radial-gradient(120% 90% at 50% 0%, #120f16 0%, #08070a 100%);
 }
 
@@ -72,6 +74,20 @@
   cursor: grab;
 }
 .score-scroll.grabbing {
+  cursor: grabbing;
+}
+/* What a click would do, under the pointer: open a part's menu, grab a note, move the page. */
+.score-scroll.over-name {
+  cursor: pointer;
+}
+.score-scroll.over-note {
+  cursor: grab;
+}
+.score-scroll.over-desk {
+  cursor: grab;
+}
+.score-scroll.grabbing.over-note,
+.score-scroll.grabbing.over-desk {
   cursor: grabbing;
 }
 .score-content {
@@ -257,6 +273,26 @@
 .score-sys .sel {
   fill: var(--sel);
   filter: drop-shadow(0 0 0.35px var(--sel));
+}
+/* Under the pointer: a staff's name lit and underlined (a click opens its part's menu)… */
+.score-sys .name-hot {
+  fill: var(--sel);
+  filter: drop-shadow(0 0 0.25px var(--sel)) drop-shadow(0 0 0.6px var(--hot-glow));
+}
+.score-sys .name-line {
+  fill: var(--sel);
+  opacity: 0.8;
+}
+/* …a note lit, to be grabbed… */
+.score-sys .hov {
+  fill: var(--sel);
+  opacity: 0.8;
+  filter: drop-shadow(0 0 0.3px var(--sel)) drop-shadow(0 0 0.7px var(--hot-glow));
+}
+/* …or the line the playhead would move to. */
+.score-sys .seek-line {
+  fill: var(--sel);
+  opacity: 0.3;
 }
 .score-sys .ghost {
   fill: var(--sel);
@@ -538,6 +574,26 @@
   font: 500 15px/1.1 var(--serif);
   color: var(--text);
 }
+/* The sidebar's part names open the part's menu, like the names on the page. */
+.score-part-name.hot {
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline transparent;
+  text-underline-offset: 3px;
+  transition:
+    color 0.12s,
+    text-decoration-color 0.12s,
+    text-shadow 0.12s;
+}
+.score-part-name.hot:hover,
+.score-part-name.hot:focus-visible {
+  color: var(--gold-hi);
+  text-decoration-color: var(--gold);
+  text-shadow: 0 0 10px rgba(212, 175, 55, 0.45);
+}
 .select.score-clef {
   width: 74px;
   height: 22px;
@@ -677,4 +733,67 @@
   background: rgba(212, 175, 55, 0.18);
   border-color: var(--gold-mid);
   color: var(--champagne);
+}
+
+/* ---------------------------------------------------------------- a part's menu */
+
+.score-partmenu {
+  width: 280px;
+  max-height: min(560px, calc(100vh - 24px));
+  display: flex;
+  flex-direction: column;
+}
+.score-partmenu-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.score-partmenu-chs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 6px 6px;
+}
+.score-partmenu-ch {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+.score-partmenu-ch.on {
+  border-color: var(--gold);
+  color: var(--gold-hi);
+}
+.score-partmenu-h {
+  margin: 6px 8px 3px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  font: 600 10px/1.3 var(--sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold-mid);
+}
+.score-partmenu-to {
+  min-height: 0;
+  overflow: auto;
+}
+.score-partmenu-dest .swatch {
+  margin: 0 2px;
+}
+.score-partmenu-ins {
+  margin-left: auto;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--dim);
+}
+.select.score-range-move {
+  max-width: 130px;
 }

@@ -7,6 +7,7 @@ import { faderAt, knobAt, meter, button, iconButton, select } from "./widgets.js
 import { deviceControls } from "./rack.js";
 import { shownValue, remapEffects } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
+import { reveal } from "./panes.js";
 
 /** Fader travel: 0..1 maps to -inf..+6 dB with a musical curve. */
 /** function volToFader(v: Number) => Number */
@@ -177,6 +178,11 @@ function fxPanel(b) {
 export function mixer(b) {
   b.open("div", "mixer", "mixer");
   b.open("div", "strips", "strips");
+  if (reveal.insert >= 0) {
+    // Strips are 78px wide, 6px apart: leave one strip of room on the left.
+    b.prop("scrollLeft", String(Math.max(0, (reveal.insert - 1) * 84)));
+    reveal.insert = -1;
+  }
   const inserts = state.project.mixer.inserts;
   for (let i = 0; i < inserts.length; i++) strip(b, inserts[i], i);
   b.close();

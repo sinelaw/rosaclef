@@ -920,6 +920,165 @@ export function songLength(p) {
   return end;
 }
 
+// ------------------------------------------------------------------ moving a part
+
+/** Give the notes of channels `from` that start in beats [t0, t1) of a scope (the song, a
+ * playlist track or a pattern: notation.js's `Scope`) to channel `to`: the part moves to
+ * another instrument. In a pattern, its notes there move (wherever the pattern plays). In the
+ * song or a track, nothing outside the window changes: a clip that crosses an edge of the
+ * window is split there, and a pattern that also plays outside it is copied for the clips
+ * inside. `t1` may be Infinity (to the end). */
+/** What notation.js writes down, and where a part moves: the "song", one playlist "track" or one "pattern". */
+/** type Scope = { kind: String, track: Int, pattern: String } */
+/** type RoleMove = { from: String[], to: String, t0: Number, t1: Number } */
+/** What a move did: notes given to `to`, clips split, patterns copied. */
+/** type Moved = { notes: Int, splits: Int, copies: Int } */
+
+const EDGE = 1e-6;
+
+/** function moveRole(p: Project, scope: Scope, m: RoleMove) => Moved */
+export function moveRole(p, scope, m) {
+  const out = { notes: 0, splits: 0, copies: 0 };
+  if (m.from.length === 0 || !(m.t1 > m.t0) || !p.channels.some((c) => c.id === m.to)) return out;
+  if (scope.kind === "pattern") {
+    const pat = p.patterns.find((x) => x.id === scope.pattern);
+    if (pat) out.notes = retag(pat, m, m.t0, m.t1);
+    return out;
+  }
+  const hidden = p.score.hiddenTracks.map(trackIndex);
+  /** const inside: Clip[] */
+  const inside = [];
+  // New clips (the parts split off) go to the end of the list: only the clips there now are looked at.
+  const count = p.playlist.clips.length;
+  for (let k = 0; k < count; k++) {
+    let c = p.playlist.clips[k];
+    if (c.pattern === "") continue;
+    const tr = trackIndex(c.track);
+    if (scope.kind === "track" ? tr !== scope.track : hidden.includes(tr)) continue;
+    const a = Math.max(m.t0, c.start);
+    const b = Math.min(m.t1, c.start + c.length);
+    if (b <= a + EDGE) continue;
+    const pat = p.patterns.find((x) => x.id === c.pattern);
+    if (!pat || pat.length <= 0 || !soundsIn(pat, c, a, b, m.from)) continue;
+    if (c.start < m.t0 - EDGE) {
+      c = splitClip(p, c, m.t0);
+      out.splits = out.splits + 1;
+    }
+    if (c.start + c.length > m.t1 + EDGE) {
+      splitClip(p, c, m.t1);
+      out.splits = out.splits + 1;
+    }
+    inside.push(c);
+  }
+  /** const done: String[] */
+  const done = [];
+  for (const c of inside) {
+    if (done.includes(c.pattern)) continue;
+    const id = c.pattern;
+    done.push(id);
+    const pat = p.patterns.find((x) => x.id === id);
+    if (!pat) continue;
+    const mine = inside.filter((x) => x.pattern === id);
+    let target = pat;
+    // Played elsewhere too (outside the window, on another track, on a hidden one): a copy for the clips inside.
+    if (p.playlist.clips.some((x) => x.pattern === id && !mine.includes(x))) {
+      target = copyPattern(p, pat);
+      for (const x of mine) x.pattern = target.id;
+      out.copies = out.copies + 1;
+    }
+    out.notes = out.notes + retag(target, m, -Infinity, Infinity);
+  }
+  return out;
+}
+
+/** Give a pattern's notes of `m.from` starting in [t0, t1) to `m.to`; returns how many. */
+/** function retag(pat: Pattern, m: RoleMove, t0: Number, t1: Number) => Int */
+function retag(pat, m, t0, t1) {
+  let n = 0;
+  for (const nt of pat.notes) {
+    if (!m.from.includes(nt.channel) || nt.channel === m.to) continue;
+    if (nt.start < t0 - EDGE || nt.start >= t1 - EDGE) continue;
+    nt.channel = m.to;
+    n = n + 1;
+  }
+  return n;
+}
+
+/** Whether a note of channels `ids` starts in song beats [a, b) of a clip (as the clip loops its pattern). */
+/** function soundsIn(pat: Pattern, c: Clip, a: Number, b: Number, ids: String[]) => Boolean */
+function soundsIn(pat, c, a, b, ids) {
+  const L = pat.length;
+  const w0 = c.offset;
+  const w1 = c.offset + c.length;
+  for (let j = Math.floor(w0 / L); j * L < w1; j++) {
+    for (const n of pat.notes) {
+      if (!ids.includes(n.channel) || n.start >= L - EDGE) continue;
+      const t = n.start + j * L;
+      if (t < w0 - EDGE || t >= w1 - EDGE) continue;
+      const at = c.start + t - w0;
+      if (at >= a - EDGE && at < b - EDGE) return true;
+    }
+  }
+  return false;
+}
+
+/** Cut a clip in two at song beat `at`: it keeps the part before; the part after is a new clip (returned). */
+/** function splitClip(p: Project, c: Clip, at: Number) => Clip */
+function splitClip(p, c, at) {
+  const cut = at - c.start;
+  const right = {
+    pattern: c.pattern,
+    sample: c.sample,
+    track: c.track,
+    start: at,
+    length: c.length - cut,
+    offset: c.offset + cut,
+    gain: c.gain,
+    mixer: c.mixer,
+  };
+  c.length = cut;
+  p.playlist.clips.push(right);
+  return right;
+}
+
+/** A copy of a pattern, added to the project (named after it). */
+/** function copyPattern(p: Project, pat: Pattern) => Pattern */
+function copyPattern(p, pat) {
+  const id = uniqueId(
+    `${pat.id}-2`,
+    p.patterns.map((x) => x.id)
+  );
+  let name = `${pat.name} 2`;
+  let k = 3;
+  while (p.patterns.some((x) => x.name === name)) {
+    name = `${pat.name} ${k}`;
+    k = k + 1;
+  }
+  const d = pat.drums;
+  const copy = {
+    id: id,
+    name: name,
+    color: pat.color,
+    length: pat.length,
+    notes: pat.notes.map((n) => ({ channel: n.channel, pitch: n.pitch, start: n.start, length: n.length, velocity: n.velocity })),
+    drums: {
+      on: d.on,
+      groove: d.groove,
+      play: d.play,
+      fill: d.fill,
+      crash: d.crash,
+      turnaround: d.turnaround,
+      kit: d.kit,
+      feel: d.feel,
+      swing: d.swing,
+      seed: d.seed,
+      edited: d.edited || d.on,
+    },
+  };
+  p.patterns.splice(p.patterns.indexOf(pat) + 1, 0, copy);
+  return copy;
+}
+
 /** function dbText(gain: Number) => String */
 export function dbText(gain) {
   if (gain <= 0.00001) return "-∞ dB";

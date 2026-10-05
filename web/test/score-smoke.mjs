@@ -63,6 +63,68 @@ for (let i = 0; i < 3; i++) await page.keyboard.press("Control+z");
 await page.waitForFunction(() => document.querySelector(".score-top .score-rep") === null && document.querySelector(".score-top text.volta") === null);
 ok("Ctrl+Z takes the repeat back");
 
+// A staff's name: lit under the pointer, and a click opens its part's menu.
+const partNames = () => page.locator(".score-top .score-part-name.hot").allTextContents();
+const nameBox = await page.locator(".score-top .score-sys text.sname").first().boundingBox();
+const partName = await page.locator(".score-top .score-sys text.sname").first().textContent();
+await page.mouse.move(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-top text.name-hot");
+await page.waitForSelector(".score-top .score-scroll.over-name");
+ok(`hovering "${partName}" lights and underlines it`);
+await page.mouse.click(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-partmenu");
+ok("clicking it opens the part's menu");
+await page.click(".score-partmenu button:has-text('Show in the mixer')");
+await page.waitForSelector(".mixer .strip.sel");
+ok(`its channel's insert shows in the mixer (${await page.textContent(".mixer .strip.sel .strip-num")})`);
+// From the channel rack too: a click on a row's insert number.
+await page.keyboard.press("F6");
+await page.waitForSelector(".rack .ch-ins");
+const lastIns = page.locator(".rack .ch-ins").last();
+const insNo = await lastIns.textContent();
+await lastIns.click();
+await page.waitForSelector(".mixer .strip.sel");
+const strip = await page.textContent(".mixer .strip.sel .strip-num");
+if (!strip.endsWith(insNo === "M" ? "MASTER" : ` ${insNo}`)) throw new Error(`the rack's insert ${insNo} showed ${strip}`);
+ok(`a click on a rack row's insert shows it in the mixer (${strip})`);
+// Move the whole part to another instrument, and back with Ctrl+Z.
+await page.mouse.click(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-partmenu");
+await page.click(".score-partmenu button:has-text('Open in the channel rack')");
+await page.waitForSelector(".rack .rack-row.sel");
+ok(`"Open in the channel rack" selects ${await page.textContent(".rack .rack-row.sel .ch-name")}`);
+const partsBefore = await partNames();
+await page.mouse.click(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-partmenu");
+const dest = await page.locator(".score-partmenu-dest").first().locator("span").first().textContent();
+await page.click(".score-partmenu-dest >> nth=0");
+await page.waitForFunction((n) => ![...document.querySelectorAll(".score-top .score-part-name.hot")].some((e) => e.textContent === n), partName);
+ok(`${partName}'s part moves to ${dest} (parts: ${(await partNames()).join(", ")})`);
+await page.keyboard.press("Control+z");
+await page.waitForFunction((n) => [...document.querySelectorAll(".score-top .score-part-name.hot")].length === n, partsBefore.length);
+ok("Ctrl+Z gives it back");
+// A passage of it: the rest of the song keeps its instrument.
+await page.waitForFunction(() => document.querySelector(".toast") === null, null, { timeout: 15000 });
+await dragAcross(0.3, 0.75);
+await page.selectOption(".score-top .score-rangebar select.score-range-move", { index: 1 });
+await page.waitForSelector(".toast:has-text('→')");
+ok(`a chosen passage moves to another instrument: ${(await page.locator(".toast:has-text('→')").first().innerText()).replace(/\s+/g, " ")}`);
+await page.keyboard.press("Control+z");
+await page.waitForFunction((n) => [...document.querySelectorAll(".score-top .score-part-name.hot")].length === n, partsBefore.length);
+// A note lights under the pointer, ready to be grabbed.
+const sys0 = await page.locator(".score-top .score-sys").first().boundingBox();
+let lit = false;
+for (let fy = 0.1; fy < 0.9 && !lit; fy += 0.02) {
+  for (let fx = 0.2; fx < 0.9 && !lit; fx += 0.01) {
+    await page.mouse.move(sys0.x + sys0.width * fx, sys0.y + sys0.height * fy);
+    lit = (await page.locator(".score-top text.hov").count()) > 0;
+  }
+}
+if (!lit) throw new Error("no note lit under the pointer");
+await page.waitForSelector(".score-top .score-scroll.over-note");
+ok("a note under the pointer lights up, ready to be grabbed");
+await page.keyboard.press("Escape");
+
 // The pattern of the piano roll, in the dock (F10); write a note into it.
 await page.keyboard.press("Control+Alt+KeyP");
 await page.keyboard.press("F10");
