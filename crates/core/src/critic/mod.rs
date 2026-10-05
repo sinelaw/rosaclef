@@ -149,18 +149,18 @@ pub static RULES: &[Rule] = &[
     // Harmony
     r("low-interval", "Harmony", "Low interval limits", "Close intervals voiced low (a third under C3, a second under E3) turn to mud: their partials beat against each other."),
     r("chord-too-low", "Harmony", "Chords crowd the bass", "Chord notes under C3 fight the bass line; voice the harmony above it (or rootless) and leave the low end to the bass."),
-    opt("voice-leading", "Harmony", "Jumpy voice leading", "Chords whose voices leap instead of moving to the nearest notes sound disjointed; inversions keep the voicing compact."),
+    r("voice-leading", "Harmony", "Jumpy voice leading", "Chords whose voices leap instead of moving to the nearest notes sound disjointed; inversions keep the voicing compact."),
     opt("parallel-fifths", "Harmony", "Parallel fifths and octaves", "In acoustic parts, voices moving in parallel perfect fifths or octaves fuse into one: great for power chords and stabs, a loss when the voices should stay independent."),
     opt("wide-spacing", "Harmony", "Gaps in the upper voices", "Upper voices more than an octave apart leave a hole in the chord; keep adjacent upper voices within an octave."),
     opt("out-of-key", "Harmony", "Notes outside the key", "A few notes outside the song's key are often slips of the mouse rather than deliberate chromaticism."),
     opt("key-signature", "Harmony", "Key signature disagrees", "The score's key should be the key the notes are in, or every note is spelled with accidentals."),
-    opt("semitone-clash", "Harmony", "Sustained semitone clashes", "Two parts holding notes a minor second or minor ninth apart grind against each other."),
+    r("semitone-clash", "Harmony", "Sustained semitone clashes", "Two parts holding notes a minor second or minor ninth apart grind against each other."),
     // Melody
     opt("melody-range", "Melody", "Melody range", "A melody wider than an octave and a half is hard to sing and to follow."),
     opt("large-leap", "Melody", "Leaps over an octave", "Leaps wider than an octave break a line into two; few melodies need them."),
     opt("leap-recovery", "Melody", "Leaps that do not recover", "A big leap is balanced by a step back the other way (melodic fluency); leaps that keep going sound aimless."),
-    opt("no-rests", "Melody", "A melody that never breathes", "Rests give the listener time to take in a phrase; a line that never stops tires the ear."),
-    opt("monotone", "Melody", "Monotone melody", "A lead that keeps to one or two notes for bars on end has no contour to remember."),
+    r("no-rests", "Melody", "A melody that never breathes", "Rests give the listener time to take in a phrase; a line that never stops tires the ear."),
+    r("monotone", "Melody", "Monotone melody", "A lead that keeps to one or two notes for bars on end has no contour to remember."),
     r("instrument-range", "Melody", "Beyond the instrument's range", "A real instrument cannot play these notes: the sample stretches unnaturally and players would refuse the part."),
     // Rhythm
     r("flat-velocity", "Rhythm", "Robotic velocities", "Every note at the same velocity sounds like a machine gun; real players accent the beat and play ghost notes softly."),

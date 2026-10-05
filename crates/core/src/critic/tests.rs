@@ -867,14 +867,10 @@ fn theory_checks_are_off_unless_turned_on() {
         "out-of-key",
         "key-signature",
         "parallel-fifths",
-        "voice-leading",
         "wide-spacing",
-        "semitone-clash",
         "melody-range",
         "large-leap",
         "leap-recovery",
-        "no-rests",
-        "monotone",
     ];
     for r in RULES {
         assert_eq!(r.default_on, !theory.contains(&r.id), "{}", r.id);
@@ -911,8 +907,8 @@ fn theory_checks_are_off_unless_turned_on() {
     assert_eq!(p.critic.off, ["low-interval"]);
     unsuppress(&mut p, "low-interval").unwrap();
     assert!(p.critic.is_empty());
-    unsuppress(&mut p, "voice-leading").unwrap();
-    assert_eq!(p.critic.on, ["voice-leading"]);
+    unsuppress(&mut p, "large-leap").unwrap();
+    assert_eq!(p.critic.on, ["large-leap"]);
     assert!(rules_text(&p).contains("(on; off by default)"));
     assert!(set_enabled(&mut p, "no-such-check", true).is_err());
 }

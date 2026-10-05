@@ -96,7 +96,7 @@ velocities, loopitis, a bass panned off center, a limiter that isn't last.
 - **Issues** are for information, and in the native studio one click hands
   an issue to your agent.
 - **Suppressing** one finding, or turning a check off, is saved in the
-  project. The checks of classical theory (keys, voice leading, singable
+  project. The checks of classical theory (keys, counterpoint, singable
   melodies) start off; turn them on when the song wants them.
 
 The same checks run on the command line: `rosaclef critic`, with `--fix`,
