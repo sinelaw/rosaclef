@@ -390,6 +390,7 @@ fn clip(p: &mut Project, id: &str, name: &str, track: u32, start: f64, beats: f6
             color: "#ffffff".into(),
             length: 4.0,
             notes: vec![],
+            drums: None,
         });
     }
     p.playlist.clips.push(Clip {
@@ -487,6 +488,7 @@ fn a_kit_change_removes_the_channels_left_unused() {
             length: 0.25,
             velocity: 0.8,
         }],
+        drums: None,
     });
     p.drums.as_mut().unwrap().kit = "Standard Kit".into();
     write(&mut p).unwrap();
@@ -563,6 +565,7 @@ fn short_changes_join_a_section() {
             color: "#fff".into(),
             length: 4.0,
             notes: vec![],
+            drums: None,
         });
         p.playlist.clips.push(Clip {
             pattern: (*id).into(),
@@ -661,4 +664,247 @@ fn a_kit_change_keeps_channels_the_score_names() {
     assert!(crate::validate::validate(&p)
         .iter()
         .all(|i| i.severity != crate::validate::Severity::Error));
+}
+
+fn recipe(groove: &str, kit: &str) -> PatternDrums {
+    PatternDrums {
+        groove: groove.into(),
+        play: "a".into(),
+        fill: "none".into(),
+        crash: false,
+        turnaround: false,
+        kit: kit.into(),
+        feel: "tight".into(),
+        swing: 0.0,
+        seed: 1,
+        edited: false,
+    }
+}
+
+/// A song with one empty drum pattern of `beats` beats made from `r`.
+fn drum_pattern(r: PatternDrums, beats: f64) -> Project {
+    let mut p = Project::empty("Drums");
+    p.patterns.push(Pattern {
+        id: "drums-verse".into(),
+        name: "Drums · Verse".into(),
+        color: "#8e3b46".into(),
+        length: beats,
+        notes: vec![],
+        drums: Some(r),
+    });
+    p
+}
+
+#[test]
+fn a_pattern_is_made_from_its_recipe() {
+    let mut p = drum_pattern(recipe("rock-8ths", "Standard Kit"), 16.0);
+    render_pattern(&mut p, "drums-verse").unwrap();
+    let pat = p.pattern("drums-verse").unwrap();
+    assert_eq!(pat.length, 16.0);
+    assert!(!pat.notes.is_empty());
+    // Four bars of the groove: each bar has a kick on its downbeat.
+    for bar in 0..4 {
+        let t = bar as f64 * 4.0;
+        assert!(
+            pat.notes
+                .iter()
+                .any(|n| n.pitch == 36 && (n.start - t).abs() < 1e-6),
+            "no kick on bar {}",
+            bar + 1
+        );
+    }
+    let kit = p
+        .channels
+        .iter()
+        .find(|c| c.instrument.option("program") == "Standard Kit");
+    assert!(kit.is_some(), "the kit channel is made");
+    assert!(pat.notes.iter().all(|n| n.channel == kit.unwrap().id));
+    // The same recipe makes the same notes.
+    let mut q = p.clone();
+    render_pattern(&mut q, "drums-verse").unwrap();
+    assert_eq!(p, q);
+}
+
+#[test]
+fn a_pattern_rounds_to_whole_bars_and_takes_a_crash_and_fill() {
+    let mut r = recipe("rock-8ths", "Standard Kit");
+    r.crash = true;
+    r.fill = "bar".into();
+    r.edited = true;
+    let mut p = drum_pattern(r, 7.0);
+    render_pattern(&mut p, "drums-verse").unwrap();
+    let pat = p.pattern("drums-verse").unwrap();
+    assert_eq!(pat.length, 8.0, "7 beats of 4/4 round to 2 bars");
+    assert!(
+        pat.notes.iter().any(|n| n.pitch == 49 && n.start < 1e-6),
+        "the crash"
+    );
+    assert!(
+        !pat.drums.as_ref().unwrap().edited,
+        "made again: no hand edits"
+    );
+    let plain = {
+        let mut q = drum_pattern(recipe("rock-8ths", "Standard Kit"), 8.0);
+        render_pattern(&mut q, "drums-verse").unwrap();
+        q.pattern("drums-verse").unwrap().notes.clone()
+    };
+    let last_bar = |notes: &[Note]| -> Vec<(i32, i64)> {
+        notes
+            .iter()
+            .filter(|n| n.start >= 4.0)
+            .map(|n| (n.pitch, (n.start * 1000.0).round() as i64))
+            .collect()
+    };
+    assert_ne!(
+        last_bar(&pat.notes),
+        last_bar(&plain),
+        "the last bar is a fill"
+    );
+}
+
+#[test]
+fn a_pattern_kit_change_drops_the_old_channels() {
+    let mut p = drum_pattern(recipe("rock-8ths", EBONY), 4.0);
+    render_pattern(&mut p, "drums-verse").unwrap();
+    assert!(
+        p.channels
+            .iter()
+            .filter(|c| c.instrument.kind == "drum")
+            .count()
+            >= 3
+    );
+    pattern_mut(&mut p, "drums-verse")
+        .drums
+        .as_mut()
+        .unwrap()
+        .kit = "Jazz Kit".into();
+    render_pattern(&mut p, "drums-verse").unwrap();
+    assert_eq!(p.channels.len(), 1, "only the Jazz Kit channel is left");
+    assert_eq!(p.channels[0].instrument.option("program"), "Jazz Kit");
+}
+
+#[test]
+fn a_pattern_api_validates_and_refuses_what_it_cannot_make() {
+    let p = drum_pattern(recipe("rock-8ths", ""), 4.0);
+    let v = api_pattern(&serde_json::to_string(&p).unwrap(), "drums-verse").unwrap();
+    let out: Project = serde_json::from_value(v["project"].clone()).unwrap();
+    assert!(!out.pattern("drums-verse").unwrap().notes.is_empty());
+    assert!(api_pattern(&serde_json::to_string(&p).unwrap(), "nope").is_err());
+    let mut bad = p.clone();
+    pattern_mut(&mut bad, "drums-verse")
+        .drums
+        .as_mut()
+        .unwrap()
+        .groove = "no-such-groove".into();
+    let e = api_pattern(&serde_json::to_string(&bad).unwrap(), "drums-verse").unwrap_err();
+    assert!(e.contains("patterns[1].drums.groove"), "{e}");
+    let mut plain = p.clone();
+    pattern_mut(&mut plain, "drums-verse").drums = None;
+    assert!(api_pattern(&serde_json::to_string(&plain).unwrap(), "drums-verse").is_err());
+}
+
+#[test]
+fn a_taken_over_pattern_replaces_the_part_where_it_plays() {
+    let mut p = song("rock-8ths", "");
+    write(&mut p).unwrap();
+    // Take over the chorus's first bar (B + crash, at beat 36): it gets a
+    // recipe of its own and leaves the part (the Drums tab does this when a
+    // groove is picked for it).
+    let id = written_id(&p, "rock-8ths/b+crash");
+    let mut r = recipe("rock-halftime", "");
+    r.crash = true;
+    pattern_mut(&mut p, &id).drums = Some(r);
+    p.drums.as_mut().unwrap().written.remove(&id);
+    render_pattern(&mut p, &id).unwrap();
+    let report = write(&mut p).unwrap();
+    assert_eq!(report.left, 1, "one bar left to the pattern");
+    let at = |p: &Project, beat: f64| -> Vec<String> {
+        p.playlist
+            .clips
+            .iter()
+            .filter(|c| c.start <= beat + 1e-9 && beat < c.start + c.length - 1e-9)
+            .map(|c| c.pattern.clone())
+            .collect()
+    };
+    assert_eq!(
+        at(&p, 36.0),
+        vec![id.clone()],
+        "only the taken-over pattern plays bar 10"
+    );
+    assert!(p.pattern(&id).is_some(), "it stays in the song");
+    // The part plays on around it.
+    assert_eq!(at(&p, 32.0).len(), 1);
+    assert_eq!(at(&p, 40.0).len(), 1);
+    assert_ne!(at(&p, 40.0)[0], id);
+
+    // A pattern made in the tab over bars 2-5 takes those bars the same way.
+    p.patterns.push(Pattern {
+        id: "drums-intro".into(),
+        name: "Drums · Intro".into(),
+        color: "#8e3b46".into(),
+        length: 16.0,
+        notes: vec![],
+        drums: Some(recipe("rock-8ths", "")),
+    });
+    render_pattern(&mut p, "drums-intro").unwrap();
+    p.playlist.clips.push(Clip {
+        pattern: "drums-intro".into(),
+        sample: String::new(),
+        track: TrackIx(0),
+        start: 4.0,
+        length: 16.0,
+        offset: 0.0,
+        gain: 1.0,
+        mixer: Default::default(),
+    });
+    let report = write(&mut p).unwrap();
+    assert_eq!(report.left, 5);
+    for beat in [4.0, 8.0, 12.0, 16.0] {
+        assert_eq!(at(&p, beat), vec!["drums-intro".to_string()], "beat {beat}");
+    }
+    assert_eq!(at(&p, 20.0).len(), 1, "the part starts again after it");
+    assert!(crate::validate::validate(&p)
+        .iter()
+        .all(|i| i.severity != crate::validate::Severity::Error));
+}
+
+#[test]
+fn a_kit_change_leaves_the_other_patterns_on_their_kit() {
+    let mut p = drum_pattern(recipe("rock-8ths", "Jazz Kit"), 4.0);
+    render_pattern(&mut p, "drums-verse").unwrap();
+    // A second pattern on the same Jazz Kit channel.
+    let mut other = p.pattern("drums-verse").unwrap().clone();
+    other.id = "drums-chorus".into();
+    other.name = "Drums · Chorus".into();
+    p.patterns.push(other);
+    pattern_mut(&mut p, "drums-verse")
+        .drums
+        .as_mut()
+        .unwrap()
+        .kit = "Standard Kit".into();
+    render_pattern(&mut p, "drums-verse").unwrap();
+    let program = |p: &Project, id: &str| -> String {
+        let ch = &p.pattern(id).unwrap().notes[0].channel;
+        p.channel(ch)
+            .unwrap()
+            .instrument
+            .option("program")
+            .to_string()
+    };
+    assert_eq!(program(&p, "drums-verse"), "Standard Kit");
+    assert_eq!(
+        program(&p, "drums-chorus"),
+        "Jazz Kit",
+        "the other pattern keeps its kit"
+    );
+    assert_eq!(p.channels.len(), 2);
+    // Alone on its channel, a pattern switches it rather than making another.
+    pattern_mut(&mut p, "drums-verse")
+        .drums
+        .as_mut()
+        .unwrap()
+        .kit = "Brush Kit".into();
+    render_pattern(&mut p, "drums-verse").unwrap();
+    assert_eq!(program(&p, "drums-verse"), "Brush Kit");
+    assert_eq!(p.channels.len(), 2);
 }

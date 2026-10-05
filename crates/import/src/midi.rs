@@ -1238,6 +1238,7 @@ pub fn import(bytes: &[u8], opts: &Options) -> Result<Imported> {
                         color: ccolor.clone(),
                         length,
                         notes: ns,
+                        drums: None,
                     });
                     seen.insert(key, pid.clone());
                     pid

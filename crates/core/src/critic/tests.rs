@@ -62,6 +62,7 @@ fn pattern(p: &mut Project, id: &str, length: f64, notes: &[(&str, i32, f64, f64
                 velocity: n.4,
             })
             .collect(),
+        drums: None,
     });
 }
 

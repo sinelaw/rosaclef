@@ -7,7 +7,7 @@
 // grab the address bar; Alt opens menus on Windows and types accents on a Mac).
 
 import { listenWindow } from "#platform";
-import { state, undo, redo, currentChannel } from "./store.js";
+import { state, undo, redo } from "./store.js";
 import { togglePlay, stop, setMode, record, toggleMetronome } from "./audio.js";
 import { deleteSelection, selectAll, transpose, quantize, duplicateSelection, setTool } from "./ui/pianoroll.js";
 import { deleteSelectedClips } from "./ui/playlist.js";
@@ -16,6 +16,7 @@ import { openDock, paneShortcut } from "./ui/panes.js";
 import { keyboard, pressKey, releaseKey, typedPitch, shiftTyped, toggleRecordKeys } from "./ui/keyboard.js";
 import { voice, startTake, stopTake } from "./ui/voice.js";
 import { setScoreTool, cancelScoreRange } from "./ui/score.js";
+import { keysTarget } from "./ui/instruments.js";
 
 /** Computer keys holding a note, by `code`. */
 /** const held: String[] */
@@ -41,7 +42,10 @@ function letterShortcut(c) {
 
 export function installKeys() {
   listenWindow("keydown", (e) => {
-    if (e.typing) return undefined;
+    // In a text field, keys type — but the function keys (F4–F10 switch the
+    // dock's tabs) type nothing, so they still work there (not in the agent's
+    // terminal: programs there take them).
+    if (e.typing && (e.terminal || !/^F\d+$/.test(e.key))) return undefined;
     const k = e.key;
     const mod = e.ctrlKey || e.metaKey;
     // Ctrl+Alt+B/A/P/D/0: minimize, maximize and restore the panels.
@@ -77,7 +81,7 @@ export function installKeys() {
     }
     const pitch = typedPitch(e.code);
     if (pitch >= 0) {
-      if (currentChannel() && !e.repeat && !held.includes(e.code)) {
+      if (keysTarget() && !e.repeat && !held.includes(e.code)) {
         held.push(e.code);
         pressKey(`k${e.code}`, pitch, 0.85);
       }

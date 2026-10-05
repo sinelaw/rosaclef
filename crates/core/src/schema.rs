@@ -307,7 +307,8 @@ pub fn schema() -> Value {
                     "name": {"type": "string"},
                     "color": color,
                     "length": {"type": "number", "exclusiveMinimum": 0, "maximum": 4096, "description": "Pattern length in beats."},
-                    "notes": {"type": "array", "items": {"$ref": "#/$defs/note"}}
+                    "notes": {"type": "array", "items": {"$ref": "#/$defs/note"}},
+                    "drums": {"$ref": "#/$defs/patternDrums"}
                 }
             },
             "note": {
@@ -423,6 +424,7 @@ pub fn schema() -> Value {
                 "description": "[drum, steps] rows: one character a step (X accent, x normal, g ghost, f feathered, . rest; spaces ignored), whole bars of the groove's grid.",
                 "items": {"type": "array", "prefixItems": [{"type": "string", "enum": crate::drums::ROLES}, {"type": "string"}], "minItems": 2, "maxItems": 2}
             },
+            "patternDrums": pattern_drums_schema(),
             "drumSection": {
                 "type": "object",
                 "required": ["bars"],
@@ -447,6 +449,34 @@ pub fn schema() -> Value {
                     "curve": num(-1.0, 1.0, "Shape of the segment ending at this point: 0 linear, > 0 slow start then fast (exponential rise), < 0 fast start then settling.")
                 }
             }
+        }
+    })
+}
+
+/// A drum pattern's recipe (`patterns[].drums`).
+fn pattern_drums_schema() -> Value {
+    let groove_ids: Vec<&str> = crate::drums::library::GROOVES
+        .iter()
+        .map(|g| g.id)
+        .collect();
+    let mut kits: Vec<&str> = crate::gm::kit_names().collect();
+    kits.push(crate::drums::EBONY);
+    json!({
+        "type": "object",
+        "required": ["groove"],
+        "additionalProperties": false,
+        "description": "A drum pattern made from a groove (the studio's Drums tab): how it was made. Changing it changes nothing by itself; the Drums tab (or POST /api/drums/pattern) makes the notes again from it, as many bars as the pattern is long.",
+        "properties": {
+            "groove": {"type": "string", "enum": groove_ids, "description": "Groove id (`rosaclef grooves`); it also sets the bar length."},
+            "play": {"type": "string", "enum": crate::drums::PLAYS, "default": "a", "description": "a: the groove; b: its bigger part; hits: crash and kick on each downbeat; count: a count-in on the side stick; rest: silence."},
+            "fill": {"type": "string", "enum": crate::drums::FILL_SIZES, "default": "none", "description": "A fill at the end of the pattern."},
+            "crash": {"type": "boolean", "default": false, "description": "A crash on the first downbeat."},
+            "turnaround": {"type": "boolean", "default": false, "description": "A small turnaround every 4th bar."},
+            "kit": {"type": "string", "enum": kits, "description": "A General MIDI drum kit, or Ebony. Missing: the groove's suggestion."},
+            "feel": {"type": "string", "enum": crate::drums::FEELS, "default": "natural"},
+            "swing": {"type": "number", "minimum": 0, "maximum": 1, "description": "Delays the off 16ths of straight grooves."},
+            "seed": {"type": "integer", "minimum": 0, "default": 1, "description": "Picks the fill and the small timing and velocity differences."},
+            "edited": {"type": "boolean", "default": false, "description": "The notes were changed by hand since they were made."}
         }
     })
 }

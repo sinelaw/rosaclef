@@ -8,10 +8,9 @@
 // The UI sends the same transport commands to whichever one is selected.
 
 import { audioStart, audioPost, audioPostSample, audioLoadPreset, audioResume, decodeAudioUrl, recStart, recStop, now, loadPref, savePref } from "#platform";
-import { state, hooks, invalidate, commit, currentPattern, reportContext } from "./store.js";
+import { state, hooks, invalidate, commit, currentPattern, reportContext, engineJson, refreshEngine, AUDITION } from "./store.js";
 import { send } from "./net.js";
 import { toast } from "./ui/toast.js";
-import { projectJson } from "./model.js";
 import { insertIx, trackIndex } from "#brands";
 
 /** const loaded: String[] */
@@ -92,7 +91,7 @@ async function boot() {
   try {
     await audioStart("engine/worklet.js", "engine/rosaclef.wasm", onEngineMessage);
     state.audioReady = true;
-    audioPost({ t: "project", json: projectJson(state.project) });
+    audioPost({ t: "project", json: engineJson() });
     invalidate();
   } catch (e) {
     toast("Could not start browser audio", String(e), "error");
@@ -126,7 +125,18 @@ function forgetSamples() {
   }
 }
 
+/** Tell the engine which instrument is being tried out (or that none is):
+ * the browser engine gets it with the project; the native one by message. */
+function syncAudition() {
+  refreshEngine();
+  if (!state.nativeEnabled) return undefined;
+  const msg = JSON.parse('{"t":"native.audition","channel":null}');
+  if (state.audition.on) msg.channel = JSON.parse(engineJson()).channels.find((c) => c.id === AUDITION);
+  send(msg);
+}
+
 export function installEngine() {
+  hooks.audition = syncAudition;
   hooks.engine = (json) => {
     if (state.folder !== sampleCache.folder) {
       if (sampleCache.folder !== "") forgetSamples();
@@ -255,16 +265,28 @@ export function livePosition() {
 /** function noteOn(channel: String, key: Number, velocity: Number) => Undefined */
 export function noteOn(channel, key, velocity) {
   if (state.output === "native") send({ t: "native.note", channel: channel, key: key, velocity: velocity, on: true });
-  else {
+  else if (state.audioReady) {
     startAudio();
     audioPost({ t: "note", channel: channel, key: key, velocity: velocity, on: true });
+  } else {
+    // The first note starts the engine: it plays once the engine is there.
+    startAudio().then((ok) => {
+      audioPost({ t: "note", channel: channel, key: key, velocity: velocity, on: true });
+      return ok;
+    });
   }
 }
 
 /** function noteOff(channel: String, key: Number) => Undefined */
 export function noteOff(channel, key) {
   if (state.output === "native") send({ t: "native.note", channel: channel, key: key, velocity: 0, on: false });
-  else audioPost({ t: "note", channel: channel, key: key, velocity: 0, on: false });
+  else if (state.audioReady) audioPost({ t: "note", channel: channel, key: key, velocity: 0, on: false });
+  // (After a note still waiting for the engine to start.)
+  else
+    startAudio().then((ok) => {
+      audioPost({ t: "note", channel: channel, key: key, velocity: 0, on: false });
+      return ok;
+    });
 }
 
 /** Preview a short note (piano roll clicks, step toggles). */

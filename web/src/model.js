@@ -157,6 +157,7 @@ export function decodeProject(raw) {
         length: Number(n.length),
         velocity: Number(n.velocity ?? 0.8),
       })),
+      drums: decodePatternDrums(p.drums),
     })),
     playlist: {
       tracks: (pl.tracks ?? []).map((tr) => ({ name: String(tr.name), mute: tr.mute === true })),
@@ -373,6 +374,46 @@ export function decodeDrums(d) {
 }
 
 /** A project without a drum part. */
+/** function decodePatternDrums<T>(d: T) => PatternDrums */
+export function decodePatternDrums(d) {
+  if (!d) return noPatternDrums();
+  return {
+    on: true,
+    groove: String(d.groove),
+    play: String(d.play ?? "a"),
+    fill: String(d.fill ?? "none"),
+    crash: d.crash === true,
+    turnaround: d.turnaround === true,
+    kit: String(d.kit ?? ""),
+    feel: String(d.feel ?? "natural"),
+    swing: Number(d.swing ?? 0),
+    seed: Math.round(Number(d.seed ?? 1)),
+    edited: d.edited === true,
+  };
+}
+
+/** An ordinary pattern's (no recipe). */
+/** function noPatternDrums() => PatternDrums */
+export function noPatternDrums() {
+  return { on: false, groove: "", play: "a", fill: "none", crash: false, turnaround: false, kit: "", feel: "natural", swing: 0, seed: 1, edited: false };
+}
+
+/** function encodePatternDrums<R>(d: PatternDrums) => R */
+function encodePatternDrums(d) {
+  const o = JSON.parse("{}");
+  o.groove = d.groove;
+  o.play = d.play;
+  if (d.fill !== "none") o.fill = d.fill;
+  if (d.crash) o.crash = true;
+  if (d.turnaround) o.turnaround = true;
+  if (d.kit !== "") o.kit = d.kit;
+  o.feel = d.feel;
+  if (d.swing !== 0) o.swing = round6(d.swing);
+  o.seed = d.seed;
+  if (d.edited) o.edited = true;
+  return o;
+}
+
 /** function noDrums() => DrumPart */
 export function noDrums() {
   return {
@@ -494,19 +535,22 @@ export function encodeProject(p) {
     if (c.layerOf !== "") ch.layerOf = c.layerOf;
     return ch;
   });
-  o.patterns = p.patterns.map((pt) => ({
-    id: pt.id,
-    name: pt.name,
-    color: pt.color,
-    length: round6(pt.length),
-    notes: pt.notes.map((n) => ({
+  o.patterns = p.patterns.map((pt) => {
+    const po = JSON.parse("{}");
+    po.id = pt.id;
+    po.name = pt.name;
+    po.color = pt.color;
+    po.length = round6(pt.length);
+    po.notes = pt.notes.map((n) => ({
       channel: n.channel,
       pitch: n.pitch,
       start: round6(n.start),
       length: round6(n.length),
       velocity: round6(n.velocity),
-    })),
-  }));
+    }));
+    if (pt.drums.on) po.drums = encodePatternDrums(pt.drums);
+    return po;
+  });
   o.playlist = { tracks: p.playlist.tracks, clips: p.playlist.clips.map(encodeClip) };
   o.mixer = {
     inserts: p.mixer.inserts.map((i) => ({

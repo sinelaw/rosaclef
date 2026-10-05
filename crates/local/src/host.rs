@@ -547,6 +547,12 @@ impl Host {
                     Err(e) => Response::text(422, e),
                 }
             }
+            ("POST", "/api/drums/pattern") => {
+                match rosaclef_core::drums::api_pattern(&String::from_utf8_lossy(body), &qs("id")) {
+                    Ok(v) => Response::json(v),
+                    Err(e) => Response::text(422, e),
+                }
+            }
             ("GET", "/api/critic") => Response::json(rosaclef_core::critic::catalog()),
             ("POST", "/api/critic") => {
                 match rosaclef_core::critic::api(&String::from_utf8_lossy(body)) {

@@ -32,6 +32,7 @@ export function blankEvent() {
     repeat: false,
     detail: 0,
     typing: false,
+    terminal: false,
     onControl: false,
     value: "",
     checked: false,

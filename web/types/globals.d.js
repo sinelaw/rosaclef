@@ -36,7 +36,9 @@
 /** A channel; `layerOf` is the id of the channel whose notes it also plays ("" = none). */
 /** type Channel = { id: String, name: String, color: String, instrument: Device, volume: Number, pan: Number, mute: Boolean, mixer: InsertIx, arp: Arp, layerOf: String } */
 /** type Note = { channel: String, pitch: Number, start: Number, length: Number, velocity: Number } */
-/** type Pattern = { id: String, name: String, color: String, length: Number, notes: Note[] } */
+/** A drum pattern's recipe (the Drums tab): `on` false = an ordinary pattern. */
+/** type PatternDrums = { on: Boolean, groove: String, play: String, fill: String, crash: Boolean, turnaround: Boolean, kit: String, feel: String, swing: Number, seed: Int, edited: Boolean } */
+/** type Pattern = { id: String, name: String, color: String, length: Number, notes: Note[], drums: PatternDrums } */
 /** type Track = { name: String, mute: Boolean } */
 /** type Clip = { pattern: String, sample: String, track: TrackIx, start: Number, length: Number, offset: Number, gain: Number, mixer: InsertIx } */
 /** type Playlist = { tracks: Track[], clips: Clip[] } */
@@ -141,6 +143,13 @@
 
 /** type SampleCollection = { id: String, name: String, version: String, license: String, authors: String, summary: String, source: String, licenseFile: String, readmeFile: String, sourcesFile: String, instrument: String, presets: GmPreset[] } */
 
+/** An instrument to add, try or swap in (ui/instruments.js): `key` names
+ * the browser item it comes from, `name` the channel it would make. */
+/** type Pick = { key: String, name: String, device: Device } */
+/** Who the piano plays (ui/instruments.js): a channel's id (or the audition
+ * channel's), its name and color, what instrument it is, and whether it is
+ * only being tried. */
+/** type KeysTarget = { id: String, name: String, color: String, detail: String, trying: Boolean } */
 /** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[], arp: ArpCatalog, collections: SampleCollection[] } */
 /** A resolved automation target (web/src/automation.js). `kind`: tempo, swing, gain, pan or param; `open`: plugin parameter without a known range. */
 /** type TargetInfo = { ok: Boolean, kind: String, spec: ParamSpec, base: Number, label: String, color: String, open: Boolean } */
@@ -153,7 +162,7 @@
     movementX: Number, movementY: Number, button: Number, buttons: Number, pointerId: Number, pointerType: String,
     deltaX: Number, deltaY: Number, key: String, code: String,
     shiftKey: Boolean, ctrlKey: Boolean, metaKey: Boolean, altKey: Boolean, repeat: Boolean,
-    detail: Number, typing: Boolean, onControl: Boolean, value: String, checked: Boolean,
+    detail: Number, typing: Boolean, terminal: Boolean, onControl: Boolean, value: String, checked: Boolean,
     targetLeft: Number, targetTop: Number, targetWidth: Number, targetHeight: Number,
     scrollLeft: Number, scrollTop: Number,
     preventDefault: () => Undefined, stopPropagation: () => Undefined

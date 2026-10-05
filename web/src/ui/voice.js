@@ -10,8 +10,8 @@
 //  3. Add to song — a pattern and a playlist clip (one undo step).
 
 import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview, pickFiles, uploadFile, audioPost } from "#platform";
-import { state, commit, invalidate, hint, selectPattern, currentChannel, currentPattern } from "../store.js";
-import { uniqueId, paletteColor, setOption, optionValue, snapDown, newDevice, cloneProject, projectJson, noArp } from "../model.js";
+import { state, commit, invalidate, hint, selectPattern, currentChannel, currentPattern, engineJson } from "../store.js";
+import { uniqueId, paletteColor, setOption, optionValue, snapDown, newDevice, cloneProject, projectJson, noArp, noPatternDrums } from "../model.js";
 import { startAudio, play, stop, setMode } from "../audio.js";
 import {
   SCALES,
@@ -33,7 +33,7 @@ import {
   cropTake,
 } from "../voice.js";
 import { button, iconButton, select, glyph, clamp01 } from "./widgets.js";
-import { pushChannel } from "./browser.js";
+import { pushChannel } from "./instruments.js";
 import { toast } from "./toast.js";
 import { insertIx, trackIx, trackIndex } from "#brands";
 
@@ -459,6 +459,7 @@ function previewJson(r) {
     notes: r.notes.map((n) => {
       return { channel: laneValue(lanes, n.lane), pitch: n.pitch, start: n.start, length: n.length, velocity: n.velocity };
     }),
+    drums: noPatternDrums(),
   });
   return projectJson(p);
 }
@@ -497,7 +498,7 @@ export function stopResult() {
   voice.previewing = false;
   voice.previewKey = "";
   audioPost({ t: "stop" });
-  audioPost({ t: "project", json: projectJson(state.project) });
+  audioPost({ t: "project", json: engineJson() });
   const pat = currentPattern();
   audioPost({ t: "mode", pattern: state.mode === "pattern" && pat ? pat.id : "" });
   invalidate();
@@ -569,6 +570,7 @@ export function addToSong() {
       notes: r.notes.map((n) => {
         return { channel: laneValue(lanes, n.lane), pitch: n.pitch, start: n.start, length: n.length, velocity: Math.round(n.velocity * 1000) / 1000 };
       }),
+      drums: noPatternDrums(),
     });
     start = voice.at >= 0 ? voice.at : snapDown(state.position, bpb);
     const length = r.length * voice.repeat;

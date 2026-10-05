@@ -71,6 +71,8 @@ function onMessage(text) {
     state.nativeDevice = String(m.status.device ?? "");
     if (m.status.error) toast("Studio audio device unavailable", String(m.status.error), "error");
     if (!state.nativeEnabled && state.output === "native") state.output = "browser";
+    // A freshly started native engine has not heard of the tried-out instrument.
+    if (state.nativeEnabled && state.audition.on && hooks.audition) hooks.audition();
     invalidate();
   } else if (t === "native.meters") {
     if (state.output === "native") {

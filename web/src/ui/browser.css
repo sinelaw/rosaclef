@@ -182,17 +182,75 @@
 .b-caret:hover {
   background: rgba(212, 175, 55, 0.12);
 }
-.b-item.inst.open {
+/* The instrument tree: folders and instruments, indented by --depth. */
+.b-item.folder,
+.b-item.pick {
+  padding-left: calc(6px + var(--depth, 0) * 14px);
+}
+.b-item.folder.open > .b-name {
   color: var(--gold-hi);
 }
-.b-item.preset {
-  margin-left: 22px;
-  padding: 4px 8px;
+.b-item.pick {
+  padding-top: 4px;
+  padding-bottom: 4px;
   font-size: 11.5px;
   color: var(--champagne);
-  border-left: 1px solid var(--line-2);
-  border-radius: 0 7px 7px 0;
 }
-.b-item.preset:hover {
+.b-item.pick:hover {
   background: linear-gradient(90deg, rgba(212, 175, 55, 0.1), transparent);
+}
+.b-item.pick.on {
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.18), rgba(212, 175, 55, 0.03));
+  border-color: var(--line-2);
+  color: var(--gold-hi);
+}
+.b-item.pick .b-sub {
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Add / replace: on the row under the pointer (and the one playing). */
+.b-acts {
+  display: none;
+  gap: 2px;
+  margin: -3px 0;
+}
+.b-item.pick:hover .b-acts,
+.b-item.pick.on .b-acts {
+  display: flex;
+}
+.b-item.pick:hover .b-sub {
+  display: none;
+}
+.b-acts .btn {
+  width: 22px;
+  height: 22px;
+}
+.b-acts .btn .glyph {
+  width: 12px;
+  height: 12px;
+}
+
+/* The search over the tree. */
+.b-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.b-search > .glyph {
+  position: absolute;
+  left: 18px;
+  width: 13px;
+  height: 13px;
+  color: var(--dim);
+  pointer-events: none;
+}
+.b-search .text-input {
+  padding-left: 28px;
+}
+.b-search-clear.empty {
+  visibility: hidden;
 }

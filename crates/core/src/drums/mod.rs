@@ -141,6 +141,42 @@ pub struct DrumSection {
     pub groove: String,
 }
 
+/// How a drum pattern was made from a groove (`patterns[].drums`): the
+/// Drums tab's recipe for one pattern. [`render_pattern`] makes the
+/// pattern's notes from it, as many bars as the pattern is long.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PatternDrums {
+    /// A groove id from the library; it also sets the bar length.
+    pub groove: String,
+    /// `a`, `b`, `hits`, `count` or `rest`, as a section plays.
+    #[serde(default = "default_play")]
+    pub play: String,
+    /// A fill at the end of the pattern: `none`, `beat`, `half` or `bar`.
+    #[serde(default = "default_fill", skip_serializing_if = "is_none_fill")]
+    pub fill: String,
+    /// A crash on the first downbeat.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub crash: bool,
+    /// A small turnaround every 4th bar.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub turnaround: bool,
+    /// A General MIDI drum kit or `Ebony`; empty: the groove's suggestion.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kit: String,
+    #[serde(default = "default_feel")]
+    pub feel: String,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub swing: f64,
+    /// Picks the fill and the small timing and velocity differences.
+    #[serde(default = "one")]
+    pub seed: u32,
+    /// The notes were changed by hand since they were made: making them
+    /// again replaces those changes.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub edited: bool,
+}
+
 fn default_feel() -> String {
     "natural".into()
 }
@@ -1026,6 +1062,9 @@ pub struct Report {
     pub track: usize,
     /// Patterns kept as edited by hand.
     pub kept: usize,
+    /// Bars left to the song's own drum patterns (made from a recipe, see
+    /// [`PatternDrums`]): the part writes nothing there.
+    pub left: usize,
 }
 
 /// Take the hand edits of the patterns the last write made into the part:
@@ -1263,10 +1302,27 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
     let mut kept_used = 0;
     let mut ids: HashMap<String, String> = HashMap::new();
     let mut clips: Vec<Clip> = vec![];
+    // Bars where a drum pattern of the song's own plays (one made from a
+    // recipe in the Drums tab, or taken over from the part): it replaces
+    // what the part would play there.
+    let own: Vec<(f64, f64)> = p
+        .playlist
+        .clips
+        .iter()
+        .filter(|c| p.pattern(&c.pattern).is_some_and(|x| x.drums.is_some()))
+        .map(|c| (c.start, c.start + c.length))
+        .collect();
+    let left_to_own: Vec<bool> = bars
+        .iter()
+        .map(|b| {
+            own.iter()
+                .any(|(s, e)| b.start >= s - 1e-9 && b.start < e - 1e-9)
+        })
+        .collect();
     let mut i = 0;
     while i < bars.len() {
         let b = &bars[i];
-        if grids[i].is_empty() && !part.kept.contains_key(&slots[i]) {
+        if left_to_own[i] || (grids[i].is_empty() && !part.kept.contains_key(&slots[i])) {
             i += 1;
             continue;
         }
@@ -1285,6 +1341,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
                 .collect();
             let mut j = i + 1;
             while j < bars.len()
+                && !left_to_own[j]
                 && bars[j].plain()
                 && matches!(&bars[j].body, Body::Groove { groove: g2, b: b2, index: k }
                     if g2.id == groove.id && b2 == is_b && *k == (index + j - i) % n)
@@ -1310,6 +1367,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         };
         if !b.plain() {
             while j < bars.len()
+                && !left_to_own[j]
                 && slots[j] == slots[i]
                 && (bars[j].start - (b.start + (j - i) as f64 * b.bar_beats)).abs() < 1e-9
             {
@@ -1361,6 +1419,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
                     color: "#8e3b46".into(),
                     length: pattern_grids.len() as f64 * b.bar_beats,
                     notes,
+                    drums: None,
                 };
                 written.insert(
                     id.clone(),
@@ -1391,6 +1450,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         clips: clips.len(),
         track,
         kept: kept_used,
+        left: left_to_own.iter().filter(|x| **x).count(),
     };
     p.playlist.clips.extend(clips);
     drop_unused(p, &old_channels);
@@ -1398,6 +1458,151 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         d.written = written;
     }
     Ok(report)
+}
+
+/// Make the notes of drum pattern `id` from its recipe (`drums`): the
+/// groove's bars for as many bars as the pattern is long (at least one),
+/// with the crash, fill and turnarounds asked for, on the kit's channels
+/// (found or made: a kit channel it shares with other patterns keeps its
+/// kit for them; drum channels the pattern no longer plays, and nothing
+/// else does, go). The pattern's length becomes whole bars of the groove.
+pub fn render_pattern(p: &mut Project, id: &str) -> Result<(), String> {
+    let pat = p.pattern(id).ok_or_else(|| format!("no pattern {id:?}"))?;
+    let recipe = pat
+        .drums
+        .clone()
+        .ok_or_else(|| format!("pattern {id:?} is not a drum pattern"))?;
+    let g = groove(&recipe.groove).ok_or_else(|| format!("unknown groove {:?}", recipe.groove))?;
+    if !PLAYS.contains(&recipe.play.as_str()) {
+        return Err(format!("unknown play {:?}", recipe.play));
+    }
+    let bar_beats = g.bar_beats as f64;
+    let n = ((pat.length / bar_beats).round() as usize).clamp(1, 256);
+    let old_channels: Vec<String> = pat.notes.iter().map(|x| x.channel.clone()).collect();
+
+    // The song's groove edits apply here too.
+    let mut part = DrumPart::new(g.id);
+    part.kit = recipe.kit.clone();
+    part.feel = recipe.feel.clone();
+    part.swing = recipe.swing;
+    part.seed = recipe.seed;
+    if let Some(d) = &p.drums {
+        part.grooves = d.grooves.clone();
+    }
+    let kit_name = kit_of(&part);
+    if !valid_kit(&kit_name) {
+        return Err(format!("unknown kit {kit_name:?}"));
+    }
+    let grooving = recipe.play == "a" || recipe.play == "b";
+    let fill_at_end = if grooving {
+        let beats = match recipe.fill.as_str() {
+            "beat" => 1,
+            "half" => 2,
+            "bar" => g.bar_beats,
+            _ => 0,
+        };
+        (beats > 0)
+            .then(|| {
+                pick_fill(
+                    g.steps_per_beat(),
+                    beats,
+                    1,
+                    &format!("{}/{id}/fill", recipe.seed),
+                    None,
+                )
+            })
+            .flatten()
+    } else {
+        None
+    };
+    let bars: Vec<SongBar> = (0..n)
+        .map(|i| {
+            let body = match recipe.play.as_str() {
+                "a" | "b" => Body::Groove {
+                    groove: g,
+                    b: recipe.play == "b",
+                    index: i % groove_bars(g),
+                },
+                "hits" => Body::Hits,
+                "count" => Body::Count,
+                _ => Body::Rest,
+            };
+            let crash = recipe.crash && i == 0 && grooving;
+            let fill = if i + 1 == n { fill_at_end } else { None };
+            let turn =
+                recipe.turnaround && grooving && !crash && fill.is_none() && (i + 1) % 4 == 0;
+            SongBar {
+                start: i as f64 * bar_beats,
+                bar_beats,
+                body,
+                crash,
+                turn,
+                fill,
+            }
+        })
+        .collect();
+    let grids: Vec<Bar> = bars.iter().map(|b| b.grid(&part)).collect();
+    let mut roles: Vec<&'static str> = vec![];
+    for gr in &grids {
+        for (r, row) in &gr.rows {
+            if row.iter().any(|c| *c != '.') && !roles.contains(r) {
+                roles.push(r);
+            }
+        }
+    }
+    // Only a kit channel no other pattern plays on may switch kits: the
+    // others keep theirs (this one moves to a channel with its kit).
+    let exclusive: Vec<String> = old_channels
+        .iter()
+        .filter(|c| {
+            !p.patterns
+                .iter()
+                .any(|x| x.id != id && x.notes.iter().any(|n| &n.channel == *c))
+        })
+        .cloned()
+        .collect();
+    let kit = kit(p, &kit_name, &roles, &exclusive);
+    let notes = notes_of(
+        &grids,
+        bar_beats,
+        g.steps_per_beat() as usize,
+        &kit,
+        &part,
+        p.transport.bpm,
+        id,
+    );
+    let pat = p
+        .patterns
+        .iter_mut()
+        .find(|x| x.id == id)
+        .ok_or_else(|| format!("no pattern {id:?}"))?;
+    pat.notes = notes;
+    pat.length = n as f64 * bar_beats;
+    if let Some(r) = &mut pat.drums {
+        r.edited = false;
+    }
+    drop_unused(p, &old_channels);
+    Ok(())
+}
+
+/// `POST /api/drums/pattern?id=<pattern>`: the project (JSON text) in, with
+/// the pattern's recipe set; out: the project with the pattern made again
+/// (see [`render_pattern`]).
+pub fn api_pattern(text: &str, id: &str) -> Result<serde_json::Value, String> {
+    let mut p: Project = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    let invalid = |p: &Project| {
+        crate::validate::validate(p)
+            .into_iter()
+            .find(|i| i.severity == crate::validate::Severity::Error)
+    };
+    if let Some(e) = invalid(&p) {
+        return Err(format!("the project is invalid: {e}"));
+    }
+    render_pattern(&mut p, id)?;
+    if let Some(e) = invalid(&p) {
+        return Err(format!("the made pattern is invalid: {e}"));
+    }
+    Ok(serde_json::json!({"project": p}))
 }
 
 /// `POST /api/drums`: the project (JSON text) in; with `guess`, the part's

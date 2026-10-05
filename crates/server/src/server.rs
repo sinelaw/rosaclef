@@ -193,6 +193,10 @@ pub async fn run(cfg: Config) -> Result<()> {
             post(write_drums).layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
         )
         .route(
+            "/api/drums/pattern",
+            post(make_drum_pattern).layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
+        )
+        .route(
             "/api/critic",
             get(|| async { Json(rosaclef_core::critic::catalog()) })
                 .post(critique)
@@ -858,6 +862,29 @@ async fn write_drums(headers: HeaderMap, Query(q): Query<DrumsQuery>, body: Stri
     let (guess, write) = (q.guess.unwrap_or(false), q.write.unwrap_or(true));
     match tokio::task::spawn_blocking(move || rosaclef_core::drums::api_write(&body, guess, write))
         .await
+    {
+        Ok(Ok(v)) => Json(v).into_response(),
+        Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct DrumPatternQuery {
+    id: String,
+}
+
+/// Make a drum pattern from its recipe: the project in the body, the
+/// project with the pattern's notes made out (one undoable edit in the studio).
+async fn make_drum_pattern(
+    headers: HeaderMap,
+    Query(q): Query<DrumPatternQuery>,
+    body: String,
+) -> Response {
+    if !same_origin(&headers) {
+        return forbidden();
+    }
+    match tokio::task::spawn_blocking(move || rosaclef_core::drums::api_pattern(&body, &q.id)).await
     {
         Ok(Ok(v)) => Json(v).into_response(),
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e).into_response(),

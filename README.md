@@ -142,106 +142,59 @@ natively or in the browser-only build.
 
 ## Drums
 
-The **Drums** tab in the bottom dock (F4) is a drummer for the song: pick a
-groove from a library of 25 (rock, pop, funk, soul, shuffle, jazz, hip-hop,
-house, techno, disco, drum & bass, reggae, Latin, country, metal, 3/4 and
-6/8), a kit (a General MIDI kit or the Ebony drum machine) and a feel, then
-say what each section of the song plays — groove A in the verse, the bigger
-groove B in the chorus, hits, a count-in or rest — with a fill into the next
-section and a crash on its first downbeat. The sections are guessed from the
-playlist. **▶** plays the song with the drums before anything changes (the
-arrows step through grooves while it plays); **Write drums** turns the part
-into ordinary patterns and clips on a Drums track, in one undoable step, with
-a turnaround every 4th bar and fills that do not repeat. Edit the written
-patterns in the piano roll as you like (a drum kit's keys are named for their
-drums), or click the groove's step grid in the tab: writing again keeps your
-edits, follows them into the groove's crash and fill bars, and moves them to
-a new kit.
+The **Drums** tab in the bottom dock (F4) is one screen that always works on
+a drum pattern — the one at the song cursor, or the clip selected in the
+playlist — and says where it plays (the track, the bars, its time signature
+and kit):
 
-The part lives in `project.json` under `drums`, so the agent can edit it
-too; `rosaclef grooves` lists the library and `rosaclef drums` writes it from
-the command line. The design and its trade-offs are in
-[`docs/drums.md`](docs/drums.md).
+- **Grooves** (left): a library of 25 grooves (rock, pop, funk, soul,
+  shuffle, jazz, hip-hop, house, techno, disco, drum & bass, reggae, Latin,
+  country, metal, 3/4 and 6/8), the ones in the time signature at the cursor
+  first. A click plays one in the pattern — or, where the song has no drums
+  yet, makes a pattern there on a Drums track; **▶** lets you hear a groove
+  first, looping, without changing the song.
+- **The pattern** (middle): what it plays (groove A, the bigger B, hits, a
+  count-in or rest), a fill at its end, a crash on its 1, a turnaround every
+  4th bar, its length, kit, feel and swing; and its own notes as a step grid
+  to click (a hit, an accent, a ghost note, a rest).
+- **The song** (below): the drum clips along the bars — a click edits that
+  clip's pattern, a click elsewhere moves the song cursor. In the target bar,
+  − and + lengthen the clip at the cursor, **Copy** makes a variation that
+  plays there instead, and the trash removes a pattern with its clips.
+- **Song drummer** (folded underneath): the whole song's drums at once. The
+  sections are guessed from the playlist; say what each plays, with a fill
+  into the next and a crash on its first downbeat, then **Write drums** turns
+  the part into patterns and clips, in one undoable step, with a turnaround
+  every 4th bar and fills that do not repeat. Writing again keeps your hand
+  edits, follows them into the groove's crash and fill bars, and moves them
+  to a new kit. Where a pattern of your own plays — made in the tab, or one
+  of the drummer's you took over by picking a groove for it — writing leaves
+  those bars to it.
 
-## Sheet music
+A pattern's recipe lives on the pattern (`drums` in `project.json`), and the
+song drummer's part under the top-level `drums`, so the agent can edit both;
+`rosaclef grooves` lists the library, `rosaclef drums` writes the part and
+`rosaclef drums --pattern ID` makes one pattern again. The design and its
+trade-offs are in [`docs/drums.md`](docs/drums.md).
 
-The **Score** tab beside the playlist writes the whole song as engraved sheet
-music, and the dock's **Score** (F10, or the score button in the piano roll)
-does the same for the pattern in the piano roll — or any playlist track or
-pattern, picked from its menu.
+## Instruments and the keys
 
-- **Engraved, not drawn**: one staff per instrument (a grand staff for wide
-  piano parts, one drum staff for the drum channels with the drummer's
-  noteheads), measures from the meters, a key signature (guessed, or set),
-  pitches spelled in the key, durations split to show the beat and tied,
-  triplets, beams, multi-measure rests. Glyphs come from the
-  [Bravura](web/fonts/Bravura-OFL.txt) music font (SMuFL, SIL OFL); spacing
-  follows durations on columns shared by every staff, systems are chosen for
-  the whole piece at once and justified, and staves are spaced by their ink.
-- **Parts**: show or hide instruments, leave playlist tracks out, pick a clef,
-  hide staves that rest (as in orchestral scores); paper or night ink.
-- **On paper**: textured paper under a desk lamp, and wet, glossy ink
-  (its **Gloss** and **Shine** are knobs) or dry, faded ink. **Size** sets how
-  large the music is (fewer bars on a line); **Zoom** magnifies the page as it
-  is, and the hand (or the middle button, or a drag beside the page) moves it about.
-- **PDF**: download what the view shows as vector pages ready to print (A4,
-  or US Letter in the US and Canada), paginated with a title page heading —
-  or as on screen, on textured paper in the view's ink, an image a page.
-- **Repeats**: drag across some bars and press **Repeat** to put repeat
-  signs around them; set how many times they play (×2, ×3…) and make bars
-  **endings** ("1.", "2.", "1.–2.") that play on chosen passes only. The
-  song plays them — the playhead jumps back at the end sign, skips the
-  endings that are not this pass's — and the playlist's ruler shows them.
-- **Colors**: drag across the music to color a passage (on some staves or
-  all) and label it; a passage colored in a pattern is colored wherever the
-  pattern plays. The palette button (or the eye beside **Colors** in the
-  sidebar) hides them: everything in plain ink, on screen and in the PDF.
-- **Editing**: click notes to select them (they are the piano roll's
-  selection), drag them up or down by step and along the bar, delete or
-  transpose them, or switch to **Write** and click notes in with a chosen
-  value. Everything is undoable and plays at once.
+The **browser** on the left is one searchable tree of everything that can
+play: the song's channels (**In this song**), then each instrument with what
+it holds — Grand Orchestra's General MIDI programs by family and its drum
+kits, the drum machine's sounds, each synth's presets, your samples and any
+CLAP plugins. Click one to try it on the keys (Z–/ and Q–[, or the
+on-screen piano) without changing the song; double-click or **+** adds it as
+a channel; **⇄** swaps it into the selected channel, keeping its notes, mixer
+route and volume. Dragging it onto a channel row of the rack swaps it too,
+and the inspector's **Instrument** choice changes the type in place. The
+piano's header always names what the keys play — a channel, or *Trying …*
+for an instrument from the browser.
 
-The settings live in `project.json` under `score`, so the agent can set the
-key, hide parts or color a chorus too.
-
-## Film
-
-The score's **Film** button turns the sheet music into a film of the song:
-the pages lie on a desk (walnut, oak, slate, felt or marble) and a camera in
-3D space above them plays the song — zooming in on a part, pulling back to
-the whole band, leaning and turning so the music runs diagonally across the
-picture, gliding to the next line as one ends — down to a single beat filling
-the picture. The pages look as they do on the paper view, lit by a lamp, and
-the notes light up as they play, their ink glowing warm; a spotlight and a
-vignette finish the picture. It draws fast, with or without a GPU. **On
-screen** picks how it draws in this browser: *Quality* (everything),
-*Performance* (no effects, plain paper and ink, fewer pixels: for slower machines,
-chosen at first everywhere but Chrome on a GPU) or *Custom*, each part on or
-off; exports always draw everything.
-
-- **Auto**: the camera directs itself. It mostly shows the full score — the
-  line being played, every staff — and follows a part for a short while now
-  and then: as it comes in, when it takes the lead for a few phrases, or while
-  it plays alone. The lead is found as the song goes: the single line that
-  stands out (busy, high, loud), not drums, bass or chords. **Energy** sets
-  how often it follows a part, how closely, and how much the camera moves.
-- **Manual**: the camera films your shots, and directs itself between them.
-  A shot is a stretch of the song, what it frames (channels, or a role), how
-  much (from the whole desk down to a single beat, the ink up close), the angle, a drift (a slow push in or
-  turn), how it comes in (glide, cut, swoop, whip) and its effects. Edit them
-  on the timeline under the picture (double-click to add one, drag to move or
-  stretch), in the panel, or on the picture itself (drag to frame, Shift-drag
-  to turn and lean, wheel to zoom). **Write the director's shots** turns the
-  auto film into shots to refine.
-- **MP4**: the whole film at 1920×1080 with its mixdown (Shift-click: fifteen
-  seconds from the playhead), H.264/AAC where the browser encodes them, VP9/Opus
-  otherwise. The camera button saves the frame at the playhead as a picture.
-  **Cinema** shows just the picture, full screen.
-
-The film lives in `project.json` under `animation` (shots in song beats, roles
-and frames by name), so an agent can direct it — or start from the director's
-shots and refine them; the agent guide describes it, and `.rosaclef/context.json`
-names the shot on screen.
+The **channel rack** lists the channels and, for the selected pattern, each
+one's part: a step sequencer (one square per 16th note, bars and beats
+counted above) where every note fits a step at one pitch — drums mostly —
+or a small picture of the notes that opens the piano roll.
 
 ## Sampled instruments
 

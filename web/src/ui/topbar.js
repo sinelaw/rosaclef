@@ -284,7 +284,7 @@ export function topbar(b) {
     "keys",
     keyboard.shown ? "kb-toggle on" : "kb-toggle",
     "keys",
-    keyboard.shown ? "Hide the on-screen piano" : "Show the on-screen piano (plays the selected channel)",
+    keyboard.shown ? "Hide the on-screen piano" : "Show the on-screen piano (plays the selected channel, or the instrument picked in the browser)",
     () => {
       toggleKeyboard();
     }

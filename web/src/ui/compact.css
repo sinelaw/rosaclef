@@ -360,3 +360,11 @@ body {
 .studio.compact .pm-keys {
   display: none;
 }
+
+/* The channel rack's explanation (rack.js): two lines on a phone. */
+.studio.compact .rack-guide span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

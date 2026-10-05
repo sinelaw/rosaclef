@@ -1,6 +1,6 @@
 // Tests for the film of the song (film.js), run with:
 // node web/test/film.test.js (also type-checked by inty via web/check.sh).
-import { emptyProject, noArp, decodeAnimation, decodeShot, encodeShot, encodeProject, decodeProject } from "../src/model.js";
+import { emptyProject, noArp, noPatternDrums, decodeAnimation, decodeShot, encodeShot, encodeProject, decodeProject } from "../src/model.js";
 import { buildScore, TPQ } from "../src/notation.js";
 import {
   findRoles,
@@ -62,7 +62,7 @@ function band() {
   for (let b = 16; b < 64; b = b + 0.5) notes.push({ channel: "bass", pitch: 36 + ((b * 2) % 5), start: b, length: 0.5, velocity: 0.8 });
   for (let b = 32; b < 64; b = b + 4) for (const k of [60, 64, 67]) notes.push({ channel: "pad", pitch: k, start: b, length: 4, velocity: 0.6 });
   for (let b = 32; b < 64; b = b + 0.5) notes.push({ channel: "lead", pitch: 72 + ((b * 4) % 7), start: b, length: 0.5, velocity: 0.8 });
-  p.patterns.push({ id: "song", name: "Song", color: "#d4af37", length: 64, notes: notes });
+  p.patterns.push({ id: "song", name: "Song", color: "#d4af37", length: 64, notes: notes, drums: noPatternDrums() });
   p.playlist.tracks.push({ name: "Track 1", mute: false });
   p.playlist.clips.push({ pattern: "song", sample: "", track: trackIx(0), start: 0, length: 64, offset: 0, gain: 1, mixer: insertIx(0) });
   return p;
@@ -166,7 +166,7 @@ function duet() {
   for (let b = 32; b < 64; b = b + 4) notes.push({ channel: "flute", pitch: 72, start: b, length: 4, velocity: 0.4 });
   for (let b = 0; b < 32; b = b + 4) notes.push({ channel: "violin", pitch: 67, start: b, length: 4, velocity: 0.4 });
   for (let b = 32; b < 64; b = b + 0.5) notes.push({ channel: "violin", pitch: 74 + ((b * 4) % 6), start: b, length: 0.5, velocity: 0.85 });
-  p.patterns.push({ id: "song", name: "Song", color: "#d4af37", length: 64, notes: notes });
+  p.patterns.push({ id: "song", name: "Song", color: "#d4af37", length: 64, notes: notes, drums: noPatternDrums() });
   p.playlist.tracks.push({ name: "Track 1", mute: false });
   p.playlist.clips.push({ pattern: "song", sample: "", track: trackIx(0), start: 0, length: 64, offset: 0, gain: 1, mixer: insertIx(0) });
   return p;
