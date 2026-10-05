@@ -553,6 +553,7 @@ impl Engine {
                     }
                 };
                 f.fx.set_device(dev, &ctx);
+                f.fx.set_metering(self.taps);
                 f.enabled = dev.enabled;
                 f.dev = dev.clone();
                 f.tempo_synced = tempo_synced(&dev.kind);
@@ -1320,6 +1321,11 @@ impl Engine {
 impl Engine {
     pub fn set_taps(&mut self, on: bool) {
         self.taps = on;
+        for ins in &mut self.inserts {
+            for f in &mut ins.fx {
+                f.fx.set_metering(on);
+            }
+        }
     }
 
     /// Frames in one block of [`Engine::process`].

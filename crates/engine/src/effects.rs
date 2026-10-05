@@ -15,11 +15,16 @@ pub trait Effect: Send {
     fn take_gain_reduction(&mut self) -> Option<(f32, f32)> {
         None
     }
+    /// Measure the gain reduction (offline analysis only: off, it costs
+    /// the real-time path nothing).
+    fn set_metering(&mut self, _on: bool) {}
 }
 
-/// Gain reduction seen by a dynamics processor since it was last read.
+/// Gain reduction seen by a dynamics processor since it was last read
+/// (while metering is on).
 #[derive(Clone, Copy, Debug, Default)]
 struct GrMeter {
+    on: bool,
     max: f32,
     sum: f64,
     n: u32,
@@ -30,11 +35,16 @@ impl GrMeter {
     fn add(&mut self, db: f32) {
         self.max = self.max.max(db);
         self.sum += db as f64;
-        // Never read while playing live: it must not overflow then.
         self.n = self.n.saturating_add(1);
     }
     fn take(&mut self) -> Option<(f32, f32)> {
-        let m = std::mem::take(self);
+        let m = std::mem::replace(
+            self,
+            GrMeter {
+                on: self.on,
+                ..Default::default()
+            },
+        );
         Some((
             m.max,
             if m.n > 0 {
@@ -647,7 +657,9 @@ impl Effect for Compressor {
                 self.release
             };
             self.env_db = gr + (self.env_db - gr) * coef;
-            self.meter.add(self.env_db);
+            if self.meter.on {
+                self.meter.add(self.env_db);
+            }
             let g = db_to_gain(-self.env_db) * self.makeup;
             left[i] *= g;
             right[i] *= g;
@@ -655,6 +667,9 @@ impl Effect for Compressor {
     }
     fn take_gain_reduction(&mut self) -> Option<(f32, f32)> {
         self.meter.take()
+    }
+    fn set_metering(&mut self, on: bool) {
+        self.meter.on = on;
     }
 }
 
@@ -713,11 +728,13 @@ impl Effect for Limiter {
                 self.release
             };
             self.gain = target + (self.gain - target) * coef;
-            self.meter.add(if self.gain < 1.0 {
-                -gain_to_db(self.gain)
-            } else {
-                0.0
-            });
+            if self.meter.on {
+                self.meter.add(if self.gain < 1.0 {
+                    -gain_to_db(self.gain)
+                } else {
+                    0.0
+                });
+            }
             self.buf[0][self.w] = xl;
             self.buf[1][self.w] = xr;
             self.w = (self.w + 1) % n;
@@ -728,5 +745,8 @@ impl Effect for Limiter {
     }
     fn take_gain_reduction(&mut self) -> Option<(f32, f32)> {
         self.meter.take()
+    }
+    fn set_metering(&mut self, on: bool) {
+        self.meter.on = on;
     }
 }
