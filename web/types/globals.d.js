@@ -254,3 +254,30 @@
     paint: (Handle, Painter) => Undefined,
     frame: (() => Undefined) => Undefined
 } */
+
+// ---------------------------------------------------------------- mix check
+// The report of POST /api/mixcheck (crates/studio/src/mixcheck, docs/mixcheck.md),
+// as web/src/ui/mixcheck.js decodes it: a missing number is NaN, a JSON Patch is kept as JSON text.
+
+/** A compressor's or limiter's gain reduction (dB) over the range: `above3` = % of the time over 3 dB. */
+/** type MixGr = { id: String, effect: Int, kind: String, max: Number, mean: Number, above3: Number } */
+/** A part's share (%) of the mix's energy. */
+/** type MixShare = { id: String, pct: Number } */
+/** A row of the report (a bar, a section or N beats; `pass` 0 = not a repeat). */
+/** type MixRow = { label: String, bar: Int, pass: Int, fromBeat: Number, toBeat: Number, lufs: Number, mMax: Number, sMax: Number, peak: Number, truePeak: Number, preLimiter: Number, limGr: Number, corr: Number, spectrum: Number[], top: MixShare[] } */
+/** type MixMasker = { id: String, lo: Number, hi: Number, db: Number } */
+/** A change the mix check suggests: `patch` is JSON Patch text; `verified` a summary once re-measured. */
+/** type MixSuggestion = { why: String, patch: String, expRel: Number, expAud: Number, verified: String } */
+/** type MixElement = { id: String, name: String, kind: String, role: String, insert: Int, rms: Number, peak: Number, lufs: Number, rel: Number, share: Number, active: Number, corr: Number, audible: Number, maskers: MixMasker[], domLo: Number, domHi: Number, fader: Number, verdict: String, suggestions: MixSuggestion[] } */
+/** type MixNote = { channel: String, pattern: String, note: Int, pitch: String, level: Number } */
+/** type MixClash = { bar: Int, pass: Int, beatInBar: Number, a: MixNote, b: MixNote, interval: String, overlap: Number, severity: String, also: Int[], patch: String, label: String } */
+/** type MixFinding = { severity: String, rule: String, key: String, where: String, detail: String, element: String, fromBar: Int, patch: String, label: String } */
+/** type MixMaster = { integrated: Number, shortMax: Number, momentaryMax: Number, truePeak: Number, samplePeak: Number, rms: Number, preLimiter: Number, preEffects: Number, limGr: MixGr, compGr: MixGr, plr: Number, crest: Number, lra: Number, corrMean: Number, corrMin: Number, monoLoss: Number, spectrum: Number[] } */
+/** A delivery target's verdict: `status` pass, warn or fail; `gain` what the platform applies (dB). */
+/** type MixTarget = { id: String, name: String, lufs: Number, truePeak: Number, status: String, gain: Number, notes: String[] } */
+/** The master over time: momentary and short-term LUFS, true peak (dBTP) and limiter GR (dB) every `step` seconds. */
+/** type MixHistory = { step: Number, t: Number[], m: Number[], s: Number[], tp: Number[], gr: Number[], bars: { t: Number, bar: Int, pass: Int }[] } */
+/** A reference recording, level-matched: `spectrumDiff` = the mix minus the reference per band (dB). */
+/** type MixReference = { file: String, levelMatch: Number, spectrumDiff: Number[], summary: String, master: MixMaster } */
+/** type MixReport = { ok: Boolean, fromBar: Int, toBar: Int, fromBeat: Number, toBeat: Number, seconds: Number, repeats: Boolean, master: MixMaster, target: MixTarget, reference: MixReference, rows: MixRow[], elements: MixElement[], gr: MixGr[], clashes: MixClash[], findings: MixFinding[], history: MixHistory, whatIf: String, cached: Boolean, ms: Number, renders: Int, warnings: String[] } */
+/** type MixTargetInfo = { id: String, name: String, lufs: Number, truePeak: Number } */

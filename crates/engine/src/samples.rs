@@ -9,7 +9,7 @@ use crate::soundfont::LoadedPreset;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SampleData {
     pub sample_rate: f32,
     /// One or two channels of equal length.

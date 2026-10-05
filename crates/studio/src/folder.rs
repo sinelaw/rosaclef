@@ -106,6 +106,10 @@ impl Folder {
             &self.state_path("context.schema.json"),
             &rosaclef_core::context::schema_text(),
         )?;
+        fs.write_if_changed(
+            &self.state_path("mixcheck.schema.json"),
+            crate::mixcheck::SCHEMA,
+        )?;
         let gitignore = self.dir.join(STATE_DIR).join(".gitignore");
         if !fs.exists(&gitignore) {
             fs.write(&gitignore, b"*\n!context.schema.json\n")?;

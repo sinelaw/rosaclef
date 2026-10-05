@@ -17,7 +17,7 @@ import { revealBeat } from "./playlist.js";
 import { toast } from "./toast.js";
 import { insertIx, noteIx, clipIx } from "#brands";
 
-const CATEGORIES = ["Harmony", "Melody", "Rhythm", "Arrangement", "Low end", "Mix", "Stereo", "Effects", "Master", "Project"];
+const CATEGORIES = ["Harmony", "Melody", "Rhythm", "Arrangement", "Low end", "Mix", "Stereo", "Effects", "Master", "Project", "Mix check"];
 
 const view = {
   /** "all", "suggest" (with a fix) or "issue" (without). */
@@ -288,7 +288,7 @@ function rulesView(b) {
     "p",
     "intro",
     "crit-intro",
-    `${view.catalog.length} checks, all mechanical: they read the project — notes, clips, channels and the mixer — and nothing else. The checks of classical theory (keys, counterpoint, singable melodies) start off, since most modern tracks break them on purpose: turn them on if the song wants them. Your choices are saved in the project.`
+    `${view.catalog.length} checks, all mechanical: they read the project — notes, clips, channels and the mixer — and nothing else, but for the Mix check ones, measured on a render in the Mix check tab (and \`rosaclef critic --audio\`). The checks of classical theory (keys, counterpoint, singable melodies) start off, since most modern tracks break them on purpose: turn them on if the song wants them. Your choices are saved in the project.`
   );
   for (const cat of CATEGORIES) {
     b.leaf("h4", `h-${cat}`, "crit-cat", cat);

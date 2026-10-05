@@ -49,7 +49,7 @@ pub struct Where {
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Op {
     /// "add" (set an object member, append with `-`, or insert into an
-    /// array) or "remove".
+    /// array), "replace" or "remove".
     pub op: &'static str,
     /// A JSON pointer: `/patterns/2/notes/14/pitch`.
     pub path: String,
@@ -112,6 +112,7 @@ pub const CATEGORIES: &[&str] = &[
     "Effects",
     "Master",
     "Project",
+    "Mix check",
 ];
 
 const fn r(
@@ -232,8 +233,23 @@ pub static RULES: &[Rule] = &[
     r("pattern-bars", "Project", "Patterns of odd lengths", "Patterns in whole bars, and phrases of 2, 4 or 8 bars, line up with the song's form."),
     r("unused-channel", "Project", "Unused channels", "Channels with no notes are clutter."),
     r("names", "Project", "Default names", "Names like \"Pattern 3\" say nothing when you come back to the project."),
+    // Mix check: measured on a render (`rosaclef mixcheck`; `rosaclef critic --audio`).
+    r("master-overload", "Mix check", "Master overload", "Peaks far over 0 dBFS at the limiter's input make it work hard all the time: it flattens the transients and pumps. Leave headroom before the master."),
+    r("limiter-pumping", "Mix check", "Limiter pumping", "Gain reduction swinging with every beat makes the whole mix breathe; a slower release or less drive keeps it steady."),
+    r("masked-lead", "Mix check", "Masked lead", "The lead carries the song: if other parts cover its frequencies it disappears, however loud its fader."),
+    r("inaudible-part", "Mix check", "Inaudible part", "A part buried under others costs CPU and clutter and adds nothing: bring it out or take it away."),
+    r("harmonic-clash", "Mix check", "Harmonic clash", "Notes a minor second, major seventh or tritone apart, held together and both audible, grind (measured with the parts' real levels)."),
+    r("low-end-buildup", "Mix check", "Low-end build-up", "Too much energy under 250–500 Hz makes a mix muddy and boomy and eats the headroom."),
+    r("phase-correlation", "Mix check", "Phase and mono", "A negative correlation means the channels cancel: on a phone or a club's mono system parts disappear."),
+    r("section-loudness-flat", "Mix check", "No build between sections", "Sections at the same loudness give the song nowhere to go; the drop hits harder after a quieter build."),
     r("unknown-content", "Project", "Content this version doesn't know", "The song names sections, instruments, effects or settings this version of Rosaclef doesn't know (made with a newer one, or a typo): they are left out, or played on a stand-in, until it is updated."),
 ];
+
+/// Each channel's role in the song, as the checks read it (in channel
+/// order): drums, bass, harmony, lead, part, fx, gen, arp, sample or idle.
+pub fn channel_roles(p: &Project) -> Vec<&'static str> {
+    Ana::new(p).chans.iter().map(|c| c.role).collect()
+}
 
 /// The rule with this id.
 pub fn rule(id: &str) -> Option<&'static Rule> {
@@ -325,7 +341,8 @@ pub fn critique_with(p: &Project, off: &[String], fallbacks: &[String]) -> Criti
 
 /// Apply JSON Patch operations to a JSON document. `add` sets an object
 /// member (creating missing parent objects), appends to an array with `-`
-/// or inserts into it at an index; `remove` deletes a member or element.
+/// or inserts into it at an index; `replace` changes an existing member or
+/// element; `remove` deletes a member or element.
 pub fn apply_ops(doc: &mut Value, ops: &[Op]) -> Result<(), String> {
     for op in ops {
         let parts: Vec<String> = op
@@ -368,6 +385,21 @@ pub fn apply_ops(doc: &mut Value, ops: &[Op]) -> Result<(), String> {
                     }
                     a.insert(i, v);
                 }
+            }
+            ("replace", Value::Object(m)) => {
+                if !m.contains_key(last.as_str()) {
+                    return Err(format!("{}: no member {last:?}", op.path));
+                }
+                m.insert(last.clone(), op.value.clone().unwrap_or(Value::Null));
+            }
+            ("replace", Value::Array(a)) => {
+                let i: usize = last
+                    .parse()
+                    .map_err(|_| format!("{}: not an index", op.path))?;
+                let slot = a
+                    .get_mut(i)
+                    .ok_or_else(|| format!("{}: no element {i}", op.path))?;
+                *slot = op.value.clone().unwrap_or(Value::Null);
             }
             ("remove", Value::Object(m)) => {
                 m.remove(last.as_str());

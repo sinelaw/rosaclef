@@ -1,0 +1,613 @@
+{
+  "version": 1,
+  "range": {
+    "fromBar": 2,
+    "toBar": 3,
+    "fromBeat": 4.0,
+    "toBeat": 12.0,
+    "by": "bar",
+    "seconds": 4.0,
+    "threshold": "normal"
+  },
+  "master": {
+    "integratedLufs": -6.9,
+    "shortTermLufsMax": -6.8,
+    "momentaryLufsMax": -6.3,
+    "truePeakDbtp": -0.5,
+    "samplePeakDbfs": -1.0,
+    "rmsDbfs": -8.3,
+    "preLimiterPeakDbfs": 8.0,
+    "preEffectsPeakDbfs": 2.3,
+    "limiterGainReductionDb": {
+      "max": 8.1,
+      "mean": 1.2,
+      "pctTimeAbove3": 5.0
+    },
+    "compressorGainReductionDb": {
+      "max": 6.6,
+      "mean": 2.3,
+      "pctTimeAbove3": 26.0
+    },
+    "plrDb": 6.4,
+    "crestFactorDb": 7.3,
+    "lra": 0.9,
+    "correlation": {
+      "mean": 0.93,
+      "min": 0.75,
+      "monoLossDb": -0.2
+    },
+    "spectrum": {
+      "bands": [
+        "sub<60",
+        "bass60-250",
+        "lowmid250-500",
+        "mid500-2k",
+        "himid2-6k",
+        "air6k+"
+      ],
+      "db": [
+        -16.5,
+        -12.0,
+        -13.8,
+        -16.8,
+        -32.9,
+        -43.0
+      ]
+    }
+  },
+  "target": {
+    "id": "spotify",
+    "name": "Spotify",
+    "lufs": -14.0,
+    "truePeakDbtp": -1.0,
+    "status": "fail",
+    "playbackGainDb": -7.1,
+    "notes": [
+      "true peak -0.5 dBTP is over the -1.0 dBTP limit",
+      "played 7.1 dB quieter (normalized to -14 LUFS): the extra loudness only costs dynamics"
+    ]
+  },
+  "perBar": [
+    {
+      "bar": 2,
+      "fromBeat": 4.0,
+      "toBeat": 8.0,
+      "lufs": -6.9,
+      "lufsMomentaryMax": -6.3,
+      "lufsShortTermMax": -7.1,
+      "rmsDbfs": -8.2,
+      "peakDbfs": -1.0,
+      "truePeakDbtp": -0.6,
+      "preLimiterPeakDbfs": 7.9,
+      "limiterGrMaxDb": 8.1,
+      "gainReductionDb": {
+        "insert:2/Bass#0": 4.8
+      },
+      "correlation": 0.94,
+      "spectrumDb": [
+        -16.9,
+        -12.2,
+        -13.7,
+        -15.9,
+        -33.1,
+        -41.9
+      ],
+      "topContributors": [
+        {
+          "id": "channel:kick",
+          "shareOfEnergyPct": 68.0
+        },
+        {
+          "id": "channel:pad",
+          "shareOfEnergyPct": 15.0
+        },
+        {
+          "id": "channel:bass",
+          "shareOfEnergyPct": 10.0
+        }
+      ]
+    },
+    {
+      "bar": 3,
+      "fromBeat": 8.0,
+      "toBeat": 12.0,
+      "lufs": -6.9,
+      "lufsMomentaryMax": -6.4,
+      "lufsShortTermMax": -6.8,
+      "rmsDbfs": -8.3,
+      "peakDbfs": -1.0,
+      "truePeakDbtp": -0.5,
+      "preLimiterPeakDbfs": 8.0,
+      "limiterGrMaxDb": 8.0,
+      "gainReductionDb": {
+        "insert:2/Bass#0": 5.5
+      },
+      "correlation": 0.92,
+      "spectrumDb": [
+        -16.2,
+        -11.7,
+        -13.9,
+        -17.9,
+        -32.8,
+        -44.6
+      ],
+      "topContributors": [
+        {
+          "id": "channel:kick",
+          "shareOfEnergyPct": 68.0
+        },
+        {
+          "id": "channel:pad",
+          "shareOfEnergyPct": 15.0
+        },
+        {
+          "id": "channel:bass",
+          "shareOfEnergyPct": 10.0
+        }
+      ]
+    }
+  ],
+  "elements": [
+    {
+      "id": "channel:kick",
+      "name": "Kick",
+      "kind": "channel",
+      "role": "drums",
+      "insert": 1,
+      "rmsDbfs": -14.8,
+      "peakDbfs": -1.6,
+      "lufs": -11.9,
+      "relativeToMixDb": -1.8,
+      "shareOfEnergyPct": 69.0,
+      "activePct": 100.0,
+      "correlation": 1.0,
+      "audibility": {
+        "audibleFractionPct": 86.0,
+        "maskedBy": [
+          {
+            "id": "channel:bass",
+            "bandHz": [
+              20.0,
+              200.0
+            ],
+            "maskingDb": 11.9
+          }
+        ],
+        "dominantBandHz": [
+          20.0,
+          300.0
+        ]
+      },
+      "level": {
+        "faderDb": 1.6,
+        "channelVolume": 0.9,
+        "automated": []
+      },
+      "verdict": "overloading"
+    },
+    {
+      "id": "channel:bass",
+      "name": "Bass",
+      "kind": "channel",
+      "role": "bass",
+      "insert": 2,
+      "rmsDbfs": -22.8,
+      "peakDbfs": -10.6,
+      "lufs": -21.5,
+      "relativeToMixDb": -11.4,
+      "shareOfEnergyPct": 10.0,
+      "activePct": 100.0,
+      "correlation": 1.0,
+      "audibility": {
+        "audibleFractionPct": 72.0,
+        "maskedBy": [
+          {
+            "id": "channel:kick",
+            "bandHz": [
+              20.0,
+              300.0
+            ],
+            "maskingDb": 13.2
+          }
+        ],
+        "dominantBandHz": [
+          20.0,
+          100.0
+        ]
+      },
+      "level": {
+        "faderDb": 0.0,
+        "channelVolume": 0.8,
+        "automated": []
+      },
+      "verdict": "ok"
+    },
+    {
+      "id": "channel:lead",
+      "name": "Lead",
+      "kind": "channel",
+      "role": "lead",
+      "insert": 3,
+      "rmsDbfs": -23.8,
+      "peakDbfs": -9.9,
+      "lufs": -20.3,
+      "relativeToMixDb": -10.2,
+      "shareOfEnergyPct": 7.0,
+      "activePct": 100.0,
+      "correlation": 1.0,
+      "audibility": {
+        "audibleFractionPct": 100.0,
+        "maskedBy": [],
+        "dominantBandHz": [
+          510.0,
+          770.0
+        ]
+      },
+      "level": {
+        "faderDb": 0.0,
+        "channelVolume": 0.5,
+        "automated": []
+      },
+      "verdict": "ok"
+    },
+    {
+      "id": "channel:pad",
+      "name": "Pad",
+      "kind": "channel",
+      "role": "harmony",
+      "insert": 4,
+      "rmsDbfs": -17.9,
+      "peakDbfs": -5.5,
+      "lufs": -17.7,
+      "relativeToMixDb": -7.6,
+      "shareOfEnergyPct": 15.0,
+      "activePct": 100.0,
+      "correlation": 1.0,
+      "audibility": {
+        "audibleFractionPct": 97.0,
+        "maskedBy": [],
+        "dominantBandHz": [
+          200.0,
+          400.0
+        ]
+      },
+      "level": {
+        "faderDb": -1.9,
+        "channelVolume": 0.6,
+        "automated": []
+      },
+      "verdict": "ok"
+    }
+  ],
+  "gainReduction": [
+    {
+      "id": "insert:0/Master",
+      "effect": 0,
+      "type": "compressor",
+      "max": 6.6,
+      "mean": 2.3,
+      "pctTimeAbove3": 26.0
+    },
+    {
+      "id": "insert:0/Master",
+      "effect": 1,
+      "type": "limiter",
+      "max": 8.1,
+      "mean": 1.2,
+      "pctTimeAbove3": 5.0
+    },
+    {
+      "id": "insert:2/Bass",
+      "effect": 0,
+      "type": "compressor",
+      "max": 5.5,
+      "mean": 1.2,
+      "pctTimeAbove3": 3.0
+    }
+  ],
+  "clashes": [
+    {
+      "bar": 2,
+      "beatInBar": 2.0,
+      "a": {
+        "channel": "lead",
+        "pattern": "tune",
+        "noteIndex": 1,
+        "pitch": "C#5",
+        "midi": 73,
+        "levelDb": -11.5
+      },
+      "b": {
+        "channel": "pad",
+        "pattern": "tune",
+        "noteIndex": 3,
+        "pitch": "C4",
+        "midi": 60,
+        "levelDb": -8.4
+      },
+      "interval": "m9",
+      "overlapBeats": 2.0,
+      "severity": "high",
+      "fix": [
+        {
+          "op": "replace",
+          "path": "/patterns/1/notes/1/pitch",
+          "value": 72
+        }
+      ],
+      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
+    },
+    {
+      "bar": 2,
+      "beatInBar": 2.0,
+      "a": {
+        "channel": "lead",
+        "pattern": "tune",
+        "noteIndex": 1,
+        "pitch": "C#5",
+        "midi": 73,
+        "levelDb": -11.7
+      },
+      "b": {
+        "channel": "bass",
+        "pattern": "beat",
+        "noteIndex": 5,
+        "pitch": "C2",
+        "midi": 36,
+        "levelDb": -9.7
+      },
+      "interval": "m2+3oct",
+      "overlapBeats": 1.5,
+      "severity": "high",
+      "fix": [
+        {
+          "op": "replace",
+          "path": "/patterns/1/notes/1/pitch",
+          "value": 72
+        }
+      ],
+      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
+    },
+    {
+      "bar": 2,
+      "beatInBar": 2.0,
+      "a": {
+        "channel": "lead",
+        "pattern": "tune",
+        "noteIndex": 1,
+        "pitch": "C#5",
+        "midi": 73,
+        "levelDb": -11.5
+      },
+      "b": {
+        "channel": "pad",
+        "pattern": "tune",
+        "noteIndex": 5,
+        "pitch": "G4",
+        "midi": 67,
+        "levelDb": -8.4
+      },
+      "interval": "TT",
+      "overlapBeats": 2.0,
+      "severity": "medium",
+      "fix": [
+        {
+          "op": "replace",
+          "path": "/patterns/1/notes/1/pitch",
+          "value": 72
+        }
+      ],
+      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "warn",
+      "rule": "master-overload",
+      "key": "master-overload|bars:2-3",
+      "where": "bars 2–3",
+      "detail": "pre-limiter peaks +8.0 dBFS; the limiter reduces up to 8.1 dB, above 3 dB 5% of the time. Top contributors: Kick (insert 1, fader +1.6 dB) 68%, Pad (insert 4, fader -1.9 dB) 15%, Bass (insert 2, fader +0.0 dB) 10%.",
+      "fromBar": 2,
+      "toBar": 3,
+      "fix": [
+        {
+          "op": "add",
+          "path": "/mixer/inserts/1/volume",
+          "value": 0.597
+        }
+      ],
+      "fixLabel": "Kick down 6.1 dB"
+    },
+    {
+      "severity": "warn",
+      "rule": "limiter-pumping",
+      "key": "limiter-pumping|insert:0#0",
+      "where": "master compressor (effect 0)",
+      "detail": "its gain reduction swings 4.8 dB within a beat (median), above 3 dB 26% of the time (mean 2.3 dB): the mix breathes with the beat.",
+      "element": "insert:0/Master",
+      "fromBar": 2,
+      "toBar": 3,
+      "fix": [
+        {
+          "op": "add",
+          "path": "/mixer/inserts/0/effects/0/params/release",
+          "value": 300.0
+        },
+        {
+          "op": "add",
+          "path": "/mixer/inserts/0/effects/0/params/threshold",
+          "value": -12.9
+        }
+      ],
+      "fixLabel": "a slower release and less drive"
+    },
+    {
+      "severity": "warn",
+      "rule": "harmonic-clash",
+      "key": "harmonic-clash|tune:1|tune:3",
+      "where": "bar 2",
+      "detail": "lead C#5 (pattern tune, note 1) against pad C4 (pattern tune, note 3): a m9 held 2.00 beats, the quieter at -11.5 dB against the mix.",
+      "element": "channel:lead",
+      "fromBar": 2,
+      "toBar": 2,
+      "fix": [
+        {
+          "op": "replace",
+          "path": "/patterns/1/notes/1/pitch",
+          "value": 72
+        }
+      ],
+      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
+    },
+    {
+      "severity": "warn",
+      "rule": "harmonic-clash",
+      "key": "harmonic-clash|tune:1|beat:5",
+      "where": "bar 2",
+      "detail": "lead C#5 (pattern tune, note 1) against bass C2 (pattern beat, note 5): a m2+3oct held 1.50 beats, the quieter at -11.7 dB against the mix.",
+      "element": "channel:lead",
+      "fromBar": 2,
+      "toBar": 2,
+      "fix": [
+        {
+          "op": "replace",
+          "path": "/patterns/1/notes/1/pitch",
+          "value": 72
+        }
+      ],
+      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
+    }
+  ],
+  "history": {
+    "stepSeconds": 0.2,
+    "t": [
+      0.0,
+      0.2,
+      0.4,
+      0.6,
+      0.8,
+      1.0,
+      1.2,
+      1.4,
+      1.6,
+      1.8,
+      2.0,
+      2.2,
+      2.4,
+      2.6,
+      2.8,
+      3.0,
+      3.2,
+      3.4,
+      3.6,
+      3.8
+    ],
+    "momentary": [
+      -8.5,
+      -6.4,
+      -6.3,
+      -6.4,
+      -6.7,
+      -6.5,
+      -6.4,
+      -6.5,
+      -6.5,
+      -6.6,
+      -6.6,
+      -6.4,
+      -6.7,
+      -6.6,
+      -6.5,
+      -6.6,
+      -6.4,
+      -6.6,
+      -6.6,
+      -6.9
+    ],
+    "shortTerm": [
+      -7.7,
+      -7.6,
+      -7.4,
+      -7.5,
+      -7.5,
+      -7.6,
+      -7.4,
+      -7.4,
+      -7.3,
+      -7.1,
+      -7.1,
+      -7.0,
+      -7.0,
+      -7.0,
+      -6.8,
+      -6.8,
+      -6.8,
+      -6.8,
+      -6.8,
+      -6.8
+    ],
+    "truePeak": [
+      -0.9,
+      -1.0,
+      -0.7,
+      -1.0,
+      -1.0,
+      -0.7,
+      -1.0,
+      -0.6,
+      -1.0,
+      -1.0,
+      -0.8,
+      -1.0,
+      -0.5,
+      -1.0,
+      -1.0,
+      -0.8,
+      -1.0,
+      -0.6,
+      -1.0,
+      -1.0
+    ],
+    "limiterGr": [
+      7.6,
+      4.3,
+      6.7,
+      3.2,
+      1.1,
+      6.6,
+      2.8,
+      5.1,
+      4.3,
+      0.5,
+      8.1,
+      3.6,
+      6.2,
+      3.4,
+      0.9,
+      8.0,
+      2.1,
+      5.9,
+      3.5,
+      0.4
+    ],
+    "bars": [
+      {
+        "t": 0.0,
+        "bar": 2,
+        "pass": 1
+      },
+      {
+        "t": 2.0,
+        "bar": 3,
+        "pass": 1
+      }
+    ]
+  },
+  "render": {
+    "cached": false,
+    "ms": 0,
+    "prerollBeats": 8.0,
+    "renders": 1,
+    "sampleRate": 48000.0
+  }
+}

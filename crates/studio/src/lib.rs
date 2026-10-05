@@ -13,6 +13,7 @@ pub mod folder;
 pub mod fonts;
 pub mod guide;
 pub mod library;
+pub mod mixcheck;
 pub mod render;
 pub mod transcribe;
 

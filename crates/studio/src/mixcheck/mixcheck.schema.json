@@ -1,0 +1,1016 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sinelaw/rosaclef/mixcheck.schema.json",
+  "title": "Rosaclef mix check report",
+  "description": "What `rosaclef mixcheck`, POST /api/mixcheck and the studio's Mix check panel return. dB values are rounded to 0.1, percentages to whole numbers. See docs/mixcheck.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "range",
+    "master",
+    "perBar",
+    "elements",
+    "findings",
+    "render"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "range": {
+      "type": "object",
+      "properties": {
+        "fromBar": {
+          "type": "integer"
+        },
+        "toBar": {
+          "type": "integer"
+        },
+        "fromBeat": {
+          "type": "number"
+        },
+        "toBeat": {
+          "type": "number"
+        },
+        "section": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        },
+        "seconds": {
+          "type": "number",
+          "description": "Music measured, every pass."
+        },
+        "repeats": {
+          "type": "boolean"
+        },
+        "threshold": {
+          "enum": [
+            "strict",
+            "normal",
+            "loose"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "fromBar",
+        "toBar",
+        "fromBeat",
+        "toBeat",
+        "by",
+        "seconds",
+        "threshold"
+      ]
+    },
+    "master": {
+      "type": "object",
+      "properties": {
+        "integratedLufs": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "ITU-R BS.1770-4 gated integrated loudness of the output (LUFS)."
+        },
+        "shortTermLufsMax": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Loudest 3 s window."
+        },
+        "momentaryLufsMax": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Loudest 400 ms window."
+        },
+        "truePeakDbtp": {
+          "type": "number",
+          "description": "4× oversampled true peak of the output."
+        },
+        "samplePeakDbfs": {
+          "type": "number"
+        },
+        "rmsDbfs": {
+          "type": "number"
+        },
+        "preLimiterPeakDbfs": {
+          "type": "number",
+          "description": "Peak at the master limiter's input (after its input gain); > 0 = the limiter is fighting."
+        },
+        "preEffectsPeakDbfs": {
+          "type": "number",
+          "description": "Peak of the master bus before its effects."
+        },
+        "limiterGainReductionDb": {
+          "type": "object",
+          "properties": {
+            "max": {
+              "type": "number"
+            },
+            "mean": {
+              "type": "number"
+            },
+            "pctTimeAbove3": {
+              "type": "number",
+              "description": "Share of the time (%) with more than 3 dB of gain reduction."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "max",
+            "mean",
+            "pctTimeAbove3"
+          ]
+        },
+        "compressorGainReductionDb": {
+          "type": "object",
+          "properties": {
+            "max": {
+              "type": "number"
+            },
+            "mean": {
+              "type": "number"
+            },
+            "pctTimeAbove3": {
+              "type": "number",
+              "description": "Share of the time (%) with more than 3 dB of gain reduction."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "max",
+            "mean",
+            "pctTimeAbove3"
+          ]
+        },
+        "plrDb": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Peak-to-loudness ratio: true peak − integrated loudness."
+        },
+        "crestFactorDb": {
+          "type": "number",
+          "description": "Sample peak − RMS."
+        },
+        "lra": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "EBU Tech 3342 loudness range (LU)."
+        },
+        "correlation": {
+          "type": "object",
+          "properties": {
+            "mean": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "monoLossDb": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Loudness of the mono fold-down against stereo (0 mono-safe, ≈ −3 unrelated channels, ≪ 0 cancelling)."
+            }
+          },
+          "additionalProperties": false
+        },
+        "spectrum": {
+          "type": "object",
+          "properties": {
+            "bands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "db": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "bands",
+            "db"
+          ],
+          "description": "Long-term power in six bands (dB re full scale)."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The master; fields appear with their --checks (levels, dynamics, gainreduction, stereo, spectrum)."
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "lufs": {
+          "type": "number"
+        },
+        "truePeakDbtp": {
+          "type": "number"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        },
+        "playbackGainDb": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "--target: the delivery target and the verdict."
+    },
+    "reference": {
+      "type": "object",
+      "description": "--reference: the recording's master numbers and the differences, level-matched."
+    },
+    "perBar": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "bar": {
+            "type": "integer",
+            "description": "Bar from 1, following the meters (--by bar; first bar of the row otherwise)."
+          },
+          "section": {
+            "type": "string"
+          },
+          "pass": {
+            "type": "integer",
+            "description": "Which pass of a repeated passage (present when the range repeats)."
+          },
+          "fromBeat": {
+            "type": "number"
+          },
+          "toBeat": {
+            "type": "number"
+          },
+          "toBar": {
+            "type": "integer"
+          },
+          "lufs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lufsMomentaryMax": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lufsShortTermMax": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rmsDbfs": {
+            "type": "number"
+          },
+          "peakDbfs": {
+            "type": "number"
+          },
+          "truePeakDbtp": {
+            "type": "number"
+          },
+          "preLimiterPeakDbfs": {
+            "type": "number"
+          },
+          "limiterGrMaxDb": {
+            "type": "number"
+          },
+          "gainReductionDb": {
+            "type": "object",
+            "description": "Other compressors and limiters with ≥ 0.5 dB: \"insert:<i>/<name>#<effect>\" → max dB.",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "correlation": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "spectrumDb": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "topContributors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "shareOfEnergyPct": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "shareOfEnergyPct"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "fromBeat",
+          "toBeat"
+        ]
+      },
+      "description": "One row per bar (or section, or N beats), in playing order; a repeated bar has a row per pass."
+    },
+    "elements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "channel:<id> or insert:<index>/<name>."
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "channel",
+              "insert"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "description": "The Critic's role: drums, bass, harmony, lead, part, fx, gen, arp, sample, idle."
+          },
+          "insert": {
+            "type": "integer"
+          },
+          "rmsDbfs": {
+            "type": "number"
+          },
+          "peakDbfs": {
+            "type": "number"
+          },
+          "lufs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "relativeToMixDb": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Its loudness at the master minus the mix's."
+          },
+          "shareOfEnergyPct": {
+            "type": "number"
+          },
+          "activePct": {
+            "type": "number"
+          },
+          "correlation": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "audibility": {
+            "type": "object",
+            "properties": {
+              "audibleFractionPct": {
+                "type": "number",
+                "description": "Share of its active frames the partial-loudness model judges audible."
+              },
+              "maskedBy": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "bandHz": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "description": "[low, high] in Hz."
+                    },
+                    "maskingDb": {
+                      "type": "number",
+                      "description": "How far the masker's excitation is above the element's there."
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "bandHz",
+                    "maskingDb"
+                  ]
+                }
+              },
+              "dominantBandHz": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "[low, high] in Hz."
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "audibleFractionPct"
+            ]
+          },
+          "level": {
+            "type": "object",
+            "properties": {
+              "faderDb": {
+                "type": "number"
+              },
+              "channelVolume": {
+                "type": "number"
+              },
+              "automated": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Automation lanes moving its level."
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "faderDb",
+              "automated"
+            ]
+          },
+          "verdict": {
+            "enum": [
+              "inaudible",
+              "buried",
+              "ok",
+              "dominant",
+              "overloading"
+            ]
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "why": {
+                  "type": "string"
+                },
+                "patch": {
+                  "type": "array",
+                  "description": "JSON Patch (RFC 6902) operations on project.json.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "enum": [
+                          "add",
+                          "remove",
+                          "replace",
+                          "move",
+                          "copy",
+                          "test"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "op",
+                      "path"
+                    ]
+                  }
+                },
+                "expectedRelativeToMixDb": {
+                  "type": "number"
+                },
+                "expectedAudibleFractionPct": {
+                  "type": "number"
+                },
+                "verified": {
+                  "type": "object",
+                  "description": "--verify: re-measured under the patch."
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "why",
+                "patch"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "insert",
+          "shareOfEnergyPct",
+          "activePct",
+          "level",
+          "verdict"
+        ]
+      },
+      "description": "Every channel (and bus) that sounds in the range, or only --focus."
+    },
+    "gainReduction": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "max": {
+            "type": "number"
+          },
+          "mean": {
+            "type": "number"
+          },
+          "pctTimeAbove3": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "effect",
+          "type",
+          "max",
+          "mean",
+          "pctTimeAbove3"
+        ]
+      }
+    },
+    "clashes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "bar": {
+            "type": "integer"
+          },
+          "pass": {
+            "type": "integer"
+          },
+          "beatInBar": {
+            "type": "number",
+            "description": "Beats into the bar (0 = downbeat)."
+          },
+          "a": {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "type": "string"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "noteIndex": {
+                "type": "integer",
+                "description": "Index in the pattern's notes: /patterns/<i>/notes/<noteIndex>."
+              },
+              "pitch": {
+                "type": "string",
+                "description": "Sounding pitch, C4 = MIDI 60."
+              },
+              "midi": {
+                "type": "integer"
+              },
+              "levelDb": {
+                "type": "number",
+                "description": "The part's level against the mix during the overlap."
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "channel",
+              "pattern",
+              "noteIndex",
+              "pitch",
+              "midi",
+              "levelDb"
+            ]
+          },
+          "b": {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "type": "string"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "noteIndex": {
+                "type": "integer",
+                "description": "Index in the pattern's notes: /patterns/<i>/notes/<noteIndex>."
+              },
+              "pitch": {
+                "type": "string",
+                "description": "Sounding pitch, C4 = MIDI 60."
+              },
+              "midi": {
+                "type": "integer"
+              },
+              "levelDb": {
+                "type": "number",
+                "description": "The part's level against the mix during the overlap."
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "channel",
+              "pattern",
+              "noteIndex",
+              "pitch",
+              "midi",
+              "levelDb"
+            ]
+          },
+          "interval": {
+            "type": "string",
+            "description": "m2, TT, M7 and compounds (m9, aug11, M14 …)."
+          },
+          "overlapBeats": {
+            "type": "number"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "alsoInBars": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "fix": {
+            "type": "array",
+            "description": "JSON Patch (RFC 6902) operations on project.json.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "enum": [
+                    "add",
+                    "remove",
+                    "replace",
+                    "move",
+                    "copy",
+                    "test"
+                  ]
+                },
+                "path": {
+                  "type": "string"
+                },
+                "from": {
+                  "type": "string"
+                },
+                "value": {}
+              },
+              "additionalProperties": false,
+              "required": [
+                "op",
+                "path"
+              ]
+            }
+          },
+          "fixLabel": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "bar",
+          "beatInBar",
+          "a",
+          "b",
+          "interval",
+          "overlapBeats",
+          "severity"
+        ]
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "enum": [
+              "warn",
+              "info"
+            ]
+          },
+          "rule": {
+            "enum": [
+              "master-overload",
+              "limiter-pumping",
+              "masked-lead",
+              "inaudible-part",
+              "harmonic-clash",
+              "low-end-buildup",
+              "phase-correlation",
+              "section-loudness-flat"
+            ]
+          },
+          "key": {
+            "type": "string",
+            "description": "Stable: rosaclef critic --audio --fix KEY; suppress it in critic.suppress."
+          },
+          "where": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "element": {
+            "type": "string"
+          },
+          "fromBar": {
+            "type": "integer"
+          },
+          "toBar": {
+            "type": "integer"
+          },
+          "fix": {
+            "type": "array",
+            "description": "JSON Patch (RFC 6902) operations on project.json.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "enum": [
+                    "add",
+                    "remove",
+                    "replace",
+                    "move",
+                    "copy",
+                    "test"
+                  ]
+                },
+                "path": {
+                  "type": "string"
+                },
+                "from": {
+                  "type": "string"
+                },
+                "value": {}
+              },
+              "additionalProperties": false,
+              "required": [
+                "op",
+                "path"
+              ]
+            }
+          },
+          "fixLabel": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "severity",
+          "rule",
+          "key",
+          "where",
+          "detail",
+          "fix"
+        ]
+      },
+      "description": "Ranked, de-duplicated, at most --max-findings."
+    },
+    "history": {
+      "type": "object",
+      "properties": {
+        "stepSeconds": {
+          "type": "number"
+        },
+        "t": {
+          "type": "array"
+        },
+        "momentary": {
+          "type": "array"
+        },
+        "shortTerm": {
+          "type": "array"
+        },
+        "truePeak": {
+          "type": "array"
+        },
+        "limiterGr": {
+          "type": "array"
+        },
+        "bars": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "description": "--history: the master over time."
+    },
+    "whatIf": {
+      "type": "object",
+      "description": "What changed: master numbers {from,to,delta}, elements, findings resolved/new, rows that moved ≥ 0.5 dB, and a one-line summary.",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "master": {
+          "type": "object"
+        },
+        "elements": {
+          "type": "array"
+        },
+        "findings": {
+          "type": "object",
+          "properties": {
+            "resolved": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "new": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "perBar": {
+          "type": "array"
+        },
+        "ops": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "string"
+        },
+        "b": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compare": {
+      "type": "object",
+      "description": "What changed: master numbers {from,to,delta}, elements, findings resolved/new, rows that moved ≥ 0.5 dB, and a one-line summary.",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "master": {
+          "type": "object"
+        },
+        "elements": {
+          "type": "array"
+        },
+        "findings": {
+          "type": "object",
+          "properties": {
+            "resolved": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "new": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "perBar": {
+          "type": "array"
+        },
+        "ops": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "string"
+        },
+        "b": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "render": {
+      "type": "object",
+      "properties": {
+        "cached": {
+          "type": "boolean"
+        },
+        "ms": {
+          "type": "integer"
+        },
+        "prerollBeats": {
+          "type": "number"
+        },
+        "renders": {
+          "type": "integer"
+        },
+        "sampleRate": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "cached",
+        "ms",
+        "prerollBeats",
+        "renders",
+        "sampleRate"
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "text": {
+      "type": "string",
+      "description": "HTTP with \"text\": true: the --text summary."
+    }
+  }
+}

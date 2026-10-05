@@ -5,7 +5,7 @@
 // studio's command line, compiled into the page — see crates/local).
 //
 // Plugins share the panel with the terminal, one tab each: the Critic
-// (./critic.js) lints the project. The terminal stays mounted while another
+// (./critic.js) lints the project; the Mix check (./mixcheck.js) measures it. The terminal stays mounted while another
 // tab shows, so the agent keeps running.
 
 import { connectRaw, wsUrl, createTerm, getJson } from "#platform";
@@ -14,6 +14,7 @@ import { iconButton, button, select, glyph } from "./widgets.js";
 import { paneHeader, paneControls } from "./panes.js";
 import { insertIndex } from "#brands";
 import { criticPanel, criticCount } from "./critic.js";
+import { mixcheckPanel, mixcheckCount } from "./mixcheck.js";
 
 const agent = {
   running: false,
@@ -26,11 +27,17 @@ const agent = {
   autostarted: false,
 };
 
-/** The panel's plugins: the terminal and the Critic. */
+/** The panel's plugins: the terminal, the Critic and the Mix check. */
 /** const PLUGINS: { id: String, label: String, icon: String, tip: String }[] */
 const PLUGINS = [
   { id: "terminal", label: "Terminal", icon: "terminal", tip: "Your coding agent, in the project folder" },
   { id: "critic", label: "Critic", icon: "critic", tip: "Mechanical checks of the project against production best practice, with one-click fixes" },
+  {
+    id: "mixcheck",
+    label: "Mix check",
+    icon: "meter",
+    tip: "Measure the mix from one render: loudness and true peak against a delivery target, the limiter, phase, spectrum, masking, clashes — the same as `rosaclef mixcheck`",
+  },
 ];
 
 const maestro = { tab: localStorage.getItem("rosaclef.maestro.tab") ?? "terminal" };
@@ -235,6 +242,10 @@ export function agentPanel(b) {
       const n = criticCount();
       if (n > 0) b.leaf("span", "n", "maestro-count", String(n));
     }
+    if (x.id === "mixcheck") {
+      const n = mixcheckCount();
+      if (n > 0) b.leaf("span", "n", "maestro-count", String(n));
+    }
     b.close();
   }
   b.close();
@@ -282,6 +293,12 @@ export function agentPanel(b) {
   b.open("div", "body", "maestro-body");
   if (tab === "critic") {
     criticPanel(b, (text) => {
+      setTab("terminal");
+      typeIntoAgent(text);
+    });
+  }
+  if (tab === "mixcheck") {
+    mixcheckPanel(b, (text) => {
       setTab("terminal");
       typeIntoAgent(text);
     });

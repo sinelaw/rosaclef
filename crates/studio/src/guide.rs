@@ -60,6 +60,7 @@ the producer sees and hears every change you save within a fraction of a second.
 | `project.json` | **The song.** Everything: tempo, instruments, patterns, arrangement, mixer. Edit this. |
 | `project.schema.json` | JSON Schema (draft 2020-12) for `project.json`. |
 | `.rosaclef/context.json` | What the producer is doing *right now* (see "The producer's context" below). Schema: `.rosaclef/context.schema.json`. |
+| `.rosaclef/mixcheck.schema.json` | JSON Schema of `rosaclef mixcheck`'s report. |
 | `.rosaclef/status.json` | Result of the studio's last load of `project.json` (`ok` + `issues`). Check it after every edit. |
 | `samples/` | Audio files (wav/flac/mp3/ogg) used by `sampler` instruments and audio clips. |
 | `renders/` | Exported mixdowns. |
@@ -148,6 +149,32 @@ right before editing it, and never rewrite the whole file from memory.
 - `rosaclef presets [TYPE|NAME]` — factory presets; with a name, prints the instrument JSON.
 - `rosaclef render [--pattern ID --loops N] [--out renders/x.wav]` — offline mixdown to WAV
   (prints duration, peak and RMS — useful to check levels without listening).
+- `rosaclef mixcheck` — **mix diagnostics from one render**, as JSON (`--text`: ≤ 40 lines). Use it
+  instead of rendering WAVs and parsing them, soloing parts or copying the project. For any range
+  (`--range 52:59` bars as the producer counts them, `--beats 196:228`, `--section Chorus`; a
+  repeated bar is reported once per pass) it measures: loudness (LUFS integrated / short-term /
+  momentary), true peak, the peak *before* the master limiter and every compressor's and limiter's
+  gain reduction, PLR/LRA, phase correlation, the spectrum, each part's level against the mix and
+  how audible it is under the others (a masking model: `audibleFractionPct`, `maskedBy`), and
+  harmonic clashes with the exact notes (`pattern`, `noteIndex`). `findings` are ranked, each with
+  a JSON Patch `fix`; elements carry `suggestions` with the predicted effect.
+  `--what-if '[{"op":"replace","path":"/mixer/inserts/4/volume","value":0.5}]'` (or `@file.json`)
+  measures a change without writing it (the report gets `whatIf` with the differences); `--verify`
+  re-measures each suggestion. Also `--by bar|section|8-beats`, `--focus rbass,4,master`,
+  `--checks levels,audibility,masking,dynamics,gainreduction,clashes,spectrum,stereo`,
+  `--target spotify|apple|youtube|ebu-r128|…`, `--reference samples/ref.wav` (level-matched A/B),
+  `--history`, `--compare A.json B.json`, `--threshold strict|loose`, `--max-findings N`.
+  Renders are cached (a repeated question is instant). Exit status 0 = no warnings, 1 = warnings,
+  2 = error. `rosaclef mixcheck --schema` prints the report's JSON Schema. Recipes:
+  - *Is X audible in bars A–B?* `rosaclef mixcheck --range A:B --focus X --checks levels,audibility,masking`
+    → `elements[0].verdict`, `audibility.audibleFractionPct`, `maskedBy` (who covers it, where), and
+    `suggestions[].patch`; try one with `--what-if` before editing.
+  - *Why is section C squashed?* `rosaclef mixcheck --section C --checks levels,dynamics,gainreduction`
+    → `master.preLimiterPeakDbfs` (> 0: the limiter is fighting), `limiterGainReductionDb`, `plrDb`,
+    `perBar[].topContributors`, and the `master-overload` / `limiter-pumping` findings with their fixes.
+  - *Find the clashing note in bar N:* `rosaclef mixcheck --range N:N --checks clashes --threshold strict`
+    → `clashes[]` with both notes (`pattern`, `noteIndex`, pitch, level) and a `fix` that moves the quieter one.
+  - Every finding is also a Critic rule: `rosaclef critic --audio` lists them; `--fix KEY` applies one.
 - `rosaclef note --channel ID --pitch 60 --seconds 2 --out samples/x.wav` — synthesize one note
   of a channel's instrument (or `--instrument '{"type":"drum","options":{"kind":"clap"}}'`) into a sample.
 - You may also create samples any other way (e.g. write a WAV with Python) into `samples/`.
@@ -157,7 +184,9 @@ right before editing it, and never rewrite the whole file from memory.
   turn a MIDI file or an LMMS project into a new project next to this one (prints what was approximated).
   To add a MIDI file's parts to *this* song instead: `curl -X POST --data-binary @FILE.mid "$ROSACLEF_URL/api/import-midi?into=current"`.
 
-HTTP API (while the studio runs, base URL in `$ROSACLEF_URL`): `GET /api/project`,
+HTTP API (while the studio runs, base URL in `$ROSACLEF_URL`): `POST /api/mixcheck` (the mixcheck
+flags as JSON: `{"range": "52:59", "focus": ["rbass"], "whatIf": [...]}`; same report; the producer's
+Mix check panel shows it), `GET /api/project`,
 `PUT /api/project` (full document; validated), `GET /api/schema`, `GET /api/catalog`,
 `GET /api/projects` (the library), `GET /api/files` (this project's files).
 Editing the file is preferred. The producer can open another project from the studio; when
@@ -446,8 +475,9 @@ pattern is long (on the kit's channels, made if needed). Place it with clips lik
 - Think like a producer: groove (velocity variation, swing), voice-leading in chords,
   frequency space (bass below ~200 Hz, pads filtered, hats high-passed), and arrangement
   energy (intro → build → drop → break → outro, changes every 8 or 16 bars).
-- Check your work: `rosaclef render` reports peak/RMS. A healthy master peaks around −1 to
-  −0.3 dBFS with the limiter; an RMS far below −20 dBFS usually means something is too quiet.
+- Check your work: `rosaclef mixcheck --text` (or `rosaclef render`, which reports peak/RMS). A
+  healthy master peaks around −1 dBTP with the limiter reducing a few dB at most; streaming plays
+  everything at about −14 LUFS, so loudness beyond that only costs dynamics.
 - Prefer editing parameters over adding effects; keep one `limiter` last on the master.
 - Pick each part's instrument from **Choosing an instrument** (in the catalog below), start from
   one of its presets (`rosaclef presets NAME` prints the instrument JSON), then adjust params.
