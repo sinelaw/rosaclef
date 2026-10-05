@@ -5,7 +5,7 @@
 // frame rebuilds all descriptions and reconciles them (see ui/tree.js).
 
 import { debounce, nowIso } from "#platform";
-import { decodeProject, emptyProject, projectJson, cloneProject, describeChange, defaultArpCatalog } from "./model.js";
+import { decodeProject, emptyProject, projectJson, cloneProject, describeChange, defaultArpCatalog, newDevice, noArp } from "./model.js";
 import { insertIx, insertIndex, trackIx, noteIndex, clipIndex } from "#brands";
 
 export const state = {
@@ -53,7 +53,15 @@ export const state = {
   viewport: { plStart: 0, plEnd: 0, plTrack0: 0, plTrack1: 0, prStart: 0, prEnd: 0, prLow: 0, prHigh: 0, prOn: false },
   recent /*: { at: String, summary: String }[] */: [],
   hint: "",
+  /** An instrument tried out from the browser: while `on`, the piano plays it
+   * instead of the selected channel. It is not part of the song: the engine
+   * gets it as one more channel (`AUDITION`) that no pattern plays. `key`
+   * names the browser item it came from. */
+  audition: { on: false, key: "", name: "", color: "#d4af37", device: newDevice("") },
 };
+
+/** The engine's id for the instrument being tried out (never a song channel's: see `engineJson`). */
+export const AUDITION = "__audition__";
 
 // ------------------------------------------------------------------ redraw
 
@@ -84,6 +92,9 @@ export const hooks = {
   previewing: false,
   /** @type {() => Undefined} */
   context: null,
+  /** The tried-out instrument changed (audio.js tells the engine). */
+  /** @type {() => Undefined} */
+  audition: null,
 };
 
 // ------------------------------------------------------------------ editing
@@ -120,8 +131,44 @@ function pushToEngine() {
   setTimeout(() => {
     engineQueued = false;
     if (hooks.previewing && hooks.preview) hooks.preview();
-    else if (hooks.engine) hooks.engine(projectJson(state.project));
+    else if (hooks.engine) hooks.engine(engineJson());
   }, 30);
+}
+
+/** The audition channel the engine plays the tried-out instrument on. */
+/** function auditionChannel() => Channel */
+export function auditionChannel() {
+  const a = state.audition;
+  return {
+    id: AUDITION,
+    name: a.name,
+    color: a.color,
+    instrument: a.device,
+    volume: 0.8,
+    pan: 0,
+    mute: false,
+    mixer: insertIx(0),
+    arp: noArp(),
+    layerOf: "",
+  };
+}
+
+/** The project as the engine plays it: the song, and the instrument being
+ * tried out (if any) on a channel of its own, after the song's channels. */
+/** function engineJson() => String */
+export function engineJson() {
+  const p = state.project;
+  if (!state.audition.on || p.channels.some((c) => c.id === AUDITION)) return projectJson(p);
+  const song = p.channels;
+  p.channels = song.concat([auditionChannel()]);
+  const text = projectJson(p);
+  p.channels = song;
+  return text;
+}
+
+/** Give the engine the current project (and audition channel) soon. */
+export function refreshEngine() {
+  pushToEngine();
 }
 
 function snapshot() {
@@ -238,6 +285,11 @@ export function selectPattern(id) {
 /** function selectChannel(id: String) => Undefined */
 export function selectChannel(id) {
   state.channel = id;
+  // The piano plays what was chosen last.
+  if (state.audition.on) {
+    state.audition.on = false;
+    if (hooks.audition) hooks.audition();
+  }
   reportContext();
   invalidate();
 }

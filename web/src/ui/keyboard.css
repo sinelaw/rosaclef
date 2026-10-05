@@ -11,11 +11,11 @@
 }
 .kb-head {
   flex: none;
-  width: 168px;
+  width: 212px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   padding: 0 12px;
   border-right: 1px solid var(--line);
 }
@@ -39,6 +39,81 @@
   font: italic 600 15px/1.1 var(--serif);
   color: var(--champagne);
   border-bottom: 2px solid var(--c, transparent);
+}
+/* What the keys play (keyboard.js targetView): it flashes in when it changes. */
+.kb-target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  animation: kb-target-in 0.9s ease-out;
+}
+@keyframes kb-target-in {
+  0% {
+    filter: brightness(2.2);
+    transform: translateX(-4px);
+  }
+  100% {
+    filter: none;
+    transform: none;
+  }
+}
+.kb-target.trying .kb-label {
+  color: var(--gold-hi);
+}
+.kb-target.trying .kb-ch b {
+  border-bottom-style: dashed;
+}
+.kb-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--muted);
+}
+.kb-mini {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 16px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--ob-0);
+  color: var(--gold);
+  align-self: center;
+}
+.kb-mini:first-of-type {
+  margin-left: auto;
+}
+.kb-mini .glyph {
+  width: 11px;
+  height: 11px;
+}
+.kb-mini:hover {
+  color: var(--gold-hi);
+  border-color: var(--line-3);
+}
+/* Phone: the name on the keys. */
+.kb-tag {
+  position: absolute;
+  z-index: 2;
+  top: 3px;
+  right: 4px;
+  max-width: 60%;
+  padding: 1px 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 10px/1.4 var(--sans);
+  color: var(--champagne);
+  background: rgba(12, 10, 14, 0.82);
+  border-left: 3px solid var(--c, var(--gold));
+  pointer-events: none;
+  animation: kb-target-in 0.9s ease-out;
 }
 .kb-row {
   display: flex;

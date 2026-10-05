@@ -10,7 +10,7 @@
 //  3. Add to song — a pattern and a playlist clip (one undo step).
 
 import { getJson, drag, fmt, now, recStart, recStop, previewAudio, stopPreview, pickFiles, uploadFile, audioPost } from "#platform";
-import { state, commit, invalidate, hint, selectPattern, currentChannel, currentPattern } from "../store.js";
+import { state, commit, invalidate, hint, selectPattern, currentChannel, currentPattern, engineJson } from "../store.js";
 import { uniqueId, paletteColor, setOption, optionValue, snapDown, newDevice, cloneProject, projectJson, noArp } from "../model.js";
 import { startAudio, play, stop, setMode } from "../audio.js";
 import {
@@ -33,7 +33,7 @@ import {
   cropTake,
 } from "../voice.js";
 import { button, iconButton, select, glyph, clamp01 } from "./widgets.js";
-import { pushChannel } from "./browser.js";
+import { pushChannel } from "./instruments.js";
 import { toast } from "./toast.js";
 import { insertIx, trackIx, trackIndex } from "#brands";
 
@@ -497,7 +497,7 @@ export function stopResult() {
   voice.previewing = false;
   voice.previewKey = "";
   audioPost({ t: "stop" });
-  audioPost({ t: "project", json: projectJson(state.project) });
+  audioPost({ t: "project", json: engineJson() });
   const pat = currentPattern();
   audioPost({ t: "mode", pattern: state.mode === "pattern" && pat ? pat.id : "" });
   invalidate();

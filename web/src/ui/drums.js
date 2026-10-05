@@ -6,12 +6,12 @@
 // code the command line and the browser-only studio run.
 
 import { getJson, sendJson, now, audioPost } from "#platform";
-import { state, commit, invalidate, hint, currentPattern, hooks } from "../store.js";
-import { decodeProject, encodeProject, projectJson, meterMap } from "../model.js";
+import { state, commit, invalidate, hint, currentPattern, hooks, engineJson } from "../store.js";
+import { decodeProject, encodeProject, meterMap, barAt } from "../model.js";
 import { startAudio } from "../audio.js";
 import { button, iconButton, select, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
-import { trackIndex } from "#brands";
+import { trackIndex, clipIndex } from "#brands";
 
 export const drums = {
   catalog /*: GrooveCatalog */: { grooves: [], kits: [] },
@@ -26,6 +26,9 @@ export const drums = {
   previewAt: 0,
   /** Counts preview requests, so a late answer does not replace a newer one. */
   previewSeq: 0,
+  /** Where the producer last pointed in the song (the cursor's bar, or a
+   * selected clip): when it moves, the section there is selected. */
+  focus: "",
 };
 
 const PLAY_LABELS = [
@@ -163,6 +166,105 @@ function metersOf(at) {
     bar = bar + s.bars;
   }
   return out;
+}
+
+/** The time signature of bar `bar` (counted from 0). */
+/** function meterAt(bar: Number) => BarRun */
+function meterAt(bar) {
+  const map = meterMap(state.project.transport);
+  let s = map[0];
+  for (const m of map) if (m.bar <= bar) s = m;
+  return { bar: map.length === 1 ? 0 : bar, barBeats: s.barBeats, label: s.label };
+}
+
+/** The bar (from 0) the producer points at: the first selected clip's, else
+ * the song cursor's; and a key that changes when either moves. */
+/** function pointedBar() => { bar: Number, key: String } */
+function pointedBar() {
+  const t = state.project.transport;
+  const clips = state.project.playlist.clips;
+  if (state.clipSelection.length > 0) {
+    const i = clipIndex(state.clipSelection[0]);
+    if (i < clips.length) {
+      const c = clips[i];
+      return { bar: barAt(t, c.start).bar, key: `clip ${i} ${c.start}` };
+    }
+  }
+  const at = state.mode === "song" ? Math.max(0, state.position) : 0;
+  const bar = barAt(t, at).bar;
+  return { bar: bar, key: `bar ${bar}` };
+}
+
+/** The section of the part that plays bar `bar` (-1: none). */
+/** function sectionAt(d: DrumPart, bar: Number) => Int */
+function sectionAt(d, bar) {
+  let first = d.start - 1;
+  for (let i = 0; i < d.sections.length; i++) {
+    if (bar >= first && bar < first + d.sections[i].bars) return i;
+    first = first + d.sections[i].bars;
+  }
+  return -1;
+}
+
+/** The first bar of section `at`. */
+/** function sectionStart(d: DrumPart, at: Int) => Number */
+function sectionStart(d, at) {
+  let first = d.start - 1;
+  for (let i = 0; i < at && i < d.sections.length; i++) first = first + d.sections[i].bars;
+  return first;
+}
+
+/** Follow the producer around the song: when the cursor moves (while
+ * stopped) or a clip is selected, select the drum section playing there. */
+function followFocus() {
+  const d = state.project.drums;
+  const p = pointedBar();
+  if (p.key === drums.focus) return undefined;
+  // While playing, the cursor runs on its own: only a clip selection counts.
+  if (state.playing && !p.key.startsWith("clip")) return undefined;
+  drums.focus = p.key;
+  const i = d.on ? sectionAt(d, p.bar) : -1;
+  if (i >= 0) drums.section = i;
+}
+
+/** The time signature the producer is working in: the selected section's
+ * (its first bar), or — before there is a part, or past its end — where
+ * the song cursor or the selected clip is. */
+/** function activeMeter() => BarRun */
+function activeMeter() {
+  const d = state.project.drums;
+  if (d.on && drums.section < d.sections.length) return meterAt(sectionStart(d, drums.section));
+  return meterAt(pointedBar().bar);
+}
+
+/** Whether a groove fits bars of a time signature. */
+/** function fits(g: GrooveInfo, run: BarRun) => Boolean */
+function fits(g, run) {
+  return Math.abs(g.barBeats - run.barBeats) < 1e-6;
+}
+
+/** The first section whose groove does not fit its bars, and why ("" when all fit). */
+/** function partMisfit(d: DrumPart) => { at: Int, why: String } */
+function partMisfit(d) {
+  let first = d.start - 1;
+  for (let i = 0; i < d.sections.length; i++) {
+    const s = d.sections[i];
+    const g = grooveOf(s.groove !== "" ? s.groove : d.groove);
+    if (g && (s.play === "a" || s.play === "b")) {
+      for (let k = 0; k < s.bars; k++) {
+        const r = meterAt(first + k);
+        if (!fits(g, r)) {
+          const name = s.name || `Section ${i + 1}`;
+          return {
+            at: i,
+            why: `${name} (bars ${first + 1}–${first + s.bars}) is in ${r.label}, but plays ${g.name} (${g.meter}). Select it — or put the song cursor there — and pick a ${r.label} groove.`,
+          };
+        }
+      }
+    }
+    first = first + s.bars;
+  }
+  return { at: -1, why: "" };
 }
 
 /** Why a groove cannot play those bars ("" when it can). */
@@ -338,7 +440,7 @@ export function stopPreview() {
   hooks.previewing = false;
   drums.previewSeq = drums.previewSeq + 1;
   audioPost({ t: "stop" });
-  audioPost({ t: "project", json: projectJson(state.project) });
+  audioPost({ t: "project", json: engineJson() });
   const pat = currentPattern();
   audioPost({ t: "mode", pattern: state.mode === "pattern" && pat ? pat.id : "" });
   invalidate();
@@ -532,20 +634,41 @@ function grooveGrid(b, key, title, g, isB, rows, edited) {
 /** function grooveView(b: Builder, d: DrumPart) => Undefined */
 function grooveView(b, d) {
   const gs = drums.catalog.grooves;
-  const g = grooveOf(d.groove);
+  // The groove of the time signature being worked in: the part's own, or —
+  // where the song changes time signature — the one its sections there play.
+  const run = activeMeter();
+  const several = meterMap(state.project.transport).length > 1;
+  const main = grooveOf(d.groove);
+  const forMain = !main || fits(main, run);
+  const sec = drums.section < d.sections.length ? d.sections[drums.section] : undefined;
+  const value = forMain ? d.groove : sec && sec.groove !== "" ? sec.groove : "";
+  const g = grooveOf(value);
   b.open("section", "groove", "drums-step drums-groove");
   b.open("div", "pick", "drums-pick");
-  const runs = metersOf(-1);
+  const runs = [run];
+  /** const ids: String[] */
+  const ids = forMain ? [] : [""];
+  /** const labels: String[] */
+  const labels = forMain ? [] : [`Pick a ${run.label} groove…`];
+  /** const why: String[] */
+  const why = forMain ? [] : [""];
+  for (const x of gs) {
+    ids.push(x.id);
+    labels.push(grooveLabel(x));
+    why.push(x.id === value ? "" : misfit(x, runs));
+  }
   grooveField(
     b,
     "groove",
-    "Groove",
-    d.groove,
-    gs.map((x) => x.id),
-    gs.map(grooveLabel),
-    gs.map((x) => (x.id === d.groove ? "" : misfit(x, runs))),
-    "The groove the drummer plays: A in verses, the bigger B in choruses",
-    (v) => setGroove(v)
+    several ? `Groove · ${run.label}` : "Groove",
+    value,
+    ids,
+    labels,
+    why,
+    several
+      ? `The groove the drummer plays in ${run.label} (where the song cursor or the selected section is): A in verses, the bigger B in choruses`
+      : "The groove the drummer plays: A in verses, the bigger B in choruses",
+    (v) => setGrooveIn(run, v)
   );
   b.open("div", "nav", "drums-nav");
   iconButton(b, "prev", "small", "left", "The previous groove in this time signature (keeps playing)", () => stepGroove(-1));
@@ -563,8 +686,18 @@ function grooveView(b, d) {
   );
   b.close();
   b.close();
-  const wrong = g ? misfit(g, runs) : "";
-  if (wrong !== "") b.leaf("div", "meter", "drums-info warn", wrong);
+  const wrong = partMisfit(d);
+  if (wrong.why !== "") {
+    b.open("div", "meter", "drums-info warn");
+    b.text(wrong.why);
+    if (wrong.at !== drums.section) {
+      button(b, "go", "small", "Select it", "Select that section (the groove above then picks for its time signature)", () => {
+        drums.section = wrong.at;
+        invalidate();
+      });
+    }
+    b.close();
+  }
   if (g) {
     const bpm = state.project.transport.bpm;
     const fits = bpm >= g.tempo[0] && bpm <= g.tempo[1];
@@ -634,6 +767,29 @@ function grooveView(b, d) {
   b.close();
 }
 
+/** Play groove `id` in time signature `run`: as the part's groove when that
+ * is in `run` (or there is none), else on the sections in `run` that play
+ * the part's groove or another groove in `run`. */
+/** function setGrooveIn(run: BarRun, id: String) => Undefined */
+function setGrooveIn(run, id) {
+  const d = state.project.drums;
+  const main = grooveOf(d.groove);
+  if (!main || fits(main, run)) {
+    setGroove(id);
+    return undefined;
+  }
+  if (id === "") return undefined;
+  edit((x) => {
+    let first = x.start - 1;
+    for (const s of x.sections) {
+      const own = grooveOf(s.groove);
+      const inRun = Math.abs(meterAt(first).barBeats - run.barBeats) < 1e-6;
+      if (inRun && (s.groove === "" || (own !== undefined && fits(own, run)))) s.groove = id;
+      first = first + s.bars;
+    }
+  });
+}
+
 /** function setGroove(id: String) => Undefined */
 function setGroove(id) {
   const g = grooveOf(id);
@@ -647,13 +803,17 @@ function setGroove(id) {
 function stepGroove(by) {
   const gs = drums.catalog.grooves;
   if (gs.length === 0) return undefined;
-  const runs = metersOf(-1);
-  let i = gs.findIndex((g) => g.id === state.project.drums.groove);
-  // The next one that fits the song's time signature.
+  const d = state.project.drums;
+  const run = activeMeter();
+  const main = grooveOf(d.groove);
+  const sec = drums.section < d.sections.length ? d.sections[drums.section] : undefined;
+  const cur = !main || fits(main, run) ? d.groove : sec ? sec.groove : "";
+  let i = gs.findIndex((g) => g.id === cur);
+  // The next one in the time signature being worked in.
   for (let n = 0; n < gs.length; n++) {
     i = (i + by + gs.length) % gs.length;
-    if (misfit(gs[i], runs) === "") {
-      setGroove(gs[i].id);
+    if (fits(gs[i], run)) {
+      setGrooveIn(run, gs[i].id);
       return undefined;
     }
   }
@@ -938,7 +1098,8 @@ function startView(b) {
     "Pick a groove. The sections are guessed from the playlist; then choose what each one plays — groove A or B, a fill, a crash — and write the drums."
   );
   const gs = drums.catalog.grooves;
-  const runs = metersOf(-1);
+  // The time signature where the song cursor (or the selected clip) is.
+  const runs = [activeMeter()];
   /** const styles: String[] */
   const styles = [];
   for (const g of gs) if (!styles.includes(g.style)) styles.push(g.style);
@@ -973,6 +1134,7 @@ function startView(b) {
 /** function drumsPanel(b: Builder) => Undefined */
 export function drumsPanel(b) {
   loadCatalog();
+  followFocus();
   const d = state.project.drums;
   b.open("div", "drums", "drums");
   if (!d.on) startView(b);

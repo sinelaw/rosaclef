@@ -10,7 +10,7 @@ use crate::server::App;
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use parking_lot::Mutex;
-use rosaclef_core::{Clip, InsertIx, Project, TrackIx};
+use rosaclef_core::{Channel, Clip, InsertIx, Project, TrackIx};
 use rosaclef_engine::{Engine, PlayMode};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,6 +32,22 @@ pub struct Native {
     rec: Arc<Recording>,
     /// Song position (beats) and track where the current take started.
     rec_start: Mutex<Option<(f64, u32)>>,
+    /// An instrument the producer is trying out from the browser: played
+    /// live on a channel of its own, after the song's (never written to the
+    /// project). Kept across project updates.
+    audition: Mutex<Option<Channel>>,
+}
+
+/// The engine id of the tried-out instrument's channel (web/src/store.js).
+const AUDITION: &str = "__audition__";
+
+/// The project with the tried-out instrument (if any) on its own channel.
+fn with_audition(mut project: Project, audition: &Option<Channel>) -> Project {
+    project.channels.retain(|c| c.id != AUDITION);
+    if let Some(c) = audition {
+        project.channels.push(c.clone());
+    }
+    project
 }
 
 impl Native {
@@ -154,12 +170,14 @@ impl Native {
             sample_rate,
             rec,
             rec_start: Mutex::new(None),
+            audition: Mutex::new(None),
         };
         n.load_missing_samples(folder);
         Ok(n)
     }
 
     pub fn set_project(&self, project: Project, folder: &Folder) {
+        let project = with_audition(project, &self.audition.lock());
         self.engine.lock().set_project(project);
         self.load_missing_samples(folder);
     }
@@ -263,6 +281,19 @@ pub async fn handle(app: Arc<App>, t: &str, v: &Value) -> Option<Value> {
         "native.disable" => {
             *app.native().lock() = None;
             app.send_all(json!({"t": "native", "status": {"available": true, "enabled": false}}));
+            None
+        }
+        "native.audition" => {
+            let channel = v
+                .get("channel")
+                .filter(|c| !c.is_null())
+                .and_then(|c| serde_json::from_value::<Channel>(c.clone()).ok())
+                .filter(|c| c.id == AUDITION);
+            let guard = app.native().lock();
+            let n = guard.as_ref()?;
+            *n.audition.lock() = channel;
+            let project = n.engine.lock().project().clone();
+            n.set_project(project, &app.folder());
             None
         }
         _ => {

@@ -156,7 +156,9 @@ a turnaround every 4th bar and fills that do not repeat. Edit the written
 patterns in the piano roll as you like (a drum kit's keys are named for their
 drums), or click the groove's step grid in the tab: writing again keeps your
 edits, follows them into the groove's crash and fill bars, and moves them to
-a new kit.
+a new kit. In a song that changes time signature, the tab follows the song
+cursor (or the clip selected in the playlist) to the section there, and its
+groove picker offers the grooves of that time signature.
 
 The part lives in `project.json` under `drums`, so the agent can edit it
 too; `rosaclef grooves` lists the library and `rosaclef drums` writes it from
@@ -242,6 +244,25 @@ The film lives in `project.json` under `animation` (shots in song beats, roles
 and frames by name), so an agent can direct it — or start from the director's
 shots and refine them; the agent guide describes it, and `.rosaclef/context.json`
 names the shot on screen.
+
+## Instruments and the keys
+
+The **browser** on the left is one searchable tree of everything that can
+play: the song's channels (**In this song**), then each instrument with what
+it holds — Grand Orchestra's General MIDI programs by family and its drum
+kits, the drum machine's sounds, each synth's presets, your samples and any
+CLAP plugins. Click one to try it on the keys (Z–/ and Q–[, or the
+on-screen piano) without changing the song; double-click or **+** adds it as
+a channel; **⇄** swaps it into the selected channel, keeping its notes, mixer
+route and volume. Dragging it onto a channel row of the rack swaps it too,
+and the inspector's **Instrument** choice changes the type in place. The
+piano's header always names what the keys play — a channel, or *Trying …*
+for an instrument from the browser.
+
+The **channel rack** lists the channels and, for the selected pattern, each
+one's part: a step sequencer (one square per 16th note, bars and beats
+counted above) where every note fits a step at one pitch — drums mostly —
+or a small picture of the notes that opens the piano roll.
 
 ## Sampled instruments
 

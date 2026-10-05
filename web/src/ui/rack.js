@@ -1,4 +1,11 @@
-// The channel rack (step sequencer) and the instrument inspector.
+// The channel rack and the instrument inspector.
+//
+// The rack lists the song's channels (one instrument each). For the selected
+// pattern, each row shows that channel's part: as a step sequencer (sixteen
+// squares a bar, one per 16th note: click to place a hit) when every note
+// fits on a step at one pitch — drums, mostly — or else as a small picture
+// of its notes that opens the piano roll. An instrument dragged from the
+// browser onto a row replaces that channel's instrument in place.
 
 import { drag, getJson } from "#platform";
 import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, showDock, deviceSpec, invalidate, hint } from "../store.js";
@@ -8,6 +15,8 @@ import { knobAt, paramKnobAt, select, button, iconButton, led, textInput, glyph 
 import { shownValue, retargetLanes } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
 import { sampleCredit } from "./credits.js";
+import { dragPick, replaceInstrument, addPick } from "./instruments.js";
+import { browseInstrument } from "./browser.js";
 
 const STEP = 0.25;
 const EPS = 0.000001;
@@ -46,6 +55,34 @@ function toggleStep(pat, ch, step) {
   if (i < 0) preview(ch.id, stepPitch(ch), 0.8);
 }
 
+/** Where step `s` (a 16th) falls: "bar 2, beat 3" or "bar 2, beat 3 + 1/16". */
+/** function stepName(s: Int) => String */
+function stepName(s) {
+  const bpb = Math.max(1, state.project.transport.beatsPerBar);
+  const beat = Math.floor(s / 4);
+  const bar = Math.floor(beat / bpb) + 1;
+  const sub = s % 4;
+  const at = `bar ${bar}, beat ${(beat % bpb) + 1}`;
+  return sub === 0 ? at : `${at} + ${sub}/16`;
+}
+
+/** The count above the steps: bar numbers on their downbeats, beats between. */
+/** function ruler(b: Builder, steps: Int) => Undefined */
+function ruler(b, steps) {
+  const bpb = Math.max(1, state.project.transport.beatsPerBar);
+  b.open("div", "ruler", "rack-row rack-ruler");
+  b.leaf("div", "lead", "rr-lead", "Channel");
+  b.open("div", "beats", "steps");
+  const groups = Math.ceil(steps / 4);
+  for (let g = 0; g < groups; g++) {
+    const down = g % bpb === 0;
+    b.leaf("div", `g${g}`, down ? "rr-beat bar" : "rr-beat", down ? String(g / bpb + 1) : `.${(g % bpb) + 1}`);
+    b.attr("title", down ? `Bar ${g / bpb + 1}` : `Beat ${(g % bpb) + 1}`);
+  }
+  b.close();
+  b.close();
+}
+
 /** A tiny piano-roll preview of one channel's notes (canvas leaf). */
 /** function miniRoll(b: Builder, pat: Pattern, ch: Channel, width: Number) => Undefined */
 function miniRoll(b, pat, ch, width) {
@@ -71,6 +108,8 @@ function miniRoll(b, pat, ch, width) {
     }
   });
   b.style("width", `${width}px`);
+  b.attr("title", `${ch.name} plays a melody here, not single hits: click to edit its notes in the piano roll`);
+  b.on("pointerenter", (e) => hint(`${ch.name}'s notes in this pattern (they do not fit the step grid) — click to open the piano roll`));
   b.on("click", (e) => {
     selectChannel(ch.id);
     showDock("piano");
@@ -82,7 +121,28 @@ function rackRow(b, pat, ch, idx) {
   const steps = Math.min(64, Math.round(pat.length / STEP));
   const playStep = state.playing && state.mode === "pattern" ? Math.floor(state.position / STEP) : -1;
   const level = idx < state.chMeters.length ? state.chMeters[idx] : 0;
-  b.open("div", ch.id, ch.id === state.channel ? "rack-row sel" : "rack-row");
+  let rowCls = ch.id === state.channel ? "rack-row sel" : "rack-row";
+  if (dragPick.on && dragPick.over === ch.id) rowCls = `${rowCls} drop`;
+  b.open("div", ch.id, rowCls);
+  b.on("dragover", (e) => {
+    if (!dragPick.on) return undefined;
+    e.preventDefault();
+    e.stopPropagation();
+    if (dragPick.over !== ch.id) {
+      dragPick.over = ch.id;
+      hint(`Drop to replace the instrument of ${ch.name} with ${dragPick.pick.name} (its notes stay)`);
+      invalidate();
+    }
+  });
+  b.on("drop", (e) => {
+    if (!dragPick.on) return undefined;
+    e.preventDefault();
+    e.stopPropagation();
+    dragPick.on = false;
+    dragPick.over = "";
+    hint("");
+    replaceInstrument(ch, dragPick.pick);
+  });
 
   b.leaf("div", "mute", ch.mute ? "ch-mute off" : "ch-mute", "");
   b.attr("title", ch.mute ? "Unmute channel" : "Mute channel");
@@ -149,6 +209,9 @@ function rackRow(b, pat, ch, idx) {
         if (s === playStep) cls = `${cls} play`;
         b.leaf("div", `s${s}`, cls, "");
         b.style("--c", ch.color);
+        b.on("pointerenter", (e) =>
+          hint(`${ch.name}, ${stepName(s)}: click to ${ni >= 0 ? "remove the hit" : "place a hit"} · right-click removes · scroll sets the velocity`)
+        );
         if (ni >= 0) b.style("--vel", String(pat.notes[ni].velocity));
         b.on("pointerdown", (e) => {
           e.preventDefault();
@@ -458,6 +521,7 @@ function inspector(b) {
   b.leaf("div", "sub", "insp-sub", `${ch.name} · ${ch.instrument.type}`);
   b.close();
   b.close();
+  instrumentChooser(b, ch);
   if (spec && spec.bestFor !== "") b.leaf("div", "best", "insp-doc", `Best for: ${spec.bestFor}`);
   if (spec) b.leaf("div", "doc", "insp-doc", spec.doc);
 
@@ -497,6 +561,39 @@ function inspector(b) {
   });
   button(b, "del", "small danger", "Delete", "Delete this channel and its notes", () => {
     deleteChannel(ch);
+  });
+  b.close();
+  b.close();
+}
+
+/** Swap this channel's instrument for another, keeping its notes (the
+ * browser's ⇄ and dragging onto the rack do the same with presets). */
+/** function instrumentChooser(b: Builder, ch: Channel) => Undefined */
+function instrumentChooser(b, ch) {
+  /** const kinds: String[] */
+  const kinds = [];
+  /** const labels: String[] */
+  const labels = [];
+  for (const d of state.catalog.devices) {
+    if (d.category !== "instrument" || d.type === "plugin") continue;
+    kinds.push(d.type);
+    labels.push(d.label);
+  }
+  if (!kinds.includes(ch.instrument.type)) {
+    kinds.push(ch.instrument.type);
+    labels.push(ch.instrument.type);
+  }
+  b.open("div", "swap", "field insp-swap");
+  b.leaf("label", "l", "", "Instrument");
+  b.open("div", "row", "insp-swap-row");
+  select(b, "sel", "", ch.instrument.type, kinds, labels, "Replace this channel's instrument (its notes, mixer route and volume stay; Ctrl+Z undoes)", (v) => {
+    if (v === ch.instrument.type) return undefined;
+    const spec = deviceSpec(v, "instrument");
+    replaceInstrument(ch, { key: `dev-${v}`, name: spec ? spec.label : v, device: newDevice(v) });
+  });
+  button(b, "browse", "small", "Sounds…", "Show this instrument's presets and sounds in the browser: ⇄ on any of them swaps it into this channel", () => {
+    browseInstrument(ch.instrument.type);
+    hint(`In the browser, ⇄ on any instrument swaps it into ${ch.name} — or drag it onto the channel's row`);
   });
   b.close();
   b.close();
@@ -642,10 +739,37 @@ function deleteChannel(ch) {
 export function rack(b) {
   const pat = currentPattern();
   b.open("div", "rack", "rack");
-  b.open("div", "list", "rack-list");
+  b.open("div", "list", dragPick.on && dragPick.over === "+" ? "rack-list drop" : "rack-list");
+  b.on("dragover", (e) => {
+    if (!dragPick.on) return undefined;
+    e.preventDefault();
+    if (dragPick.over !== "+") {
+      dragPick.over = "+";
+      hint(`Drop to add ${dragPick.pick.name} as a new channel (drop it on a channel to replace that one's instrument)`);
+      invalidate();
+    }
+  });
+  b.on("drop", (e) => {
+    if (!dragPick.on) return undefined;
+    e.preventDefault();
+    dragPick.on = false;
+    dragPick.over = "";
+    hint("");
+    addPick(dragPick.pick);
+  });
   if (!pat) {
     b.leaf("div", "none", "b-empty", "Create a pattern in the browser to start sequencing.");
   } else {
+    b.open("div", "guide", "rack-guide");
+    b.leaf("b", "t", "", `${pat.name}`);
+    b.leaf(
+      "span",
+      "d",
+      "",
+      "Each row is a channel (an instrument). Squares are 16th-note steps: click one to place a hit, right-click to remove it, scroll to set its velocity. A row with a melody shows its notes instead — click it for the piano roll. Drag an instrument from the browser onto a row to replace it."
+    );
+    b.close();
+    if (state.project.channels.length > 0) ruler(b, Math.min(64, Math.round(pat.length / STEP)));
     let idx = 0;
     for (const ch of state.project.channels) {
       rackRow(b, pat, ch, idx);

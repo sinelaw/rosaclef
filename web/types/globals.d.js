@@ -141,6 +141,13 @@
 
 /** type SampleCollection = { id: String, name: String, version: String, license: String, authors: String, summary: String, source: String, licenseFile: String, readmeFile: String, sourcesFile: String, instrument: String, presets: GmPreset[] } */
 
+/** An instrument to add, try or swap in (ui/instruments.js): `key` names
+ * the browser item it comes from, `name` the channel it would make. */
+/** type Pick = { key: String, name: String, device: Device } */
+/** Who the piano plays (ui/instruments.js): a channel's id (or the audition
+ * channel's), its name and color, what instrument it is, and whether it is
+ * only being tried. */
+/** type KeysTarget = { id: String, name: String, color: String, detail: String, trying: Boolean } */
 /** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[], arp: ArpCatalog, collections: SampleCollection[] } */
 /** A resolved automation target (web/src/automation.js). `kind`: tempo, swing, gain, pan or param; `open`: plugin parameter without a known range. */
 /** type TargetInfo = { ok: Boolean, kind: String, spec: ParamSpec, base: Number, label: String, color: String, open: Boolean } */

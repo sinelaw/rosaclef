@@ -117,6 +117,8 @@ function patternById(id) {
 /** A double click asks for the editor (on a phone, switch to it); a click only follows along. */
 /** function showEditor(name: String, reveal: Boolean) => Undefined */
 function showEditor(name, reveal) {
+  // The Drums tab stays on a click: it follows the clip to its section.
+  if (!reveal && state.dock === "drums") return undefined;
   if (reveal) revealDock(name);
   else showDock(name);
 }

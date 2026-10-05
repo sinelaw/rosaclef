@@ -20,6 +20,11 @@
   height: 34px;
   margin-bottom: 4px;
 }
+/* Fixed widths up to the steps (a long pattern must not squeeze the meter:
+ * the ruler above the steps lines up with them). */
+.rack-row > .led-meter {
+  flex: none;
+}
 .rack-row.sel .ch-name {
   border-color: var(--line-3);
   color: var(--gold-hi);
@@ -225,4 +230,73 @@
 }
 .inspector .field .select {
   width: 100%;
+}
+
+/* What the rack is (rack.js): the pattern, and how its squares work. */
+.rack-guide {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 8px;
+  max-width: 920px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.rack-guide b {
+  flex: none;
+  font: italic 600 14px/1 var(--serif);
+  color: var(--gold-hi);
+}
+/* The bar and beat count above the steps, lined up with them: the lead
+ * spans the mute LED, two knobs, the insert, the name and the meter. */
+.rack-ruler {
+  height: 16px;
+  margin-bottom: 2px;
+}
+.rr-lead {
+  width: calc(13px + 22px + 22px + 26px + 138px + 36px + 5 * 8px);
+  flex: none;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: right;
+  padding-right: 52px;
+}
+.rr-beat {
+  width: calc(4 * 22px + 3 * 3px);
+  margin-right: 5px;
+  padding-left: 3px;
+  border-left: 1px solid var(--line);
+  font: 500 10px/16px var(--mono);
+  color: var(--dim);
+}
+.rr-beat.bar {
+  color: var(--gold);
+  font-weight: 700;
+  border-left-color: var(--line-3);
+}
+/* An instrument dragged from the browser: onto a row replaces, onto the list adds. */
+.rack-row.drop .ch-name {
+  border-color: var(--gold-hi);
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.35);
+}
+.rack-row.drop::after {
+  content: "⇄ replace instrument";
+  font-size: 10px;
+  color: var(--gold-hi);
+  white-space: nowrap;
+}
+.rack-list.drop {
+  outline: 1px dashed var(--line-3);
+  outline-offset: -4px;
+}
+.insp-swap-row {
+  display: flex;
+  gap: 6px;
+}
+.insp-swap-row .select {
+  flex: 1;
+  min-width: 0;
 }

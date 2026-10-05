@@ -1,5 +1,6 @@
 // The on-screen piano: a strip of keys along the bottom of the studio that
-// plays the selected channel — with the mouse, or with several fingers on a
+// plays the selected channel, or an instrument tried out from the browser
+// (instruments.js; its header always names which) — with the mouse, or with several fingers on a
 // touch screen (slide along the keys for a glissando; lower on a key is
 // louder). The computer-keyboard piano (keys.js) lights the same keys, and
 // its letters are printed on them; the letter shortcuts take Shift, so every
@@ -12,13 +13,14 @@
 // at a time for as long as it records, and ends after the last note played.
 
 import { drag, loadPref, savePref, now } from "#platform";
-import { state, currentChannel, currentPattern, invalidate, hint, commit, changed } from "../store.js";
-import { noteOn, noteOff, startAudio, livePosition, seek, setMode, playCountIn, stop, setOpenEnded } from "../audio.js";
-import { isBlackKey, noteName, snapTo } from "../model.js";
+import { state, AUDITION, currentChannel, currentPattern, invalidate, hint, commit, changed } from "../store.js";
+import { noteOn, noteOff, preview, startAudio, livePosition, seek, setMode, playCountIn, stop, setOpenEnded } from "../audio.js";
+import { isBlackKey, noteName, snapTo, optionValue } from "../model.js";
 import { glyph } from "./widgets.js";
 import { openDock } from "./panes.js";
 import { revealNote } from "./pianoroll.js";
 import { toast } from "./toast.js";
+import { keysTarget, keepTried, stopTrying, pickHooks } from "./instruments.js";
 
 /** A sounding key: who holds it (a pointer or a computer key), on which channel;
  * whether it is being recorded (`take`), into which pattern, from which beat
@@ -135,6 +137,32 @@ function saveKeyboard() {
   savePref(PREF + "typed", String(keyboard.typed));
 }
 
+/** The pitch that shows an instrument off in one short note. */
+/** function showPitch(d: Device) => Number */
+function showPitch(d) {
+  if (d.type === "soundfont") {
+    const coll = state.catalog.collections.find((c) => c.instrument === "soundfont");
+    const pr = coll ? coll.presets.find((x) => x.name === optionValue(d, "program")) : undefined;
+    // A drum kit: the snare (GM drum map).
+    if (pr && pr.bank === 128) return 38;
+  }
+  return keyboard.typed;
+}
+
+/** An instrument was picked from the browser to try: show the strip
+ * (without changing the saved choice) and let it sound one short note. */
+/** function triedInstrument(d: Device) => Undefined */
+function triedInstrument(d) {
+  keyboard.shown = true;
+  const key = state.audition.key;
+  const pitch = showPitch(d);
+  // The engine gets the instrument with the next project update (~30 ms).
+  setTimeout(() => {
+    if (state.audition.on && state.audition.key === key) preview(AUDITION, pitch, 0.8);
+  }, 90);
+}
+pickHooks.tried = triedInstrument;
+
 export function toggleKeyboard() {
   keyboard.shown = !keyboard.shown;
   saveKeyboard();
@@ -217,6 +245,8 @@ export function toggleRecordKeys() {
     return undefined;
   }
   const pat = currentPattern();
+  // An instrument being tried becomes a channel to record onto.
+  if (pat && state.audition.on) keepTried();
   if (!pat || !currentChannel()) {
     toast("Nothing to record into", "Select a pattern and a channel first.", "error");
     return undefined;
@@ -337,11 +367,12 @@ function takeStart(beat) {
 /** function pressKey(source: String, pitch: Number, velocity: Number) => Undefined */
 export function pressKey(source, pitch, velocity) {
   releaseKey(source);
-  const ch = currentChannel();
+  const ch = keysTarget();
   const pat = currentPattern();
   if (!ch || pitch < 0) return undefined;
   const beat = livePosition();
-  const taken = takeAt(beat);
+  // Notes of an instrument only being tried are never written down.
+  const taken = !ch.trying && takeAt(beat);
   // A key struck with one still held starts with it, even if the grid line
   // between their two starts fell in that instant.
   const at = now();
@@ -446,18 +477,12 @@ function layoutKeys(keyW) {
 /** The strip; `compact` is the phone layout (bigger keys, no channel name). */
 /** function keyboardStrip(b: Builder, compact: Boolean) => Undefined */
 export function keyboardStrip(b, compact) {
-  const ch = currentChannel();
+  const ch = keysTarget();
   layoutKeys(compact ? 36 : 28);
 
   b.open("div", "keyboard", compact ? "keyboard compact" : "keyboard");
   b.open("div", "head", "kb-head");
-  if (!compact) {
-    b.open("div", "ch", "kb-ch");
-    b.leaf("span", "l", "kb-label", "Keys");
-    b.leaf("b", "n", "", ch ? ch.name : "No channel");
-    if (ch) b.style("--c", ch.color);
-    b.close();
-  }
+  if (!compact) targetView(b, ch);
   b.open("div", "row", "kb-row");
   b.open("div", "oct", "kb-oct");
   octaveButton(b, "down", "left", -1);
@@ -478,7 +503,13 @@ export function keyboardStrip(b, compact) {
       invalidate();
     }
   });
-  b.on("pointerenter", (e) => hint(ch ? `Play ${ch.name} — slide for a glissando; lower on a key is louder · ${typedHint()}` : "Select a channel to play it"));
+  b.on("pointerenter", (e) =>
+    hint(
+      ch
+        ? `Play ${ch.name} (${ch.detail}) — slide for a glissando; lower on a key is louder · ${typedHint()}`
+        : "Select a channel, or click an instrument in the browser, to play it"
+    )
+  );
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });
@@ -504,6 +535,11 @@ export function keyboardStrip(b, compact) {
       (u) => releaseKey(source)
     );
   });
+  // On a phone, the name of what the keys play sits on them.
+  if (compact && ch) {
+    b.leaf("div", `tag-${ch.id}`, ch.trying ? "kb-tag trying" : "kb-tag", ch.trying ? `Trying ${ch.name}` : ch.name);
+    b.style("--c", ch.color);
+  }
   // The computer keys' letters, where there is room (not on a phone).
   const letters = !compact && geo.whiteW >= 14;
   for (let i = 0; i < whites.length; i++) {
@@ -525,6 +561,38 @@ export function keyboardStrip(b, compact) {
     b.close();
   }
   b.close();
+  b.close();
+}
+
+/** The header's name of what the keys play: a channel, or an instrument
+ * being tried from the browser (with buttons to add it or stop trying).
+ * Keyed by the target, so a new one flashes in. */
+/** function targetView(b: Builder, ch: KeysTarget?) => Undefined */
+function targetView(b, ch) {
+  if (!ch) {
+    b.open("div", "ch-none", "kb-ch");
+    b.leaf("span", "l", "kb-label", "Keys");
+    b.leaf("b", "n", "", "No channel");
+    b.close();
+    return undefined;
+  }
+  b.open("div", `ch-${ch.trying ? state.audition.key : ch.id}`, ch.trying ? "kb-target trying" : "kb-target");
+  b.style("--c", ch.color);
+  b.attr(
+    "title",
+    ch.trying ? `The keys play ${ch.detail}, tried from the browser (not in the song yet)` : `The keys play the channel ${ch.name}: ${ch.detail}`
+  );
+  b.open("div", "ch", "kb-ch");
+  b.leaf("span", "l", "kb-label", ch.trying ? "Trying" : "Keys");
+  b.leaf("b", "n", "", ch.name);
+  if (ch.trying) {
+    toolButton(b, "keep", "kb-mini", "plus", "Add it to the channel rack", () => {
+      keepTried();
+    });
+    toolButton(b, "drop", "kb-mini", "close", "Stop trying it: play the selected channel again", () => stopTrying());
+  }
+  b.close();
+  b.leaf("div", "d", "kb-detail", ch.detail);
   b.close();
 }
 
