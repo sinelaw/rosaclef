@@ -867,3 +867,44 @@ fn a_taken_over_pattern_replaces_the_part_where_it_plays() {
         .iter()
         .all(|i| i.severity != crate::validate::Severity::Error));
 }
+
+#[test]
+fn a_kit_change_leaves_the_other_patterns_on_their_kit() {
+    let mut p = drum_pattern(recipe("rock-8ths", "Jazz Kit"), 4.0);
+    render_pattern(&mut p, "drums-verse").unwrap();
+    // A second pattern on the same Jazz Kit channel.
+    let mut other = p.pattern("drums-verse").unwrap().clone();
+    other.id = "drums-chorus".into();
+    other.name = "Drums · Chorus".into();
+    p.patterns.push(other);
+    pattern_mut(&mut p, "drums-verse")
+        .drums
+        .as_mut()
+        .unwrap()
+        .kit = "Standard Kit".into();
+    render_pattern(&mut p, "drums-verse").unwrap();
+    let program = |p: &Project, id: &str| -> String {
+        let ch = &p.pattern(id).unwrap().notes[0].channel;
+        p.channel(ch)
+            .unwrap()
+            .instrument
+            .option("program")
+            .to_string()
+    };
+    assert_eq!(program(&p, "drums-verse"), "Standard Kit");
+    assert_eq!(
+        program(&p, "drums-chorus"),
+        "Jazz Kit",
+        "the other pattern keeps its kit"
+    );
+    assert_eq!(p.channels.len(), 2);
+    // Alone on its channel, a pattern switches it rather than making another.
+    pattern_mut(&mut p, "drums-verse")
+        .drums
+        .as_mut()
+        .unwrap()
+        .kit = "Brush Kit".into();
+    render_pattern(&mut p, "drums-verse").unwrap();
+    assert_eq!(program(&p, "drums-verse"), "Brush Kit");
+    assert_eq!(p.channels.len(), 2);
+}

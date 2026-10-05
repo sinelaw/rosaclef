@@ -69,6 +69,13 @@
 .drums-target .drums-actions {
   align-items: center;
 }
+/* The target's clip runs into another time signature. */
+.drums-cross {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .drums-busy {
   font-size: 10.5px;
   color: var(--gold-hi);

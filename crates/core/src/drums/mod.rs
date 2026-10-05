@@ -1463,7 +1463,8 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
 /// Make the notes of drum pattern `id` from its recipe (`drums`): the
 /// groove's bars for as many bars as the pattern is long (at least one),
 /// with the crash, fill and turnarounds asked for, on the kit's channels
-/// (found or made; drum channels the pattern no longer plays, and nothing
+/// (found or made: a kit channel it shares with other patterns keeps its
+/// kit for them; drum channels the pattern no longer plays, and nothing
 /// else does, go). The pattern's length becomes whole bars of the groove.
 pub fn render_pattern(p: &mut Project, id: &str) -> Result<(), String> {
     let pat = p.pattern(id).ok_or_else(|| format!("no pattern {id:?}"))?;
@@ -1549,7 +1550,18 @@ pub fn render_pattern(p: &mut Project, id: &str) -> Result<(), String> {
             }
         }
     }
-    let kit = kit(p, &kit_name, &roles, &old_channels);
+    // Only a kit channel no other pattern plays on may switch kits: the
+    // others keep theirs (this one moves to a channel with its kit).
+    let exclusive: Vec<String> = old_channels
+        .iter()
+        .filter(|c| {
+            !p.patterns
+                .iter()
+                .any(|x| x.id != id && x.notes.iter().any(|n| &n.channel == *c))
+        })
+        .cloned()
+        .collect();
+    let kit = kit(p, &kit_name, &roles, &exclusive);
     let notes = notes_of(
         &grids,
         bar_beats,

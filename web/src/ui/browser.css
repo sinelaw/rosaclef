@@ -251,3 +251,6 @@
 .b-search .text-input {
   padding-left: 28px;
 }
+.b-search-clear.empty {
+  visibility: hidden;
+}

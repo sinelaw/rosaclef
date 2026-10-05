@@ -23,6 +23,7 @@ function enrich(e) {
   const src = e.target || {};
   const extra = {
     typing: isTyping(e.target),
+    terminal: !!(src.closest && src.closest(".xterm")),
     onControl: !!(src.closest && src.closest("button, select, input, textarea, a, .knob, .fader, .lcd")),
     value: src.value !== undefined ? String(src.value) : "",
     checked: !!src.checked,

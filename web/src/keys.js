@@ -42,7 +42,10 @@ function letterShortcut(c) {
 
 export function installKeys() {
   listenWindow("keydown", (e) => {
-    if (e.typing) return undefined;
+    // In a text field, keys type — but the function keys (F4–F10 switch the
+    // dock's tabs) type nothing, so they still work there (not in the agent's
+    // terminal: programs there take them).
+    if (e.typing && (e.terminal || !/^F\d+$/.test(e.key))) return undefined;
     const k = e.key;
     const mod = e.ctrlKey || e.metaKey;
     // Ctrl+Alt+B/A/P/D/0: minimize, maximize and restore the panels.

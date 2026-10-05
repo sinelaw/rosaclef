@@ -162,7 +162,7 @@
     movementX: Number, movementY: Number, button: Number, buttons: Number, pointerId: Number, pointerType: String,
     deltaX: Number, deltaY: Number, key: String, code: String,
     shiftKey: Boolean, ctrlKey: Boolean, metaKey: Boolean, altKey: Boolean, repeat: Boolean,
-    detail: Number, typing: Boolean, onControl: Boolean, value: String, checked: Boolean,
+    detail: Number, typing: Boolean, terminal: Boolean, onControl: Boolean, value: String, checked: Boolean,
     targetLeft: Number, targetTop: Number, targetWidth: Number, targetHeight: Number,
     scrollLeft: Number, scrollTop: Number,
     preventDefault: () => Undefined, stopPropagation: () => Undefined

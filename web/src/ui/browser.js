@@ -95,8 +95,8 @@ const GM_FAMILIES = [
 
 /** The browser's tree: which folders are open, and the search. A search
  * opens every folder holding a match and hides what does not match. */
-/** const tree: { open: String[], query: String, first: Pick[] } */
-const tree = { open: ["song"], query: "", first: [] };
+/** const tree: { open: String[], query: String, first: Pick[], enter: Boolean } */
+const tree = { open: ["song"], query: "", first: [], enter: false };
 
 /** The words of the search ([] for none). */
 /** function words() => String[] */
@@ -414,14 +414,19 @@ function searchBox(b) {
     if (e.key === "Escape") {
       tree.query = "";
       invalidate();
-    } else if (e.key === "Enter" && tree.first.length > 0) tryPick(tree.first[0]);
-  });
-  if (tree.query !== "") {
-    iconButton(b, "clear", "small ghost", "close", "Clear the search", () => {
-      tree.query = "";
+    } else if (e.key === "Enter") {
+      // The first match of what is typed now (the list may not show it yet).
+      tree.query = e.value;
+      tree.enter = true;
       invalidate();
-    });
-  }
+    }
+  });
+  // Always there (hidden while empty): an element appearing after the input
+  // would make the tree re-attach the row, and the input lose the focus.
+  iconButton(b, "clear", tree.query === "" ? "small ghost b-search-clear empty" : "small ghost b-search-clear", "close", "Clear the search", () => {
+    tree.query = "";
+    invalidate();
+  });
   b.close();
 }
 
@@ -451,6 +456,12 @@ export function browser(b) {
     b.leaf("div", "none", "b-empty", `Nothing matches “${tree.query.trim()}”`);
   }
   b.close();
+  if (tree.enter) {
+    // Enter in the search: try the first match, once the list is made.
+    tree.enter = false;
+    const first = tree.first.length > 0 ? tree.first[0] : undefined;
+    if (first) setTimeout(() => tryPick(first), 0);
+  }
 
   // Patterns.
   const pats = p.patterns.filter((x) => hit(`${x.name} pattern`));

@@ -56,6 +56,8 @@ export const drums = {
   tryAt: 0,
   /** The song cursor (beats), kept while a pattern or groove plays on its own. */
   songAt: 0,
+  /** The pattern loops on its own from the song (stopping it goes back). */
+  looped: false,
   /** The song drummer's panel was just opened (scroll down to it). */
   opened: false,
   /** Drums added to the grid that have no notes yet. */
@@ -1102,7 +1104,8 @@ function otherDrumTracks(d) {
   for (const c of p.playlist.clips) {
     if (c.pattern === "" || ours.includes(c.pattern)) continue;
     const pat = p.patterns.find((x) => x.id === c.pattern);
-    if (!pat || pat.notes.length === 0) continue;
+    // (The song's own drum patterns replace the part where they play.)
+    if (!pat || pat.notes.length === 0 || pat.drums.on) continue;
     const drumsOnly = pat.notes.every((n) => {
       const ch = p.channels.find((x) => x.id === n.channel);
       return ch !== undefined && isDrumChannel(ch);
@@ -1322,7 +1325,15 @@ function defaultKit() {
 function followFocus() {
   const d = state.project.drums;
   const p = pointedBar();
-  if (p.key === drums.focus) return undefined;
+  if (p.key === drums.focus) {
+    // Nothing targeted, but drums play here now (made elsewhere, or back by
+    // an undo): target them.
+    if (drums.target === "") {
+      const at = drumClipAt(p.bar);
+      if (at) drums.target = at.clip.pattern;
+    }
+    return undefined;
+  }
   // While playing, the cursor runs on its own: only a clip selection counts.
   if (state.playing && !p.key.startsWith("clip")) return undefined;
   drums.focus = p.key;
@@ -1710,9 +1721,16 @@ function loopTarget() {
   if (!pat) return undefined;
   if (state.playing && state.mode === "pattern" && state.pattern === pat.id) {
     stop();
+    // Back to the song, where its cursor was.
+    if (drums.looped) {
+      drums.looped = false;
+      setMode("song");
+      seek(drums.songAt);
+    }
     return undefined;
   }
   stopTrying();
+  drums.looped = state.mode === "song";
   selectPattern(pat.id);
   setMode("pattern");
   play();
@@ -1928,7 +1946,59 @@ function targetView(b) {
     );
     b.close();
   }
+  if (pat) crossingView(b, pat);
   if (drums.pending > 0) b.leaf("span", "busy", "drums-busy", "Making…");
+  b.close();
+}
+
+/** The time signature changes inside the target's clip at the cursor:
+ * where it changes before the cursor, and to what ("" none). */
+/** function crossing(pat: Pattern) => { bar: Number, label: String } */
+function crossing(pat) {
+  const c = cursorClip(pat.id);
+  const here = pointedBar().bar;
+  const t = state.project.transport;
+  if (!c) return { bar: -1, label: "" };
+  const first = barAt(t, c.start).bar;
+  const last = barAt(t, c.start + c.length - 1e-6).bar;
+  if (here < first || here > last) return { bar: -1, label: "" };
+  const began = meterAt(first);
+  const now = meterAt(here);
+  if (Math.abs(began.barBeats - now.barBeats) < 1e-6) return { bar: -1, label: "" };
+  // The bar where the time signature at the cursor starts.
+  let start = here;
+  while (start > first && Math.abs(meterAt(start - 1).barBeats - now.barBeats) < 1e-6) start = start - 1;
+  return { bar: start, label: now.label };
+}
+
+/** A clip that runs on into another time signature: say so, and offer to
+ * end it there (the cursor's bars then take a pattern of their own). */
+/** function crossingView(b: Builder, pat: Pattern) => Undefined */
+function crossingView(b, pat) {
+  const x = crossing(pat);
+  if (x.bar < 0) return undefined;
+  const c = cursorClip(pat.id);
+  if (!c) return undefined;
+  b.open("div", "cross", "drums-cross");
+  b.leaf("span", "t", "drums-status warn", `This clip runs on into ${x.label} at bar ${x.bar + 1}, but ${pat.name} is in ${targetMeter().label}.`);
+  button(
+    b,
+    "cut",
+    "small gold",
+    `End it at bar ${x.bar + 1}`,
+    `Shorten the clip to end where ${x.label} starts; then pick a ${x.label} groove for the bars from ${x.bar + 1}`,
+    () => {
+      const at = barStart(x.bar);
+      commit(() => {
+        clearDrums(state.project, trackIndex(c.track), at, c.start + c.length);
+      });
+      // The cursor goes to where the new time signature starts: a groove
+      // picked now makes the pattern for those bars.
+      state.clipSelection = [];
+      if (state.mode === "song") seek(at);
+      drums.target = "";
+    }
+  );
   b.close();
 }
 
@@ -2111,8 +2181,16 @@ function patternView(b) {
     b.open("div", "opts2", "drums-opts");
     const bars = Math.max(1, Math.round(pat.length / g.barBeats));
     stepper(b, "bars", "Pattern bars", bars, "Bars in the pattern (a clip longer than that loops it)", (by) =>
-      changeTarget((x, pt) => {
+      changeTarget((x, pt, song) => {
+        const old = pt.length;
         pt.length = Math.max(1, Math.min(64, Math.round(pt.length / g.barBeats) + by)) * g.barBeats;
+        // A clip that played the whole pattern still does (its end, the fill, too);
+        // drum clips after it make room.
+        for (const c of song.playlist.clips) {
+          if (c.pattern !== pt.id || Math.abs(c.length - old) > 1e-6) continue;
+          if (pt.length > old) clearDrums(song, trackIndex(c.track), c.start + old, c.start + pt.length);
+          c.length = pt.length;
+        }
       })
     );
     /** const kits: String[] */
@@ -2130,15 +2208,10 @@ function patternView(b) {
       r.kit,
       kits,
       kitLabels,
-      "A General MIDI kit (one channel, shared by the patterns on it), or the Ebony drum machine (a channel per drum)",
+      "A General MIDI kit (one channel), or the Ebony drum machine (a channel per drum); the other patterns keep their kit",
       (v) =>
-        changeTarget((x, pt, song) => {
+        changeTarget((x, pt) => {
           x.kit = v;
-          // The patterns on the same kit channel switch with it: their recipes say so.
-          const mine = pt.notes.map((n) => n.channel);
-          for (const o of song.patterns) {
-            if (o.id !== pt.id && o.drums.on && o.notes.some((n) => mine.includes(n.channel))) o.drums.kit = v;
-          }
         })
     );
     field(

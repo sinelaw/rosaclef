@@ -382,8 +382,8 @@ the cursor it says so and offers **+ New pattern at bar N**.
 seed, edited); `POST /api/drums/pattern?id=` — and `rosaclef drums --pattern
 ID` — make its notes from it with the song drummer's own code (grids, fills,
 feel, kit channels), so the agent can make and edit drum patterns too. A kit
-change switches the kit channel the pattern plays on (the patterns sharing
-it follow).
+change moves the pattern to a channel with that kit (made if needed); the
+patterns on its old channel keep their kit.
 
 ## 5. After v1
 
