@@ -125,26 +125,45 @@ await page.waitForSelector(".score-top .score-scroll.over-note");
 ok("a note under the pointer lights up, ready to be grabbed");
 await page.keyboard.press("Escape");
 
-// A click on the music takes the keys back from a menu or the agent's terminal: Space plays and stops.
+// A click in a panel takes the keys back from a menu or the agent's terminal: Space plays and stops.
 const music = await page.locator(".score-top .score-sys").first().boundingBox();
-/** Give the keys to `sel`, click the music, then Space plays and Space stops. */
-async function spaceAfter(sel, what) {
+/** Give the keys to `sel`, press at (x, y) (`button`), then Space plays and Space stops. */
+async function spaceAfter(sel, what, where, x, y, button) {
   await page.focus(sel);
   if (!(await page.evaluate((q) => document.activeElement === document.querySelector(q) || document.activeElement?.closest(q) !== null, sel)))
     throw new Error(`${what} did not take the keys`);
-  await page.mouse.click(music.x + music.width * 0.5, music.y + music.height * 0.5);
+  await page.mouse.click(x, y, { button: button });
   await page.keyboard.press("Space");
   await page.waitForFunction(() => document.querySelector("button.play.on") !== null, null, { timeout: 5000 });
   await page.keyboard.press("Space");
   await page.waitForFunction(() => document.querySelector("button.play.on") === null, null, { timeout: 5000 });
-  ok(`after ${what} had the keys, a click on the music and Space plays and stops`);
+  ok(`after ${what} had the keys, a click on ${where} and Space plays and stops`);
 }
-await spaceAfter(".score-top .score-ribbon select", "the Key menu");
-if ((await page.locator(".xterm textarea").count()) === 0 && (await page.locator("button:has-text('Rosaclef shell')").count()) > 0) {
+const onMusic = [music.x + music.width * 0.5, music.y + music.height * 0.5];
+await spaceAfter(".score-top .score-ribbon select", "the Key menu", "the music", onMusic[0], onMusic[1], "left");
+if (
+  await page
+    .locator(".term-empty")
+    .isVisible()
+    .catch(() => false)
+) {
   await page.click("button:has-text('Rosaclef shell')");
-  await page.waitForSelector(".xterm textarea", { timeout: 15000 });
+  await page.waitForFunction(() => {
+    const e = document.querySelector(".term-empty");
+    return !e || e.offsetParent === null;
+  });
 }
-if ((await page.locator(".xterm textarea").count()) > 0) await spaceAfter(".xterm textarea", "the terminal");
+const TERM = ".xterm textarea";
+await spaceAfter(TERM, "the terminal", "the music", onMusic[0], onMusic[1], "left");
+// The same in the piano roll (a right-click on its grid adds nothing) and in the playlist.
+await page.click("button.tab:has-text('Piano Roll')");
+const roll = await page.locator(".pane-dock .dock-body").boundingBox();
+await spaceAfter(TERM, "the terminal", "the piano roll", roll.x + roll.width * 0.7, roll.y + roll.height * 0.5, "right");
+await page.click("button.tab:has-text('Playlist')");
+const arrangement = await page.locator(".pane-top .dock-body").boundingBox();
+await spaceAfter(TERM, "the terminal", "the playlist", arrangement.x + arrangement.width * 0.8, arrangement.y + arrangement.height * 0.85, "right");
+await page.click("button.tab:has-text('Score')");
+await page.waitForSelector(".score-top .score-sys");
 await page.keyboard.press("Escape");
 
 // The pattern of the piano roll, in the dock (F10); write a note into it.
