@@ -104,6 +104,10 @@ pub struct CriticSettings {
     /// Checks turned off, by rule id (`rosaclef critic --rules` lists them).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub off: Vec<String>,
+    /// Checks that are off by default (the classical theory ones) turned on,
+    /// by rule id.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub on: Vec<String>,
     /// Findings suppressed one by one, by their key (as `rosaclef critic`
     /// prints it): reported as suppressed, not as something to do.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -112,7 +116,7 @@ pub struct CriticSettings {
 
 impl CriticSettings {
     pub fn is_empty(&self) -> bool {
-        self.off.is_empty() && self.suppress.is_empty()
+        self.off.is_empty() && self.on.is_empty() && self.suppress.is_empty()
     }
 }
 

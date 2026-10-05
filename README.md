@@ -75,7 +75,7 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef new DIR [--demo]` | create a project folder |
 | `rosaclef validate [DIR\|FILE]` | check `project.json` (errors carry JSON paths) |
 | `rosaclef summary [DIR]` | compact overview of a project |
-| `rosaclef critic [DIR] [--fix KEY\|RULE\|all] [--suppress KEY\|RULE] [--json]` | lint the song against production rules of thumb; apply fixes, suppress findings (see [`docs/critic.md`](docs/critic.md)) |
+| `rosaclef critic [DIR] [--fix KEY\|RULE\|all] [--suppress KEY\|RULE] [--enable\|--disable RULE] [--json]` | lint the song against production rules of thumb; apply fixes, suppress findings, turn checks on or off (see [`docs/critic.md`](docs/critic.md)) |
 | `rosaclef render [DIR] [--pattern ID] [--out FILE] [--bits 16\|24\|32]` | offline mixdown to WAV (shows progress on a terminal) |
 | `rosaclef note --channel ID --pitch 60 --out samples/x.wav` | synthesize a note into a sample |
 | `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
@@ -96,7 +96,8 @@ velocities, loopitis, a bass panned off center, a limiter that isn't last.
 - **Issues** are for information, and in the native studio one click hands
   an issue to your agent.
 - **Suppressing** one finding, or turning a check off, is saved in the
-  project.
+  project. The checks of classical theory (keys, voice leading, singable
+  melodies) start off; turn them on when the song wants them.
 
 The same checks run on the command line: `rosaclef critic`, with `--fix`,
 `--suppress` and `--json` for agents. See [`docs/critic.md`](docs/critic.md).

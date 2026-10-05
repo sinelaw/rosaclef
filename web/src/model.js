@@ -195,6 +195,7 @@ export function decodeProject(raw) {
     critic: {
       off: ((raw.critic ?? {}).off ?? []).map((x) => String(x)),
       suppress: ((raw.critic ?? {}).suppress ?? []).map((x) => String(x)),
+      on: ((raw.critic ?? {}).on ?? []).map((x) => String(x)),
     },
     repeats: (raw.repeats ?? []).map((r) => ({
       start: Number(r.start),
@@ -568,7 +569,8 @@ export function encodeProject(p) {
   if (p.repeats.length > 0) o.repeats = p.repeats.map(encodeRepeat);
   if (p.animation.on) o.animation = encodeAnimation(p.animation);
   if (p.drums.on) o.drums = encodeDrums(p.drums);
-  if (p.critic.off.length > 0 || p.critic.suppress.length > 0) o.critic = { off: p.critic.off.slice(), suppress: p.critic.suppress.slice() };
+  const cr = p.critic;
+  if (cr.off.length + cr.on.length + cr.suppress.length > 0) o.critic = { off: cr.off.slice(), on: cr.on.slice(), suppress: cr.suppress.slice() };
   return o;
 }
 
@@ -948,7 +950,7 @@ export function emptyProject() {
     repeats: [],
     animation: noAnimation(),
     drums: noDrums(),
-    critic: { off: [], suppress: [] },
+    critic: { off: [], on: [], suppress: [] },
   };
 }
 

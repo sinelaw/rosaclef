@@ -141,8 +141,9 @@ right before editing it, and never rewrite the whole file from memory.
 - `rosaclef summary` — compact overview of channels, patterns, arrangement and mixer.
 - `rosaclef critic` — the Critic's findings (`--json` with each fix as JSON Patch operations;
   `--fix KEY|RULE|all` applies fixes; `--suppress` / `--unsuppress KEY|RULE` hides a finding or
-  turns a check off in `project.json`; `--rules` lists the checks). The studio's Critic tab
-  shows the same findings.
+  turns a check off in `project.json`; `--enable` / `--disable RULE` turns a check on or off — the
+  classical theory checks (keys, voice leading, singable melodies) start off; `--rules` lists the
+  checks). The studio's Critic tab shows the same findings.
 - `rosaclef catalog` — every instrument/effect and its parameters (also below).
 - `rosaclef presets [TYPE|NAME]` — factory presets; with a name, prints the instrument JSON.
 - `rosaclef render [--pattern ID --loops N] [--out renders/x.wav]` — offline mixdown to WAV

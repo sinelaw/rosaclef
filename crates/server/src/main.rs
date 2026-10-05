@@ -70,6 +70,13 @@ enum Command {
         /// Bring back a suppressed finding or a check turned off (repeatable).
         #[arg(long)]
         unsuppress: Vec<String>,
+        /// Turn a check on, by rule id: the classical theory checks (keys,
+        /// voice leading, singable melodies) are off by default (repeatable).
+        #[arg(long)]
+        enable: Vec<String>,
+        /// Turn a check off, by rule id (repeatable).
+        #[arg(long)]
+        disable: Vec<String>,
         /// List the suppressed findings too.
         #[arg(long)]
         suppressed: bool,
@@ -251,6 +258,8 @@ fn main() -> Result<()> {
             fix,
             suppress,
             unsuppress,
+            enable,
+            disable,
             suppressed,
             rules,
         } => {
@@ -280,6 +289,15 @@ fn main() -> Result<()> {
                     critic::suppress(&mut p, w, &fallbacks).map_err(|e| anyhow!(e))?
                 );
                 changed = true;
+            }
+            for (ids, on) in [(&enable, true), (&disable, false)] {
+                for id in ids {
+                    println!(
+                        "{}",
+                        critic::set_enabled(&mut p, id, on).map_err(|e| anyhow!(e))?
+                    );
+                    changed = true;
+                }
             }
             for w in &unsuppress {
                 println!("{}", critic::unsuppress(&mut p, w).map_err(|e| anyhow!(e))?);
