@@ -403,6 +403,9 @@ pub fn run(
                 break;
             }
             last_perf = perf;
+            // At a span's end the engine still reads that span; it is the
+            // next span's start (a repeat jumping back, an ending skipped).
+            let (fa, pos) = timeline.at_perf(perf);
             clock.push((frame, fa as u32, pos));
             // The last block stops at the segment's end: at the song's end the
             // engine would go on with its start.

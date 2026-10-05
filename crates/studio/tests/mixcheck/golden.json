@@ -348,38 +348,6 @@
         "noteIndex": 1,
         "pitch": "C#5",
         "midi": 73,
-        "levelDb": -11.7
-      },
-      "b": {
-        "channel": "bass",
-        "pattern": "beat",
-        "noteIndex": 5,
-        "pitch": "C2",
-        "midi": 36,
-        "levelDb": -9.7
-      },
-      "interval": "m2+3oct",
-      "overlapBeats": 1.5,
-      "severity": "high",
-      "fix": [
-        {
-          "op": "replace",
-          "path": "/patterns/1/notes/1/pitch",
-          "value": 72
-        }
-      ],
-      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
-    },
-    {
-      "bar": 2,
-      "beat": 6.0,
-      "beatInBar": 2.0,
-      "a": {
-        "channel": "lead",
-        "pattern": "tune",
-        "noteIndex": 1,
-        "pitch": "C#5",
-        "midi": 73,
         "levelDb": -11.5
       },
       "b": {
@@ -418,9 +386,14 @@
           "op": "add",
           "path": "/mixer/inserts/1/volume",
           "value": 0.597
+        },
+        {
+          "op": "add",
+          "path": "/mixer/inserts/4/volume",
+          "value": 0.398
         }
       ],
-      "fixLabel": "Kick down 6.1 dB"
+      "fixLabel": "Kick and Pad down 6.1 dB"
     },
     {
       "severity": "warn",
@@ -452,25 +425,6 @@
       "key": "harmonic-clash|tune:1|tune:3",
       "where": "bar 2",
       "detail": "lead C#5 (pattern tune, note 1) against pad C4 (pattern tune, note 3): a m9 held 2.00 beats, the quieter at -11.5 dB against the mix.",
-      "element": "channel:lead",
-      "fromBar": 2,
-      "toBar": 2,
-      "fromBeat": 4.0,
-      "fix": [
-        {
-          "op": "replace",
-          "path": "/patterns/1/notes/1/pitch",
-          "value": 72
-        }
-      ],
-      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
-    },
-    {
-      "severity": "warn",
-      "rule": "harmonic-clash",
-      "key": "harmonic-clash|tune:1|beat:5",
-      "where": "bar 2",
-      "detail": "lead C#5 (pattern tune, note 1) against bass C2 (pattern beat, note 5): a m2+3oct held 1.50 beats, the quieter at -11.7 dB against the mix.",
       "element": "channel:lead",
       "fromBar": 2,
       "toBar": 2,

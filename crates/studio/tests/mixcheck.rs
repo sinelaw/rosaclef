@@ -214,7 +214,10 @@ fn a_quiet_pluck_under_a_loud_sub_is_masked() {
         .iter()
         .find(|f| f.rule == "inaudible-part")
         .unwrap_or_else(|| panic!("{} {:?}", pluck.verdict, r.findings));
-    assert!(!f.fix.is_empty());
+    // 32 dB under the sub, out of reach of its fader (+6 dB at most): no
+    // level fix is offered, and the finding says what to do instead.
+    assert!(f.fix.is_empty(), "{f:?}");
+    assert!(f.detail.contains("give it room"), "{}", f.detail);
 
     // Alone, the same pluck is heard.
     let mut alone = p.clone();
@@ -608,4 +611,126 @@ fn bad_requests_are_refused_by_name() {
         json!({"project": p, "apply": [{"op": "replace", "path": "/transport/bpm", "value": 100}]});
     let v = mixcheck::api(&env, &p, &body.to_string()).unwrap();
     assert_eq!(v["project"]["transport"]["bpm"], json!(100.0));
+}
+
+// ------------------------------------------------- a song with known faults
+
+/// "Trouble" (tests/mixcheck/trouble.json): a song made with faults on
+/// purpose — a limiter driven 9 dB with a 5 ms release under hot faders,
+/// a lead under a loud pad in its register, a quiet rhythm bass under the
+/// sub, keys and pad, a counter-melody's C#5 over the pad's C4, warm keys
+/// thickening the low mids, a "widener" whose channels cancel, and four
+/// sections at one loudness — with a repeated chorus and a 3/4 outro.
+fn trouble(dir: &PathBuf) -> Project {
+    use std::f64::consts::TAU;
+    wav(dir, "widener.wav", 8.0, |_| 0.0);
+    // The widener: the right channel is the left upside down.
+    let sr = 48000.0;
+    let left: Vec<f32> = (0..(8.0 * sr) as usize)
+        .map(|i| {
+            let t = i as f64 / sr;
+            (0.25 * (TAU * 660.0 * t).sin() * (0.6 + 0.4 * (TAU * 0.5 * t).sin())) as f32
+        })
+        .collect();
+    let right = left.iter().map(|x| -x).collect();
+    let audio = Audio {
+        sample_rate: sr as f32,
+        left,
+        right,
+    };
+    std::fs::write(dir.join("samples/widener.wav"), encode_wav(&audio, 32)).unwrap();
+    serde_json::from_str(include_str!("mixcheck/trouble.json")).unwrap()
+}
+
+#[test]
+fn every_planted_fault_is_found_and_the_fixes_converge() {
+    let dir = scratch("trouble");
+    let p = trouble(&dir);
+    // Bars 8–13: the verse's end (with the widener), the chorus twice and
+    // the first outro bar — every fault, in a debug build's time.
+    let req = |what_if: Value| json!({"range": "8:13", "sampleRate": 24000, "maxFindings": 20, "whatIf": what_if});
+    let r = check(&dir, &p, req(json!([])));
+    let has = |rule: &str, el: Option<&str>| {
+        r.findings
+            .iter()
+            .any(|f| f.rule == rule && el.is_none_or(|e| f.element.as_deref() == Some(e)))
+    };
+    for (rule, el) in [
+        ("master-overload", None),
+        ("limiter-pumping", None),
+        ("masked-lead", Some("channel:lead")),
+        ("inaudible-part", Some("channel:rbass")),
+        ("low-end-buildup", None),
+        ("phase-correlation", Some("insert:7/Widener")),
+        ("section-loudness-flat", None),
+    ] {
+        assert!(
+            has(rule, el),
+            "{rule} {el:?} not found in {:#?}",
+            r.findings
+        );
+    }
+    // One lead (the part named so), one finding per problem.
+    assert_eq!(
+        r.findings
+            .iter()
+            .filter(|f| f.rule == "masked-lead")
+            .count(),
+        1
+    );
+    assert_eq!(
+        r.findings
+            .iter()
+            .filter(|f| f.rule == "master-overload")
+            .count(),
+        1
+    );
+    // The planted clash, down to the note.
+    let c = r
+        .clashes
+        .as_ref()
+        .unwrap()
+        .iter()
+        .find(|c| {
+            c.a.channel == "counter"
+                && c.a.pitch == "C#5"
+                && c.b.channel == "pad"
+                && c.b.pitch == "C4"
+        })
+        .expect("the counter's C#5 over the pad's C4");
+    assert_eq!((c.interval.as_str(), c.a.note_index), ("m9", 0));
+
+    // Applying the fixes, as an agent would, round after round: the limiter
+    // stops fighting and the lead comes through.
+    let mut ops: Vec<Value> = vec![];
+    let mut last = r;
+    for _ in 0..3 {
+        for f in &last.findings {
+            if matches!(
+                f.rule,
+                "master-overload"
+                    | "limiter-pumping"
+                    | "masked-lead"
+                    | "inaudible-part"
+                    | "low-end-buildup"
+            ) {
+                ops.extend(f.fix.iter().cloned());
+            }
+        }
+        last = check(&dir, &p, req(json!(ops.clone())));
+    }
+    let gr = last.master.limiter_gain_reduction_db.as_ref().unwrap();
+    assert!(gr.mean < 1.0 && gr.pct_time_above3 < 5.0, "{gr:?}");
+    assert!(
+        last.master.plr_db.flatten().unwrap() > 7.0,
+        "{:?}",
+        last.master.plr_db
+    );
+    for rule in ["master-overload", "limiter-pumping", "masked-lead"] {
+        assert!(
+            !last.findings.iter().any(|f| f.rule == rule),
+            "{rule} left: {:#?}",
+            last.findings
+        );
+    }
 }

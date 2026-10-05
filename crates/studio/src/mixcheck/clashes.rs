@@ -169,7 +169,8 @@ pub fn find(
                 continue;
             }
             let semis = (m.pitch - n.pitch).abs();
-            if !matches!(semis % 12, 1 | 6 | 11) {
+            // Further apart than two octaves, the notes no longer beat.
+            if semis > 24 || !matches!(semis % 12, 1 | 6 | 11) {
                 continue;
             }
             let from = m.from.max(n.from);
@@ -191,7 +192,10 @@ pub fn find(
             };
             let quiet = da.min(db);
             let weight = overlap * 10f64.powf(quiet / 20.0);
-            let semitone = semis % 12 != 6;
+            // Minor seconds and ninths grind; a major seventh over a chord's
+            // root is a maj7 colour as often as a clash, and the tritone a
+            // dominant's: those rank one step lower.
+            let semitone = semis % 12 == 1;
             let shift = if strict {
                 6.0
             } else if loose {

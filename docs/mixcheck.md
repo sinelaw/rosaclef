@@ -181,18 +181,21 @@ silent parts are left out.
 
 ## Findings and the Critic
 
-Findings are ranked, de-duplicated and at most `--max-findings` (10). Each is a
-rule of the Critic (category *Mix check*), with a JSON Patch `fix`:
+Findings are ranked, de-duplicated and at most `--max-findings` (10), and no
+rule takes more than a third of the list. One problem is one finding, with one
+fix: an overload or a low-end build-up lists every stretch it happens in
+("bars 1–7, 9–12 (pass 2), 13–18"). Each is a rule of the Critic (category
+*Mix check*), with a JSON Patch `fix`:
 
 | rule | when | fix |
 |---|---|---|
-| `master-overload` | bars where the limiter's input peaks over +1 dBFS and it reduces 3 dB or more (strict: 0 / 2, loose: +3 / 6) | the parts that dominate down; when none does, less limiter drive and every fader down |
-| `limiter-pumping` | the master limiter's (or bus compressor's) gain reduction swings 4 dB or more within a beat, over 3 dB a fifth of the time | a slower release, less drive |
-| `masked-lead` | the lead (the Critic's role) is buried or inaudible | an EQ cut on its masker where it covers it, or more level |
-| `inaudible-part` | a part is inaudible (strict: buried too) | the level the model says it needs |
-| `harmonic-clash` | a clash of high severity (strict: medium too) | the quieter note moved to the nearest pitch that clashes with nothing |
+| `master-overload` | bars where the limiter's input peaks over +1 dBFS and it reduces 6 dB or more (strict: 0 / 3, loose: +3 / 9) — catching the odd peak is mastering, not overload | the parts carrying 15 % or more of the mix down (up to three); when none does, less limiter drive and every fader down |
+| `limiter-pumping` | the master limiter's (or bus compressor's) gain reduction swings 4 dB or more within a beat, over 3 dB a fifth of the time | a slower release (at least 60 ms for a limiter, 150 ms for a compressor), less drive |
+| `masked-lead` | the lead is buried or inaudible. The lead is the part named like one (lead, vocal, melody, topline, solo), else the loudest the Critic reads as a lead: one per song | an EQ cut on its masker where it covers it, or more level |
+| `inaudible-part` | a part is inaudible (strict: buried too) | the level the model says it needs — only when the model says it helps and the faders can reach it (else the finding says so) |
+| `harmonic-clash` | a clash of high severity (strict: medium too). Minor seconds and ninths rank highest; a major seventh (a maj7 colour as often as not) and a tritone one step lower; notes more than two octaves apart are not clashes | the quieter note moved to the nearest pitch that clashes with nothing |
 | `low-end-buildup` | for 2 bars or more, under 250 Hz is 14 dB over 500 Hz–6 kHz, or 250–500 Hz 6 dB over a balanced tilt | a low shelf on the part (not the bass or drums) carrying the most low end |
-| `phase-correlation` | the mix's correlation is negative or it loses 6 dB in mono; a part's correlation under −0.3 | — |
+| `phase-correlation` | the mix's correlation is negative or it loses 6 dB in mono; a part's correlation under −0.3 (however quiet: it vanishes in mono) | — |
 | `section-loudness-flat` | three or more sections all within 1.5 LU (strict 2.5, loose 1.0) | a master volume lane: the sparse sections 1.5–3 dB down |
 
 `rosaclef critic --audio` adds them to the Critic's findings (a whole-song mix
@@ -258,6 +261,14 @@ Tests:
   song read only in part) refused by name.
 - Unit tests: the FFT, K-weighting, true peak, loudness and loudness range of
   signals of known loudness (after EBU Tech 3341 / 3342), JSON Patch.
+- "Trouble" (`tests/mixcheck/trouble.json`), a song made with faults on
+  purpose — a driven limiter with a 5 ms release under hot faders, a lead
+  under a pad in its register, a rhythm bass under the sub, a counter-melody's
+  minor ninth over the pad, warm keys thickening the low mids, a "widener"
+  whose channels cancel, four sections at one loudness, a repeated chorus and
+  a 3/4 outro: every fault is found, by the right rule, on the right part, and
+  applying the fixes round after round (as an agent would) brings the limiter
+  to rest and the lead through.
 - `crates/server/tests/mixcheck_cli.rs`: the command line's exit status and
   errors, and that a what-if never writes the project.
 - `web/test/mixcheck-smoke.mjs`: the panel in the browser-only studio —
