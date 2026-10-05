@@ -8,3 +8,7 @@ license.workspace = true
 [dependencies]
 rosaclef-core.workspace = true
 lewton = "0.10"
+
+[features]
+# Offline renders on every core (native builds; see Engine::set_parallel).
+parallel = []

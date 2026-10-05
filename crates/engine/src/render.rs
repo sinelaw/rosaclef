@@ -46,8 +46,39 @@ impl Audio {
 /// Maximum reverb/delay tail rendered after the music ends.
 const MAX_TAIL_SECONDS: f32 = 8.0;
 
+/// How far a render has come (see [`render_with`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RenderProgress {
+    /// Seconds of music rendered so far, of `total`.
+    Music { done: f64, total: f64 },
+    /// The music is done; notes release and effects ring out (at most
+    /// `max` seconds, usually less: it stops at silence).
+    Tail { done: f64, max: f64 },
+}
+
 /// Render with an engine that already has the project, samples and plugin host.
 pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
+    render_with(engine, scope, |_| {})
+}
+
+/// [`render`], calling `progress` after every block.
+pub fn render_with(
+    engine: &mut Engine,
+    scope: &RenderScope,
+    progress: impl FnMut(RenderProgress),
+) -> Audio {
+    // A parallel engine's threads run while it renders.
+    engine.set_crew(true);
+    let audio = render_on(engine, scope, progress);
+    engine.set_crew(false);
+    audio
+}
+
+fn render_on(
+    engine: &mut Engine,
+    scope: &RenderScope,
+    mut progress: impl FnMut(RenderProgress),
+) -> Audio {
     let sr = engine.sample_rate();
     let seconds = match scope {
         RenderScope::Song => {
@@ -84,6 +115,10 @@ pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
         out.left.extend_from_slice(&bl[..n]);
         out.right.extend_from_slice(&br[..n]);
         done += n;
+        progress(RenderProgress::Music {
+            done: done as f64 / sr as f64,
+            total: music_frames as f64 / sr as f64,
+        });
     }
     // Let notes release and effects ring out (automation holds its final values).
     engine.end_song();
@@ -105,6 +140,10 @@ pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
         out.left.extend_from_slice(&bl);
         out.right.extend_from_slice(&br);
         tail += MAX_BLOCK;
+        progress(RenderProgress::Tail {
+            done: tail as f64 / sr as f64,
+            max: MAX_TAIL_SECONDS as f64,
+        });
     }
     // Trim trailing near-silence.
     let mut end = out.left.len();

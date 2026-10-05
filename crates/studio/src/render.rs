@@ -4,9 +4,20 @@ use crate::folder::Folder;
 use crate::fonts::Fonts;
 use anyhow::anyhow;
 use rosaclef_core::Project;
-use rosaclef_engine::render::{self, Audio, RenderScope};
+use rosaclef_engine::render::{self, Audio, RenderProgress, RenderScope};
 use rosaclef_engine::samples::PresetKey;
 use rosaclef_engine::Engine;
+
+/// What a render is doing (see [`render_project_with`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Progress {
+    /// Decoding the project's samples: `done` of `total`.
+    Samples { done: usize, total: usize },
+    /// Loading soundfont presets: `done` of `total`.
+    Presets { done: usize, total: usize },
+    /// Rendering the audio.
+    Render(RenderProgress),
+}
 
 /// Render a project offline, loading its samples from the folder and its
 /// soundfont presets from `fonts`. `setup` prepares the engine first (the
@@ -20,11 +31,28 @@ pub fn render_project(
     fonts: &Fonts,
     setup: impl FnOnce(&mut Engine),
 ) -> (Audio, Vec<String>) {
+    render_project_with(folder, project, scope, sample_rate, fonts, setup, |_| {})
+}
+
+/// [`render_project`], telling `progress` how far it has come.
+pub fn render_project_with(
+    folder: &Folder,
+    project: Project,
+    scope: &RenderScope,
+    sample_rate: f32,
+    fonts: &Fonts,
+    setup: impl FnOnce(&mut Engine),
+    mut progress: impl FnMut(Progress),
+) -> (Audio, Vec<String>) {
     let mut engine = Engine::new(sample_rate);
+    engine.set_parallel(true);
     setup(&mut engine);
     engine.set_project(project);
     let mut warnings = engine.device_errors.clone();
-    for path in engine.required_samples() {
+    let samples = engine.required_samples();
+    let total = samples.len();
+    for (done, path) in samples.into_iter().enumerate() {
+        progress(Progress::Samples { done, total });
         match folder
             .resolve(&path)
             .ok_or_else(|| anyhow!("invalid path"))
@@ -34,8 +62,11 @@ pub fn render_project(
             Err(e) => warnings.push(format!("sample {path}: {e}")),
         }
     }
-    warnings.extend(fonts.provide(&mut engine));
-    (render::render(&mut engine, scope), warnings)
+    warnings.extend(fonts.provide_with(&mut engine, |done, total| {
+        progress(Progress::Presets { done, total })
+    }));
+    let audio = render::render_with(&mut engine, scope, |p| progress(Progress::Render(p)));
+    (audio, warnings)
 }
 
 /// Project-relative paths of the samples a render of `project` reads.

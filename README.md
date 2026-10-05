@@ -76,7 +76,7 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef validate [DIR\|FILE]` | check `project.json` (errors carry JSON paths) |
 | `rosaclef summary [DIR]` | compact overview of a project |
 | `rosaclef critic [DIR] [--fix KEY\|RULE\|all] [--suppress KEY\|RULE] [--json]` | lint the song against production rules of thumb; apply fixes, suppress findings (see [`docs/critic.md`](docs/critic.md)) |
-| `rosaclef render [DIR] [--pattern ID] [--out FILE] [--bits 16\|24\|32]` | offline mixdown to WAV |
+| `rosaclef render [DIR] [--pattern ID] [--out FILE] [--bits 16\|24\|32]` | offline mixdown to WAV (shows progress on a terminal) |
 | `rosaclef note --channel ID --pitch 60 --out samples/x.wav` | synthesize a note into a sample |
 | `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
 | `rosaclef import-midi FILE.mid [--name N] [--library LIB] [--synth]` | import a Standard MIDI File as a new project: tempo and time signature changes, sustain pedal, program changes, volume/pan automation; played on the sampled General MIDI instruments (`--synth`: on Rosaclef's synthesizers) |

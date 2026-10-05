@@ -8,7 +8,8 @@
    plugin API — it edits a file whose schema and semantics are documented in
    `AGENTS.md`, validates it with `rosaclef validate`, and the studio reacts.
 2. **One engine, two hosts.** `crates/engine` is pure DSP (no I/O, no threads),
-   so the same code runs natively and as WebAssembly in the browser.
+   so the same code runs natively and as WebAssembly in the browser. (Native
+   offline renders opt into its `parallel` feature: see below.)
 3. **The browser is a control surface.** It renders, edits and plays, but the
    server owns the file on disk, runs the agent and does what browsers can't
    (audio devices, plugins, fast offline rendering).
@@ -59,6 +60,11 @@
 - **Native**: the server runs the same engine in a cpal output callback
   (`crates/server/src/device.rs`), records from the default input, and renders
   mixdowns offline (`/api/render`, `rosaclef render`). CLAP plugins load here.
+  Offline renders use every core (the engine's `parallel` feature,
+  `crates/engine/src/crew.rs`): each block, the mixer inserts (each with the
+  channels routed to it) play on spinning worker threads, and a soundfont's
+  samples decode in parallel. Every sum keeps its order, so the audio is bit
+  for bit what one thread makes (`crates/engine/tests/parallel.rs`).
   Soundfont presets load on a background thread (`crates/studio/src/fonts.rs`).
 - **Soundfonts**: `crates/engine/src/soundfont.rs` reads SF2/SF3 files
   (generators, modulators, Ogg Vorbis samples) and resolves presets;

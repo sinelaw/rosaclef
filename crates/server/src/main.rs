@@ -2,6 +2,7 @@
 
 mod folder;
 mod library;
+mod progress;
 mod server;
 mod terminal;
 
@@ -14,7 +15,7 @@ use folder::Folder;
 use rosaclef_core::{format, validate, Device, PROJECT_FILE};
 use rosaclef_engine::render::{self, RenderScope};
 use rosaclef_studio::library::Library;
-use rosaclef_studio::render::render_project;
+use rosaclef_studio::render::render_project_with;
 use rosaclef_studio::{decode, guide, slug};
 use std::path::{Path, PathBuf};
 
@@ -376,14 +377,17 @@ fn main() -> Result<()> {
                 dir.join(folder::RENDERS_DIR).join(format!("{name}.wav"))
             });
             let t0 = std::time::Instant::now();
-            let (audio, warnings) = render_project(
+            let mut bar = progress::Bar::new();
+            let (audio, warnings) = render_project_with(
                 &folder,
                 project,
                 &scope,
                 sample_rate as f32,
                 &server::fonts(),
                 server::install_plugin_host,
+                |p| bar.render(p),
             );
+            bar.clear();
             for w in &warnings {
                 eprintln!("warning: {w}");
             }
