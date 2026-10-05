@@ -888,6 +888,12 @@ export function domBackend(rootId) {
             el.focus();
             if (k === "select" && el instanceof HTMLInputElement) el.select();
           }, 0);
+      } else if (k === "reveal") {
+        // "reveal": scroll the node into view, only as far as it takes (not at all when it shows).
+        if (v === "true")
+          requestAnimationFrame(() => {
+            if (el.isConnected) el.scrollIntoView({ block: "nearest", inline: "nearest" });
+          });
       } else if (k === "scrollLeft" || k === "scrollTop") {
         // Scrolling a node that is not in the document yet is ignored.
         if (el.isConnected) el[k] = Number(v);

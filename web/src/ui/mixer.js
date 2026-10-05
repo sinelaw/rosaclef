@@ -31,6 +31,8 @@ function strip(b, ins, i) {
   const users = state.project.channels.filter((c) => insertIndex(c.mixer) === i).map((c) => c.name);
 
   b.open("div", `s${i}`, cls);
+  // Asked for from a channel (the rack, the score): brought into view.
+  if (reveal.insert === i) b.prop("reveal", "true");
   b.on("pointerdown", (e) => {
     if (!sel) selectInsert(ix);
   });
@@ -178,13 +180,9 @@ function fxPanel(b) {
 export function mixer(b) {
   b.open("div", "mixer", "mixer");
   b.open("div", "strips", "strips");
-  if (reveal.insert >= 0) {
-    // Strips are 78px wide, 6px apart: leave one strip of room on the left.
-    b.prop("scrollLeft", String(Math.max(0, (reveal.insert - 1) * 84)));
-    reveal.insert = -1;
-  }
   const inserts = state.project.mixer.inserts;
   for (let i = 0; i < inserts.length; i++) strip(b, inserts[i], i);
+  reveal.insert = -1;
   b.close();
   fxPanel(b);
   b.close();

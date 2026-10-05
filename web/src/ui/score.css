@@ -489,6 +489,13 @@
   background: linear-gradient(180deg, #16131a, #0f0d12);
   border-right: 1px solid var(--line);
 }
+.score-side.off {
+  display: none;
+}
+/* Holders of what comes and goes over the music (the passage's bar, the menus): no box of their own. */
+.score-over {
+  display: contents;
+}
 .score-side-h {
   margin: 12px 4px 6px;
   font: 600 11px/1 var(--sans);

@@ -123,6 +123,48 @@ for (let fy = 0.1; fy < 0.9 && !lit; fy += 0.02) {
 if (!lit) throw new Error("no note lit under the pointer");
 await page.waitForSelector(".score-top .score-scroll.over-note");
 ok("a note under the pointer lights up, ready to be grabbed");
+
+// Scrolled down the song, choosing a passage or opening a part's menu keeps the place.
+const scrollOf = () => page.evaluate(() => document.querySelector(".score-top .score-scroll").scrollTop);
+const view0 = await page.locator(".score-top .score-scroll").boundingBox();
+await page.mouse.move(view0.x + view0.width / 2, view0.y + view0.height / 2);
+for (let i = 0; i < 4; i++) await page.mouse.wheel(0, 120);
+await page.waitForFunction(() => document.querySelector(".score-top .score-scroll").scrollTop > 200);
+// (wheel scrolling glides: wait until it holds still)
+let down = await scrollOf();
+for (let still = 0; still < 4; ) {
+  await page.waitForTimeout(100);
+  const now = await scrollOf();
+  still = now === down ? still + 1 : 0;
+  down = now;
+}
+await page.mouse.down();
+await page.mouse.move(view0.x + view0.width * 0.75, view0.y + view0.height / 2, { steps: 6 });
+await page.mouse.up();
+await page.waitForSelector(".score-top .score-rangebar");
+if ((await scrollOf()) !== down) throw new Error(`choosing a passage scrolled the score from ${down} to ${await scrollOf()}`);
+await page.keyboard.press("Escape");
+const lowName = page.locator(".score-top .score-sys text.sname").last();
+const lowBox = await lowName.boundingBox();
+await page.mouse.click(lowBox.x + lowBox.width / 2, Math.min(lowBox.y + lowBox.height / 2, view0.y + view0.height - 8));
+if ((await page.locator(".score-partmenu").count()) > 0) {
+  if ((await scrollOf()) !== down) throw new Error("opening a part's menu scrolled the score");
+  // Opened low, it opens upward: every destination shows.
+  const all = await page.locator(".score-partmenu-to").evaluate((e) => e.scrollHeight <= e.clientHeight + 1);
+  const box = await page.locator(".score-partmenu").boundingBox();
+  if (!all || box.y + box.height > 950) throw new Error("the part's menu does not fit in the window");
+  await page.keyboard.press("Escape");
+}
+ok(`scrolled down the song (${down}px), a passage or a part's menu keeps the place`);
+for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -400);
+// The mixer comes to a channel's insert without scrolling when it shows already.
+await page.mouse.click(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
+await page.waitForSelector(".score-partmenu");
+await page.click(".score-partmenu button:has-text('Show in the mixer')");
+await page.waitForSelector(".mixer .strip.sel");
+await page.waitForTimeout(100);
+if ((await page.evaluate(() => document.querySelector(".strips").scrollLeft)) !== 0) throw new Error("the mixer scrolled to an insert that showed already");
+ok("the mixer shows a channel's insert without scrolling when it fits");
 await page.keyboard.press("Escape");
 
 // A click in a panel takes the keys back from a menu or the agent's terminal: Space plays and stops.

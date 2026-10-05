@@ -779,10 +779,12 @@ function partMenu(b, v, c) {
   });
   b.open("div", "menu", "auto-menu score-partmenu");
   b.style("left", `min(${m.x}px, calc(100vw - 290px))`);
-  // At the pointer, moved up only as far as it must to leave the list room; never past the window's bottom.
-  const top = `max(12px, min(${m.y}px, 100vh - 340px))`;
-  b.style("top", top);
-  b.style("max-height", `min(560px, calc(100vh - ${top} - 12px))`);
+  // Below the pointer, or above it when the window has more room there; never past its edges (the list scrolls).
+  const winH = window.innerHeight;
+  const up = m.y > winH / 2;
+  b.style("top", up ? "auto" : `${Math.round(m.y)}px`);
+  b.style("bottom", up ? `${Math.round(winH - m.y + 16)}px` : "auto");
+  b.style("max-height", `${Math.round(Math.min(560, up ? m.y - 28 : winH - m.y - 12))}px`);
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });
@@ -2090,14 +2092,22 @@ export function scoreView(b, v) {
   b.on("pointerdown", (e) => setFocus("score"));
   const geo = pageGeo(v, sc);
   const c = cached(v, sc, geo);
+  // Every child here is always described, in the same order: when the children of a node change,
+  // the tree attaches them all again, and a scrolled view attached again is back at its top. So
+  // what comes and goes (the sidebar, the passage's bar, the menus) lives in containers that stay.
   if (v.side) sideView(b, v, c, sc, geo);
+  else b.leaf("aside", "side", "score-side off", "");
   b.open("div", "main", "score-main");
   ribbon(b, v);
   paperView(b, v, c, geo, sc);
+  b.open("div", "over", "score-over");
   rangeBar(b, v, c);
   if (v.pdfMenu) pdfMenu(b, v);
   b.close();
+  b.close();
+  b.open("div", "menus", "score-over");
   partMenu(b, v, c);
+  b.close();
   b.close();
 }
 
