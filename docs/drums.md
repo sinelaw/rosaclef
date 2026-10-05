@@ -372,7 +372,9 @@ the cursor it says so and offers **+ New pattern at bar N**.
 6. *The whole song at once:* open **Song drummer** (the v1 part, unchanged:
    sections, Write drums). Its patterns show on the strip and can be
    targeted like any other; picking a groove for one makes it a pattern of
-   its own (the song drummer leaves it alone after).
+   its own — it takes over: writing the song again leaves the bars it plays
+   to it (and to any other pattern made in the tab) instead of writing the
+   drummer's drums over them.
 7. *Remove:* the trash removes the target with its clips (Ctrl+Z).
 
 **In the project** a pattern made this way carries its recipe

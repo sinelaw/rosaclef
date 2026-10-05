@@ -167,7 +167,9 @@ and kit):
   the part into patterns and clips, in one undoable step, with a turnaround
   every 4th bar and fills that do not repeat. Writing again keeps your hand
   edits, follows them into the groove's crash and fill bars, and moves them
-  to a new kit.
+  to a new kit. Where a pattern of your own plays — made in the tab, or one
+  of the drummer's you took over by picking a groove for it — writing leaves
+  those bars to it.
 
 A pattern's recipe lives on the pattern (`drums` in `project.json`), and the
 song drummer's part under the top-level `drums`, so the agent can edit both;

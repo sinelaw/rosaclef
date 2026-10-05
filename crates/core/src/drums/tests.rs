@@ -802,3 +802,68 @@ fn a_pattern_api_validates_and_refuses_what_it_cannot_make() {
     pattern_mut(&mut plain, "drums-verse").drums = None;
     assert!(api_pattern(&serde_json::to_string(&plain).unwrap(), "drums-verse").is_err());
 }
+
+#[test]
+fn a_taken_over_pattern_replaces_the_part_where_it_plays() {
+    let mut p = song("rock-8ths", "");
+    write(&mut p).unwrap();
+    // Take over the chorus's first bar (B + crash, at beat 36): it gets a
+    // recipe of its own and leaves the part (the Drums tab does this when a
+    // groove is picked for it).
+    let id = written_id(&p, "rock-8ths/b+crash");
+    let mut r = recipe("rock-halftime", "");
+    r.crash = true;
+    pattern_mut(&mut p, &id).drums = Some(r);
+    p.drums.as_mut().unwrap().written.remove(&id);
+    render_pattern(&mut p, &id).unwrap();
+    let report = write(&mut p).unwrap();
+    assert_eq!(report.left, 1, "one bar left to the pattern");
+    let at = |p: &Project, beat: f64| -> Vec<String> {
+        p.playlist
+            .clips
+            .iter()
+            .filter(|c| c.start <= beat + 1e-9 && beat < c.start + c.length - 1e-9)
+            .map(|c| c.pattern.clone())
+            .collect()
+    };
+    assert_eq!(
+        at(&p, 36.0),
+        vec![id.clone()],
+        "only the taken-over pattern plays bar 10"
+    );
+    assert!(p.pattern(&id).is_some(), "it stays in the song");
+    // The part plays on around it.
+    assert_eq!(at(&p, 32.0).len(), 1);
+    assert_eq!(at(&p, 40.0).len(), 1);
+    assert_ne!(at(&p, 40.0)[0], id);
+
+    // A pattern made in the tab over bars 2-5 takes those bars the same way.
+    p.patterns.push(Pattern {
+        id: "drums-intro".into(),
+        name: "Drums · Intro".into(),
+        color: "#8e3b46".into(),
+        length: 16.0,
+        notes: vec![],
+        drums: Some(recipe("rock-8ths", "")),
+    });
+    render_pattern(&mut p, "drums-intro").unwrap();
+    p.playlist.clips.push(Clip {
+        pattern: "drums-intro".into(),
+        sample: String::new(),
+        track: TrackIx(0),
+        start: 4.0,
+        length: 16.0,
+        offset: 0.0,
+        gain: 1.0,
+        mixer: Default::default(),
+    });
+    let report = write(&mut p).unwrap();
+    assert_eq!(report.left, 5);
+    for beat in [4.0, 8.0, 12.0, 16.0] {
+        assert_eq!(at(&p, beat), vec!["drums-intro".to_string()], "beat {beat}");
+    }
+    assert_eq!(at(&p, 20.0).len(), 1, "the part starts again after it");
+    assert!(crate::validate::validate(&p)
+        .iter()
+        .all(|i| i.severity != crate::validate::Severity::Error));
+}

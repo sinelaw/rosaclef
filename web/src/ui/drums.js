@@ -392,7 +392,7 @@ export function writeDrums() {
       });
       toast(
         "Drums written",
-        `${Number(r.report.patterns)} patterns in ${Number(r.report.clips)} clips on track ${Math.round(Number(r.report.track)) + 1} (${np.playlist.tracks[Math.round(Number(r.report.track))]?.name ?? "Drums"})${Number(r.report.kept) > 0 ? `, ${Number(r.report.kept)} kept as you edited them` : ""}. Ctrl+Z undoes it.`,
+        `${Number(r.report.patterns)} patterns in ${Number(r.report.clips)} clips on track ${Math.round(Number(r.report.track)) + 1} (${np.playlist.tracks[Math.round(Number(r.report.track))]?.name ?? "Drums"})${Number(r.report.kept) > 0 ? `, ${Number(r.report.kept)} kept as you edited them` : ""}${Number(r.report.left ?? 0) > 0 ? `; ${Number(r.report.left)} bar${Number(r.report.left) === 1 ? "" : "s"} left to your own drum patterns` : ""}. Ctrl+Z undoes it.`,
         "info"
       );
       return true;
@@ -1053,9 +1053,10 @@ function writeView(b, d) {
     "div",
     "status",
     "drums-status",
-    written > 0
+    (written > 0
       ? `Written: ${written} pattern${written === 1 ? "" : "s"}. Edit them in the piano roll as you like: writing again keeps your edits.`
-      : "Not written yet: the song plays no drums from this part until you write it."
+      : "Not written yet: the song plays no drums from this part until you write it.") +
+      (ownClips() > 0 ? " Where your own drum patterns play (made or taken over above), writing leaves those bars to them." : "")
   );
   button(
     b,
@@ -1074,6 +1075,13 @@ function writeView(b, d) {
     () => removePart()
   );
   b.close();
+}
+
+/** Clips of the song's own drum patterns (made from a recipe): the song
+ * drummer leaves their bars to them. */
+function ownClips() {
+  const p = state.project;
+  return p.playlist.clips.filter((c) => p.patterns.some((x) => x.id === c.pattern && x.drums.on)).length;
 }
 
 /** Does a channel play drums (an Ebony channel or a General MIDI kit)? */
@@ -1510,7 +1518,8 @@ function newPattern(gid, bar) {
 
 /** Make the target pattern again with its recipe changed by `fn` (a pattern
  * without one — written by the song drummer, or imported — gets one, and
- * leaves the song drummer: writing the whole song again leaves it alone). */
+ * leaves the song drummer: writing the whole song again leaves the bars it
+ * plays to it). */
 /** function changeTarget(fn: (PatternDrums, Pattern, Project) => Undefined) => Undefined */
 function changeTarget(fn) {
   const id = drums.target;
@@ -2181,7 +2190,7 @@ function patternView(b) {
       "sub",
       "drums-sub",
       w
-        ? "Written by the song drummer (below): edit its notes here — writing the song again keeps your edits — or pick a groove on the left to make it a pattern of its own."
+        ? "Written by the song drummer (below): edit its notes here — writing the song again keeps your edits — or pick a groove on the left to make it a pattern of its own (writing the song again then leaves its bars to it)."
         : "Drums made elsewhere (played in, imported or drawn): edit its notes here, or pick a groove on the left to make it again from one."
     );
   }

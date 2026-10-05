@@ -1062,6 +1062,9 @@ pub struct Report {
     pub track: usize,
     /// Patterns kept as edited by hand.
     pub kept: usize,
+    /// Bars left to the song's own drum patterns (made from a recipe, see
+    /// [`PatternDrums`]): the part writes nothing there.
+    pub left: usize,
 }
 
 /// Take the hand edits of the patterns the last write made into the part:
@@ -1299,10 +1302,27 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
     let mut kept_used = 0;
     let mut ids: HashMap<String, String> = HashMap::new();
     let mut clips: Vec<Clip> = vec![];
+    // Bars where a drum pattern of the song's own plays (one made from a
+    // recipe in the Drums tab, or taken over from the part): it replaces
+    // what the part would play there.
+    let own: Vec<(f64, f64)> = p
+        .playlist
+        .clips
+        .iter()
+        .filter(|c| p.pattern(&c.pattern).is_some_and(|x| x.drums.is_some()))
+        .map(|c| (c.start, c.start + c.length))
+        .collect();
+    let left_to_own: Vec<bool> = bars
+        .iter()
+        .map(|b| {
+            own.iter()
+                .any(|(s, e)| b.start >= s - 1e-9 && b.start < e - 1e-9)
+        })
+        .collect();
     let mut i = 0;
     while i < bars.len() {
         let b = &bars[i];
-        if grids[i].is_empty() && !part.kept.contains_key(&slots[i]) {
+        if left_to_own[i] || (grids[i].is_empty() && !part.kept.contains_key(&slots[i])) {
             i += 1;
             continue;
         }
@@ -1321,6 +1341,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
                 .collect();
             let mut j = i + 1;
             while j < bars.len()
+                && !left_to_own[j]
                 && bars[j].plain()
                 && matches!(&bars[j].body, Body::Groove { groove: g2, b: b2, index: k }
                     if g2.id == groove.id && b2 == is_b && *k == (index + j - i) % n)
@@ -1346,6 +1367,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         };
         if !b.plain() {
             while j < bars.len()
+                && !left_to_own[j]
                 && slots[j] == slots[i]
                 && (bars[j].start - (b.start + (j - i) as f64 * b.bar_beats)).abs() < 1e-9
             {
@@ -1428,6 +1450,7 @@ pub fn write(p: &mut Project) -> Result<Report, String> {
         clips: clips.len(),
         track,
         kept: kept_used,
+        left: left_to_own.iter().filter(|x| **x).count(),
     };
     p.playlist.clips.extend(clips);
     drop_unused(p, &old_channels);

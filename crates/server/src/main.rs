@@ -522,7 +522,7 @@ fn main() -> Result<()> {
             }
             std::fs::write(&file, format::to_string(&p))?;
             println!(
-                "wrote {} drum patterns in {} clips on track {} ({}){}",
+                "wrote {} drum patterns in {} clips on track {} ({}){}{}",
                 report.patterns,
                 report.clips,
                 report.track + 1,
@@ -531,6 +531,15 @@ fn main() -> Result<()> {
                     format!(
                         "; kept {} edited by hand (--reset-edits forgets them)",
                         report.kept
+                    )
+                } else {
+                    String::new()
+                },
+                if report.left > 0 {
+                    format!(
+                        "; left {} bar{} to the song's own drum patterns",
+                        report.left,
+                        if report.left == 1 { "" } else { "s" }
                     )
                 } else {
                     String::new()

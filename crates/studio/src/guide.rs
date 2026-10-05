@@ -437,6 +437,8 @@ pattern is long (on the kit's channels, made if needed). Place it with clips lik
 
 - Change the recipe, then run `rosaclef drums --pattern drums-verse`; `edited: true` means the
   notes were changed by hand since (making it again replaces them).
+- Bars where a clip of such a pattern plays are left to it: `rosaclef drums` (the part) writes
+  nothing there.
 
 ## Musical craft
 

@@ -104,11 +104,35 @@ await page.keyboard.press("Control+z");
 await until(async (id) => (await import("./src/store.js")).state.project.patterns.some((x) => x.id === id), copy, "undo brings the copy back");
 ok("a pattern is removed with its clips, and Ctrl+Z brings it back");
 
-// The song drummer folds out underneath.
+// Take over one of the song drummer's patterns: pick a groove for it.
+await page.click(".drums-map-clip[title*='Jazz waltz A:'] >> nth=0");
+await page.waitForSelector(".drums-pattern .drums-sub:has-text('song drummer')");
+const taken = (await target()).id;
+const at = (await target()).clips[0].start;
+await page.click(".drums-lib-item:not(.misfit):not(.on) >> nth=0");
+await until(
+  async (id) => {
+    const s = (await import("./src/store.js")).state;
+    const pat = s.project.patterns.find((x) => x.id === id);
+    return pat !== undefined && pat.drums.on && !s.project.drums.written.some((w) => w.id === id);
+  },
+  taken,
+  "the pattern is taken over"
+);
+ok(`picking a groove for ${taken} takes it over from the song drummer`);
+
+// The song drummer folds out underneath; writing again leaves the taken-over bars to it.
 await page.click(".drums-arrange-head");
 await page.waitForSelector(".drums-sec");
-await page.waitForSelector(".drums-writebtn");
-ok("the song drummer opens under the song strip");
+await page.click(".drums-writebtn");
+await page.waitForSelector(".toast:has-text('left to your own drum patterns')");
+const playing = await page.evaluate(async (beat) => {
+  const s = (await import("./src/store.js")).state;
+  return s.project.playlist.clips.filter((c) => c.pattern !== "" && c.start <= beat + 1e-6 && beat < c.start + c.length - 1e-6).map((c) => c.pattern);
+}, at);
+const drumsThere = playing.filter((id) => id === taken || id.startsWith("drums"));
+if (drumsThere.length !== 1 || drumsThere[0] !== taken) throw new Error(`at beat ${at}: ${playing.join(", ")}`);
+ok("the song drummer opens underneath, and writing again leaves the taken-over bars to that pattern");
 
 if (errors.length > 0) throw new Error(`page errors: ${errors.join("\n")}`);
 console.log("all drums checks passed");
