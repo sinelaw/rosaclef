@@ -121,7 +121,13 @@ export function findings() {
 function loadCatalog() {
   getJson("/api/critic")
     .then((r) => {
-      view.catalog = r.rules.map((x) => ({ id: String(x.id), category: String(x.category), name: String(x.name), why: String(x.why) }));
+      view.catalog = r.rules.map((x) => ({
+        id: String(x.id),
+        category: String(x.category),
+        name: String(x.name),
+        why: String(x.why),
+        defaultOn: x.defaultOn !== false,
+      }));
       invalidate();
       return true;
     })
@@ -137,7 +143,7 @@ export function criticCount() {
 /** function ruleOf(id: String) => Rule */
 function ruleOf(id) {
   for (const r of view.catalog) if (r.id === id) return r;
-  return { id: id, category: "Project", name: id, why: "" };
+  return { id: id, category: "Project", name: id, why: "", defaultOn: true };
 }
 
 /** Apply fixes (finding keys or rule ids) as one undo step: the endpoint fixes the project as it is
@@ -174,19 +180,38 @@ function applyFixes(keys, what) {
     });
 }
 
-/** Suppress or bring back a finding (by key) or a whole check (by rule id), in the project. */
-/** function setSuppressed(what: String, rule: Boolean, on: Boolean) => Undefined */
-function setSuppressed(what, rule, on) {
+/** Suppress or bring back a finding (by key), in the project. */
+/** function setSuppressed(key: String, on: Boolean) => Undefined */
+function setSuppressed(key, on) {
   commit(() => {
-    const c = state.project.critic;
-    const list = rule ? c.off : c.suppress;
-    const i = list.indexOf(what);
-    if (on && i < 0) list.push(what);
+    const list = state.project.critic.suppress;
+    const i = list.indexOf(key);
+    if (on && i < 0) list.push(key);
     if (!on && i >= 0) list.splice(i, 1);
   });
   // Show it at once; the next refresh confirms.
-  if (rule && on) view.found = view.found.filter((f) => f.rule !== what);
-  if (!rule) for (const f of view.found) if (f.key === what) f.suppressed = on;
+  for (const f of view.found) if (f.key === key) f.suppressed = on;
+}
+
+/** Does the project run this check? Its default, unless the project turns it off or on. */
+/** function ruleEnabled(r: Rule) => Boolean */
+function ruleEnabled(r) {
+  const c = state.project.critic;
+  return r.defaultOn ? !c.off.includes(r.id) : c.on.includes(r.id);
+}
+
+/** Turn a check on or off for the project (only departures from its default are written). */
+/** function setEnabled(id: String, on: Boolean) => Undefined */
+function setEnabled(id, on) {
+  const r = ruleOf(id);
+  commit(() => {
+    const c = state.project.critic;
+    c.off = c.off.filter((x) => x !== id);
+    c.on = c.on.filter((x) => x !== id);
+    if (on && !r.defaultOn) c.on.push(id);
+    if (!on && r.defaultOn) c.off.push(id);
+  });
+  if (!on) view.found = view.found.filter((f) => f.rule !== id);
 }
 
 /** Show where a finding points: the notes in the piano roll, the insert in the mixer, the bar in the playlist. */
@@ -241,13 +266,13 @@ function findingView(b, f, ask) {
   } else if (f.where.label !== "") b.leaf("span", "where", "crit-where static", f.where.label);
   b.leaf("span", "sp", "spacer", "");
   if (f.suppressed) {
-    button(b, "back", "small ghost", "Unsuppress", "Bring this finding back (saved in the project)", () => setSuppressed(f.key, false, false));
+    button(b, "back", "small ghost", "Unsuppress", "Bring this finding back (saved in the project)", () => setSuppressed(f.key, false));
   } else {
     if (f.fix !== "") button(b, "fix", "small gold", f.fix, `Apply: ${f.fix} (one undo step)`, () => applyFixes([f.key], f.fix));
     else if (state.backend !== "local")
       button(b, "ask", "small ghost", "Ask Maestro", "Type this issue into the agent's prompt (press Enter in the terminal to send)", () => ask(askText(f)));
     iconButton(b, "sup", "small ghost", "close", "Suppress this finding (saved in the project; the agent and `rosaclef critic` leave it out too)", () =>
-      setSuppressed(f.key, false, true)
+      setSuppressed(f.key, true)
     );
   }
   b.close();
@@ -258,27 +283,29 @@ function findingView(b, f, ask) {
 /** The list of checks, to turn them on and off. */
 /** function rulesView(b: Builder) => Undefined */
 function rulesView(b) {
-  const off = state.project.critic.off;
   b.open("div", "rules", "crit-rules");
   b.leaf(
     "p",
     "intro",
     "crit-intro",
-    `${view.catalog.length} checks, all mechanical: they read the project — notes, clips, channels and the mixer — and nothing else. Turning one off is saved in the project.`
+    `${view.catalog.length} checks, all mechanical: they read the project — notes, clips, channels and the mixer — and nothing else. The checks of classical theory (keys, counterpoint, singable melodies) start off, since most modern tracks break them on purpose: turn them on if the song wants them. Your choices are saved in the project.`
   );
   for (const cat of CATEGORIES) {
     b.leaf("h4", `h-${cat}`, "crit-cat", cat);
     for (const r of view.catalog) {
       if (r.category !== cat) continue;
-      const on = !off.includes(r.id);
+      const on = ruleEnabled(r);
       b.open("label", r.id, on ? "crit-rule on" : "crit-rule");
       b.attr("title", r.why);
       b.leaf("input", "cb", "", "");
       b.attr("type", "checkbox");
       b.prop("checked", on ? "true" : "");
-      b.on("change", (e) => setSuppressed(r.id, true, !e.checked));
+      b.on("change", (e) => setEnabled(r.id, e.checked));
       b.open("span", "txt", "crit-rule-text");
-      b.leaf("b", "n", "", r.name);
+      b.open("b", "n", "");
+      b.text(r.name);
+      if (!r.defaultOn) b.leaf("span", "def", "crit-default", "off by default");
+      b.close();
       b.leaf("span", "w", "", r.why);
       b.close();
       b.close();
@@ -354,7 +381,7 @@ export function criticPanel(b, ask) {
       for (const id of state.project.critic.off) {
         b.open("button", id, "chip crit-offchip");
         b.attr("title", `${ruleOf(id).why} — click to turn it back on`);
-        b.on("click", (e) => setSuppressed(id, true, false));
+        b.on("click", (e) => setEnabled(id, true));
         b.text(ruleOf(id).name);
         b.leaf("span", "x", "", " ↺");
         b.close();
@@ -420,7 +447,7 @@ export function criticPanel(b, ask) {
         b.attr("title", "Turn this check off for the project (saved in it; the checks button turns it back on)");
         b.on("click", (e) => {
           e.stopPropagation();
-          setSuppressed(id, true, true);
+          setEnabled(id, false);
           toast(`${r.name}: turned off`, "Saved in the project. Ctrl+Z, or the checks button, turns it back on.", "info");
         });
         b.text("Turn off");

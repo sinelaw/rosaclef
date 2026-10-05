@@ -83,6 +83,8 @@ linted.critic.suppress.push("flat-velocity|pattern:beat:hat:-1");
 const relinted = decodeProject(JSON.parse(projectJson(linted)));
 check("checks turned off survive a save", relinted.critic.off.join() === "loopitis");
 check("suppressed findings survive a save", relinted.critic.suppress.join() === "flat-velocity|pattern:beat:hat:-1");
+linted.critic.on.push("parallel-fifths");
+check("checks turned on survive a save", decodeProject(JSON.parse(projectJson(linted))).critic.on.join() === "parallel-fifths");
 
 if (failures > 0) {
   console.log(`${failures} model test(s) failed`);

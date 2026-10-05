@@ -39,6 +39,7 @@ Song
   critic fix KEY|RULE|all     apply fixes
   critic suppress KEY|RULE    suppress a finding, or turn a check off
   critic unsuppress KEY|RULE  bring it back       critic rules   list the checks
+  critic enable|disable RULE  turn a check on or off (the theory ones start off)
 
 Sound
   render [--pattern ID] [--loops N] [--bits 16|24|32] [--out renders/x.wav]
@@ -535,7 +536,8 @@ impl Host {
                     }
                     "suppress" => critic::suppress(&mut p, &what, &[]).map_err(|e| anyhow!(e))?,
                     "unsuppress" => critic::unsuppress(&mut p, &what).map_err(|e| anyhow!(e))?,
-                    other => bail!("critic {other}: use critic, critic all, critic rules, critic fix|suppress|unsuppress KEY|RULE"),
+                    "enable" | "disable" => critic::set_enabled(&mut p, &what, arg(0) == "enable").map_err(|e| anyhow!(e))?,
+                    other => bail!("critic {other}: use critic, critic all, critic rules, critic fix|suppress|unsuppress KEY|RULE, critic enable|disable RULE"),
                 };
                 let issues = validate::validate(&p);
                 if let Some(e) = issues

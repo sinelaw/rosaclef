@@ -781,12 +781,14 @@ fn check_repeats(v: &mut V, p: &Project) {
 
 /// The Critic's settings name rules that exist.
 fn check_critic(v: &mut V, p: &Project) {
-    for (i, id) in p.critic.off.iter().enumerate() {
-        if crate::critic::rule(id).is_none() {
-            v.warn(
-                format!("critic.off[{i}]"),
-                format!("unknown check {id:?} (`rosaclef critic --rules` lists them)"),
-            );
+    for (list, ids) in [("off", &p.critic.off), ("on", &p.critic.on)] {
+        for (i, id) in ids.iter().enumerate() {
+            if crate::critic::rule(id).is_none() {
+                v.warn(
+                    format!("critic.{list}[{i}]"),
+                    format!("unknown check {id:?} (`rosaclef critic --rules` lists them)"),
+                );
+            }
         }
     }
 }

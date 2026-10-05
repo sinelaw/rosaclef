@@ -92,6 +92,11 @@ pub struct Rule {
     pub category: &'static str,
     pub name: &'static str,
     pub why: &'static str,
+    /// On unless the project turns it off. The checks of classical theory
+    /// (keys, counterpoint, singable melodies) are off by default: most
+    /// modern tracks break them on purpose. A project turns them on.
+    #[serde(rename = "defaultOn")]
+    pub default_on: bool,
 }
 
 // ------------------------------------------------------------------ rules
@@ -120,6 +125,23 @@ const fn r(
         category,
         name,
         why,
+        default_on: true,
+    }
+}
+
+/// A rule that is off unless a project turns it on.
+const fn opt(
+    id: &'static str,
+    category: &'static str,
+    name: &'static str,
+    why: &'static str,
+) -> Rule {
+    Rule {
+        id,
+        category,
+        name,
+        why,
+        default_on: false,
     }
 }
 
@@ -128,15 +150,15 @@ pub static RULES: &[Rule] = &[
     r("low-interval", "Harmony", "Low interval limits", "Close intervals voiced low (a third under C3, a second under E3) turn to mud: their partials beat against each other."),
     r("chord-too-low", "Harmony", "Chords crowd the bass", "Chord notes under C3 fight the bass line; voice the harmony above it (or rootless) and leave the low end to the bass."),
     r("voice-leading", "Harmony", "Jumpy voice leading", "Chords whose voices leap instead of moving to the nearest notes sound disjointed; inversions keep the voicing compact."),
-    r("parallel-fifths", "Harmony", "Parallel fifths and octaves", "In acoustic parts, voices moving in parallel perfect fifths or octaves fuse into one: great for power chords and stabs, a loss when the voices should stay independent."),
-    r("wide-spacing", "Harmony", "Gaps in the upper voices", "Upper voices more than an octave apart leave a hole in the chord; keep adjacent upper voices within an octave."),
-    r("out-of-key", "Harmony", "Notes outside the key", "A few notes outside the song's key are often slips of the mouse rather than deliberate chromaticism."),
-    r("key-signature", "Harmony", "Key signature disagrees", "The score's key should be the key the notes are in, or every note is spelled with accidentals."),
+    opt("parallel-fifths", "Harmony", "Parallel fifths and octaves", "In acoustic parts, voices moving in parallel perfect fifths or octaves fuse into one: great for power chords and stabs, a loss when the voices should stay independent."),
+    opt("wide-spacing", "Harmony", "Gaps in the upper voices", "Upper voices more than an octave apart leave a hole in the chord; keep adjacent upper voices within an octave."),
+    opt("out-of-key", "Harmony", "Notes outside the key", "A few notes outside the song's key are often slips of the mouse rather than deliberate chromaticism."),
+    opt("key-signature", "Harmony", "Key signature disagrees", "The score's key should be the key the notes are in, or every note is spelled with accidentals."),
     r("semitone-clash", "Harmony", "Sustained semitone clashes", "Two parts holding notes a minor second or minor ninth apart grind against each other."),
     // Melody
-    r("melody-range", "Melody", "Melody range", "A melody wider than an octave and a half is hard to sing and to follow."),
-    r("large-leap", "Melody", "Leaps over an octave", "Leaps wider than an octave break a line into two; few melodies need them."),
-    r("leap-recovery", "Melody", "Leaps that do not recover", "A big leap is balanced by a step back the other way (melodic fluency); leaps that keep going sound aimless."),
+    opt("melody-range", "Melody", "Melody range", "A melody wider than an octave and a half is hard to sing and to follow."),
+    opt("large-leap", "Melody", "Leaps over an octave", "Leaps wider than an octave break a line into two; few melodies need them."),
+    opt("leap-recovery", "Melody", "Leaps that do not recover", "A big leap is balanced by a step back the other way (melodic fluency); leaps that keep going sound aimless."),
     r("no-rests", "Melody", "A melody that never breathes", "Rests give the listener time to take in a phrase; a line that never stops tires the ear."),
     r("monotone", "Melody", "Monotone melody", "A lead that keeps to one or two notes for bars on end has no contour to remember."),
     r("instrument-range", "Melody", "Beyond the instrument's range", "A real instrument cannot play these notes: the sample stretches unnaturally and players would refuse the part."),
@@ -273,7 +295,9 @@ pub fn critique_with(p: &Project, off: &[String], fallbacks: &[String]) -> Criti
     let mut out: Vec<Finding> = a
         .out
         .into_iter()
-        .filter(|f| !off.iter().chain(&p.critic.off).any(|o| o == f.rule))
+        .filter(|f| {
+            !off.iter().any(|o| o == f.rule) && rule(f.rule).map(|r| enabled(p, r)).unwrap_or(true)
+        })
         .map(|mut f| {
             f.suppressed = p.critic.suppress.contains(&f.key);
             f
@@ -443,11 +467,8 @@ pub fn api(text: &str) -> Result<Value, String> {
 /// `fallbacks`: what loading for playback left out (their findings can be
 /// suppressed too).
 pub fn suppress(p: &mut Project, what: &str, fallbacks: &[String]) -> Result<String, String> {
-    if let Some(r) = rule(what) {
-        if !p.critic.off.iter().any(|x| x == what) {
-            p.critic.off.push(what.into());
-        }
-        return Ok(format!("turned off: {} ({})", r.name, r.id));
+    if rule(what).is_some() {
+        return set_enabled(p, what, false);
     }
     let known = critique_with(p, &[], fallbacks)
         .findings
@@ -462,15 +483,52 @@ pub fn suppress(p: &mut Project, what: &str, fallbacks: &[String]) -> Result<Str
     Ok(format!("suppressed: {what}"))
 }
 
-/// Bring back a suppressed finding (by key) or a check turned off (by rule id).
+/// Bring back a suppressed finding (by key), or turn a check on (by rule
+/// id).
 pub fn unsuppress(p: &mut Project, what: &str) -> Result<String, String> {
-    let (off, sup) = (p.critic.off.len(), p.critic.suppress.len());
-    p.critic.off.retain(|x| x != what);
+    if rule(what).is_some() {
+        return set_enabled(p, what, true);
+    }
+    let sup = p.critic.suppress.len();
     p.critic.suppress.retain(|x| x != what);
-    if p.critic.off.len() == off && p.critic.suppress.len() == sup {
-        return Err(format!("{what:?} is neither suppressed nor turned off"));
+    if p.critic.suppress.len() == sup {
+        return Err(format!("{what:?} is not suppressed"));
     }
     Ok(format!("back on: {what}"))
+}
+
+/// Does the project run this check? Its default, unless the project turns
+/// it off (`critic.off`) or on (`critic.on`).
+pub fn enabled(p: &Project, r: &Rule) -> bool {
+    let named = |list: &[String]| list.iter().any(|x| x == r.id);
+    if r.default_on {
+        !named(&p.critic.off)
+    } else {
+        named(&p.critic.on)
+    }
+}
+
+/// Turn a check on or off for the project: a default stays implicit, so
+/// only the departures from it are written (`critic.on` / `critic.off`).
+pub fn set_enabled(p: &mut Project, id: &str, on: bool) -> Result<String, String> {
+    let Some(r) = rule(id) else {
+        return Err(format!(
+            "no check {id:?} (`rosaclef critic --rules` lists them)"
+        ));
+    };
+    p.critic.off.retain(|x| x != id);
+    p.critic.on.retain(|x| x != id);
+    if on && !r.default_on {
+        p.critic.on.push(id.into());
+    }
+    if !on && r.default_on {
+        p.critic.off.push(id.into());
+    }
+    Ok(format!(
+        "{}: {} ({id})",
+        if on { "turned on" } else { "turned off" },
+        r.name
+    ))
 }
 
 /// The checks as text (`rosaclef critic --rules`).
@@ -479,13 +537,13 @@ pub fn rules_text(p: &Project) -> String {
     for cat in CATEGORIES {
         out.push_str(&format!("\n{cat}\n"));
         for r in RULES.iter().filter(|r| r.category == *cat) {
-            let off = p.critic.off.iter().any(|x| x == r.id);
-            out.push_str(&format!(
-                "  {:<20} {}{}\n",
-                r.id,
-                r.name,
-                if off { "  (off)" } else { "" }
-            ));
+            let state = match (enabled(p, r), r.default_on) {
+                (true, true) => "",
+                (false, true) => "  (off)",
+                (true, false) => "  (on; off by default)",
+                (false, false) => "  (off by default)",
+            };
+            out.push_str(&format!("  {:<20} {}{state}\n", r.id, r.name));
         }
     }
     out

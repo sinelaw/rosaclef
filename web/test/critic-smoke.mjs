@@ -75,11 +75,18 @@ await page.waitForFunction((keys) => !keys.some((k) => [...document.querySelecto
 });
 ok(`all ${suggestions.length} suggestions apply at once`);
 
+// The classical theory checks start off; the demo's piano has parallel fifths.
+const heads = (name) =>
+  page.waitForFunction((n) => [...document.querySelectorAll(".crit-rulehead b")].some((b) => b.textContent === n), name, { timeout: 15000 });
+if (await page.isVisible(".crit-rulehead:has-text('Parallel fifths')")) throw new Error("a theory check reports by default");
 await page.click(".crit-bar .btn.icon");
-await page.waitForSelector(".crit-rule");
-await page.click(".crit-rule:has-text('Sustained semitone clashes') input");
+await page.waitForSelector(".crit-rule:has-text('Parallel fifths') .crit-default");
+await page.click(".crit-rule:has-text('Parallel fifths and octaves') input");
+await page.click(".crit-rule:has-text('Beyond the instrument') input");
 await page.click(".crit-bar .btn.icon");
-if (await page.isVisible(".crit-rulehead:has-text('Sustained semitone clashes')")) throw new Error("a check turned off still reports");
+await heads("Parallel fifths and octaves");
+ok("a theory check, off by default, turns on");
+if (await page.isVisible(".crit-rulehead:has-text('Beyond the instrument')")) throw new Error("a check turned off still reports");
 ok("checks turn off");
 
 await page.click(".maestro-tab:has-text('Terminal')");

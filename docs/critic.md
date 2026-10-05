@@ -9,12 +9,17 @@ automation) and nothing else, so the same song always gets the same findings.
   ([RFC 6902](https://www.rfc-editor.org/rfc/rfc6902) `add` and `remove`) on
   `project.json`.
 - **Issues** are for information only.
+- **Off by default:** the checks of classical theory (keys, counterpoint,
+  singable melodies) don't run unless a project turns them on. Most modern
+  tracks break those rules on purpose, so they would mostly be noise. They are
+  marked *off by default* in the tables below.
 - **Suppressing** hides one finding (by its key), or turns a whole check off
-  (by its rule id). Both are saved in the project, in a `critic` section, like
-  a linter's configuration:
+  (by its rule id). Turning a check on, or off, and suppressing are saved in
+  the project, in a `critic` section, like a linter's configuration. Only the
+  departures from the defaults are written:
 
   ```json
-  "critic": { "off": ["parallel-fifths"], "suppress": ["loopitis|song:::-1"] }
+  "critic": { "off": ["loopitis"], "on": ["parallel-fifths"], "suppress": ["no-ghost-notes|pattern:drums-head:drums:-1"] }
   ```
 
   The studio, the command line and the agent all leave out the same things.
@@ -57,11 +62,13 @@ Everything reaches the checks through one core:
   rosaclef critic --fix KEY|RULE|all          # apply fixes and save (repeatable)
   rosaclef critic --suppress KEY|RULE         # suppress a finding, or turn a check off
   rosaclef critic --unsuppress KEY|RULE       # bring it back
+  rosaclef critic --enable RULE               # turn a check on (e.g. a theory check)
+  rosaclef critic --disable RULE              # turn a check off
   rosaclef critic --suppressed                # list the suppressed findings too
-  rosaclef critic --rules                     # the checks, and which are off
+  rosaclef critic --rules                     # the checks, which are on, and which start off
   ```
 
-  The browser-only studio's shell has `critic`, `critic fix|suppress|unsuppress
+  The browser-only studio's shell has `critic`, `critic enable|disable RULE`, `critic fix|suppress|unsuppress
   KEY|RULE` and `critic rules`. `AGENTS.md` asks the agent to run
   `rosaclef critic` after its edits, and to leave suppressed findings alone.
 
@@ -131,6 +138,7 @@ panel in a browser.
 ## The checks
 
 77 checks. "Fix" is the one-click change. A dash means the check only reports.
+*Off by default* marks the 7 checks a project has to turn on.
 
 ### Harmony
 
@@ -139,10 +147,10 @@ panel in a browser.
 | Low interval limits | Two notes of a chord a close interval apart, with the lower note under its limit: m2 E3, M2 E♭3, m3 C3, M3 B♭2, P4 B♭2, tritone B2, P5 B♭1, m6 G2, M6/m7/M7 F2, m9 E2, M9 E♭2 | Open the voicing: the upper notes go up an octave |
 | Chords crowd the bass | A chord of three or more notes, two of them under C3, while a bass part exists | Raise the notes under C3 an octave |
 | Jumpy voice leading | Consecutive chords whose top voice leaps a major 6th or more, or whose center moves a 5th or more. Only reported when inversions cut the total movement by a quarter | Revoice each chord with the inversion nearest the one before |
-| Parallel fifths and octaves | Two voices of a sampled (acoustic) part moving the same way into the same perfect 5th or octave. Skipped in power-chord parts and synth stacks, where fusion is the point | — |
-| Gaps in the upper voices | Adjacent upper voices of a chord more than an octave apart | Close the gaps by octaves |
-| Notes outside the key | At most 2 notes (or 5%) of a part outside the key, in a song that is otherwise in it: under 8% of notes outside, and a clear key fit | Snap them to the nearest note of the key |
-| Key signature disagrees | The score's key fits the notes much worse than the detected key does (by 0.15 of correlation) | Set the score's key |
+| Parallel fifths and octaves *(off by default)* | Two voices of a sampled (acoustic) part moving the same way into the same perfect 5th or octave. Skipped in power-chord parts and synth stacks, where fusion is the point | — |
+| Gaps in the upper voices *(off by default)* | Adjacent upper voices of a chord more than an octave apart | Close the gaps by octaves |
+| Notes outside the key *(off by default)* | At most 2 notes (or 5%) of a part outside the key, in a song that is otherwise in it: under 8% of notes outside, and a clear key fit | Snap them to the nearest note of the key |
+| Key signature disagrees *(off by default)* | The score's key fits the notes much worse than the detected key does (by 0.15 of correlation) | Set the score's key |
 | Sustained semitone clashes | Two parts holding notes a minor 2nd, 9th or 16th apart for at least a beat, 2 beats in all | — |
 
 ### Melody
@@ -151,9 +159,9 @@ These run on lead parts: their top line, one note per onset.
 
 | Check | Flags | Fix |
 |---|---|---|
-| Melody range | A span of more than 19 semitones | — |
-| Leaps over an octave | Consecutive notes more than an octave apart | — |
-| Leaps that do not recover | Two or more leaps of a minor 6th or wider that keep going, or leap again, instead of stepping back | — |
+| Melody range *(off by default)* | A span of more than 19 semitones | — |
+| Leaps over an octave *(off by default)* | Consecutive notes more than an octave apart | — |
+| Leaps that do not recover *(off by default)* | Two or more leaps of a minor 6th or wider that keep going, or leap again, instead of stepping back | — |
 | A melody that never breathes | 8 bars or more without a rest (a gap of an eighth) | — |
 | Monotone melody | 16 or more notes over 4 bars using at most two pitch classes | — |
 | Beyond the instrument's range | Notes outside a real instrument's sounding range, for about 50 General MIDI programs: pianos, guitars, basses, strings, winds, brass, voices and mallets | Move them into range by octaves |

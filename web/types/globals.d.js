@@ -97,8 +97,8 @@
 
 /** type DrumPart = { on: Boolean, groove: String, kit: String, feel: String, swing: Number, start: Number, ending: String, variations: Boolean, seed: Number, sections: DrumSection[], grooves: GrooveEdit[], kept: KeptPattern[], written: WrittenRef[] } */
 
-/** What the Critic leaves out (project.critic): checks turned off (rule ids) and findings suppressed (keys). */
-/** type CriticSettings = { off: String[], suppress: String[] } */
+/** What the Critic runs and leaves out (project.critic): checks turned off and on (rule ids), findings suppressed (keys). */
+/** type CriticSettings = { off: String[], on: String[], suppress: String[] } */
 /** type Project = { format: String, meta: Meta, transport: Transport, channels: Channel[], patterns: Pattern[], playlist: Playlist, mixer: Mixer, automation: AutomationLane[], score: ScoreSettings, repeats: Repeat[], animation: Animation, drums: DrumPart, critic: CriticSettings } */
 
 /** type Issue = { severity: String, path: String, message: String } */
@@ -112,7 +112,7 @@
 /** A finding. `level`: "warn" or "info". `fix`: the label of its one-click fix ("" = an issue only). */
 /** type Finding = { key: String, rule: String, category: String, level: String, title: String, detail: String, where: Where, fix: String, suppressed: Boolean } */
 /** A check the Critic runs. */
-/** type Rule = { id: String, category: String, name: String, why: String } */
+/** type Rule = { id: String, category: String, name: String, why: String, defaultOn: Boolean } */
 
 // The groove library (GET /api/grooves): rows are [role, steps] pairs.
 /** type GrooveInfo = { id: String, style: String, name: String, meter: String, barBeats: Int, steps: Int, tempo: Int[], kit: String, swing: Number, a: String[][], b: String[][] } */

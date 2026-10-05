@@ -6,9 +6,15 @@ use crate::model::{
 
 // ------------------------------------------------------------------ builders
 
-/// An empty project: a bare master, no patterns, tracks or channels.
+/// An empty project: a bare master, no patterns, tracks or channels, with
+/// every check on (the ones that are off by default too).
 fn blank() -> Project {
     let mut p = Project::empty("Test");
+    p.critic.on = RULES
+        .iter()
+        .filter(|r| !r.default_on)
+        .map(|r| r.id.to_string())
+        .collect();
     p.patterns.clear();
     p.playlist.tracks.clear();
     p.mixer.inserts.truncate(1);
@@ -853,6 +859,58 @@ fn content_this_version_does_not_know() {
     assert!(api(&req(vec!["all"]))
         .unwrap_err()
         .contains("nothing of it is lost"));
+}
+
+#[test]
+fn theory_checks_are_off_unless_turned_on() {
+    let theory = [
+        "out-of-key",
+        "key-signature",
+        "parallel-fifths",
+        "wide-spacing",
+        "melody-range",
+        "large-leap",
+        "leap-recovery",
+    ];
+    for r in RULES {
+        assert_eq!(r.default_on, !theory.contains(&r.id), "{}", r.id);
+    }
+    // A parallel-fifths part: quiet by default, reported once turned on.
+    let mut p = blank();
+    p.critic.on.clear();
+    channel(&mut p, "strings", "soundfont", "String Ensemble 1");
+    pattern(
+        &mut p,
+        "fifths",
+        8.0,
+        &[
+            ("strings", 48, 0.0, 2.0, 0.8),
+            ("strings", 55, 0.0, 2.0, 0.8),
+            ("strings", 64, 0.0, 2.0, 0.8),
+            ("strings", 50, 2.0, 2.0, 0.8),
+            ("strings", 57, 2.0, 2.0, 0.8),
+            ("strings", 65, 2.0, 2.0, 0.8),
+        ],
+    );
+    assert!(!has(&p, "parallel-fifths"));
+    assert_eq!(
+        set_enabled(&mut p, "parallel-fifths", true).unwrap(),
+        "turned on: Parallel fifths and octaves (parallel-fifths)"
+    );
+    assert_eq!(p.critic.on, ["parallel-fifths"]);
+    assert!(has(&p, "parallel-fifths"));
+    // Turning a check back to its default writes nothing.
+    set_enabled(&mut p, "parallel-fifths", false).unwrap();
+    assert!(p.critic.is_empty());
+    // A check on by default is turned off in `off`; unsuppress turns it back on.
+    suppress(&mut p, "low-interval", &[]).unwrap();
+    assert_eq!(p.critic.off, ["low-interval"]);
+    unsuppress(&mut p, "low-interval").unwrap();
+    assert!(p.critic.is_empty());
+    unsuppress(&mut p, "large-leap").unwrap();
+    assert_eq!(p.critic.on, ["large-leap"]);
+    assert!(rules_text(&p).contains("(on; off by default)"));
+    assert!(set_enabled(&mut p, "no-such-check", true).is_err());
 }
 
 // ------------------------------------------------------------------ the demo
