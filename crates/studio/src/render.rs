@@ -45,6 +45,7 @@ pub fn render_project_with(
     mut progress: impl FnMut(Progress),
 ) -> (Audio, Vec<String>) {
     let mut engine = Engine::new(sample_rate);
+    engine.set_parallel(true);
     setup(&mut engine);
     engine.set_project(project);
     let mut warnings = engine.device_errors.clone();

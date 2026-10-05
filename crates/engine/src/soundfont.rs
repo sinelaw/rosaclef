@@ -748,6 +748,42 @@ impl SoundFont {
         })
     }
 
+    /// Decode samples, on every core when built with `parallel`.
+    fn decode_all(&self, samples: &[u32], pieces: &dyn Pieces) -> Vec<Result<FontSample, String>> {
+        let decode = |i: usize| self.decode(samples[i] as usize, pieces);
+        #[cfg(feature = "parallel")]
+        {
+            use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+            use std::sync::Mutex;
+            let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+            let threads = cores.min(samples.len());
+            if threads > 1 {
+                let next = AtomicUsize::new(0);
+                let out: Mutex<Vec<Option<Result<FontSample, String>>>> =
+                    Mutex::new((0..samples.len()).map(|_| None).collect());
+                std::thread::scope(|scope| {
+                    for _ in 0..threads {
+                        scope.spawn(|| loop {
+                            let i = next.fetch_add(1, Relaxed);
+                            if i >= samples.len() {
+                                break;
+                            }
+                            let r = decode(i);
+                            out.lock().unwrap_or_else(|e| e.into_inner())[i] = Some(r);
+                        });
+                    }
+                });
+                return out
+                    .into_inner()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .into_iter()
+                    .map(|r| r.expect("decoded"))
+                    .collect();
+            }
+        }
+        (0..samples.len()).map(decode).collect()
+    }
+
     /// Resolve a preset and decode its samples. `cache` keeps decoded
     /// samples by index so presets that share samples share memory.
     pub fn load(
@@ -757,21 +793,24 @@ impl SoundFont {
         cache: &mut HashMap<u32, Arc<FontSample>>,
     ) -> Result<LoadedPreset, String> {
         let mut regions = self.regions(preset);
+        // Decode the samples not in the cache, in region order (so the first
+        // error is the same as one at a time).
+        let mut todo: Vec<u32> = vec![];
+        for r in &regions {
+            if !cache.contains_key(&r.sample) && !todo.contains(&r.sample) {
+                todo.push(r.sample);
+            }
+        }
+        for (i, s) in todo.iter().zip(self.decode_all(&todo, pieces)) {
+            cache.insert(*i, Arc::new(s?));
+        }
         let mut samples = vec![];
         let mut local: HashMap<u32, u32> = HashMap::new();
         for r in &mut regions {
             let idx = match local.get(&r.sample) {
                 Some(i) => *i,
                 None => {
-                    let s = match cache.get(&r.sample) {
-                        Some(s) => s.clone(),
-                        None => {
-                            let s = Arc::new(self.decode(r.sample as usize, pieces)?);
-                            cache.insert(r.sample, s.clone());
-                            s
-                        }
-                    };
-                    samples.push(s);
+                    samples.push(cache[&r.sample].clone());
                     local.insert(r.sample, samples.len() as u32 - 1);
                     samples.len() as u32 - 1
                 }
@@ -787,7 +826,7 @@ impl SoundFont {
 }
 
 /// The loaded pieces of a split soundfont.
-pub trait Pieces {
+pub trait Pieces: Sync {
     fn piece(&self, k: usize) -> Option<&[u8]>;
 }
 

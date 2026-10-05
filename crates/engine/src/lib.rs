@@ -5,10 +5,23 @@
 //! natively (driven by the device callback or an offline renderer) and in the
 //! browser (compiled to WebAssembly and driven by an `AudioWorklet`).
 //!
+//! The one exception is opt-in: built with the `parallel` feature, an engine
+//! told [`Engine::set_parallel`] (offline renders) plays its mixer inserts,
+//! each with the channels routed to it, on every core. Each writes only its
+//! own buffers and every sum keeps its order, so the output is bit for bit
+//! the same.
+//!
 //! External plugins (CLAP, ...) are supported through the [`PluginHost`]
 //! trait, which only native hosts implement.
 
 mod automation;
+#[cfg(feature = "parallel")]
+mod crew;
+#[cfg(feature = "parallel")]
+use crew::Crew;
+/// Never built without the `parallel` feature.
+#[cfg(not(feature = "parallel"))]
+struct Crew;
 pub mod dsp;
 pub mod effects;
 pub mod instruments;
@@ -341,6 +354,10 @@ pub struct Engine {
     master_l: Vec<f32>,
     master_r: Vec<f32>,
     dc: [dsp::DcBlock; 2],
+    /// Run instruments and inserts on all cores (see [`Engine::set_parallel`]).
+    parallel: bool,
+    /// The threads doing it, while a render runs.
+    crew: Option<Crew>,
 }
 
 impl Engine {
@@ -384,6 +401,8 @@ impl Engine {
             master_l: vec![0.0; MAX_BLOCK],
             master_r: vec![0.0; MAX_BLOCK],
             dc: Default::default(),
+            parallel: false,
+            crew: None,
         };
         e.set_project(project);
         e
@@ -391,6 +410,24 @@ impl Engine {
 
     pub fn sample_rate(&self) -> f32 {
         self.ctx.sr
+    }
+
+    /// Play the mixer inserts (each with its channels) in parallel while
+    /// rendering offline; real-time playback keeps one thread. Does nothing
+    /// unless built with the `parallel` feature. The output is unchanged.
+    pub fn set_parallel(&mut self, on: bool) {
+        self.parallel = on && cfg!(feature = "parallel");
+    }
+
+    /// Start (or stop) the threads of a parallel engine, for a render.
+    pub(crate) fn set_crew(&mut self, on: bool) {
+        self.crew = None;
+        if on && self.parallel {
+            #[cfg(feature = "parallel")]
+            {
+                self.crew = Crew::new(self.channels.len() + self.inserts.len() - 1);
+            }
+        }
     }
 
     pub fn set_plugin_host(&mut self, host: Arc<dyn PluginHost>) {
@@ -989,34 +1026,27 @@ impl Engine {
             }
         }
 
-        // Instruments into their inserts.
-        for ch in &mut self.channels {
-            ch.events.sort_by_key(|e| e.offset);
-            let (bl, br) = (&mut ch.buf_l[..n], &mut ch.buf_r[..n]);
-            bl.fill(0.0);
-            br.fill(0.0);
-            ch.inst.process(&ch.events, bl, br);
-            ch.events.clear();
-            let (gl, il) = ch.gain_l.block(n);
-            let (gr, ir) = ch.gain_r.block(n);
-            let ins = &mut self.inserts[ch.mixer.index()];
-            let mut peak = ch.peak;
-            for i in 0..n {
-                let l = bl[i] * (gl + il * i as f32);
-                let r = br[i] * (gr + ir * i as f32);
-                peak = peak.max(l.abs()).max(r.abs());
-                ins.buf_l[i] += l;
-                ins.buf_r[i] += r;
+        // Instruments into their inserts (in channel order), and the inserts'
+        // effects.
+        match &mut self.crew {
+            #[cfg(feature = "parallel")]
+            Some(crew) => crew::mix(crew, &mut self.channels, &mut self.inserts, n),
+            _ => {
+                for ch in &mut self.channels {
+                    play_channel(ch, n);
+                    add_channel(&mut self.inserts[ch.mixer.index()], ch, n);
+                }
+                for ins in &mut self.inserts[1..] {
+                    run_insert(ins, n);
+                }
             }
-            ch.peak = peak;
         }
 
         // Inserts into the master.
         self.master_l[..n].fill(0.0);
         self.master_r[..n].fill(0.0);
         let (master, rest) = self.inserts.split_first_mut().expect("master insert");
-        for ins in rest.iter_mut() {
-            run_insert(ins, n);
+        for ins in rest.iter() {
             if ins.audible {
                 for i in 0..n {
                     self.master_l[i] += ins.buf_l[i];
@@ -1359,6 +1389,33 @@ fn clamp_insert(ix: InsertIx, project: &Project) -> InsertIx {
         ix
     } else {
         InsertIx::MASTER
+    }
+}
+
+/// A channel's block: its instrument plays, scaled by the channel's gain.
+fn play_channel(ch: &mut ChannelRt, n: usize) {
+    ch.events.sort_by_key(|e| e.offset);
+    let (bl, br) = (&mut ch.buf_l[..n], &mut ch.buf_r[..n]);
+    bl.fill(0.0);
+    br.fill(0.0);
+    ch.inst.process(&ch.events, bl, br);
+    ch.events.clear();
+    let (gl, il) = ch.gain_l.block(n);
+    let (gr, ir) = ch.gain_r.block(n);
+    let mut peak = ch.peak;
+    for i in 0..n {
+        bl[i] *= gl + il * i as f32;
+        br[i] *= gr + ir * i as f32;
+        peak = peak.max(bl[i].abs()).max(br[i].abs());
+    }
+    ch.peak = peak;
+}
+
+/// Mix a channel's block into its insert.
+fn add_channel(ins: &mut InsertRt, ch: &ChannelRt, n: usize) {
+    for i in 0..n {
+        ins.buf_l[i] += ch.buf_l[i];
+        ins.buf_r[i] += ch.buf_r[i];
     }
 }
 

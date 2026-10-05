@@ -65,6 +65,18 @@ pub fn render(engine: &mut Engine, scope: &RenderScope) -> Audio {
 pub fn render_with(
     engine: &mut Engine,
     scope: &RenderScope,
+    progress: impl FnMut(RenderProgress),
+) -> Audio {
+    // A parallel engine's threads run while it renders.
+    engine.set_crew(true);
+    let audio = render_on(engine, scope, progress);
+    engine.set_crew(false);
+    audio
+}
+
+fn render_on(
+    engine: &mut Engine,
+    scope: &RenderScope,
     mut progress: impl FnMut(RenderProgress),
 ) -> Audio {
     let sr = engine.sample_rate();
