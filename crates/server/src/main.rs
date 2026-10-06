@@ -83,7 +83,19 @@ enum Command {
         /// List the checks (and which are off).
         #[arg(long)]
         rules: bool,
+        /// Also run the audio checks ("Mix check": overload, true peak,
+        /// pumping, compression, masking, low end, phase, build): renders the
+        /// song once (cached),
+        /// like `rosaclef mixcheck`.
+        #[arg(long)]
+        audio: bool,
     },
+    /// Mix diagnostics from one render: loudness, the limiter, masking and
+    /// audibility, gain reduction, spectrum and stereo — over any range —
+    /// with findings and JSON Patch fixes to the mixer. Exit status: 0 no
+    /// warnings, 1 warnings, 2 error. The project folder's AGENTS.md
+    /// explains it; `--schema` prints the report's JSON Schema.
+    Mixcheck(MixcheckArgs),
     /// Render the song (or a pattern) to a WAV file.
     Render {
         /// Project folder or project.json (default: current folder).
@@ -164,6 +176,70 @@ enum Command {
     ImportLmms(ImportArgs),
     /// Import a Standard MIDI File (.mid) as a new project in the library.
     ImportMidi(ImportArgs),
+}
+
+#[derive(clap::Args, Default)]
+struct MixcheckArgs {
+    /// Project folder or project.json (default: current folder).
+    path: Option<PathBuf>,
+    /// Bars as the producer counts them, from 1, both included: 52:59.
+    #[arg(long, value_name = "BAR:BAR")]
+    range: Option<String>,
+    /// Song beats (written, as clip starts): 196:228.
+    #[arg(long, value_name = "B:B")]
+    beats: Option<String>,
+    /// A section: a score mark's label or a drum part section's name.
+    #[arg(long, value_name = "NAME")]
+    section: Option<String>,
+    /// Rows: bar, section, or N-beats (e.g. 8-beats).
+    #[arg(long, default_value = "bar")]
+    by: String,
+    /// Channel ids, insert indices or names, "master" (comma-separated).
+    #[arg(long, value_name = "ID,…")]
+    focus: Option<String>,
+    /// levels,audibility,masking,dynamics,gainreduction,spectrum,stereo (default: all).
+    #[arg(long, value_name = "LIST")]
+    checks: Option<String>,
+    /// RFC 6902 operations applied in memory (never written): JSON or @file.json.
+    #[arg(long = "what-if", value_name = "JSONPATCH|@FILE")]
+    what_if: Option<String>,
+    /// Compare two project files (or folders): the report of B, with what changed from A.
+    #[arg(long, num_args = 2, value_names = ["A", "B"])]
+    compare: Vec<PathBuf>,
+    /// JSON output (the default).
+    #[arg(long)]
+    json: bool,
+    /// A summary of at most 40 lines instead of JSON.
+    #[arg(long)]
+    text: bool,
+    #[arg(long, default_value_t = 10)]
+    max_findings: usize,
+    /// strict | normal | loose.
+    #[arg(long, default_value = "normal")]
+    threshold: String,
+    /// Re-measure each suggestion under its patch (one render each).
+    #[arg(long)]
+    verify: bool,
+    /// The master's loudness, true peak and limiter over time (every 200 ms).
+    #[arg(long)]
+    history: bool,
+    /// A delivery target: spotify, apple, youtube, amazon, tidal, ebu-r128, atsc-a85.
+    #[arg(long)]
+    target: Option<String>,
+    /// A reference recording to compare with, level-matched.
+    #[arg(long, value_name = "FILE")]
+    reference: Option<String>,
+    /// Pre-roll in beats (default: 8, and at least 3 seconds).
+    #[arg(long)]
+    preroll: Option<f64>,
+    #[arg(long, default_value_t = 48000)]
+    sample_rate: u32,
+    /// Render again even when the cache has it.
+    #[arg(long)]
+    no_cache: bool,
+    /// Print the JSON Schema of the report.
+    #[arg(long)]
+    schema: bool,
 }
 
 #[derive(clap::Args)]
@@ -262,6 +338,7 @@ fn main() -> Result<()> {
             disable,
             suppressed,
             rules,
+            audio,
         } => {
             use rosaclef_core::{compat, critic};
             let file = project_file(path)?;
@@ -283,11 +360,27 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             let mut changed = false;
+            // The audio findings (measured on a render) when asked for.
+            let audio_now = |p: &rosaclef_core::Project| -> Result<Vec<critic::Finding>> {
+                if audio {
+                    audio_findings(&file, p)
+                } else {
+                    Ok(vec![])
+                }
+            };
+            let heard = audio_now(&p)?;
             for w in &suppress {
-                println!(
-                    "{}",
-                    critic::suppress(&mut p, w, &fallbacks).map_err(|e| anyhow!(e))?
-                );
+                if heard.iter().any(|f| f.key == *w) {
+                    if !p.critic.suppress.contains(w) {
+                        p.critic.suppress.push(w.clone());
+                    }
+                    println!("suppressed: {w}");
+                } else {
+                    println!(
+                        "{}",
+                        critic::suppress(&mut p, w, &fallbacks).map_err(|e| anyhow!(e))?
+                    );
+                }
                 changed = true;
             }
             for (ids, on) in [(&enable, true), (&disable, false)] {
@@ -310,7 +403,54 @@ fn main() -> Result<()> {
                 );
             }
             if !fix.is_empty() {
-                let (fixed, done) = critic::apply_fixes(&p, &fix, &[]).map_err(|e| anyhow!(e))?;
+                // Audio fixes first (they were measured on this song), then the rest.
+                let mut done_audio = vec![];
+                let wanted = |f: &critic::Finding| {
+                    fix.iter().any(|k| {
+                        *k == f.key
+                            || (!p.critic.suppress.contains(&f.key) && (k == "all" || k == f.rule))
+                    })
+                };
+                let mut doc = serde_json::to_value(&p)?;
+                // Each was measured on the song as it is: one that touches what an
+                // earlier one changed (a fader, an effect chain) waits for a new
+                // measurement rather than overwriting it.
+                let mut touched: Vec<String> = vec![];
+                let place = |path: &str| match path.find("/effects/") {
+                    Some(i) => path[..i + 8].to_string(),
+                    None => path.to_string(),
+                };
+                for f in heard.iter().filter(|f| wanted(f)) {
+                    let Some(fx) = &f.fix else { continue };
+                    let places: Vec<String> = fx.ops.iter().map(|o| place(&o.path)).collect();
+                    if places.iter().any(|x| touched.contains(x)) {
+                        println!(
+                            "skipped: {} (it changes what an earlier fix changed; run `rosaclef critic --audio` again to re-measure)",
+                            fx.label
+                        );
+                        continue;
+                    }
+                    critic::apply_ops(&mut doc, &fx.ops).map_err(|e| anyhow!("{}: {e}", f.key))?;
+                    touched.extend(places);
+                    done_audio.push(fx.label.clone());
+                }
+                if !done_audio.is_empty() {
+                    p = serde_json::from_value(doc)?;
+                }
+                let rest: Vec<String> = fix
+                    .iter()
+                    .filter(|k| {
+                        !heard.iter().any(|f| f.key == **k)
+                            && !critic::rule(k).is_some_and(|r| r.category == "Mix check")
+                    })
+                    .cloned()
+                    .collect();
+                let (fixed, mut done) = if rest.is_empty() {
+                    (p.clone(), vec![])
+                } else {
+                    critic::apply_fixes(&p, &rest, &[]).map_err(|e| anyhow!(e))?
+                };
+                done.splice(0..0, done_audio);
                 let errors: Vec<String> = validate::validate(&fixed)
                     .into_iter()
                     .filter(|i| i.severity == validate::Severity::Error)
@@ -356,7 +496,12 @@ fn main() -> Result<()> {
                 }
                 println!();
             }
-            let c = critic::critique_with(&p, &[], &fallbacks);
+            let mut c = critic::critique_with(&p, &[], &fallbacks);
+            if audio {
+                let off = |id: &str| critic::rule(id).is_some_and(|r| !critic::enabled(&p, r));
+                c.findings
+                    .extend(audio_now(&p)?.into_iter().filter(|f| !off(f.rule)));
+            }
             if json {
                 println!("{}", serde_json::to_string_pretty(&c)?);
             } else if !changed || fix.is_empty() {
@@ -367,6 +512,13 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
+        Command::Mixcheck(a) => match mixcheck_cli(a) {
+            Ok(code) => std::process::exit(code),
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(2);
+            }
+        },
         Command::Render {
             path,
             out,
@@ -603,6 +755,143 @@ fn main() -> Result<()> {
             })
         }
     }
+}
+
+/// The Critic's audio findings for a song: a whole-song mix check (cached),
+/// with the project's suppressed findings kept (marked as such).
+fn audio_findings(
+    file: &Path,
+    p: &rosaclef_core::Project,
+) -> Result<Vec<rosaclef_core::critic::Finding>> {
+    use rosaclef_studio::mixcheck::{self, Env, Options};
+    let folder = Folder::on_disk(file.parent().unwrap_or(Path::new(".")));
+    let fonts = server::fonts();
+    let env = Env {
+        folder: &folder,
+        fonts: &fonts,
+        setup: &server::install_plugin_host,
+        progress: &|_| {},
+        disk_cache: true,
+        any_file: true,
+    };
+    let mut all = p.clone();
+    all.critic.suppress.clear();
+    let o = Options {
+        max_findings: 50,
+        ..Options::default()
+    };
+    let r = mixcheck::run(&env, &all, &o).map_err(|e| anyhow!(e.0))?;
+    Ok(mixcheck::critic::findings(&r, p))
+}
+
+/// The request a mixcheck command line makes (the same JSON the HTTP
+/// endpoint and the studio's panel send).
+fn mixcheck_request(a: &MixcheckArgs) -> Result<serde_json::Value> {
+    use serde_json::json;
+    let mut req = json!({
+        "by": a.by,
+        "threshold": a.threshold,
+        "maxFindings": a.max_findings,
+        "verify": a.verify,
+        "history": a.history,
+        "sampleRate": a.sample_rate,
+        "cache": !a.no_cache,
+    });
+    let m = req.as_object_mut().expect("object");
+    for (k, v) in [
+        ("range", &a.range),
+        ("beats", &a.beats),
+        ("section", &a.section),
+        ("focus", &a.focus),
+        ("checks", &a.checks),
+        ("target", &a.target),
+        ("reference", &a.reference),
+    ] {
+        if let Some(v) = v {
+            m.insert(k.into(), json!(v));
+        }
+    }
+    if let Some(p) = a.preroll {
+        m.insert("prerollBeats".into(), json!(p));
+    }
+    if let Some(w) = &a.what_if {
+        let ops = rosaclef_studio::mixcheck::patch::parse_ops(w, |f| {
+            std::fs::read_to_string(f).map_err(|e| format!("what-if: reading {f}: {e}"))
+        })
+        .map_err(anyhow::Error::msg)?;
+        m.insert("whatIf".into(), json!(ops));
+    }
+    Ok(req)
+}
+
+/// `rosaclef mixcheck`: the exit status (0 no warnings, 1 warnings).
+fn mixcheck_cli(a: MixcheckArgs) -> Result<i32> {
+    use rosaclef_studio::mixcheck::{self, Env, Options};
+    if a.schema {
+        print!("{}", mixcheck::SCHEMA);
+        return Ok(0);
+    }
+    let o = Options::from_json(&mixcheck_request(&a)?).map_err(anyhow::Error::msg)?;
+    let first = match a.compare.first() {
+        Some(p) => p.clone(),
+        None => a.path.clone().unwrap_or_else(|| PathBuf::from(".")),
+    };
+    let file = project_file(Some(first))?;
+    let folder = Folder::on_disk(file.parent().unwrap_or(Path::new(".")));
+    let fonts = server::fonts();
+    let tty = std::io::IsTerminal::is_terminal(&std::io::stderr());
+    let last = std::sync::Mutex::new(-1i64);
+    let progress = |x: f64| {
+        let pct = (x * 100.0) as i64;
+        let mut l = last.lock().unwrap_or_else(|e| e.into_inner());
+        if tty && pct != *l {
+            *l = pct;
+            eprint!("\rmixcheck: rendering {pct:>3}%");
+        }
+    };
+    let env = Env {
+        folder: &folder,
+        fonts: &fonts,
+        setup: &server::install_plugin_host,
+        progress: &progress,
+        disk_cache: true,
+        any_file: true,
+    };
+    let load = |f: &Path| -> Result<rosaclef_core::Project> {
+        let text =
+            std::fs::read_to_string(f).with_context(|| format!("reading {}", f.display()))?;
+        rosaclef_core::compat::for_playback(&text)
+            .map(|p| p.project)
+            .map_err(|checked| {
+                let msgs: Vec<String> = checked.errors().map(|i| i.to_string()).collect();
+                anyhow!("{} is invalid:\n{}", f.display(), msgs.join("\n"))
+            })
+    };
+    let result = if a.compare.len() == 2 {
+        let fb = project_file(Some(a.compare[1].clone()))?;
+        let (pa, pb) = (load(&file)?, load(&fb)?);
+        let la = file.display().to_string();
+        let lb = fb.display().to_string();
+        // B plays its own folder's samples (and caches there).
+        let folder_b = Folder::on_disk(fb.parent().unwrap_or(Path::new(".")));
+        let env_b = Env {
+            folder: &folder_b,
+            ..env
+        };
+        mixcheck::compare((&env, &pa), (&env_b, &pb), (&la, &lb), &o)
+    } else {
+        mixcheck::run(&env, &load(&file)?, &o)
+    };
+    if tty && *last.lock().unwrap_or_else(|e| e.into_inner()) >= 0 {
+        eprint!("\r\x1b[K");
+    }
+    let r = result.map_err(|e| anyhow!(e.0))?;
+    if a.text && !a.json {
+        print!("{}", mixcheck::text::summary(&r));
+    } else {
+        println!("{}", serde_json::to_string_pretty(&r)?);
+    }
+    Ok(if mixcheck::has_warnings(&r) { 1 } else { 0 })
 }
 
 /// Shared driver of `import-lmms` / `import-midi`.

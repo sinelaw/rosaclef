@@ -302,10 +302,29 @@ pub fn check_mix(a: &mut Ana) {
         .filter(|&i| p.mixer.inserts[i].volume > 1.001)
         .collect();
     if !hot_ch.is_empty() || !hot_ins.is_empty() {
+        // A channel and its insert often share a name: say which is which.
+        let ch_names: Vec<&str> = hot_ch
+            .iter()
+            .map(|&i| p.channels[i].name.as_str())
+            .collect();
         let names: Vec<String> = hot_ch
             .iter()
-            .map(|&i| p.channels[i].name.clone())
-            .chain(hot_ins.iter().map(|&i| p.mixer.inserts[i].name.clone()))
+            .map(|&i| {
+                let n = &p.channels[i].name;
+                if hot_ins.iter().any(|&j| p.mixer.inserts[j].name == *n) {
+                    format!("{n}'s channel volume")
+                } else {
+                    n.clone()
+                }
+            })
+            .chain(hot_ins.iter().map(|&i| {
+                let n = &p.mixer.inserts[i].name;
+                if ch_names.contains(&n.as_str()) {
+                    format!("{n}'s insert fader")
+                } else {
+                    n.clone()
+                }
+            }))
             .collect();
         let mut ops = vec![];
         let mc = p.channels.iter().map(|c| c.volume).fold(0.0, f64::max);
@@ -876,14 +895,14 @@ pub fn check_master(a: &mut Ana) {
         }
         let lim = &m.effects[k];
         let ceil = lim.param("ceiling");
-        if ceil > -1.0 {
+        if ceil > -1.5 {
             a.add(
                 "limiter-ceiling",
                 "info",
                 format!("Limiter ceiling at {} dB", num(ceil)),
-                "Streaming services ask for −1 dB true peak: lossy encoding and inter-sample peaks overshoot a higher ceiling.".into(),
+                "Streaming services ask for −1 dBTP: the peaks between the samples run up to about half a dB over a limiter's ceiling, so −1.5 dB keeps them under (rosaclef mixcheck measures them).".into(),
                 at.clone(),
-                fix("Set the ceiling to −1 dB", vec![set(param_path(0, k, "ceiling"), json!(-1.0))]),
+                fix("Set the ceiling to −1.5 dB", vec![set(param_path(0, k, "ceiling"), json!(-1.5))]),
             );
         }
         let gain = lim.param("gain");

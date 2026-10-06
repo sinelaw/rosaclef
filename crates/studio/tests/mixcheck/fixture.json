@@ -1,0 +1,48 @@
+{
+  "format": "rosaclef/1",
+  "meta": { "title": "Mixcheck fixture" },
+  "transport": { "bpm": 120, "beatsPerBar": 4 },
+  "channels": [
+    { "id": "kick", "name": "Kick", "instrument": { "type": "drum", "options": { "kind": "kick" } }, "volume": 0.9, "mixer": 1 },
+    { "id": "bass", "name": "Bass", "instrument": { "type": "analog", "params": { "drift": 0, "cutoff": 400 }, "options": { "wave1": "saw" } }, "volume": 0.8, "mixer": 2 },
+    { "id": "lead", "name": "Lead", "instrument": { "type": "fm" }, "volume": 0.5, "mixer": 3 },
+    { "id": "pad", "name": "Pad", "instrument": { "type": "additive" }, "volume": 0.6, "pan": -0.3, "mixer": 4 }
+  ],
+  "patterns": [
+    { "id": "beat", "name": "Beat", "length": 4, "notes": [
+      { "channel": "kick", "pitch": 60, "start": 0, "length": 0.25, "velocity": 1 },
+      { "channel": "kick", "pitch": 60, "start": 1, "length": 0.25, "velocity": 0.9 },
+      { "channel": "kick", "pitch": 60, "start": 2, "length": 0.25, "velocity": 1 },
+      { "channel": "kick", "pitch": 60, "start": 3, "length": 0.25, "velocity": 0.9 },
+      { "channel": "bass", "pitch": 36, "start": 0, "length": 1.5, "velocity": 0.9 },
+      { "channel": "bass", "pitch": 36, "start": 2, "length": 1.5, "velocity": 0.9 }
+    ] },
+    { "id": "tune", "name": "Tune", "length": 8, "notes": [
+      { "channel": "lead", "pitch": 72, "start": 0, "length": 2, "velocity": 0.8 },
+      { "channel": "lead", "pitch": 73, "start": 2, "length": 2, "velocity": 0.8 },
+      { "channel": "lead", "pitch": 76, "start": 4, "length": 4, "velocity": 0.8 },
+      { "channel": "pad", "pitch": 60, "start": 0, "length": 8, "velocity": 0.6 },
+      { "channel": "pad", "pitch": 64, "start": 0, "length": 8, "velocity": 0.6 },
+      { "channel": "pad", "pitch": 67, "start": 0, "length": 8, "velocity": 0.6 }
+    ] }
+  ],
+  "playlist": {
+    "tracks": [ { "name": "Beat" }, { "name": "Tune" } ],
+    "clips": [
+      { "pattern": "beat", "track": 0, "start": 0, "length": 16 },
+      { "pattern": "tune", "track": 1, "start": 4, "length": 8 }
+    ]
+  },
+  "mixer": { "inserts": [
+    { "name": "Master", "effects": [ { "type": "compressor", "params": { "threshold": -14, "ratio": 2 } }, { "type": "limiter", "params": { "gain": 6, "ceiling": -1 } } ] },
+    { "name": "Kick", "volume": 1.2 },
+    { "name": "Bass", "effects": [ { "type": "compressor", "params": { "threshold": -20, "ratio": 4 } } ] },
+    { "name": "Lead", "effects": [ { "type": "reverb", "params": { "mix": 0.2 } } ] },
+    { "name": "Pad", "volume": 0.8 }
+  ] },
+  "score": { "marks": [
+    { "start": 0, "end": 4, "color": "#c97b84", "label": "Intro" },
+    { "start": 4, "end": 12, "color": "#3f8f7a", "label": "Verse" },
+    { "start": 12, "end": 16, "color": "#d4af37", "label": "Outro" }
+  ] }
+}

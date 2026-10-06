@@ -9,6 +9,51 @@ pub trait Effect: Send {
     /// Process a stereo block in place.
     fn process(&mut self, left: &mut [f32], right: &mut [f32]);
     fn reset(&mut self) {}
+    /// Dynamics processors (compressor, limiter): the gain reduction they
+    /// applied since the last call, in dB — its largest value and its mean
+    /// over the samples — and start counting again. `None` for the rest.
+    fn take_gain_reduction(&mut self) -> Option<(f32, f32)> {
+        None
+    }
+    /// Measure the gain reduction (offline analysis only: off, it costs
+    /// the real-time path nothing).
+    fn set_metering(&mut self, _on: bool) {}
+}
+
+/// Gain reduction seen by a dynamics processor since it was last read
+/// (while metering is on).
+#[derive(Clone, Copy, Debug, Default)]
+struct GrMeter {
+    on: bool,
+    max: f32,
+    sum: f64,
+    n: u32,
+}
+
+impl GrMeter {
+    #[inline]
+    fn add(&mut self, db: f32) {
+        self.max = self.max.max(db);
+        self.sum += db as f64;
+        self.n = self.n.saturating_add(1);
+    }
+    fn take(&mut self) -> Option<(f32, f32)> {
+        let m = std::mem::replace(
+            self,
+            GrMeter {
+                on: self.on,
+                ..Default::default()
+            },
+        );
+        Some((
+            m.max,
+            if m.n > 0 {
+                (m.sum / m.n as f64) as f32
+            } else {
+                0.0
+            },
+        ))
+    }
 }
 
 pub fn create(dev: &Device, ctx: &Ctx) -> Option<Box<dyn Effect>> {
@@ -580,6 +625,7 @@ pub struct Compressor {
     makeup: f32,
     env_db: f32,
     sr: f32,
+    meter: GrMeter,
 }
 
 impl Effect for Compressor {
@@ -611,10 +657,19 @@ impl Effect for Compressor {
                 self.release
             };
             self.env_db = gr + (self.env_db - gr) * coef;
+            if self.meter.on {
+                self.meter.add(self.env_db);
+            }
             let g = db_to_gain(-self.env_db) * self.makeup;
             left[i] *= g;
             right[i] *= g;
         }
+    }
+    fn take_gain_reduction(&mut self) -> Option<(f32, f32)> {
+        self.meter.take()
+    }
+    fn set_metering(&mut self, on: bool) {
+        self.meter.on = on;
     }
 }
 
@@ -630,6 +685,7 @@ pub struct Limiter {
     ceiling: f32,
     release: f32,
     attack: f32,
+    meter: GrMeter,
 }
 
 impl Limiter {
@@ -645,6 +701,7 @@ impl Limiter {
             ceiling: 0.966,
             release: 0.999,
             attack: settle_coef(0.0015 / 3.0, sr),
+            meter: GrMeter::default(),
         }
     }
 }
@@ -671,6 +728,13 @@ impl Effect for Limiter {
                 self.release
             };
             self.gain = target + (self.gain - target) * coef;
+            if self.meter.on {
+                self.meter.add(if self.gain < 1.0 {
+                    -gain_to_db(self.gain)
+                } else {
+                    0.0
+                });
+            }
             self.buf[0][self.w] = xl;
             self.buf[1][self.w] = xr;
             self.w = (self.w + 1) % n;
@@ -678,5 +742,11 @@ impl Effect for Limiter {
             left[i] = (self.buf[0][self.w] * self.gain).clamp(-c, c);
             right[i] = (self.buf[1][self.w] * self.gain).clamp(-c, c);
         }
+    }
+    fn take_gain_reduction(&mut self) -> Option<(f32, f32)> {
+        self.meter.take()
+    }
+    fn set_metering(&mut self, on: bool) {
+        self.meter.on = on;
     }
 }

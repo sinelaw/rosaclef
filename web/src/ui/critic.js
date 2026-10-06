@@ -29,6 +29,7 @@ const CATEGORIES = [
   tk("Effects"),
   tk("Master"),
   tk("Project"),
+  tk("Mix check"),
 ];
 
 const view = {
@@ -303,7 +304,7 @@ function rulesView(b) {
     "intro",
     "crit-intro",
     tf(
-      "{0} checks, all mechanical: they read the project — notes, clips, channels and the mixer — and nothing else. The checks of classical theory (keys, counterpoint, singable melodies) start off, since most modern tracks break them on purpose: turn them on if the song wants them. Your choices are saved in the project.",
+      "{0} checks, all mechanical: they read the project — notes, clips, channels and the mixer — and nothing else, but for the Mix check ones, measured on a render in the Mix check tab (and `rosaclef critic --audio`). The checks of classical theory (keys, counterpoint, singable melodies) start off, since most modern tracks break them on purpose: turn them on if the song wants them. Your choices are saved in the project.",
       [String(view.catalog.length)]
     )
   );

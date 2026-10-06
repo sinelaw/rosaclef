@@ -1,0 +1,95 @@
+// End-to-end smoke test of the Mix check (the Maestro panel's metering
+// plugin), in a real browser. Not part of `npm test`: it needs Playwright and a
+// served build. In the browser-only build the measuring runs in the worker
+// (WebAssembly), the same code as `rosaclef mixcheck`.
+//
+//   tools/build-static.sh && python3 -m http.server -d dist 8765 &
+//   node web/test/mixcheck-smoke.mjs http://localhost:8765/
+//
+// Set CHROMIUM to use a specific browser binary.
+
+import { chromium } from "playwright";
+
+const base = process.argv[2] || "http://localhost:8765/";
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
+const page = await (await browser.newContext({ viewport: { width: 1500, height: 900 } })).newPage();
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e)));
+const ok = (s) => console.log("ok  ", s);
+
+await page.goto(base);
+await page.waitForFunction(() => document.querySelector(".song-title")?.textContent === "Arietta in J", null, { timeout: 30000 });
+// A mixer fault, as the agent's shell would make it: the master limiter
+// driven 14 dB (the demo has 2).
+const gain = () =>
+  page.evaluate(async () => {
+    const { state } = await import("./src/store.js");
+    return state.project.mixer.inserts[0].effects[1].params.find((k) => k.key === "gain")?.value;
+  });
+await page.click(".agent-choice");
+await page.click("#agent-term");
+await page.keyboard.type("set /mixer/inserts/0/effects/1/params/gain 14\r");
+await page.waitForFunction(
+  () => import("./src/store.js").then((m) => m.state.project.mixer.inserts[0].effects[1].params.find((k) => k.key === "gain")?.value === 14),
+  null,
+  {
+    timeout: 10000,
+  }
+);
+ok("the limiter is driven 14 dB");
+
+await page.click(".maestro-tab:has-text('Mix check')");
+await page.waitForSelector(".mx-empty");
+ok("the Mix check tab opens");
+
+// Bars 77–79 of the demo (the sax solo).
+await page.selectOption(".mx-bar .mx-select >> nth=0", "bars");
+await page.fill(".mx-num >> nth=0", "77");
+await page.press(".mx-num >> nth=0", "Tab");
+await page.fill(".mx-num >> nth=1", "79");
+await page.press(".mx-num >> nth=1", "Tab");
+await page.click(".mixcheck .btn:has-text('Measure')");
+await page.waitForSelector(".mx-master", { timeout: 120000 });
+const lufs = Number((await page.textContent(".mx-big-value")).replace("−", "-"));
+if (!(lufs < -3 && lufs > -40)) throw new Error(`integrated loudness reads ${lufs}`);
+ok(`bars 77–79 measure ${lufs} LUFS integrated`);
+for (const label of ["True peak", "Pre-limiter", "PLR", "LRA", "Mono"]) {
+  if ((await page.locator(".mx-readout", { hasText: label }).count()) !== 1) throw new Error(`no ${label} readout`);
+}
+if ((await page.locator(".mx-el").count()) < 3) throw new Error("the parts are missing");
+ok("loudness, peaks, dynamics, phase and the parts show");
+
+// The overload names the drive; its fix is the drive, on the mixer.
+const overload = page.locator(".mx-find", { hasText: "master overload" });
+await overload.waitFor({ timeout: 5000 });
+const detail = await overload.textContent();
+if (!detail.includes("input gain")) throw new Error(`the overload does not name the drive: ${detail}`);
+await overload.locator(".btn:has-text('Try')").click();
+await page.waitForSelector(".mx-tried", { timeout: 120000 });
+const tried = await page.textContent(".mx-tried");
+if (!tried.includes("resolved")) throw new Error(`the what-if says: ${tried}`);
+ok(`a fix can be tried without making it (${tried.trim()})`);
+
+const before = await gain();
+await overload.locator(".btn:has-text('Apply fix')").click();
+await page.waitForSelector(".mx-status.stale", { timeout: 15000 });
+const after = await gain();
+if (!(after < before)) throw new Error(`the fix did not lower the drive (${before} → ${after})`);
+ok(`applying the fix lowers the limiter's drive (${before} → ${after}); the report is marked stale`);
+await overload.locator(".btn:has-text('Apply fix')").click();
+await page.waitForSelector(".toast:has-text('The song changed since this report')", { timeout: 5000 });
+if ((await gain()) !== after) throw new Error("a stale report's fix was applied");
+ok("a stale report's fixes are refused until it is measured again");
+await page.click("button[title^='Undo']");
+await page.waitForFunction(
+  (g) => import("./src/store.js").then((m) => m.state.project.mixer.inserts[0].effects[1].params.find((k) => k.key === "gain")?.value === g),
+  before,
+  {
+    timeout: 5000,
+  }
+);
+ok("Ctrl+Z (undo) puts the drive back");
+
+if (errors.length > 0) throw new Error(`page errors:\n${errors.join("\n")}`);
+await browser.close();
+console.log("mixcheck smoke: all ok");
