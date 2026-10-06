@@ -210,56 +210,224 @@ pub fn remember(key: &str, a: Arc<Analysis>) {
 
 // ------------------------------------------------------- instrument outputs
 
-/// The instruments' outputs of a render, per segment, per channel.
-pub type DryTakes = Vec<Vec<Arc<rosaclef_engine::DryTrack>>>;
-
-/// Memory the kept instrument outputs may hold: two renders' (the song's,
-/// and a what-if's that changed an instrument), each at most half.
+/// The instruments' outputs of a render, kept on disk only — never in
+/// memory: `.rosaclef/mixcheck/dry-<key>/`, a file per segment and channel,
+/// written as the render goes and read as a later render of the same notes
+/// plays (see [`instruments_of`]). A file is the output's chunks in order:
+/// a byte, 0 for a silent chunk or 1 for one whose frames follow (left, then
+/// right; f32, little-endian). A recording counts once its render has ended
+/// (its folder renamed into place); the newest two are kept.
 #[cfg(not(target_arch = "wasm32"))]
-pub const DRY_BYTES: usize = 512 << 20;
-#[cfg(target_arch = "wasm32")]
-pub const DRY_BYTES: usize = 128 << 20;
+pub mod dry {
+    use crate::folder::Folder;
+    use rosaclef_engine::{DryRead, DryWrite, DRY_CHUNK};
+    use std::fs::File;
+    use std::io::{BufReader, BufWriter, Read, Write};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
-static DRY: Mutex<Vec<(String, Arc<DryTakes>)>> = Mutex::new(Vec::new());
+    /// Renders' outputs kept.
+    const KEEP: usize = 2;
 
-/// The instrument outputs kept under `key`.
-pub fn dry(key: &str) -> Option<Arc<DryTakes>> {
-    let mut d = DRY.lock().unwrap_or_else(|e| e.into_inner());
-    let k = d.iter().position(|(k, _)| k == key)?;
-    // The most recently used last.
-    let e = d.remove(k);
-    let t = e.1.clone();
-    d.push(e);
-    Some(t)
-}
-
-/// How many renders' instrument outputs are kept.
-pub fn dry_count() -> usize {
-    DRY.lock().unwrap_or_else(|e| e.into_inner()).len()
-}
-
-/// Make room for a render's instrument outputs about to be recorded.
-pub fn room_for_dry() {
-    let mut d = DRY.lock().unwrap_or_else(|e| e.into_inner());
-    while d.len() >= 2 {
-        d.remove(0);
+    /// A render's instrument outputs: played from the disk when kept, else
+    /// kept there as it goes.
+    pub struct DryFiles {
+        dir: PathBuf,
+        part: PathBuf,
+        replay: bool,
+        failed: Arc<AtomicBool>,
     }
-}
 
-/// Keep a render's instrument outputs.
-pub fn keep_dry(key: &str, takes: DryTakes) {
-    let mut d = DRY.lock().unwrap_or_else(|e| e.into_inner());
-    d.retain(|(k, _)| k != key);
-    d.push((key.to_string(), Arc::new(takes)));
-    while d.len() > 2 {
-        d.remove(0);
+    impl DryFiles {
+        /// The outputs under `key` in `folder` (none for a folder not on
+        /// disk).
+        pub fn open(folder: &Folder, key: &str) -> Option<DryFiles> {
+            let base = super::dir(folder);
+            let dir = base.join(format!("dry-{key}"));
+            let part = base.join(format!("dry-{key}.part"));
+            let replay = dir.is_dir();
+            if replay {
+                // In use: the newest.
+                let _ = std::fs::write(dir.join("used"), b"");
+            } else {
+                let _ = std::fs::remove_dir_all(&part);
+                std::fs::create_dir_all(&part).ok()?;
+                let ignore = base.join(".gitignore");
+                if !ignore.exists() {
+                    let _ = std::fs::write(&ignore, b"*\n");
+                }
+            }
+            Some(DryFiles {
+                dir,
+                part,
+                replay,
+                failed: Arc::new(AtomicBool::new(false)),
+            })
+        }
+
+        fn file(&self, at: &std::path::Path, seg: usize, ch: usize) -> PathBuf {
+            at.join(format!("s{seg}-c{ch}.bin"))
+        }
+
+        /// The recording's end: kept when every write went through, and the
+        /// oldest let go.
+        pub fn finish(self) {
+            if self.replay {
+                return;
+            }
+            if self.failed.load(Ordering::Relaxed)
+                || std::fs::rename(&self.part, &self.dir).is_err()
+            {
+                let _ = std::fs::remove_dir_all(&self.part);
+                return;
+            }
+            let _ = std::fs::write(self.dir.join("used"), b"");
+            let Some(base) = self.dir.parent() else {
+                return;
+            };
+            let Ok(entries) = std::fs::read_dir(base) else {
+                return;
+            };
+            let mut kept: Vec<(f64, PathBuf)> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.is_dir()
+                        && p.file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| n.starts_with("dry-") && !n.ends_with(".part"))
+                })
+                .map(|p| {
+                    let t = std::fs::metadata(p.join("used"))
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map_or(0.0, |d| d.as_secs_f64());
+                    (t, p)
+                })
+                .collect();
+            kept.sort_by(|a, b| b.0.total_cmp(&a.0));
+            for (_, p) in kept.iter().skip(KEEP) {
+                let _ = std::fs::remove_dir_all(p);
+            }
+        }
+    }
+
+    impl super::super::analyze::DryStore for DryFiles {
+        fn replay(&mut self, seg: usize, channels: usize) -> Option<Vec<Box<dyn DryRead>>> {
+            if !self.replay {
+                return None;
+            }
+            (0..channels)
+                .map(|c| {
+                    File::open(self.file(&self.dir, seg, c)).ok().map(|f| {
+                        Box::new(FileIn {
+                            r: Some(BufReader::with_capacity(1 << 16, f)),
+                            next: 0,
+                            bytes: vec![0; DRY_CHUNK * 8],
+                        }) as Box<dyn DryRead>
+                    })
+                })
+                .collect()
+        }
+
+        fn record(&mut self, seg: usize, channels: usize) -> Option<Vec<Box<dyn DryWrite>>> {
+            if self.replay {
+                return None;
+            }
+            let outs: Option<Vec<Box<dyn DryWrite>>> = (0..channels)
+                .map(|c| {
+                    File::create(self.file(&self.part, seg, c)).ok().map(|f| {
+                        Box::new(FileOut {
+                            w: Some(BufWriter::with_capacity(1 << 16, f)),
+                            bytes: Vec::with_capacity(DRY_CHUNK * 8 + 1),
+                            failed: self.failed.clone(),
+                        }) as Box<dyn DryWrite>
+                    })
+                })
+                .collect();
+            if outs.is_none() {
+                self.failed.store(true, Ordering::Relaxed);
+            }
+            outs
+        }
+    }
+
+    struct FileOut {
+        w: Option<BufWriter<File>>,
+        bytes: Vec<u8>,
+        failed: Arc<AtomicBool>,
+    }
+
+    impl DryWrite for FileOut {
+        fn chunk(&mut self, frames: Option<&[f32]>) {
+            let Some(w) = &mut self.w else { return };
+            self.bytes.clear();
+            match frames {
+                None => self.bytes.push(0),
+                Some(x) => {
+                    self.bytes.push(1);
+                    for v in x {
+                        self.bytes.extend_from_slice(&v.to_le_bytes());
+                    }
+                }
+            }
+            if w.write_all(&self.bytes).is_err() {
+                self.w = None;
+                self.failed.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+
+    impl Drop for FileOut {
+        fn drop(&mut self) {
+            if let Some(w) = &mut self.w {
+                if w.flush().is_err() {
+                    self.failed.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    }
+
+    struct FileIn {
+        r: Option<BufReader<File>>,
+        /// The next chunk in the file.
+        next: usize,
+        bytes: Vec<u8>,
+    }
+
+    impl DryRead for FileIn {
+        fn chunk(&mut self, i: usize, out: &mut [f32]) -> bool {
+            let Some(r) = &mut self.r else { return false };
+            while self.next <= i {
+                let mut flag = [0u8];
+                if r.read_exact(&mut flag).is_err()
+                    || flag[0] == 1 && r.read_exact(&mut self.bytes).is_err()
+                {
+                    self.r = None;
+                    return false;
+                }
+                let here = self.next;
+                self.next += 1;
+                if here == i {
+                    if flag[0] == 0 {
+                        return false;
+                    }
+                    for (k, b) in self.bytes.chunks_exact(4).enumerate() {
+                        out[k] = f32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+                    }
+                    return true;
+                }
+            }
+            false
+        }
     }
 }
 
 /// Forget the remembered analyses (the disk keeps its own).
 pub fn forget() {
     MEMO.lock().unwrap_or_else(|e| e.into_inner()).clear();
-    DRY.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
 /// About how much memory an analysis holds.

@@ -181,23 +181,26 @@ pub fn measure(
         warnings: vec![],
     };
     // The instruments' outputs of a render of the same notes (the mixer
-    // changed since: a fix applied) are played again instead of the
-    // instruments; else this render's are kept for the next.
-    let dry_key = cache::dry_key(
-        Some(env.folder),
-        project,
-        &samples,
-        &segments,
-        pre,
-        o.sample_rate,
-    );
-    let replay = if o.cache { cache::dry(&dry_key) } else { None };
-    let mut keep = if o.cache && replay.is_none() {
-        cache::room_for_dry();
-        Some(vec![])
+    // changed since: a fix applied) are played again from the disk instead
+    // of the instruments; else this render's are kept there for the next.
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut dry = if o.cache && env.disk_cache {
+        let key = cache::dry_key(
+            Some(env.folder),
+            project,
+            &samples,
+            &segments,
+            pre,
+            o.sample_rate,
+        );
+        cache::dry::DryFiles::open(env.folder, &key)
     } else {
         None
     };
+    #[cfg(not(target_arch = "wasm32"))]
+    let store = dry.as_mut().map(|d| d as &mut dyn analyze::DryStore);
+    #[cfg(target_arch = "wasm32")]
+    let store = None;
     crate::jobs::next_render();
     let mut a = analyze::run(
         project,
@@ -206,15 +209,15 @@ pub fn measure(
         pre,
         o.sample_rate,
         &mut f,
-        replay.as_deref(),
-        &mut keep,
+        store,
         |x| {
             crate::jobs::rendered(x);
             (env.progress)(x)
         },
     );
-    if let Some(takes) = keep.filter(|k| k.len() == segments.len()) {
-        cache::keep_dry(&dry_key, takes);
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(d) = dry {
+        d.finish();
     }
     crate::jobs::measuring();
     a.warnings.extend(warnings);

@@ -295,6 +295,23 @@ fn measure(meters: &mut [Meter], chunks: &[[Vec<f32>; 2]], n: usize, shape: &Sha
 
 // ------------------------------------------------------------ rendering
 
+/// Where a render's instrument outputs are kept and played again from
+/// (per segment, one per channel; see [`rosaclef_engine::DryWrite`]).
+pub trait DryStore {
+    /// The outputs of segment `seg` to play, when kept.
+    fn replay(
+        &mut self,
+        seg: usize,
+        channels: usize,
+    ) -> Option<Vec<Box<dyn rosaclef_engine::DryRead>>>;
+    /// Where to keep segment `seg`'s outputs (when not playing them).
+    fn record(
+        &mut self,
+        seg: usize,
+        channels: usize,
+    ) -> Option<Vec<Box<dyn rosaclef_engine::DryWrite>>>;
+}
+
 /// An engine with the project, its samples and soundfonts (made once per
 /// segment, so each starts from silence).
 pub trait EngineFactory {
@@ -302,10 +319,9 @@ pub trait EngineFactory {
 }
 
 /// Render `segments` (each after `preroll` beats of pre-roll) and measure
-/// every tap. The instruments' outputs are played from `replay` when given
-/// (a render of the same notes, the mixer changed); otherwise, while `keep`
-/// holds a list, they are kept there (`None` once they would take more than
-/// half of [`super::cache::DRY_BYTES`]).
+/// every tap. With `dry`, the instruments' outputs are played from it when
+/// it has them (a render of the same notes, the mixer changed), else kept
+/// in it.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     project: &Project,
@@ -314,8 +330,7 @@ pub fn run(
     preroll: f64,
     sr: f32,
     factory: &mut dyn EngineFactory,
-    replay: Option<&super::cache::DryTakes>,
-    keep: &mut Option<super::cache::DryTakes>,
+    mut dry: Option<&mut dyn DryStore>,
     mut progress: impl FnMut(f64),
 ) -> Analysis {
     let nch = project.channels.len();
@@ -395,12 +410,16 @@ pub fn run(
         engine.seek_span(span, beat);
         engine.play();
         engine.chase_notes();
-        let replaying =
-            replay.is_some_and(|takes| takes.get(si).is_some_and(|t| engine.replay_dry(t)));
-        if !replaying && keep.is_some() {
-            engine.record_dry();
+        if let Some(d) = dry.as_deref_mut() {
+            let replaying = d
+                .replay(si, nch)
+                .is_some_and(|srcs| engine.replay_dry(srcs));
+            if !replaying {
+                if let Some(outs) = d.record(si, nch) {
+                    engine.record_dry(outs);
+                }
+            }
         }
-        let kept: usize = keep.iter().flatten().flatten().map(|t| t.bytes()).sum();
         engine.set_crew(true);
         for m in &mut meters {
             m.restart(sr);
@@ -471,10 +490,6 @@ pub fn run(
             if filled == CHUNK {
                 measure(&mut meters, &chunks, filled, &shape);
                 filled = 0;
-                if keep.is_some() && kept + engine.dry_bytes() > super::cache::DRY_BYTES / 2 {
-                    engine.drop_dry();
-                    *keep = None;
-                }
             }
             let beats = (perf - start).max(0.0);
             progress((done_beats + beats) / total.max(1e-9));
@@ -483,14 +498,7 @@ pub fn run(
             measure(&mut meters, &chunks, filled, &shape);
         }
         engine.set_crew(false);
-        if let Some(k) = keep.as_mut() {
-            let takes = engine.take_dry();
-            if takes.len() == project.channels.len() {
-                k.push(takes);
-            } else if !replaying {
-                *keep = None;
-            }
-        }
+        engine.end_dry();
         // Where each finished hop and loudness block lies (at its middle).
         let nh = frame / HOP;
         let nb = frame / lblock;

@@ -178,7 +178,7 @@ fn a_cached_report_is_the_same() {
     );
 }
 
-/// A change to the mixer only plays the instruments' kept outputs again
+/// A change to the mixer only plays the instruments' outputs kept on disk
 /// instead of rendering them; the report is the same as a fresh render's.
 #[test]
 fn a_mixer_change_replays_the_instruments_and_measures_the_same() {
@@ -191,15 +191,19 @@ fn a_mixer_change_replays_the_instruments_and_measures_the_same() {
         fonts: &fonts,
         setup: &|_| {},
         progress: &|_| {},
-        disk_cache: false,
+        disk_cache: true,
         any_file: true,
     };
     let o = Options::from_json(&json!({"range": "1:2"})).unwrap();
     mixcheck::run(&env, &p, &o).unwrap();
-    assert!(
-        mixcheck::cache::dry_count() >= 1,
-        "the instruments' outputs are kept"
-    );
+    let kept = |d: &Path| {
+        std::fs::read_dir(d.join(".rosaclef/mixcheck"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with("dry-") && e.path().is_dir())
+            .count()
+    };
+    assert_eq!(kept(&dir), 1, "the instruments' outputs are kept on disk");
     // The mixer changes: faders, an effect, a channel's volume and pan.
     let mut v = serde_json::to_value(&p).unwrap();
     v["mixer"]["inserts"][2]["volume"] = json!(0.5);

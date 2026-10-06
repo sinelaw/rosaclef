@@ -363,10 +363,12 @@ engine's rendering is 3.5 s, the measuring 0.8 s and the report 0.3 s. More
 cores render faster; the cache answers every further question about the range.
 A change to the mixer alone (a fader, an effect, a channel's volume or pan — a
 fix applied) plays the instruments' outputs kept from the last render instead
-of running the instruments again: the demo song measures again in 8.7 s instead
-of 16.9, the same report to the last digit. The two latest renders' outputs are
-kept in memory (up to 256 MB each natively, 64 MB in the browser; silence takes
-none).
+of running the instruments again: the demo song measures again in about 10 s
+instead of 19, the same report to the last digit. The outputs are kept on disk
+only, never in memory — `.rosaclef/mixcheck/dry-<key>/`, written as the render
+goes and read as the next one plays (about 210 MB for the demo song; silence
+takes none) — so they outlast a restart; the newest two renders' are kept. The
+browser-only studio has no disk for them and renders in full.
 
 ## Where it lives
 

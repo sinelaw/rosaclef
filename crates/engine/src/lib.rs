@@ -193,63 +193,33 @@ struct ChannelRt {
     dry: Dry,
 }
 
-/// Frames in a [`DryTrack`]'s chunk.
-const DRY_CHUNK: usize = 1024;
+/// Frames in a chunk of a channel's kept output.
+pub const DRY_CHUNK: usize = 1024;
 
-/// A channel's instrument output over a render (before the channel's
-/// volume and pan), kept so a later render of the same notes through a
-/// changed mixer can play it again instead of running the instrument — the
-/// mix check's fixes change only the mixer. Silent stretches take no memory.
-#[derive(Default, Debug)]
-pub struct DryTrack {
-    /// Each chunk: its left frames, then its right; `None` when silent.
-    chunks: Vec<Option<Box<[f32]>>>,
+/// Where a channel's instrument output goes while it is kept (before the
+/// channel's volume and pan), so that a later render of the same notes
+/// through a changed mixer can play it again instead of running the
+/// instrument — the mix check's fixes change only the mixer. It gets the
+/// output in chunks of [`DRY_CHUNK`] frames, in order: the left frames,
+/// then the right; `None` for a silent chunk.
+pub trait DryWrite: Send {
+    fn chunk(&mut self, frames: Option<&[f32]>);
 }
 
-impl DryTrack {
-    /// Memory it holds.
-    pub fn bytes(&self) -> usize {
-        self.chunks.iter().flatten().count() * DRY_CHUNK * 2 * 4 + self.chunks.len() * 16
-    }
-
-    /// Frames `pos..pos + l.len()` into `l` and `r` (silence past its end).
-    fn read(&self, pos: usize, l: &mut [f32], r: &mut [f32]) {
-        let mut i = 0;
-        while i < l.len() {
-            let f = pos + i;
-            let off = f % DRY_CHUNK;
-            let k = (DRY_CHUNK - off).min(l.len() - i);
-            match self.chunks.get(f / DRY_CHUNK).and_then(|c| c.as_deref()) {
-                Some(c) => {
-                    l[i..i + k].copy_from_slice(&c[off..off + k]);
-                    r[i..i + k].copy_from_slice(&c[DRY_CHUNK + off..DRY_CHUNK + off + k]);
-                }
-                None => {
-                    l[i..i + k].fill(0.0);
-                    r[i..i + k].fill(0.0);
-                }
-            }
-            i += k;
-        }
-    }
+/// A kept output played again: chunk `i` (asked in order) into `out`
+/// (left, then right); false for silence, or past its end.
+pub trait DryRead: Send {
+    fn chunk(&mut self, i: usize, out: &mut [f32]) -> bool;
 }
 
-/// A [`DryTrack`] being recorded: whole chunks go in as they fill.
+/// A channel's output being kept: whole chunks go out as they fill.
 struct DryRec {
-    track: DryTrack,
+    out: Box<dyn DryWrite>,
     stage: Vec<f32>,
     fill: usize,
 }
 
 impl DryRec {
-    fn new() -> DryRec {
-        DryRec {
-            track: DryTrack::default(),
-            stage: vec![0.0; DRY_CHUNK * 2],
-            fill: 0,
-        }
-    }
-
     fn push(&mut self, l: &[f32], r: &[f32]) {
         let mut i = 0;
         while i < l.len() {
@@ -267,20 +237,41 @@ impl DryRec {
 
     fn flush(&mut self) {
         let silent = self.stage.iter().all(|x| *x == 0.0);
-        self.track.chunks.push(if silent {
-            None
-        } else {
-            Some(self.stage.clone().into_boxed_slice())
-        });
+        self.out
+            .chunk(if silent { None } else { Some(&self.stage) });
         self.stage.fill(0.0);
         self.fill = 0;
     }
+}
 
-    fn finish(mut self) -> DryTrack {
-        if self.fill > 0 {
-            self.flush();
+/// A kept output being played: the chunk at hand.
+struct DryPlay {
+    src: Box<dyn DryRead>,
+    /// The next frame to play.
+    pos: usize,
+    /// Which chunk `buf` holds (`usize::MAX`: none yet).
+    at: usize,
+    buf: Vec<f32>,
+}
+
+impl DryPlay {
+    fn read(&mut self, l: &mut [f32], r: &mut [f32]) {
+        let mut i = 0;
+        while i < l.len() {
+            let f = self.pos + i;
+            let (c, off) = (f / DRY_CHUNK, f % DRY_CHUNK);
+            if self.at != c {
+                if !self.src.chunk(c, &mut self.buf) {
+                    self.buf.fill(0.0);
+                }
+                self.at = c;
+            }
+            let k = (DRY_CHUNK - off).min(l.len() - i);
+            l[i..i + k].copy_from_slice(&self.buf[off..off + k]);
+            r[i..i + k].copy_from_slice(&self.buf[DRY_CHUNK + off..DRY_CHUNK + off + k]);
+            i += k;
         }
-        self.track
+        self.pos += l.len();
     }
 }
 
@@ -290,8 +281,8 @@ enum Dry {
     #[default]
     Off,
     Record(Box<DryRec>),
-    /// Play this track from this frame instead of the instrument.
-    Replay(Arc<DryTrack>, usize),
+    /// Play a kept output instead of the instrument.
+    Replay(Box<DryPlay>),
 }
 
 impl ChannelRt {
@@ -1441,62 +1432,49 @@ impl Engine {
         }
     }
 
-    /// Keep every channel's instrument output from now on (see
-    /// [`DryTrack`]); [`Engine::take_dry`] hands it over.
-    pub fn record_dry(&mut self) {
-        for ch in &mut self.channels {
-            ch.dry = Dry::Record(Box::new(DryRec::new()));
+    /// Keep each channel's instrument output from now on, into `outs` (one
+    /// per channel, in order); false, changing nothing, when they are not
+    /// one per channel. [`Engine::end_dry`] sends the last chunks.
+    pub fn record_dry(&mut self, outs: Vec<Box<dyn DryWrite>>) -> bool {
+        if outs.len() != self.channels.len() {
+            return false;
         }
+        for (ch, out) in self.channels.iter_mut().zip(outs) {
+            ch.dry = Dry::Record(Box::new(DryRec {
+                out,
+                stage: vec![0.0; DRY_CHUNK * 2],
+                fill: 0,
+            }));
+        }
+        true
     }
 
-    /// Memory the channels' kept outputs hold so far.
-    pub fn dry_bytes(&self) -> usize {
-        self.channels
-            .iter()
-            .map(|ch| match &ch.dry {
-                Dry::Record(r) => r.track.bytes() + r.stage.len() * 4,
-                _ => 0,
-            })
-            .sum()
-    }
-
-    /// Stop keeping the channels' outputs, dropping what was kept.
-    pub fn drop_dry(&mut self) {
+    /// Stop keeping or playing the channels' outputs: what is being kept
+    /// gets its last chunk.
+    pub fn end_dry(&mut self) {
         for ch in &mut self.channels {
-            if matches!(ch.dry, Dry::Record(_)) {
-                ch.dry = Dry::Off;
+            if let Dry::Record(mut rec) = std::mem::take(&mut ch.dry) {
+                if rec.fill > 0 {
+                    rec.flush();
+                }
             }
         }
-    }
-
-    /// The channels' outputs kept since [`Engine::record_dry`], in channel
-    /// order (empty when none were kept).
-    pub fn take_dry(&mut self) -> Vec<Arc<DryTrack>> {
-        if !self
-            .channels
-            .iter()
-            .all(|ch| matches!(ch.dry, Dry::Record(_)))
-        {
-            return vec![];
-        }
-        self.channels
-            .iter_mut()
-            .map(|ch| match std::mem::take(&mut ch.dry) {
-                Dry::Record(r) => Arc::new(r.finish()),
-                _ => Arc::new(DryTrack::default()),
-            })
-            .collect()
     }
 
     /// Play kept outputs (one per channel, in order, from their start)
     /// instead of the instruments; false, changing nothing, when they are
     /// not one per channel.
-    pub fn replay_dry(&mut self, tracks: &[Arc<DryTrack>]) -> bool {
-        if tracks.len() != self.channels.len() {
+    pub fn replay_dry(&mut self, srcs: Vec<Box<dyn DryRead>>) -> bool {
+        if srcs.len() != self.channels.len() {
             return false;
         }
-        for (ch, t) in self.channels.iter_mut().zip(tracks) {
-            ch.dry = Dry::Replay(t.clone(), 0);
+        for (ch, src) in self.channels.iter_mut().zip(srcs) {
+            ch.dry = Dry::Replay(Box::new(DryPlay {
+                src,
+                pos: 0,
+                at: usize::MAX,
+                buf: vec![0.0; DRY_CHUNK * 2],
+            }));
         }
         true
     }
@@ -1715,10 +1693,7 @@ fn play_channel(ch: &mut ChannelRt, n: usize) {
     ch.events.sort_by_key(|e| e.offset);
     let (bl, br) = (&mut ch.buf_l[..n], &mut ch.buf_r[..n]);
     match &mut ch.dry {
-        Dry::Replay(track, pos) => {
-            track.read(*pos, bl, br);
-            *pos += n;
-        }
+        Dry::Replay(play) => play.read(bl, br),
         dry => {
             bl.fill(0.0);
             br.fill(0.0);
