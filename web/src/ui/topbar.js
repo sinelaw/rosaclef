@@ -305,12 +305,7 @@ export function topbar(b) {
   });
   // While it renders: how far into the song, as a fill behind the label.
   b.style("--done", `${Math.round(jobFraction(exportJob) * 1000) / 10}%`);
-  b.leaf(
-    "span",
-    "t",
-    "",
-    exporting ? tf("topbar.export.progress.label", [String(Math.round(jobFraction(exportJob) * 100))]) : t("topbar.export.label")
-  );
+  b.leaf("span", "t", "", exporting ? tf("topbar.export.progress.label", [String(Math.round(jobFraction(exportJob) * 100))]) : t("topbar.export.label"));
   b.close();
   languageSwitch(b);
   b.close();

@@ -6,6 +6,7 @@
 
 import { jobProgress } from "#platform";
 import { invalidate } from "../store.js";
+import { t, tf } from "../i18n.js";
 
 /** The jobs being followed, as last heard. */
 /** const heard: Job[] */
@@ -57,14 +58,19 @@ function clock(s) {
 /** function jobLabel(id: Int) => String */
 export function jobLabel(id) {
   const j = jobOf(id);
-  if (!j.active) return "Preparing…";
-  const pct = `${Math.round(j.done * 100)}%`;
-  if (j.stage === "samples") return `Loading samples ${pct}`;
-  if (j.stage === "instruments") return `Loading instruments ${pct}`;
-  if (j.stage === "tail") return "Letting the effects ring out…";
-  if (j.stage === "measure") return "Measuring…";
-  const more = j.render > 1 ? ` (render ${j.render})` : "";
-  return j.total > 0 ? `Rendering ${clock(j.seconds)} of ${clock(j.total)} · ${pct}${more}` : `Rendering ${pct}${more}`;
+  if (!j.active) return t("progress.preparing");
+  const pct = String(Math.round(j.done * 100));
+  if (j.stage === "samples") return tf("progress.samples", [pct]);
+  if (j.stage === "instruments") return tf("progress.instruments", [pct]);
+  if (j.stage === "tail") return t("progress.tail");
+  if (j.stage === "measure") return t("progress.measuring");
+  // A mix check that renders more than once (a reference, a what-if) says which.
+  const nth = String(j.render);
+  if (j.total > 0)
+    return j.render > 1
+      ? tf("progress.rendering.timeNth", [clock(j.seconds), clock(j.total), pct, nth])
+      : tf("progress.rendering.time", [clock(j.seconds), clock(j.total), pct]);
+  return j.render > 1 ? tf("progress.rendering.nth", [pct, nth]) : tf("progress.rendering.plain", [pct]);
 }
 
 /** How far job `id` has come (0–1), for a bar: the render is most of it. */
