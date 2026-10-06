@@ -457,11 +457,10 @@ fn a_clash_names_the_notes_and_leaves_them_alone() {
     let cl = r.clashes.as_ref().unwrap();
     let c = cl
         .iter()
-        .find(|c| c.a.pattern == "tune" && c.a.note_index == 1)
+        .find(|c| c.a.pattern == "tune" && c.a.note_index == 1 && c.interval == "m9")
         .unwrap_or_else(|| panic!("{cl:?}"));
     assert_eq!(c.bar, 2);
     assert_eq!(c.a.pitch, "C#5");
-    assert_eq!(c.interval, "m9");
     // The notes are the song's: a mix check reports them, and its fixes
     // touch the mixer only.
     let f = r
@@ -882,4 +881,39 @@ fn findings_name_the_setting_at_fault_and_verify_their_fixes() {
     let text = mixcheck::text::summary(&r);
     assert!(text.contains("verified: resolved"), "{text}");
     assert!(text.lines().count() <= 40, "{text}");
+}
+
+#[test]
+fn a_lead_buried_in_part_of_the_song_is_found_there() {
+    let dir = scratch("stretch");
+    let mut v: Value = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    // The tune twice (bars 2-3 and 6-7), the lead well in the mix, and an
+    // automation dip on its insert from bar 5: buried there only.
+    v["channels"][2]["volume"] = json!(1.0);
+    v["playlist"]["clips"][0]["length"] = json!(32);
+    let again = json!({"pattern": "tune", "start": 20, "length": 8, "track": 1});
+    v["playlist"]["clips"].as_array_mut().unwrap().push(again);
+    v["automation"] = json!([{"id": "dip", "name": "Dip", "target": "insert/3/volume",
+        "points": [{"beat": 0, "value": 1.0}, {"beat": 16, "value": 1.0},
+                   {"beat": 16.01, "value": 0.15}, {"beat": 32, "value": 0.15}]}]);
+    let p: Project = serde_json::from_value(v).unwrap();
+    let r = check(&dir, &p, json!({}));
+    let lead = element(&r, "channel:lead");
+    assert!(lead.lead && lead.verdict == "buried", "{lead:?}");
+    assert!(
+        lead.relative_to_mix_db.flatten().unwrap() >= -10.0,
+        "the whole song hides it: {lead:?}"
+    );
+    assert!(
+        !lead.buried_in.is_empty() && lead.buried_in.iter().all(|u| u.from_bar >= 5),
+        "{:?}",
+        lead.buried_in
+    );
+    let f = finding(&r, "masked-lead");
+    assert!(
+        f.at.contains("bars 6") || f.at.contains("bars 5"),
+        "{}",
+        f.at
+    );
+    assert!(f.from_bar.unwrap() >= 5, "{f:?}");
 }

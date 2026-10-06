@@ -63,15 +63,6 @@ impl Threshold {
             Threshold::Loose => -13.0,
         }
     }
-    /// Share of its own loudness an element must keep in the mix to count
-    /// as audible in a hop.
-    pub fn theta(self) -> f64 {
-        match self {
-            Threshold::Strict => 0.25,
-            Threshold::Normal => 0.15,
-            Threshold::Loose => 0.08,
-        }
-    }
 }
 
 /// The most findings a report lists.

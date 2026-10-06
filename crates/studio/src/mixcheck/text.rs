@@ -11,7 +11,20 @@ fn verified(v: &Value) -> String {
     if let Some(e) = v.get("error").and_then(|x| x.as_str()) {
         return format!("does not apply ({e})");
     }
-    let summary = v.get("summary").and_then(|x| x.as_str()).unwrap_or("");
+    let new: Vec<&str> = v
+        .get("new")
+        .and_then(|x| x.as_array())
+        .map(|a| a.iter().filter_map(|k| k.as_str()).collect())
+        .unwrap_or_default();
+    let summary = format!(
+        "{}{}",
+        v.get("summary").and_then(|x| x.as_str()).unwrap_or(""),
+        if new.is_empty() {
+            String::new()
+        } else {
+            format!(" (new: {})", new.join(", "))
+        }
+    );
     match v.get("resolved").and_then(|x| x.as_bool()) {
         Some(true) => format!("resolved — {summary}"),
         Some(false) => format!(

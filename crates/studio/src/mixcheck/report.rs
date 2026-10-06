@@ -228,10 +228,24 @@ pub struct ElementOut {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audibility: Option<AudibilityOut>,
     pub level: LevelOut,
+    /// The lead only: the stretches (sections, or 4 bars) where it sits
+    /// under the floor, when the whole range's level hides them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub buried_in: Vec<UnderMix>,
     /// inaudible | buried | ok | dominant | overloading
     pub verdict: &'static str,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub suggestions: Vec<Suggestion>,
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UnderMix {
+    pub from_bar: u32,
+    pub to_bar: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pass: Option<u32>,
+    pub relative_to_mix_db: f64,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -273,6 +287,9 @@ pub struct ClashOut {
     /// Why the chord makes it a colour (ranked low).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub idiom: Option<&'static str>,
+    /// A wrong note: not in the chord, held, resolving nowhere (ranked high).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub out_of_chord: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub also_in_bars: Vec<u32>,
 }
@@ -540,6 +557,116 @@ fn focused(mix: &Mix, p: &Project, focus: &[String]) -> Result<(Vec<Element>, bo
     Ok((out, master))
 }
 
+/// Where a part sits under the mix stretch by stretch.
+struct Under {
+    stretches: Vec<UnderMix>,
+    /// The blocks of those stretches, and its level against the mix there.
+    blocks: Vec<usize>,
+    rel: f64,
+    /// Their share of the blocks where it plays.
+    share: f64,
+}
+
+/// A part's level against the mix per section (per 4 bars without
+/// sections: phrases), each pass apart: the stretches under `floor`, merged.
+fn under_mix(
+    mix: &Mix,
+    t: &Timeline,
+    sections: &[timeline::Section],
+    e: &Element,
+    blocks: &[usize],
+    floor: f64,
+) -> Option<Under> {
+    let a = mix.a;
+    let own = |b: usize| -> f64 { e.units.iter().map(|u| mix.unit_kms(*u, b)).sum() };
+    let loudest = blocks.iter().map(|b| own(*b)).fold(0.0, f64::max);
+    if loudest <= 0.0 {
+        return None;
+    }
+    // A stretch and pass: its blocks where the part plays, the part's
+    // energy there and the mix's.
+    struct Stretch {
+        key: (i64, u32),
+        blocks: Vec<usize>,
+        part: f64,
+        mix: f64,
+    }
+    let mut groups: Vec<Stretch> = vec![];
+    let mut playing = 0usize;
+    for &b in blocks {
+        let x = own(b);
+        if x <= loudest * 1e-4 {
+            continue;
+        }
+        playing += 1;
+        let pos = a.lblocks[b];
+        let bar = t.bar_of(pos.beat) as i64;
+        let k = sections
+            .iter()
+            .position(|s| pos.beat >= s.start - 1e-6 && pos.beat < s.end - 1e-6)
+            .map(|i| i as i64)
+            .unwrap_or(1000 + (bar - 1) / 4);
+        let key = (k, t.pass_of(pos.span as usize, pos.beat));
+        let m = a.kms_at(mix.master_pre, b) as f64;
+        match groups.last_mut().filter(|g| g.key == key) {
+            Some(g) => {
+                g.blocks.push(b);
+                g.part += x;
+                g.mix += m;
+            }
+            None => groups.push(Stretch {
+                key,
+                blocks: vec![b],
+                part: x,
+                mix: m,
+            }),
+        }
+    }
+    // At least 2 s of it in a stretch to judge it.
+    let under: Vec<&Stretch> = groups
+        .iter()
+        .filter(|g| g.blocks.len() >= 20 && g.mix > 0.0 && dsp::db(g.part / g.mix) < floor)
+        .collect();
+    if under.is_empty() || playing == 0 {
+        return None;
+    }
+    let bar = |b: usize| t.bar_of(a.lblocks[b].beat);
+    let mut stretches: Vec<UnderMix> = vec![];
+    for g in &under {
+        let (from, to) = (
+            bar(g.blocks[0]),
+            bar(*g.blocks.last().unwrap_or(&g.blocks[0])),
+        );
+        let pass = (g.key.1 > 1).then_some(g.key.1);
+        let rel = r1(dsp::db(g.part / g.mix));
+        match stretches.last_mut() {
+            Some(s) if s.to_bar + 1 >= from && s.pass == pass && from >= s.from_bar => {
+                s.to_bar = to;
+                s.relative_to_mix_db = s.relative_to_mix_db.min(rel);
+            }
+            _ => stretches.push(UnderMix {
+                from_bar: from,
+                to_bar: to,
+                pass,
+                relative_to_mix_db: rel,
+            }),
+        }
+    }
+    let blocks: Vec<usize> = under
+        .iter()
+        .flat_map(|g| g.blocks.iter().copied())
+        .collect();
+    let (x, m) = under
+        .iter()
+        .fold((0.0, 0.0), |(x, m), g| (x + g.part, m + g.mix));
+    Some(Under {
+        stretches,
+        share: blocks.len() as f64 / playing as f64,
+        blocks,
+        rel: dsp::db(x / m),
+    })
+}
+
 /// The song's lead: the part named like one (lead, vocal, melody, topline,
 /// solo), else the loudest the Critic reads as a lead. One song, one lead;
 /// other melodic parts are judged as parts.
@@ -804,7 +931,7 @@ pub fn build<'a>(
     let want_aud = o.has(Check::Audibility) || o.has(Check::Masking);
     let ear = Ear::default();
     let (aud, _) = if want_aud {
-        model::audibility(&mix, &ear, o.threshold.theta(), &elements, &[])
+        model::audibility(&mix, &ear, model::AUDIBLE_SHARE, &elements, &[])
     } else {
         (vec![Audibility::default(); elements.len()], vec![])
     };
@@ -820,6 +947,7 @@ pub fn build<'a>(
     let lead = lead_of(&mix, &roles, &hops);
     let lead_floor = o.threshold.lead_floor_db();
     let mut outs: Vec<(ElementOut, usize)> = vec![];
+    let mut unders: Vec<Option<Under>> = vec![];
     let mut kept_aud = vec![];
     for (i, e) in elements.iter().enumerate() {
         let levels: Vec<f64> = hops
@@ -853,11 +981,19 @@ pub fn build<'a>(
         let au = &aud[i];
         let frac = au.fraction();
         let is_lead = lead.as_deref() == Some(e.id.as_str());
+        // A lead under the mix only in its choruses (say) is hidden by the
+        // whole range's level: it is judged stretch by stretch too.
+        let under = is_lead
+            .then(|| under_mix(&mix, t, &sections, e, &blocks, lead_floor))
+            .flatten();
         let verdict = if want_aud && frac < inaudible_at {
             "inaudible"
         } else if want_aud && frac < buried_at {
             "buried"
-        } else if is_lead && rel.is_some_and(|r| r < lead_floor) {
+        } else if is_lead
+            && (rel.is_some_and(|r| r < lead_floor)
+                || under.as_ref().is_some_and(|u| u.share >= 0.2))
+        {
             // Heard, but far under the mix: a lead the song leans on.
             "buried"
         } else if own_peak > 1.0 || (overloaded && share >= 0.4) {
@@ -913,6 +1049,14 @@ pub fn build<'a>(
         if want_aud {
             out.audibility = Some(audibility_out(&mix, au, o));
         }
+        // The stretches tell what the whole range's level hides.
+        if let Some(u) = under
+            .as_ref()
+            .filter(|_| !rel.is_some_and(|r| r < lead_floor))
+        {
+            out.buried_in = u.stretches.clone();
+        }
+        unders.push(under);
         kept_aud.push((e.id.clone(), au.clone()));
         outs.push((out, i));
     }
@@ -951,10 +1095,14 @@ pub fn build<'a>(
             }
             cuts.push(cut);
             // A lead under the mix: its balance, as one change.
+            // Over the whole range, or over the stretches where it is under.
             let rel = outs[k].0.relative_to_mix_db.flatten();
-            let bal = match rel {
-                Some(r) if outs[k].0.lead && r < lead_floor => {
+            let bal = match (rel, &unders[k]) {
+                (Some(r), _) if outs[k].0.lead && r < lead_floor => {
                     super::findings::balance(p, &mix, &blocks, &elements[ei], au, r)
+                }
+                (_, Some(u)) if outs[k].0.lead && u.share >= 0.2 => {
+                    super::findings::balance(p, &mix, &u.blocks, &elements[ei], au, u.rel)
                 }
                 _ => None,
             };
@@ -965,7 +1113,7 @@ pub fn build<'a>(
             trial_elems.push(elements[ei].clone());
             trials.push(t);
         }
-        let (_, fr) = model::audibility(&mix, &ear, o.threshold.theta(), &trial_elems, &trials);
+        let (_, fr) = model::audibility(&mix, &ear, model::AUDIBLE_SHARE, &trial_elems, &trials);
         for (n, &k) in flagged.iter().enumerate() {
             let e = &trial_elems[n];
             let (out, _) = &mut outs[k];
@@ -1134,6 +1282,7 @@ fn clash_out(p: &Project, t: &Timeline, c: &clashes::Clash) -> ClashOut {
         overlap_beats: (c.overlap * 100.0).round() / 100.0,
         severity: c.severity,
         idiom: c.idiom,
+        out_of_chord: c.out_of_chord.clone(),
         also_in_bars: also,
     }
 }

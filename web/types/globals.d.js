@@ -268,9 +268,9 @@
 /** type MixMasker = { id: String, lo: Number, hi: Number, db: Number } */
 /** A change the mix check suggests: `patch` is JSON Patch text; `verified` a summary once re-measured. */
 /** type MixSuggestion = { why: String, patch: String, expRel: Number, expAud: Number, verified: String } */
-/** type MixElement = { id: String, name: String, kind: String, role: String, lead: Boolean, insert: Int, rms: Number, peak: Number, lufs: Number, rel: Number, share: Number, active: Number, corr: Number, audible: Number, maskers: MixMasker[], domLo: Number, domHi: Number, fader: Number, verdict: String, suggestions: MixSuggestion[] } */
+/** type MixElement = { id: String, name: String, kind: String, role: String, lead: Boolean, buriedIn: { from: Int, to: Int, rel: Number }[], insert: Int, rms: Number, peak: Number, lufs: Number, rel: Number, share: Number, active: Number, corr: Number, audible: Number, maskers: MixMasker[], domLo: Number, domHi: Number, fader: Number, verdict: String, suggestions: MixSuggestion[] } */
 /** type MixNote = { channel: String, pattern: String, note: Int, pitch: String, level: Number } */
-/** type MixClash = { bar: Int, beat: Number, pass: Int, beatInBar: Number, a: MixNote, b: MixNote, interval: String, overlap: Number, severity: String, idiom: String, also: Int[] } */
+/** type MixClash = { bar: Int, beat: Number, pass: Int, beatInBar: Number, a: MixNote, b: MixNote, interval: String, overlap: Number, severity: String, idiom: String, wrong: String, also: Int[] } */
 /** type MixFinding = { severity: String, rule: String, key: String, where: String, detail: String, element: String, fromBar: Int, fromBeat: Number, patch: String, label: String } */
 /** type MixMaster = { integrated: Number, shortMax: Number, momentaryMax: Number, truePeak: Number, samplePeak: Number, rms: Number, preLimiter: Number, preEffects: Number, limGr: MixGr, compGr: MixGr, plr: Number, crest: Number, lra: Number, corrMean: Number, corrMin: Number, monoLoss: Number, spectrum: Number[] } */
 /** A delivery target's verdict: `status` pass, warn or fail; `gain` what the platform applies (dB). */

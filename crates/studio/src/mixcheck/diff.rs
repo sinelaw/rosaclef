@@ -28,7 +28,7 @@ pub fn diff(base: &Report, now: &Report) -> Value {
     let a = serde_json::to_value(base).unwrap_or(Value::Null);
     let b = serde_json::to_value(now).unwrap_or(Value::Null);
     let mut master = Map::new();
-    let fields: [(&str, &[&str]); 9] = [
+    let fields: [(&str, &[&str]); 10] = [
         ("integratedLufs", &["master", "integratedLufs"]),
         ("shortTermLufsMax", &["master", "shortTermLufsMax"]),
         ("truePeakDbtp", &["master", "truePeakDbtp"]),
@@ -44,6 +44,10 @@ pub fn diff(base: &Report, now: &Report) -> Value {
         (
             "limiterPctTimeAbove3",
             &["master", "limiterGainReductionDb", "pctTimeAbove3"],
+        ),
+        (
+            "compressorGainReductionMeanDb",
+            &["master", "compressorGainReductionDb", "mean"],
         ),
         ("plrDb", &["master", "plrDb"]),
         ("lra", &["master", "lra"]),
@@ -142,6 +146,36 @@ pub fn diff(base: &Report, now: &Report) -> Value {
             "pre-limiter peak {:+.1} dB",
             d.as_f64().unwrap_or(0.0)
         ));
+    }
+    // Dynamics, when they move by 1 dB (LU) or more.
+    for (name, label, unit) in [
+        ("lra", "LRA", "LU"),
+        ("plrDb", "PLR", "dB"),
+        (
+            "compressorGainReductionMeanDb",
+            "master compressor mean reduction",
+            "dB",
+        ),
+        ("limiterGainReductionMeanDb", "limiter mean reduction", "dB"),
+    ] {
+        if let Some(d) = master.get(name) {
+            if d.get("delta")
+                .and_then(|x| x.as_f64())
+                .is_some_and(|x| x.abs() >= 1.0)
+            {
+                summary.push(format!(
+                    "{label} {} → {} {unit}",
+                    d["from"]
+                        .as_f64()
+                        .map(|x| format!("{x:.1}"))
+                        .unwrap_or("—".into()),
+                    d["to"]
+                        .as_f64()
+                        .map(|x| format!("{x:.1}"))
+                        .unwrap_or("—".into())
+                ));
+            }
+        }
     }
     for e in elements.iter().take(3) {
         if let Some(d) = e.get("audibleFractionPct") {

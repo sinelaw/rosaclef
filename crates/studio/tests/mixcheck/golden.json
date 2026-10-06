@@ -348,7 +348,8 @@
       },
       "interval": "m9",
       "overlapBeats": 2.0,
-      "severity": "high"
+      "severity": "high",
+      "outOfChord": "C#5 is not in the chord the other parts play (C E G) and is held 2.0 beats"
     },
     {
       "bar": 2,
@@ -372,7 +373,8 @@
       },
       "interval": "TT",
       "overlapBeats": 2.0,
-      "severity": "medium"
+      "severity": "high",
+      "outOfChord": "C#5 is not in the chord the other parts play (C E G) and is held 2.0 beats"
     }
   ],
   "findings": [
@@ -447,7 +449,7 @@
       "rule": "harmonic-clash",
       "key": "harmonic-clash|tune:1|tune:3",
       "where": "bar 2",
-      "detail": "lead C#5 (pattern tune, note 1) against pad C4 (pattern tune, note 3): m9 held 2.00 beats, the quieter at -11.5 dB against the mix.",
+      "detail": "lead C#5 (pattern tune, note 1) against pad C4 (pattern tune, note 3): m9 held 2.00 beats, the quieter at -11.5 dB against the mix. lead C#5 is not in the chord the other parts play (C E G) and is held 2.0 beats: a wrong note, not a colour",
       "element": "channel:lead",
       "fromBar": 2,
       "toBar": 2,

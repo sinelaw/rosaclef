@@ -380,6 +380,7 @@ pub fn compare(
 /// Whether a report has warnings (exit status 1).
 pub fn has_warnings(r: &Report) -> bool {
     r.findings.iter().any(|f| f.severity == "warn")
+        || r.target.as_ref().is_some_and(|t| t.status != "pass")
 }
 
 /// A request object (the endpoint's body) run on `current` (unless it

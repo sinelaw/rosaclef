@@ -589,6 +589,11 @@ pub fn excitations(mix: &Mix, ear: &Ear, h: usize) -> HopExcitation {
     }
 }
 
+/// Share of its own loudness a part must keep in the mix to count as
+/// audible in a frame: one measure for every threshold (the threshold moves
+/// the verdicts' cut-offs, not what is measured).
+pub const AUDIBLE_SHARE: f64 = 0.15;
+
 /// A change to try in the model: the element louder by `gain_db`, and a
 /// masker cut by `cut[z]` (power factors per band).
 #[derive(Clone, Debug)]

@@ -501,6 +501,33 @@
               "automated"
             ]
           },
+          "buriedIn": {
+            "type": "array",
+            "description": "The lead only: the stretches (sections, or 4 bars without them; each pass apart) where it sits under the floor while the whole range's level hides it.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fromBar": {
+                  "type": "integer"
+                },
+                "toBar": {
+                  "type": "integer"
+                },
+                "pass": {
+                  "type": "integer"
+                },
+                "relativeToMixDb": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "fromBar",
+                "toBar",
+                "relativeToMixDb"
+              ]
+            }
+          },
           "verdict": {
             "enum": [
               "inaudible",
@@ -719,6 +746,10 @@
           "idiom": {
             "type": "string",
             "description": "Why the chord makes the interval a colour, not a mistake (the clash ranks low)."
+          },
+          "outOfChord": {
+            "type": "string",
+            "description": "A wrong note: one of the two is not in the chord the other parts play, lasts 1.5 beats or more and resolves nowhere (the clash ranks high)."
           },
           "alsoInBars": {
             "type": "array",

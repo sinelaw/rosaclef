@@ -40,8 +40,103 @@ pub struct Clash {
     /// The chord makes it a colour, not a mistake (a ♯11 on a dominant
     /// seventh, a major seventh's seventh, …): it ranks low.
     pub idiom: Option<&'static str>,
+    /// A note foreign to the chord the others play, held, and resolving
+    /// nowhere: a wrong note (it ranks high), said in words.
+    pub out_of_chord: Option<String>,
     /// Other places the same two notes clash: (bar, pass).
     pub also: Vec<(u32, u32)>,
+}
+
+/// The pitch classes sounding at `at`, but note `skip`'s.
+fn chord_at(notes: &[Played], at: f64, skip: usize) -> Vec<i32> {
+    let mut pcs: Vec<(i32, i32)> = notes
+        .iter()
+        .enumerate()
+        .filter(|(i, n)| *i != skip && n.from <= at + 1e-3 && n.to > at + 1e-3)
+        .map(|(_, n)| (n.pitch, n.pitch.rem_euclid(12)))
+        .collect();
+    pcs.sort();
+    let mut out: Vec<i32> = vec![];
+    for (_, pc) in pcs {
+        if !out.contains(&pc) {
+            out.push(pc);
+        }
+    }
+    out
+}
+
+/// The next note of note `k`'s part (the next to start, even while `k`
+/// still sounds: legato), the nearest in pitch among notes starting together.
+fn next_in_part(notes: &[Played], k: usize) -> Option<&Played> {
+    let x = &notes[k];
+    let start = notes[k + 1..]
+        .iter()
+        .filter(|n| n.channel == x.channel && n.from > x.from + 1e-6)
+        .map(|n| n.from)
+        .fold(f64::INFINITY, f64::min);
+    notes[k + 1..]
+        .iter()
+        .filter(|n| n.channel == x.channel && (n.from - start).abs() < 1e-6)
+        .min_by_key(|n| (n.pitch - x.pitch).abs())
+}
+
+/// Note `k` began earlier, on a chord it belonged to, overlaps the next and
+/// then moves by step: a suspension (held over, and resolving).
+fn held_over(notes: &[Played], k: usize, at: f64) -> bool {
+    let x = &notes[k];
+    let resolves =
+        next_in_part(notes, k).is_some_and(|n| (1..=2).contains(&(n.pitch - x.pitch).abs()));
+    x.from < at - 0.25 && resolves && chord_at(notes, x.from, k).contains(&x.pitch.rem_euclid(12))
+}
+
+/// Note `k` against note `other`: the others play a plain major or minor
+/// triad (`other` in it), and `k` is not in it but a semitone from one of
+/// its notes that two parts or more sound; it lasts 1.5 beats or more and
+/// does not resolve by step to a chord tone — a wrong note, not a colour
+/// (extended and altered chords are left alone). Its description.
+fn wrong_note(notes: &[Played], k: usize, other: usize, at: f64) -> Option<String> {
+    let x = &notes[k];
+    let chord = chord_at(notes, at, k);
+    let pc = |p: i32| p.rem_euclid(12);
+    if chord.contains(&pc(x.pitch)) || !chord.contains(&pc(notes[other].pitch)) {
+        return None;
+    }
+    let triad = chord.len() == 3
+        && chord.iter().any(|r| {
+            let has = |i: i32| chord.contains(&(r + i).rem_euclid(12));
+            has(7) && (has(4) || has(3))
+        });
+    if !triad {
+        return None;
+    }
+    let sounding = |p: i32| {
+        notes
+            .iter()
+            .enumerate()
+            .filter(|(i, n)| *i != k && n.from <= at + 1e-3 && n.to > at + 1e-3 && pc(n.pitch) == p)
+            .count()
+    };
+    let rubs = chord
+        .iter()
+        .any(|c| matches!((c - pc(x.pitch)).rem_euclid(12), 1 | 11) && sounding(*c) >= 2);
+    if !rubs {
+        return None;
+    }
+    if x.length < 1.5 - 1e-9 {
+        return None;
+    }
+    let resolves = next_in_part(notes, k)
+        .is_some_and(|n| (n.pitch - x.pitch).abs() <= 2 && chord.contains(&pc(n.pitch)));
+    if resolves {
+        return None;
+    }
+    let names: Vec<&str> = chord.iter().map(|p| NAMES[*p as usize]).collect();
+    Some(format!(
+        "{} is not in the chord the other parts play ({}) and is held {:.1} beats",
+        note_name(x.pitch),
+        names.join(" "),
+        x.length
+    ))
 }
 
 /// The lowest note sounding at `at` (performance beats).
@@ -292,12 +387,25 @@ pub fn find(
             if !semitone && sev > 0 {
                 sev -= 1;
             }
-            let colour = idiom(notes, from, m.pitch, n.pitch).or_else(|| {
-                (passing(notes, i) || passing(notes, j))
-                    .then_some("a passing or approach note (by step, a beat or less)")
-            });
+            let colour = idiom(notes, from, m.pitch, n.pitch)
+                .or_else(|| {
+                    (passing(notes, i) || passing(notes, j))
+                        .then_some("a passing or approach note (by step, a beat or less)")
+                })
+                .or_else(|| {
+                    (held_over(notes, i, from) || held_over(notes, j, from))
+                        .then_some("a note held over from the chord before (a suspension)")
+                });
+            // A note foreign to the chord, held and going nowhere, against a
+            // chord tone: a wrong note, whatever the levels say.
+            let wrong = colour
+                .is_none()
+                .then(|| wrong_note(notes, i, j, from).or_else(|| wrong_note(notes, j, i, from)))
+                .flatten();
             if colour.is_some() {
                 sev = 0;
+            } else if wrong.is_some() {
+                sev = 2;
             }
             let (hi, lo, hd, ld) = if m.pitch >= n.pitch {
                 (m.clone(), n.clone(), da, db)
@@ -316,6 +424,7 @@ pub fn find(
                 weight,
                 severity: ["low", "medium", "high"][sev],
                 idiom: colour,
+                out_of_chord: wrong,
                 also: vec![],
             });
         }
@@ -400,6 +509,56 @@ mod tests {
             n(1, 60, 0.0, 2.0),
         ];
         assert!(idiom(&bad, 0.5, 56, 43).is_none());
+    }
+
+    fn sorted(mut v: Vec<Played>) -> Vec<Played> {
+        v.sort_by(|a, b| a.from.total_cmp(&b.from).then(a.pitch.cmp(&b.pitch)));
+        v
+    }
+
+    fn at(v: &[Played], channel: usize, pitch: i32) -> usize {
+        v.iter()
+            .position(|n| n.channel == channel && n.pitch == pitch)
+            .unwrap()
+    }
+
+    #[test]
+    fn a_wrong_note_is_not_a_suspension() {
+        // A♭ major (A♭ in the bass, the keys and the flute), the strings
+        // holding A5 for the bar: wrong.
+        let v = sorted(vec![
+            n(0, 32, 0.0, 4.0),
+            n(1, 60, 0.0, 4.0),
+            n(1, 63, 0.0, 4.0),
+            n(1, 68, 0.0, 4.0),
+            n(2, 80, 0.0, 1.0),
+            n(3, 72, 0.0, 4.0),
+            n(3, 81, 0.0, 4.0),
+        ]);
+        let (a5, gs5) = (at(&v, 3, 81), at(&v, 2, 80));
+        assert!(wrong_note(&v, a5, gs5, 0.0).is_some());
+        // E♭5 held over from an E♭ chord into B♭, resolving to D5: a
+        // suspension.
+        let w = sorted(vec![
+            n(0, 39, -4.0, 0.0),
+            n(1, 55, -4.0, 0.0),
+            n(2, 75, -2.0, 1.0),
+            n(2, 74, 0.5, 2.0),
+            n(0, 46, 0.0, 4.0),
+            n(1, 62, 0.0, 4.0),
+            n(1, 65, 0.0, 4.0),
+            n(3, 62, 0.0, 4.0),
+        ]);
+        assert!(held_over(&w, at(&w, 2, 75), 0.0));
+        // An extended jazz voicing (G with A, C, E♭ over it): left alone.
+        let j = sorted(vec![
+            n(0, 43, 0.0, 4.0),
+            n(1, 57, 0.0, 4.0),
+            n(1, 60, 0.0, 4.0),
+            n(1, 63, 0.0, 4.0),
+            n(2, 54, 0.0, 4.0),
+        ]);
+        assert!(wrong_note(&j, at(&j, 2, 54), at(&j, 0, 43), 0.0).is_none());
     }
 
     #[test]

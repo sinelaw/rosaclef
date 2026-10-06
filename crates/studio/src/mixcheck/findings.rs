@@ -127,9 +127,22 @@ fn eq_ops(
     db: f64,
     (freq_key, freq): (&str, f64),
     extra: &[(&str, f64)],
-) -> Vec<Value> {
+) -> (Vec<Value>, String) {
     let fx = &p.mixer.inserts[insert].effects;
     let path = |j: usize, k: &str| format!("/mixer/inserts/{insert}/effects/{j}/params/{k}");
+    let on = model::insert_id(p, insert);
+    let kind = match band {
+        "low" => "low-shelf",
+        "high" => "high-shelf",
+        _ => "bell",
+    };
+    let move_ = |x: f64| {
+        if x < 0.0 {
+            format!("{:.1} dB {kind} cut", -x)
+        } else {
+            format!("{x:.1} dB {kind} boost")
+        }
+    };
     let eqs = || {
         fx.iter()
             .enumerate()
@@ -141,13 +154,23 @@ fn eq_ops(
             set(path(j, freq_key), json!(r1(freq))),
         ];
         ops.extend(extra.iter().map(|(k, v)| set(path(j, k), json!(r1(*v)))));
-        return ops;
+        return (
+            ops,
+            format!("a {} at {freq:.0} Hz with the EQ on {on}", move_(db)),
+        );
     }
-    // Within half an octave: the same move, made deeper.
+    // Within half an octave: the same band moved, at its own frequency.
     if let Some((j, d)) =
         eqs().find(|(_, d)| (d.param(freq_key).max(1.0) / freq).log2().abs() <= 0.5)
     {
-        return vec![set(path(j, band), json!(r1(d.param(band) + db)))];
+        let (now, to) = (d.param(band), r1(d.param(band) + db));
+        return (
+            vec![set(path(j, band), json!(to))],
+            format!(
+                "the {band} band of the EQ on {on} ({:.0} Hz) from {now:+.1} to {to:+.1} dB",
+                d.param(freq_key)
+            ),
+        );
     }
     let mut ps = serde_json::Map::new();
     ps.insert(band.to_string(), json!(r1(db)));
@@ -155,9 +178,12 @@ fn eq_ops(
     for (k, v) in extra {
         ps.insert(k.to_string(), json!(r1(*v)));
     }
-    vec![
-        json!({"op": "add", "path": effect_slot(p, insert), "value": {"type": "eq", "params": ps}}),
-    ]
+    (
+        vec![
+            json!({"op": "add", "path": effect_slot(p, insert), "value": {"type": "eq", "params": ps}}),
+        ],
+        format!("a new EQ on {on}: a {} at {freq:.0} Hz", move_(db)),
+    )
 }
 
 /// The masker to cut for an element: its strongest masker on an insert of
@@ -275,6 +301,23 @@ pub fn balance(
         .collect();
     downs.sort_by(|a, b| (b.1 + b.2).total_cmp(&(a.1 + a.2)));
     downs.truncate(2);
+    // A masker's EQ boosting the range where it covers the lead is the
+    // first cause: that band back to +2 dB. Its effect on the masker's
+    // energy: the share of it in the boosted band, cut by as much.
+    let eq = au
+        .maskers
+        .iter()
+        .take(3)
+        .filter(|m| !e.units.contains(&m.unit))
+        .filter_map(|m| eq_boost_over(p, mix, m.unit, &m.bands).map(|b| (m.unit, b)))
+        .max_by(|a, b| a.1.boost.total_cmp(&b.1.boost));
+    let eq_factor = |u: usize| match &eq {
+        Some((v, b)) if *v == u => {
+            let share = band_share(mix, u, b.freq);
+            1.0 - share + share * 10f64.powf(-(b.boost - EQ_KEEP) / 10.0)
+        }
+        _ => 1.0,
+    };
     // How far each other part comes down: its boost back to unity, and
     // `under` more for the parts over the lead.
     let cut = |u: usize, under: f64| {
@@ -295,7 +338,7 @@ pub fn balance(
                 } else {
                     -cut(u, under)
                 };
-                x * 10f64.powf(g / 10.0)
+                x * eq_factor(u) * 10f64.powf(g / 10.0)
             })
             .sum();
         rel + lift - dsp::db(after / total)
@@ -317,6 +360,21 @@ pub fn balance(
     }
     let mut ops = vec![];
     let mut said = vec![];
+    if let Some((u, b)) = &eq {
+        ops.push(set(
+            format!(
+                "/mixer/inserts/{}/effects/{}/params/{}",
+                mix.units[*u].insert, b.effect, b.band
+            ),
+            json!(EQ_KEEP),
+        ));
+        said.push(format!(
+            "{}'s EQ boost of {:+.1} dB at {:.0} Hz down to {EQ_KEEP:+.1} dB",
+            short_name(p, mix, *u),
+            b.boost,
+            b.freq
+        ));
+    }
     for &(u, ins, ch) in &downs {
         let unit = &mix.units[u];
         // Unity, and lower still with the others when they come down.
@@ -380,10 +438,82 @@ pub fn balance(
         ),
         change: Change {
             gain_db: lift,
-            masker: masker.map(|(u, d)| (u, [10f64.powf(-d / 10.0); BARKS])),
+            // The EQ's masker when there is one (the cause), with its fader
+            // cut too; else the part brought down most.
+            masker: match &eq {
+                Some((u, b)) => {
+                    let d = cut(*u, under);
+                    Some((
+                        *u,
+                        std::array::from_fn(|z| {
+                            let f = dsp::bark_centre(z) as f64;
+                            let near = (f / b.freq).log2().abs() <= 1.0;
+                            10f64.powf(-(d + if near { b.boost - EQ_KEEP } else { 0.0 }) / 10.0)
+                        }),
+                    ))
+                }
+                None => masker.map(|(u, d)| (u, [10f64.powf(-d / 10.0); BARKS])),
+            },
         },
         expected_rel: expected,
     })
+}
+
+/// What an EQ boost the balance takes back keeps (dB): a touch of presence.
+const EQ_KEEP: f64 = 2.0;
+
+/// An EQ band boosted 6 dB or more on a unit's insert, within an octave of
+/// the bands where it covers the lead.
+struct EqBoost {
+    effect: usize,
+    band: &'static str,
+    freq: f64,
+    boost: f64,
+}
+
+fn eq_boost_over(p: &Project, mix: &Mix, u: usize, bands: &[f64; BARKS]) -> Option<EqBoost> {
+    let insert = mix.units[u].insert;
+    if insert == 0 {
+        return None;
+    }
+    let (lo, hi) = band_span(bands, 0.15);
+    let [f_lo, f_hi] = model::band_hz(lo, hi);
+    p.mixer.inserts[insert]
+        .effects
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| d.enabled && d.kind == "eq")
+        .flat_map(|(j, d)| {
+            [("low", "lowFreq"), ("mid", "midFreq"), ("high", "highFreq")]
+                .into_iter()
+                .map(move |(band, fk)| EqBoost {
+                    effect: j,
+                    band,
+                    freq: d.param(fk),
+                    boost: d.param(band),
+                })
+        })
+        .filter(|b| b.boost >= 6.0 && b.freq >= f_lo / 2.0 && b.freq <= f_hi * 2.0)
+        .max_by(|a, b| a.boost.total_cmp(&b.boost))
+}
+
+/// The share of a unit's energy (over the range) in the six-band region
+/// holding `freq`.
+fn band_share(mix: &Mix, u: usize, freq: f64) -> f64 {
+    let edges = [60.0, 250.0, 500.0, 2000.0, 6000.0];
+    let k = edges.iter().filter(|e| freq >= **e).count();
+    let mut six = [0.0; dsp::BANDS];
+    for &h in &mix.inside {
+        for (a, b) in six.iter_mut().zip(mix.unit_six(u, h)) {
+            *a += b;
+        }
+    }
+    let total: f64 = six.iter().sum();
+    if total > 0.0 {
+        six[k] / total
+    } else {
+        0.0
+    }
 }
 
 /// Concrete changes for a buried or inaudible element, with what the model
@@ -425,14 +555,13 @@ pub fn suggestions(
         let unit = &mix.units[*u];
         let insert = unit.insert;
         if f >= now + 0.05 && insert > 0 {
+            let (patch, what) = eq_ops(p, insert, "mid", -6.0, ("midFreq", *f0), &[("midQ", *q)]);
             s.push(Suggestion {
                 why: format!(
-                    "{} covers it around {:.0} Hz: a 6 dB cut there on {} clears it",
-                    unit.id,
-                    f0,
-                    model::insert_id(p, insert)
+                    "{} covers it around {:.0} Hz: {what} clears it",
+                    unit.id, f0
                 ),
-                patch: eq_ops(p, insert, "mid", -6.0, ("midFreq", *f0), &[("midQ", *q)]),
+                patch,
                 expected_relative_to_mix_db: rel,
                 expected_audible_fraction_pct: Some(pct(f)),
                 verified: None,
@@ -993,15 +1122,35 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     dev.param("ratio").max(1.01),
                     dev.param("makeup"),
                 );
-                let to = r1((thr + less / (1.0 - 1.0 / ratio)).min(0.0));
+                let (attack, release) = (dev.param("attack"), dev.param("release"));
+                // A bus compressor glues: a gentle ratio, an attack that lets
+                // the transients through, a release that does not chase the
+                // beat. The threshold then where it takes about 3 dB.
+                let ratio_to = ratio.min(2.5);
+                let over = mean / (1.0 - 1.0 / ratio);
+                let to = r1((thr + over - 3.0 / (1.0 - 1.0 / ratio_to)).min(0.0));
                 let up = r1((makeup - less).max(0.0));
-                (
-                    vec![
-                        set(format!("{base}/threshold"), json!(to)),
-                        set(format!("{base}/makeup"), json!(up)),
-                    ],
-                    format!("the compressor's threshold {thr:.1} → {to:.1} dB and makeup {makeup:.1} → {up:.1} dB"),
-                )
+                let mut ops = vec![
+                    set(format!("{base}/threshold"), json!(to)),
+                    set(format!("{base}/makeup"), json!(up)),
+                ];
+                let mut said = vec![
+                    format!("threshold {thr:.1} → {to:.1} dB"),
+                    format!("makeup {makeup:.1} → {up:.1} dB"),
+                ];
+                if ratio_to < ratio - 0.05 {
+                    ops.push(set(format!("{base}/ratio"), json!(r1(ratio_to))));
+                    said.push(format!("ratio {ratio:.1}:1 → {ratio_to:.1}:1"));
+                }
+                if attack < 10.0 {
+                    ops.push(set(format!("{base}/attack"), json!(10.0)));
+                    said.push(format!("attack {attack:.0} → 10 ms"));
+                }
+                if release < 100.0 {
+                    ops.push(set(format!("{base}/release"), json!(150.0)));
+                    said.push(format!("release {release:.0} → 150 ms"));
+                }
+                (ops, format!("the compressor's {}", said.join(", ")))
             } else {
                 let drive = dev.param("gain");
                 let to = r1((drive - less).max(0.0)).min(proposed(&out, &format!("{base}/gain")));
@@ -1120,6 +1269,11 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
 
     // masked-lead, inaudible-part, phase (elements)
     for e in &report.elements {
+        // A part playing under 5 % of the range (a release tail) is not
+        // judged for its audibility.
+        if e.active_pct < 5.0 && !matches!(e.verdict, "ok" | "dominant" | "overloading") {
+            continue;
+        }
         let lead = e.lead;
         let frac = e
             .audibility
@@ -1157,19 +1311,43 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             e.name, report.range.from_bar, report.range.to_bar
         );
         let found = if lead && matches!(e.verdict, "inaudible" | "buried") {
-            Some((
-                finding(
-                    "masked-lead",
-                    &e.id,
-                    at,
-                    match e.relative_to_mix_db.flatten() {
-                        Some(r) => format!(
-                            "the lead sits {:.1} dB under the mix (its insert fader at {:+.1} dB) and is audible {frac:.0}% of the time it plays{masked}",
-                            -r, e.level.fader_db
-                        ),
-                        None => format!("the lead is audible only {frac:.0}% of the time it plays{masked}"),
-                    },
+            // Under the mix only in stretches: there, with the whole range's
+            // level for comparison.
+            let stretches: Vec<(u32, u32, Option<u32>)> = e
+                .buried_in
+                .iter()
+                .map(|u| (u.from_bar, u.to_bar, u.pass))
+                .collect();
+            let (at, where_) = if stretches.is_empty() {
+                (at, String::new())
+            } else {
+                let worst = e
+                    .buried_in
+                    .iter()
+                    .map(|u| u.relative_to_mix_db)
+                    .fold(f64::INFINITY, f64::min);
+                (
+                    format!("{} in {}", e.name, bars_label(&stretches)),
+                    format!(
+                        " in {} (down to {:.1} dB under it there)",
+                        bars_label(&stretches),
+                        -worst
+                    ),
+                )
+            };
+            let detail = match e.relative_to_mix_db.flatten() {
+                Some(r) if where_.is_empty() => format!(
+                    "the lead sits {:.1} dB under the mix (its insert fader at {:+.1} dB) and is audible {frac:.0}% of the time it plays{masked}",
+                    -r, e.level.fader_db
                 ),
+                Some(r) => format!(
+                    "the lead drops under the mix{where_}, though it sits {:.1} dB under it over bars {}–{} (its insert fader at {:+.1} dB); audible {frac:.0}% of the time it plays{masked}",
+                    -r, report.range.from_bar, report.range.to_bar, e.level.fader_db
+                ),
+                None => format!("the lead is audible only {frac:.0}% of the time it plays{masked}"),
+            };
+            Some((
+                finding("masked-lead", &e.id, at, detail),
                 e.suggestions.first(),
             ))
         } else if e.verdict == "inaudible" || (strict && e.verdict == "buried") {
@@ -1205,11 +1383,13 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             None
         };
         if let Some((f, fix)) = found {
+            let from = e.buried_in.iter().map(|u| u.from_bar).min();
+            let to = e.buried_in.iter().map(|u| u.to_bar).max();
             out.push((
                 FindingOut {
                     element: Some(e.id.clone()),
-                    from_bar: Some(report.range.from_bar),
-                    to_bar: Some(report.range.to_bar),
+                    from_bar: Some(from.unwrap_or(report.range.from_bar)),
+                    to_bar: Some(to.unwrap_or(report.range.to_bar)),
                     fix: fix.map(|s| s.patch.clone()).unwrap_or_default(),
                     fix_label: fix.map(|s| s.why.clone()).unwrap_or_default(),
                     ..f
@@ -1265,6 +1445,8 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 .map(|c| c.id.clone())
                 .collect()
         };
+        // A wrong note grinds against several parts: one finding for it.
+        let mut wrong_seen: Vec<(String, usize)> = vec![];
         for c in cl {
             let wanted = c.severity == "high" || (strict && c.severity == "medium");
             if !wanted {
@@ -1291,9 +1473,34 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             } else {
                 &c.b
             };
+            // The wrong note, when it is one: it is the finding's part.
+            let wrong = c.out_of_chord.as_ref().map(|w| {
+                if w.starts_with(&format!("{} ", c.a.pitch)) {
+                    &c.a
+                } else {
+                    &c.b
+                }
+            });
+            if let Some(w) = wrong {
+                let id = (w.pattern.clone(), w.note_index);
+                if wrong_seen.contains(&id) {
+                    continue;
+                }
+                wrong_seen.push(id);
+            }
+            let why = c
+                .out_of_chord
+                .as_ref()
+                .map(|w| {
+                    format!(
+                        " {} {w}: a wrong note, not a colour",
+                        wrong.map(|n| n.channel.as_str()).unwrap_or("")
+                    )
+                })
+                .unwrap_or_default();
             out.push((
                 FindingOut {
-                    element: Some(format!("channel:{}", quieter.channel)),
+                    element: Some(format!("channel:{}", wrong.unwrap_or(quieter).channel)),
                     from_bar: Some(c.bar),
                     to_bar: Some(c.bar),
                     ..finding(
@@ -1304,14 +1511,14 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                         ),
                         bars_label(&[(c.bar, c.bar, c.pass)]),
                         format!(
-                            "{} {} (pattern {}, note {}) against {} {} (pattern {}, note {}): {} held {:.2} beats, the quieter at {:+.1} dB against the mix{also}.",
+                            "{} {} (pattern {}, note {}) against {} {} (pattern {}, note {}): {} held {:.2} beats, the quieter at {:+.1} dB against the mix{also}.{why}",
                             c.a.channel, c.a.pitch, c.a.pattern, c.a.note_index,
                             c.b.channel, c.b.pitch, c.b.pattern, c.b.note_index,
                             c.interval, c.overlap_beats, quieter.level_db
                         ),
                     )
                 },
-                c.overlap_beats,
+                c.overlap_beats + if wrong.is_some() { 10.0 } else { 0.0 },
             ));
         }
     }
@@ -1454,19 +1661,23 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 .collect();
             let (low, m) = excess(&sp_avg);
             let (fix, label) = match culprit {
-                Some((u, _)) => (
-                    eq_ops(
-                        p,
-                        mix.units[*u].insert,
-                        "low",
-                        -4.0,
-                        ("lowFreq", 150.0),
-                        &[],
-                    ),
-                    format!(
-                        "a 4 dB low-shelf cut at 150 Hz on {}",
-                        model::insert_id(p, mix.units[*u].insert)
-                    ),
+                // The low mids (250-500 Hz) over: a bell there; the lows: a
+                // shelf.
+                Some((u, _)) if m - mud > low - thr => eq_ops(
+                    p,
+                    mix.units[*u].insert,
+                    "mid",
+                    -4.0,
+                    ("midFreq", 350.0),
+                    &[("midQ", 1.0)],
+                ),
+                Some((u, _)) => eq_ops(
+                    p,
+                    mix.units[*u].insert,
+                    "low",
+                    -4.0,
+                    ("lowFreq", 150.0),
+                    &[],
                 ),
                 None => match low_e.first() {
                     Some((u, _)) => (
@@ -1730,7 +1941,7 @@ mod tests {
     fn an_eq_move_takes_the_eq_already_there() {
         // Insert 3 has a reverb only: a new EQ goes before it.
         let p = fixture(|_| {});
-        let ops = eq_ops(&p, 3, "low", -4.0, ("lowFreq", 150.0), &[]);
+        let (ops, _) = eq_ops(&p, 3, "low", -4.0, ("lowFreq", 150.0), &[]);
         assert_eq!(ops[0]["path"], json!("/mixer/inserts/3/effects/0"));
         assert_eq!(ops[0]["value"]["params"]["low"], json!(-4.0));
         // A low shelf already cutting near there is cut deeper, in place.
@@ -1740,7 +1951,7 @@ mod tests {
                 {"type": "reverb", "params": {"mix": 0.2}}
             ]);
         });
-        let ops = eq_ops(&p, 3, "low", -4.0, ("lowFreq", 150.0), &[]);
+        let (ops, _) = eq_ops(&p, 3, "low", -4.0, ("lowFreq", 150.0), &[]);
         assert_eq!(
             ops,
             vec![set(
@@ -1749,7 +1960,8 @@ mod tests {
             )]
         );
         // A mid band busy far from the frequency: a new EQ, before the reverb.
-        let ops = eq_ops(&p, 3, "mid", -6.0, ("midFreq", 700.0), &[("midQ", 1.0)]);
+        let (ops, what) = eq_ops(&p, 3, "mid", -6.0, ("midFreq", 700.0), &[("midQ", 1.0)]);
+        assert!(what.starts_with("a new EQ"), "{what}");
         assert_eq!(ops[0]["path"], json!("/mixer/inserts/3/effects/1"));
     }
 

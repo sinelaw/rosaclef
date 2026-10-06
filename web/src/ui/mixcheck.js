@@ -234,6 +234,7 @@ function decodeReport(r) {
         kind: str(e.kind),
         role: str(e.role),
         lead: e.lead === true,
+        buriedIn: (e.buriedIn ?? []).map((u) => ({ from: int(u.fromBar), to: int(u.toBar), rel: num(u.relativeToMixDb) })),
         insert: int(e.insert),
         rms: num(e.rmsDbfs),
         peak: num(e.peakDbfs),
@@ -269,6 +270,7 @@ function decodeReport(r) {
       overlap: num(c.overlapBeats),
       severity: str(c.severity),
       idiom: str(c.idiom),
+      wrong: str(c.outOfChord),
       also: (c.alsoInBars ?? []).map((x) => int(x)),
     })),
     findings: (r.findings ?? []).map((f) => ({
@@ -788,7 +790,8 @@ function elementRow(b, e) {
   } else if (e.role !== "") b.leaf("span", "role", "mx-el-role", e.role);
   b.leaf("span", "sp", "spacer", "");
   // Level against the mix: −30 … +6 dB.
-  const relTip = `${e.name}: ${signed(e.rel)} dB against the mix (its loudness where it plays), ${db(e.share, 0)}% of the mix's energy`;
+  const under = e.buriedIn.map((u) => `bars ${u.from}–${u.to} (${signed(u.rel)} dB)`).join(", ");
+  const relTip = `${e.name}: ${signed(e.rel)} dB against the mix (its loudness where it plays), ${db(e.share, 0)}% of the mix's energy${under !== "" ? `; under the mix in ${under}` : ""}`;
   b.open("span", "rel", "mx-el-rel");
   b.attr("title", relTip);
   b.leaf("span", "fill", "mx-el-relfill", "");
@@ -877,7 +880,8 @@ function clashRow(b, c, i) {
   b.close();
   b.open("span", "iv", "mx-interval");
   if (c.idiom !== "") b.attr("title", `A colour of the chord: ${c.idiom}`);
-  b.text(`${c.interval} · ${fmt(c.overlap, 2)} beats${c.idiom !== "" ? " · colour" : ""}`);
+  if (c.wrong !== "") b.attr("title", `A wrong note: ${c.wrong}`);
+  b.text(`${c.interval} · ${fmt(c.overlap, 2)} beats${c.idiom !== "" ? " · colour" : c.wrong !== "" ? " · wrong note" : ""}`);
   b.close();
   b.leaf("span", "sp", "spacer", "");
   b.close();
