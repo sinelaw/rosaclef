@@ -15,7 +15,8 @@ use serde_json::{json, Value};
 /// A mix engineer's order: the balance and what covers what, then tone,
 /// then the bus dynamics and the limiter's drive and release, the
 /// arrangement's shape, and the ceiling last (it depends on all the rest).
-pub const RULES: [&str; 22] = [
+pub const RULES: [&str; 25] = [
+    "weak-anchor",
     "masked-lead",
     "inaudible-part",
     "part-dropout",
@@ -31,11 +32,13 @@ pub const RULES: [&str; 22] = [
     "part-over-compression",
     "over-compression",
     "master-overload",
+    "squashed-kick",
     "limiter-pumping",
     "fast-limiter-release",
     "section-lift",
     "section-loudness-flat",
     "loud-master",
+    "gain-staging",
     "master-fader",
     "true-peak",
 ];
@@ -52,30 +55,21 @@ fn gain(db: f64) -> f64 {
     10f64.powf(db / 20.0)
 }
 
-/// Ops raising (or lowering) an element's level by `db`. Raising first
-/// undoes a cut of its insert's fader (when the insert carries it alone),
-/// then its channel volume (up to 1.5), then its insert's fader (up to 2);
-/// lowering takes its channel volume first.
+/// Ops raising (or lowering) an element's level by `db`, at one level of
+/// the gain chain: its insert's fader when the insert carries it alone (up
+/// to 2), else its channel volume — raised no further than unity, since its
+/// insert carries other channels too. A fader an automation lane drives does
+/// nothing while it plays: the lane's points move by as much instead, and a
+/// fix never pushes a point over unity (a boost there is the producer's).
 pub fn level_ops(p: &Project, channel: Option<usize>, insert: usize, db: f64) -> Vec<Value> {
-    let ops = fader_ops(p, channel, insert, db);
-    // A fader an automation lane drives does nothing while it plays: the
-    // lane's points move by as much instead.
+    let k = gain(db);
     let mut out = vec![];
-    for op in ops {
+    for op in fader_ops(p, channel, insert, db) {
         let path = op["path"].as_str().unwrap_or("").to_string();
-        let to = op["value"].as_f64().unwrap_or(0.0);
-        let (target, from, max) = if path == format!("/mixer/inserts/{insert}/volume") {
-            (
-                format!("insert/{insert}/volume"),
-                p.mixer.inserts[insert].volume,
-                2.0,
-            )
+        let target = if path == format!("/mixer/inserts/{insert}/volume") {
+            format!("insert/{insert}/volume")
         } else if let Some(c) = channel.filter(|c| path == format!("/channels/{c}/volume")) {
-            (
-                format!("channel/{}/volume", p.channels[c].id),
-                p.channels[c].volume,
-                1.5,
-            )
+            format!("channel/{}/volume", p.channels[c].id)
         } else {
             out.push(op);
             continue;
@@ -86,11 +80,15 @@ pub fn level_ops(p: &Project, channel: Option<usize>, insert: usize, db: f64) ->
             .position(|l| !l.mute && !l.points.is_empty() && l.target == target)
         {
             Some(i) => {
-                let k = to / from.max(1e-4);
                 for (j, q) in p.automation[i].points.iter().enumerate() {
+                    let to = if k > 1.0 {
+                        (q.value * k).min(q.value.max(1.0))
+                    } else {
+                        q.value * k
+                    };
                     out.push(set(
                         format!("/automation/{i}/points/{j}/value"),
-                        json!(round3((q.value * k).clamp(0.0, max))),
+                        json!(round3(to.max(0.0))),
                     ));
                 }
             }
@@ -100,61 +98,51 @@ pub fn level_ops(p: &Project, channel: Option<usize>, insert: usize, db: f64) ->
     out
 }
 
-fn fader_ops(p: &Project, channel: Option<usize>, insert: usize, db: f64) -> Vec<Value> {
-    let mut ops = vec![];
-    let mut left = db;
-    let alone = channel.is_none()
+/// Whether insert `insert` carries channel `channel` alone (an insert's own
+/// unit counts as alone).
+fn alone_on(p: &Project, channel: Option<usize>, insert: usize) -> bool {
+    channel.is_none()
         || p.channels
             .iter()
             .filter(|c| c.mixer.index() == insert)
             .count()
-            == 1;
-    let fader = p.mixer.inserts[insert].volume;
-    if left > 0.05 && insert > 0 && alone && fader < 1.0 {
-        let to = (fader.max(1e-4) * gain(left)).min(1.0);
-        ops.push(set(
-            format!("/mixer/inserts/{insert}/volume"),
-            json!(round3(to)),
-        ));
-        left -= dsp::amp_db(to / fader.max(1e-4));
-        if left <= 0.05 {
-            return ops;
-        }
-    }
-    let fader = ops
-        .last()
-        .and_then(|o| o["value"].as_f64())
-        .unwrap_or(fader);
-    if let Some(c) = channel {
-        let v = p.channels[c].volume.max(1e-4);
-        let want = v * gain(left);
-        let to = want.clamp(0.0, 1.5);
-        ops.push(set(format!("/channels/{c}/volume"), json!(round3(to))));
-        left -= dsp::amp_db(to / v);
-    }
-    if left.abs() > 0.05 && insert > 0 && (channel.is_none() || left > 0.0) {
-        let v = fader.max(1e-4);
-        let to = (v * gain(left)).clamp(0.0, 2.0);
-        // One op per path: the last one written wins.
-        let path = format!("/mixer/inserts/{insert}/volume");
-        ops.retain(|o| o["path"] != json!(path));
-        ops.push(set(path, json!(round3(to))));
-    }
-    ops
+            == 1
 }
 
-/// The most an element's level can rise: its channel volume to 1.5, then its
-/// insert's fader to 2 (none for the master's).
+fn fader_ops(p: &Project, channel: Option<usize>, insert: usize, db: f64) -> Vec<Value> {
+    if insert > 0 && alone_on(p, channel, insert) {
+        let f = p.mixer.inserts[insert].volume.max(1e-4);
+        return vec![set(
+            format!("/mixer/inserts/{insert}/volume"),
+            json!(round3((f * gain(db)).clamp(0.0, 2.0))),
+        )];
+    }
+    match channel {
+        Some(c) => {
+            let v = p.channels[c].volume.max(1e-4);
+            let to = if db > 0.0 {
+                (v * gain(db)).min(v.max(1.0))
+            } else {
+                v * gain(db)
+            };
+            vec![set(format!("/channels/{c}/volume"), json!(round3(to)))]
+        }
+        None => vec![],
+    }
+}
+
+/// The most an element's level can rise at its level of the gain chain:
+/// its insert's fader to 2 when the insert carries it alone, else its
+/// channel volume to unity.
 pub fn max_gain_db(p: &Project, channel: Option<usize>, insert: usize) -> f64 {
-    let ch = channel
-        .map(|c| dsp::amp_db(1.5 / p.channels[c].volume.max(1e-4)))
-        .unwrap_or(0.0);
-    let ins = if insert > 0 {
-        dsp::amp_db(2.0 / p.mixer.inserts[insert].volume.max(1e-4))
+    if insert > 0 && alone_on(p, channel, insert) {
+        dsp::amp_db(2.0 / p.mixer.inserts[insert].volume.max(1e-4)).max(0.0)
     } else {
-        0.0
-    };
-    (ch.max(0.0) + ins.max(0.0)).max(0.0)
+        channel
+            .map(|c| -dsp::amp_db(p.channels[c].volume.max(1e-4)))
+            .unwrap_or(0.0)
+            .max(0.0)
+    }
 }
 
 /// Where a new EQ goes on an insert: before the time effects (delay,
@@ -245,14 +233,36 @@ fn eq_ops(
     )
 }
 
-/// The masker to cut for an element: its strongest masker on an insert of
-/// its own, the bands to cut (power factors) and the bell's frequency and Q.
+/// The units of the anchors (the kick, the bass): the fixes of findings not
+/// about them hold them where they are. `over` names the anchors above
+/// their range: those may come down for another part.
+pub fn held_units(
+    mix: &Mix,
+    anchors: &[Option<super::roles::Anchor>],
+    over: &dyn Fn(usize) -> bool,
+) -> Vec<usize> {
+    mix.units
+        .iter()
+        .enumerate()
+        .filter(|(_, u)| {
+            u.channel
+                .is_some_and(|c| anchors.get(c).copied().flatten().is_some() && !over(c))
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// The masker to cut for an element: its strongest masker that is not an
+/// anchor (a kick is never cut to make room for a supporting part), on an
+/// insert of its own; the bands to cut (power factors) and the bell's
+/// frequency and Q.
 pub fn masker_cut(
     mix: &Mix,
     au: &Audibility,
     e: &Element,
+    held: &[usize],
 ) -> Option<(usize, [f64; BARKS], f64, f64)> {
-    let m = au.maskers.first()?;
+    let m = au.maskers.iter().find(|m| !held.contains(&m.unit))?;
     let unit = &mix.units[m.unit];
     let k = unit.insert;
     // The EQ goes on the masker's insert: only when that insert carries the
@@ -326,6 +336,7 @@ fn fader_boost(p: &Project, mix: &Mix, u: usize) -> (f64, f64) {
     (ins, ch)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn balance(
     p: &Project,
     mix: &Mix,
@@ -334,6 +345,7 @@ pub fn balance(
     e: &Element,
     au: &Audibility,
     rel: f64,
+    held: &[usize],
 ) -> Option<Balance> {
     let energy: Vec<f64> = (0..mix.units.len())
         .map(|u| blocks.iter().map(|b| mix.unit_kms(u, *b)).sum())
@@ -344,13 +356,17 @@ pub fn balance(
     }
     // The parts covering it and the parts carrying the mix, when a fader of
     // theirs is pushed above unity (at most two).
+    // Not the anchors: the lead is not made room for by thinning the groove.
     let mut cands: Vec<usize> = au.maskers.iter().take(3).map(|m| m.unit).collect();
     for (u, x) in energy.iter().enumerate() {
         if x / total >= 0.15 && !cands.contains(&u) {
             cands.push(u);
         }
     }
-    let rest: Vec<usize> = cands.into_iter().filter(|u| !e.units.contains(u)).collect();
+    let rest: Vec<usize> = cands
+        .into_iter()
+        .filter(|u| !e.units.contains(u) && !held.contains(u))
+        .collect();
     // Only the parts covering it come down further, and a little: a lead
     // is brought out by carving what masks it, not by gutting the mix.
     let maskers: Vec<usize> = au
@@ -358,7 +374,7 @@ pub fn balance(
         .iter()
         .take(3)
         .map(|m| m.unit)
-        .filter(|u| !e.units.contains(u))
+        .filter(|u| !e.units.contains(u) && !held.contains(u))
         .collect();
     let mut downs: Vec<(usize, f64, f64)> = rest
         .iter()
@@ -382,7 +398,7 @@ pub fn balance(
         .iter()
         .take(3)
         .filter(|_| au.fraction() < 0.95)
-        .filter(|m| !e.units.contains(&m.unit))
+        .filter(|m| !e.units.contains(&m.unit) && !held.contains(&m.unit))
         .filter_map(|m| eq_boost_over(p, mix, m.unit, &m.bands).map(|b| (m.unit, b)))
         .filter(|(_, b)| near_lead(b.freq))
         .max_by(|a, b| a.1.boost.total_cmp(&b.1.boost));
@@ -712,9 +728,46 @@ fn band_share(mix: &Mix, u: usize, freq: f64) -> f64 {
     }
 }
 
+/// A lane on a unit's volume (its channel's, or its insert's when the
+/// insert carries it alone) lifting it over unity: its points there back to
+/// unity — a boost written into the automation, not the balance.
+fn lane_boost(p: &Project, mix: &Mix, u: usize) -> Option<(Vec<Value>, String)> {
+    let unit = &mix.units[u];
+    let mut targets = vec![];
+    if let Some(c) = unit.channel {
+        targets.push(format!("channel/{}/volume", p.channels[c].id));
+    }
+    if unit.insert > 0 && alone_on(p, unit.channel, unit.insert) {
+        targets.push(format!("insert/{}/volume", unit.insert));
+    }
+    let (i, l) = p.automation.iter().enumerate().find(|(_, l)| {
+        !l.mute && targets.contains(&l.target) && l.points.iter().any(|q| q.value > 1.05)
+    })?;
+    let top = l.points.iter().map(|q| q.value).fold(0.0, f64::max);
+    let ops = l
+        .points
+        .iter()
+        .enumerate()
+        .filter(|(_, q)| q.value > 1.0)
+        .map(|(j, _)| set(format!("/automation/{i}/points/{j}/value"), json!(1.0)))
+        .collect();
+    Some((
+        ops,
+        format!(
+            "the automation lane \"{}\" lifts {} to {top:.2} ({:+.1} dB) in places: back to unity there",
+            if l.name.is_empty() { &l.id } else { &l.name },
+            short_name(p, mix, u),
+            dsp::amp_db(top)
+        ),
+    ))
+}
+
 /// Concrete changes for a buried or inaudible element, with what the model
 /// predicts each does (`fractions`: under each gain, then the masker cut,
-/// then the balance).
+/// then the balance). In the order to try them: what is wrong elsewhere (a
+/// lane boosting what covers it), room made where it fights an anchor (a
+/// high-pass on it under the kick and the bass), a cut in what covers it
+/// (never an anchor), and only then its fader.
 #[allow(clippy::too_many_arguments)]
 pub fn suggestions(
     p: &Project,
@@ -726,8 +779,82 @@ pub fn suggestions(
     cut: Option<&(usize, [f64; BARKS], f64, f64)>,
     balance: Option<&Balance>,
     ok_at: f64,
+    anchors: &[usize],
 ) -> Vec<Suggestion> {
+    let held = anchors;
     let mut s = vec![];
+    let unit_of = |id: &str| mix.units.iter().position(|u| u.id == id);
+    let maskers: Vec<(usize, [f64; 2])> = out
+        .audibility
+        .as_ref()
+        .and_then(|a| a.masked_by.as_ref())
+        .map(|m| {
+            m.iter()
+                .filter_map(|x| unit_of(&x.id).map(|u| (u, x.band_hz)))
+                .collect()
+        })
+        .unwrap_or_default();
+    // A lane boosting what covers it over unity: that boost back.
+    if let Some((ops, why)) = maskers
+        .iter()
+        .filter(|(u, _)| !e.units.contains(u))
+        .find_map(|(u, _)| lane_boost(p, mix, *u))
+    {
+        s.push(Suggestion {
+            why: format!("{why}: it covers {}", e.name),
+            patch: ops,
+            expected_relative_to_mix_db: None,
+            expected_audible_fraction_pct: None,
+            verified: None,
+        });
+    }
+    // Under the kick and the bass below 300 Hz: a high-pass on it first,
+    // leaving the lows to them (not on an anchor, nor on an insert carrying
+    // one, nor where a high-pass is already).
+    let under_anchor = maskers
+        .iter()
+        .any(|(u, band)| held.contains(u) && band[0] < 300.0);
+    let lows = out
+        .audibility
+        .as_ref()
+        .and_then(|a| a.dominant_band_hz)
+        .is_some_and(|b| b[0] < 300.0);
+    let carries_anchor = mix
+        .units
+        .iter()
+        .enumerate()
+        .any(|(u, x)| x.insert == e.insert && held.contains(&u));
+    let has_hp = e.insert > 0
+        && p.mixer.inserts[e.insert]
+            .effects
+            .iter()
+            .any(|d| d.enabled && d.kind == "filter" && d.option("mode") == "highpass");
+    if under_anchor
+        && lows
+        && e.insert > 0
+        && !carries_anchor
+        && !has_hp
+        && !e.units.iter().any(|u| held.contains(u))
+    {
+        let dom_lo = out
+            .audibility
+            .as_ref()
+            .and_then(|a| a.dominant_band_hz)
+            .map(|b| b[0])
+            .unwrap_or(0.0);
+        let at = if dom_lo >= 200.0 { 150.0 } else { 120.0 };
+        s.push(Suggestion {
+            why: format!(
+                "it sits under the kick and the bass below 300 Hz: a high-pass at {at:.0} Hz on {} leaves the lows to them and clears the low end",
+                model::insert_id(p, e.insert)
+            ),
+            patch: vec![json!({"op": "add", "path": format!("/mixer/inserts/{}/effects/0", e.insert),
+                "value": {"type": "filter", "params": {"cutoff": at, "resonance": 0.0, "mix": 1.0}, "options": {"mode": "highpass"}}})],
+            expected_relative_to_mix_db: None,
+            expected_audible_fraction_pct: None,
+            verified: None,
+        });
+    }
     let rel = out.relative_to_mix_db.flatten();
     let now = out
         .audibility
@@ -833,9 +960,27 @@ pub fn suggestions(
         .or_else(|| gains.iter().zip(fractions).rfind(|(g, _)| reachable(g)))
         // Only a change the model says helps.
         .filter(|(_, f)| **f >= now + 0.05);
-    if let Some((g, f)) = pick {
+    // What its faders actually give (a lane over unity is not pushed
+    // further): that gain and what the model says it does.
+    let pick = pick.and_then(|(g, f)| {
+        let patch = level_ops(p, e.channel, e.insert, *g);
+        let got = super::patched(p, &patch, "fix")
+            .map(|q| super::predict::unit_gain(p, &q, e.channel, e.insert))
+            .unwrap_or(0.0);
+        if got >= *g - 0.5 {
+            return Some((*g, *f, patch));
+        }
+        gains
+            .iter()
+            .zip(fractions)
+            .filter(|(x, _)| **x <= got + 0.05)
+            .last()
+            .filter(|(_, f)| **f >= now + 0.05)
+            .map(|(x, f)| (*x, *f, level_ops(p, e.channel, e.insert, *x)))
+    });
+    if let Some((g, f, patch)) = pick {
         s.push(Suggestion {
-            why: if *f >= ok_at {
+            why: if f >= ok_at {
                 format!("{:.1} dB louder it comes through the parts covering it", g)
             } else {
                 format!(
@@ -845,9 +990,9 @@ pub fn suggestions(
                     ok_at * 100.0
                 )
             },
-            patch: level_ops(p, e.channel, e.insert, *g),
+            patch,
             expected_relative_to_mix_db: rel.map(|r| r1(r + g)),
-            expected_audible_fraction_pct: Some(pct(*f)),
+            expected_audible_fraction_pct: Some(pct(f)),
             verified: None,
         });
     }
@@ -1462,7 +1607,13 @@ fn master_drive(p: &Project) -> Option<(usize, f64)> {
 /// Bring the master's input down by `cut` dB: a hard-driven limiter's
 /// drive first, then the parts that dominate, or — when none does — the
 /// remaining drive and every fader.
-fn overload_fix(p: &Project, mix: &Mix, top: &[(usize, f64)], cut: f64) -> (Vec<Value>, String) {
+fn overload_fix(
+    p: &Project,
+    mix: &Mix,
+    top: &[(usize, f64)],
+    cut: f64,
+    held: &[usize],
+) -> (Vec<Value>, String) {
     let mut ops = vec![];
     let mut said = vec![];
     let mut left = cut;
@@ -1483,8 +1634,11 @@ fn overload_fix(p: &Project, mix: &Mix, top: &[(usize, f64)], cut: f64) -> (Vec<
     if master_drive(p).is_some_and(|d| d.1 > DRIVE_OK) {
         ease(&mut left, &mut ops, &mut said);
     }
+    // The heaviest parts that are not the anchors (a kick and a bass carry
+    // most of a dance mix's energy; cutting them thins the groove).
     let heavy: Vec<usize> = top
         .iter()
+        .filter(|x| !held.contains(&x.0))
         .take(3)
         .filter(|x| x.1 >= 0.15)
         .map(|x| x.0)
@@ -1523,10 +1677,306 @@ fn overload_fix(p: &Project, mix: &Mix, top: &[(usize, f64)], cut: f64) -> (Vec<
     (ops, said.join(", and "))
 }
 
+/// Ops scaling a level (`insert/N/volume` or `channel/ID/volume`) by
+/// `factor`: its static value, and an automation lane driving it, point by
+/// point (the same sound when the other end of the chain moves the other
+/// way).
+fn scale_level(p: &Project, target: &str, factor: f64) -> Vec<Value> {
+    let mut ops = vec![];
+    let parts: Vec<&str> = target.split('/').collect();
+    match parts.as_slice() {
+        ["insert", i, "volume"] => {
+            if let Ok(i) = i.parse::<usize>() {
+                ops.push(set(
+                    format!("/mixer/inserts/{i}/volume"),
+                    json!(round3(p.mixer.inserts[i].volume * factor)),
+                ));
+            }
+        }
+        ["channel", id, "volume"] => {
+            if let Some(c) = p.channels.iter().position(|c| c.id == *id) {
+                ops.push(set(
+                    format!("/channels/{c}/volume"),
+                    json!(round3(p.channels[c].volume * factor)),
+                ));
+            }
+        }
+        _ => {}
+    }
+    for (i, l) in p.automation.iter().enumerate() {
+        if l.mute || l.target != target {
+            continue;
+        }
+        for (j, q) in l.points.iter().enumerate() {
+            ops.push(set(
+                format!("/automation/{i}/points/{j}/value"),
+                json!(round3(q.value * factor)),
+            ));
+        }
+    }
+    ops
+}
+
+/// The units of element `id`.
+fn units_of(mix: &Mix, id: &str) -> Vec<usize> {
+    mix.elements
+        .iter()
+        .find(|x| x.id == id)
+        .map(|x| x.units.clone())
+        .unwrap_or_default()
+}
+
+/// The weak anchors' findings, with one fix for them all: each weak anchor
+/// up at its level of the gain chain until its stretches sit in its range
+/// (its weakest at the floor, or — spread wider than the range — centred on
+/// it), solved together; the other anchors up with what that adds to the
+/// mix, and the limiter's input down by as much: the loudness and their
+/// places kept.
+fn weak_anchors(
+    p: &Project,
+    mix: &Mix,
+    report: &Report,
+    pred: &super::predict::Predict,
+) -> Vec<(FindingOut, f64)> {
+    let weak: Vec<usize> = report
+        .elements
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.verdict == "weak" && e.range_db.is_some())
+        .map(|(k, _)| k)
+        .collect();
+    if weak.is_empty() {
+        return vec![];
+    }
+    let channel_of = |id: &str| {
+        id.strip_prefix("channel:")
+            .and_then(|id| p.channels.iter().position(|c| c.id == id))
+    };
+    let own: Vec<Vec<usize>> = weak
+        .iter()
+        .map(|k| units_of(mix, &report.elements[*k].id))
+        .collect();
+    let others: Vec<usize> = report
+        .elements
+        .iter()
+        .enumerate()
+        .filter(|(k, e)| e.anchor.is_some() && !weak.contains(k))
+        .flat_map(|(_, e)| units_of(mix, &e.id))
+        .collect();
+    let energy: Vec<f64> = (0..mix.units.len())
+        .map(|u| mix.inside_blocks.iter().map(|b| mix.unit_kms(u, *b)).sum())
+        .collect();
+    let total: f64 = energy.iter().sum();
+    // The unit gains for the weak anchors up `a` (in order): the other
+    // anchors up by what they add (the limiter's input comes down as much).
+    let gains = |a: &[f64]| -> (Vec<f64>, f64) {
+        let g_of = |u: usize, y: f64| {
+            own.iter()
+                .zip(a)
+                .find(|(us, _)| us.contains(&u))
+                .map(|(_, x)| *x)
+                .unwrap_or(if others.contains(&u) { y } else { 0.0 })
+        };
+        let mut y = 0.0;
+        for _ in 0..8 {
+            let after: f64 = energy
+                .iter()
+                .enumerate()
+                .map(|(u, x)| x * 10f64.powf(g_of(u, y) / 10.0))
+                .sum();
+            y = if total > 0.0 {
+                dsp::db(after / total)
+            } else {
+                0.0
+            };
+        }
+        ((0..mix.units.len()).map(|u| g_of(u, y)).collect(), y)
+    };
+    // Where each sits in its range under gains `g`.
+    let placed = |i: usize, g: &[f64]| -> bool {
+        let k = weak[i];
+        let [lo, hi] = report.elements[k].range_db.unwrap_or([-99.0, 0.0]);
+        match pred.spread(k, g) {
+            Some((w, b)) if b - w <= hi - lo - 0.5 => w >= lo + 0.25,
+            Some((w, b)) => (w + b) / 2.0 >= (lo + hi) / 2.0,
+            None => true,
+        }
+    };
+    let caps: Vec<f64> = weak
+        .iter()
+        .map(|k| {
+            let e = &report.elements[*k];
+            max_gain_db(p, channel_of(&e.id), e.insert).min(15.0)
+        })
+        .collect();
+    let mut a = vec![0.0; weak.len()];
+    for _ in 0..4 {
+        for i in 0..weak.len() {
+            let mut t = a.clone();
+            let (mut x0, mut x1) = (0.0, caps[i]);
+            t[i] = x1;
+            if !placed(i, &gains(&t).0) {
+                a[i] = x1;
+                continue;
+            }
+            for _ in 0..20 {
+                t[i] = (x0 + x1) / 2.0;
+                if placed(i, &gains(&t).0) {
+                    x1 = t[i];
+                } else {
+                    x0 = t[i];
+                }
+            }
+            a[i] = (x1 * 10.0).ceil() / 10.0;
+        }
+    }
+    let (g, y) = gains(&a);
+    let zero = vec![0.0; mix.units.len()];
+    let mut fix = vec![];
+    let mut said = vec![];
+    for (i, k) in weak.iter().enumerate() {
+        let e = &report.elements[*k];
+        if a[i] >= 0.1 {
+            fix.extend(level_ops(p, channel_of(&e.id), e.insert, a[i]));
+            said.push(format!("{} up {:.1} dB", e.name, a[i]));
+        }
+    }
+    if y >= 0.1 {
+        for e in report
+            .elements
+            .iter()
+            .enumerate()
+            .filter(|(k, e)| e.anchor.is_some() && !weak.contains(k))
+            .map(|(_, e)| e)
+        {
+            fix.extend(level_ops(p, channel_of(&e.id), e.insert, y));
+            said.push(format!("{} up {y:.1} dB with them", e.name));
+        }
+        match master_drive(p) {
+            Some((j, d)) => {
+                fix.push(set(
+                    format!("/mixer/inserts/0/effects/{j}/params/gain"),
+                    json!(r1(d - y)),
+                ));
+                said.push(format!(
+                    "the limiter's input gain {d:+.1} → {:+.1} dB (the loudness kept)",
+                    r1(d - y)
+                ));
+            }
+            None => said.push("the loudness rising with them (no limiter on the master)".into()),
+        }
+    }
+    weak.iter()
+        .enumerate()
+        .map(|(i, k)| {
+            let e = &report.elements[*k];
+            let [lo, hi] = e.range_db.unwrap_or([-99.0, 0.0]);
+            let (w0, b0) = pred.spread(*k, &zero).unwrap_or((lo, lo));
+            let (w1, b1) = pred.spread(*k, &g).unwrap_or((w0, b0));
+            let short = if a[i] >= caps[i] - 0.05 && !placed(i, &g) {
+                " (as far as its fader goes)"
+            } else {
+                ""
+            };
+            let low: Vec<&super::report::UnderMix> = e
+                .by_section
+                .iter()
+                .filter(|u| u.relative_to_mix_db < lo - 0.5)
+                .collect();
+            let label = |u: &super::report::UnderMix| -> String {
+                let name = match &u.section {
+                    Some(s) => s.clone(),
+                    None if u.from_bar == u.to_bar => format!("bar {}", u.from_bar),
+                    None => format!("bars {}–{}", u.from_bar, u.to_bar),
+                };
+                let pass = u.pass.map(|n| format!(" (pass {n})")).unwrap_or_default();
+                format!("{name}{pass} {:.1}", u.relative_to_mix_db)
+            };
+            let bars: Vec<(u32, u32, Option<u32>)> =
+                low.iter().map(|u| (u.from_bar, u.to_bar, u.pass)).collect();
+            let (at, from, to) = if bars.is_empty() {
+                (
+                    format!(
+                        "{} in bars {}–{}",
+                        e.name, report.range.from_bar, report.range.to_bar
+                    ),
+                    report.range.from_bar,
+                    report.range.to_bar,
+                )
+            } else {
+                (
+                    format!("{} in {}", e.name, bars_label(&bars)),
+                    bars.iter().map(|b| b.0).min().unwrap_or(0),
+                    bars.iter().map(|b| b.1).max().unwrap_or(0),
+                )
+            };
+            let frac = e
+                .audibility
+                .as_ref()
+                .map(|x| format!(" (audible {:.0}% of the time it plays)", x.audible_fraction_pct))
+                .unwrap_or_default();
+            let wide = if b0 - w0 > hi - lo {
+                format!(
+                    " Its sections spread {:.1} dB, wider than the range: one fader centres them on it; a lane would hold each in it.",
+                    b0 - w0
+                )
+            } else {
+                String::new()
+            };
+            let detail = format!(
+                "{} sits {:.1} dB under the mix where it is weakest{}, below the {lo:.0} to {hi:.0} dB a {} holds in this style: it is heard{frac} but weak — the groove loses its weight.{wide}",
+                e.name,
+                -w0,
+                if low.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", low.iter().map(|u| label(u)).collect::<Vec<_>>().join(", "))
+                },
+                e.anchor.unwrap_or("anchor"),
+            );
+            (
+                FindingOut {
+                    element: Some(e.id.clone()),
+                    from_bar: Some(from),
+                    to_bar: Some(to),
+                    fix: fix.clone(),
+                    fix_label: if said.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            "{}: {} {:.1} to {:.1} → {:.1} to {:.1} dB against the mix{short}",
+                            said.join(", and "),
+                            e.name,
+                            w0,
+                            b0,
+                            w1,
+                            b1
+                        )
+                    },
+                    ..finding("weak-anchor", &e.id, at, detail)
+                },
+                lo - w0,
+            )
+        })
+        .collect()
+}
+
 pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
     let rows_hops = &ctx.rows_hops;
     let p = ctx.project;
     let mix = &ctx.mix;
+    // An anchor over its range (its loudest stretch over the top) may come
+    // down for another part.
+    let over = |c: usize| {
+        report.elements.iter().any(|e| {
+            e.anchor.is_some()
+                && e.id == model::channel_id(p, c)
+                && e.range_db.is_some_and(|[_, hi]| {
+                    e.relative_to_mix_db.flatten().is_some_and(|r| r > hi + 0.5)
+                })
+        })
+    };
+    let held = held_units(mix, &ctx.anchors, &over);
     let mut out: Vec<(FindingOut, f64)> = vec![];
     let strict = o.threshold == Threshold::Strict;
     let loose = o.threshold == Threshold::Loose;
@@ -1593,7 +2043,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             } else {
                 (pre + 1.0).clamp(1.0, 9.0)
             };
-            let (fix, fix_label) = overload_fix(p, mix, &top, cut);
+            let (fix, fix_label) = overload_fix(p, mix, &top, cut, &held);
             let (at, fb, tb) = place_of(report, &found);
             let drive = match master_drive(p) {
                 Some((_, g)) if g > DRIVE_OK => {
@@ -1625,6 +2075,158 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
         }
     }
 
+    // squashed-kick: the master limiter working on the kick's hits flattens
+    // its transients — the punch a dance mix stands on. Bar by bar: its gain
+    // reduction on the kick's hits against the rest of the bar.
+    if ctx.include_master && o.has(Check::GainReduction) {
+        let lims = mix.a.master_gr("limiter");
+        for e in report.elements.iter().filter(|e| e.anchor == Some("kick")) {
+            let own = units_of(mix, &e.id);
+            if lims.is_empty() || own.is_empty() {
+                continue;
+            }
+            let level = |h: usize| own.iter().map(|u| mix.unit_ms(*u, h)).sum::<f64>();
+            let gr = |h: usize| lims.iter().map(|g| g.max[h] as f64).fold(0.0, f64::max);
+            let per_row: Vec<Option<(f64, f64)>> = rows_hops
+                .iter()
+                .map(|hs| {
+                    let top = hs.iter().map(|h| level(*h)).fold(0.0, f64::max);
+                    if top <= 0.0 {
+                        return None;
+                    }
+                    let (mut on, mut n_on, mut off, mut n_off) = (0.0, 0usize, 0.0, 0usize);
+                    for &h in hs {
+                        if level(h) >= top * 0.5 {
+                            on += gr(h);
+                            n_on += 1;
+                        } else {
+                            off += gr(h);
+                            n_off += 1;
+                        }
+                    }
+                    (n_on > 0).then(|| (on / n_on as f64, off / n_off.max(1) as f64))
+                })
+                .collect();
+            let thr = pick(3.0, 2.0, 5.0);
+            let hit = |i: usize| per_row[i].is_some_and(|(on, off)| on >= thr && on >= off + 1.0);
+            let found = runs(report, ctx, &hit);
+            if found.is_empty() {
+                continue;
+            }
+            let rows: Vec<usize> = found.iter().flat_map(|(a, b)| *a..=*b).collect();
+            let on_hits = rows
+                .iter()
+                .filter_map(|i| per_row[*i].map(|x| x.0))
+                .sum::<f64>()
+                / rows.len().max(1) as f64;
+            let most = rows
+                .iter()
+                .flat_map(|i| rows_hops[*i].iter())
+                .map(|h| gr(*h))
+                .fold(0.0, f64::max);
+            let pre = rows
+                .iter()
+                .filter_map(|i| report.per_bar[*i].pre_limiter_peak_dbfs)
+                .fold(-99.0, f64::max);
+            // Less into the limiter, until it takes about 2 dB on the hits.
+            let cut = (on_hits - 2.0).clamp(1.0, 6.0);
+            let (fix, fix_label) = match master_drive(p) {
+                Some((j, g)) => {
+                    let path = format!("/mixer/inserts/0/effects/{j}/params/gain");
+                    let to = r1(g - cut).min(proposed(&out, &path));
+                    (
+                        vec![set(path, json!(to))],
+                        format!(
+                            "the limiter's input gain {g:+.1} → {to:+.1} dB: about 2 dB off the kick's hits (the master that much quieter: a loudness target evens it out)"
+                        ),
+                    )
+                }
+                None => (vec![], String::new()),
+            };
+            let (at, fb, tb) = place_of(report, &found);
+            out.push((
+                FindingOut {
+                    element: Some(e.id.clone()),
+                    from_bar: Some(fb),
+                    to_bar: Some(tb),
+                    fix,
+                    fix_label,
+                    ..finding(
+                        "squashed-kick",
+                        &e.id,
+                        format!("{} in {at}", e.name),
+                        format!(
+                            "the master limiter takes {on_hits:.1} dB off the kick's hits on average there (up to {most:.1} dB; the peak going into it {pre:+.1} dBFS): its transients are flattened and the drums lose their punch. The ceiling is not the cause: less goes in."
+                        ),
+                    )
+                },
+                on_hits,
+            ));
+        }
+    }
+
+    // gain-staging: channels pushed over unity into an insert turned down —
+    // the same sound with the insert carrying the gain and the channels at
+    // unity or under.
+    if o.has(Check::Levels) {
+        for (i, ins) in p.mixer.inserts.iter().enumerate().skip(1) {
+            if super::roles::silenced_insert(p, i) {
+                continue;
+            }
+            let chans: Vec<usize> = (0..p.channels.len())
+                .filter(|c| p.channels[*c].mixer.index() == i && !super::roles::silenced(p, *c))
+                .collect();
+            let top = chans
+                .iter()
+                .map(|c| p.channels[*c].volume)
+                .fold(0.0, f64::max);
+            if top <= 1.05 || ins.volume >= 0.999 {
+                continue;
+            }
+            let m = top.min(1.0 / ins.volume.max(1e-4));
+            let mut fix = scale_level(p, &format!("insert/{i}/volume"), m);
+            for &c in &chans {
+                fix.extend(scale_level(
+                    p,
+                    &format!("channel/{}/volume", p.channels[c].id),
+                    1.0 / m,
+                ));
+            }
+            let over: Vec<String> = chans
+                .iter()
+                .filter(|c| p.channels[**c].volume > 1.0)
+                .map(|c| format!("{} {:.2}", p.channels[*c].name, p.channels[*c].volume))
+                .collect();
+            out.push((
+                FindingOut {
+                    severity: "info",
+                    element: Some(model::insert_id(p, i)),
+                    fix,
+                    fix_label: format!(
+                        "{}'s fader {:.3} → {:.3} and its channels' volumes {:.0}% of what they are (the same sound)",
+                        ins.name,
+                        ins.volume,
+                        round3((ins.volume * m).min(1.0)),
+                        100.0 / m
+                    ),
+                    ..finding(
+                        "gain-staging",
+                        &model::insert_id(p, i),
+                        format!("{} (insert {i})", ins.name),
+                        format!(
+                            "channels over unity ({}) feed {} with its fader at {:.3} ({:+.1} dB): the gain sits at the wrong end of the chain — the next fix to raise one has nowhere to go, and the insert's effects see a hotter signal than its fader suggests.",
+                            over.join(", "),
+                            ins.name,
+                            ins.volume,
+                            dsp::amp_db(ins.volume.max(1e-4))
+                        ),
+                    )
+                },
+                dsp::amp_db(top),
+            ));
+        }
+    }
+
     // true-peak: over the delivery target's limit (`--target`), else
     // streaming's -1 dBTP (strict -2, loose 0).
     let target = o.target.as_deref().and_then(super::targets::find);
@@ -1632,21 +2234,39 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
         .map(|t| t.true_peak_for(report.master.integrated_lufs.flatten()))
         .unwrap_or_else(|| pick(-1.0, -2.0, 0.0));
     if ctx.include_master && o.has(Check::Levels) {
+        let grmax = report
+            .master
+            .limiter_gain_reduction_db
+            .as_ref()
+            .map(|g| g.max)
+            .unwrap_or(0.0);
         if let Some(tp) = report.master.true_peak_dbtp.filter(|tp| *tp > limit) {
-            // Inter-sample peaks follow a sample-peak ceiling loosely: half a
-            // dB of margin under the limit.
-            let down = tp - limit + 0.5;
+            let down = tp - limit;
             let (fix, label, how) = match master_drive(p) {
+                // Driven this hard, a limiter overshoots between samples:
+                // less into it first, the ceiling once measured again.
+                Some((j, g)) if grmax >= 6.0 => {
+                    let less = (grmax - 4.0).clamp(1.0, 4.0);
+                    let path = format!("/mixer/inserts/0/effects/{j}/params/gain");
+                    let to = r1(g - less).min(proposed(&out, &path));
+                    (
+                        vec![set(path, json!(to))],
+                        format!("the limiter's input gain {g:+.1} → {to:+.1} dB first (measure again before moving the ceiling)"),
+                        format!(" The limiter takes up to {grmax:.1} dB: driven that hard it overshoots between samples."),
+                    )
+                }
+                // The smallest move that reaches the limit: how far the
+                // true peak is over it, and a tenth of a dB.
                 Some((j, _)) => {
                     let c = p.mixer.inserts[0].effects[j].param("ceiling");
-                    let to = r1((c - down).max(-12.0));
+                    let to = r1((c - down - 0.1).max(-12.0));
                     (
                         vec![set(
                             format!("/mixer/inserts/0/effects/{j}/params/ceiling"),
                             json!(to),
                         )],
-                        format!("the limiter's ceiling {c:+.1} → {to:+.1} dB"),
-                        format!(" The limiter holds sample peaks to {c:+.1} dB; the peaks between samples go over it."),
+                        format!("the limiter's ceiling {c:+.1} → {to:+.1} dB (the true peak {:.1} dB over the limit, and a tenth)", down),
+                        format!(" The limiter holds peaks to {c:+.1} dB; the output still reaches {tp:+.1} dBTP."),
                     )
                 }
                 None => {
@@ -1693,6 +2313,35 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 },
                 tp,
             ));
+        } else if let (Some(tp), Some((j, _))) = (report.master.true_peak_dbtp, master_drive(p)) {
+            // A ceiling lower than the limit needs costs loudness and
+            // squashes the peaks for nothing: up to where the true peak
+            // meets the limit, a few tenths under.
+            let c = p.mixer.inserts[0].effects[j].param("ceiling");
+            let to = r1((c + (limit - tp) - 0.3).min(limit - 0.1));
+            if tp < limit - 1.0 && to >= c + 0.5 {
+                out.push((
+                    FindingOut {
+                        severity: "info",
+                        element: Some(model::insert_id(p, 0)),
+                        fix: vec![set(
+                            format!("/mixer/inserts/0/effects/{j}/params/ceiling"),
+                            json!(to),
+                        )],
+                        fix_label: format!("the limiter's ceiling {c:+.1} → {to:+.1} dB"),
+                        ..finding(
+                            "true-peak",
+                            "ceiling",
+                            "master limiter".into(),
+                            format!(
+                                "the limiter's ceiling is {c:+.1} dB and the true peak {tp:+.1} dBTP: {:.1} dB under the {limit:+.1} dBTP limit — loudness given up and the peaks held down for nothing.",
+                                limit - tp
+                            ),
+                        )
+                    },
+                    0.0,
+                ));
+            }
         }
     }
 
@@ -2043,6 +2692,13 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
         }
     }
 
+    // weak-anchor: the kick or the bass under its range against the mix —
+    // heard, and weak: the groove loses its weight.
+    let pred = super::predict::Predict::new(report, ctx, &|e| e.anchor.is_some() || e.lead);
+    if o.has(Check::Levels) {
+        out.extend(weak_anchors(p, mix, report, &pred));
+    }
+
     // masked-lead, inaudible-part, phase (elements)
     for e in &report.elements {
         // A part playing under 5 % of the range (a release tail) is not
@@ -2139,12 +2795,9 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 e.suggestions.first(),
             ))
         } else if e.verdict == "inaudible" || (strict && e.verdict == "buried") {
-            // A part takes its level fix when it has one, else its best.
-            let fix = e
-                .suggestions
-                .iter()
-                .find(|s| s.why.contains("louder"))
-                .or(e.suggestions.first());
+            // Its first suggestion: they come in the order to try them
+            // (the cause elsewhere, room made, a masker cut, its fader last).
+            let fix = e.suggestions.first();
             let stuck = if fix.is_none() {
                 " No level its faders can reach (6 dB at most: more pushes everything else) brings it out — an arrangement conflict: give it room (another register, a high-pass or a cut in what covers it), or mute it: if nothing changes, cut it."
             } else {
@@ -2159,15 +2812,41 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 .and_then(|c| soft_notes(p, c, &[(report.range.from_beat, report.range.to_beat)]))
                 .map(|s| s.replace("there", "here"))
                 .unwrap_or_default();
+            // A layer under the part it layers is heard as that part: no
+            // level helps, and none is offered.
+            let parent =
+                e.id.strip_prefix("channel:")
+                    .and_then(|id| p.channels.iter().find(|c| c.id == id))
+                    .and_then(|c| c.layer_of.clone());
+            let under_parent = parent.as_ref().is_some_and(|par| {
+                e.audibility
+                    .as_ref()
+                    .and_then(|a| a.masked_by.as_ref())
+                    .and_then(|m| m.first())
+                    .is_some_and(|m| m.id == format!("channel:{par}"))
+            });
+            let (fix, layer) = if under_parent {
+                (
+                    None,
+                    format!(
+                        " It is a layer of {}, which covers it: it is heard as part of it — no level helps; give it a range {} does not cover, or let it be.",
+                        parent.clone().unwrap_or_default(),
+                        parent.unwrap_or_default()
+                    ),
+                )
+            } else {
+                (fix, String::new())
+            };
+            let stuck = if layer.is_empty() { stuck } else { "" };
             let detail = format!(
-                "{} is {}: audible {frac:.0}% of the time it plays{level}{masked}{}{softer}{stuck}",
+                "{} is {}: audible {frac:.0}% of the time it plays{level}{masked}{}{softer}{stuck}{layer}",
                 e.name,
                 e.verdict,
                 fader_far_under(p, e)
             );
             Some((
                 FindingOut {
-                    severity: if e.verdict == "inaudible" {
+                    severity: if e.verdict == "inaudible" && !under_parent {
                         "warn"
                     } else {
                         "info"
@@ -2961,6 +3640,9 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
         }
     }
 
+    let anchor_units = held_units(mix, &ctx.anchors, &|_| false);
+    settle(p, report, ctx, &pred, &held, &anchor_units, &mut out);
+
     // The project's choices, the focus, ranking, the limit.
     let off = &p.critic.off;
     let sup = &p.critic.suppress;
@@ -2995,6 +3677,271 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
         .take(o.max_findings)
         .map(|(f, score)| FindingOut { score, ..f })
         .collect()
+}
+
+/// What a volume op changes (dB) and whether it raises: from the project's
+/// value at its path (a channel's or an insert's volume, a lane's point).
+fn volume_change(p: &Project, op: &Value) -> Option<f64> {
+    let path = op["path"].as_str()?;
+    let to = op["value"].as_f64()?;
+    let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    let from = match parts.as_slice() {
+        ["channels", c, "volume"] => p.channels.get(c.parse::<usize>().ok()?)?.volume,
+        ["mixer", "inserts", i, "volume"] => {
+            let i = i.parse::<usize>().ok()?;
+            if i == 0 {
+                return None;
+            }
+            p.mixer.inserts.get(i)?.volume
+        }
+        ["automation", i, "points", j, "value"] => {
+            let l = p.automation.get(i.parse::<usize>().ok()?)?;
+            if !l.target.ends_with("/volume") || l.target.starts_with("insert/0/") {
+                return None;
+            }
+            l.points.get(j.parse::<usize>().ok()?)?.value
+        }
+        _ => return None,
+    };
+    Some(dsp::amp_db(to.max(1e-6) / from.max(1e-6)))
+}
+
+/// Whether an op moves a held unit (an anchor): its channel, its insert
+/// when the insert carries only anchors, or a lane on them.
+fn moves_held(p: &Project, mix: &Mix, held: &[usize], op: &Value) -> bool {
+    let path = op["path"].as_str().unwrap_or("");
+    let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    let held_channel = |c: usize| held.iter().any(|u| mix.units[*u].channel == Some(c));
+    let held_insert = |i: usize| {
+        i > 0
+            && p.channels
+                .iter()
+                .enumerate()
+                .any(|(c, ch)| ch.mixer.index() == i && held_channel(c))
+            && p.channels
+                .iter()
+                .enumerate()
+                .filter(|(_, ch)| ch.mixer.index() == i)
+                .all(|(c, _)| held_channel(c))
+    };
+    match parts.as_slice() {
+        ["channels", c, ..] => c.parse::<usize>().is_ok_and(held_channel),
+        ["mixer", "inserts", i, ..] => i.parse::<usize>().is_ok_and(held_insert),
+        ["automation", i, ..] => i
+            .parse::<usize>()
+            .ok()
+            .and_then(|i| p.automation.get(i))
+            .is_some_and(|l| {
+                let t: Vec<&str> = l.target.split('/').collect();
+                match t.as_slice() {
+                    ["channel", id, ..] => p
+                        .channels
+                        .iter()
+                        .position(|c| c.id == *id)
+                        .is_some_and(held_channel),
+                    ["insert", i, ..] => i.parse::<usize>().is_ok_and(held_insert),
+                    _ => false,
+                }
+            }),
+        _ => false,
+    }
+}
+
+/// The fixes taken together, before ranking:
+/// - none touches a part the producer silenced (muted, or at volume 0);
+/// - none moves an anchor unless the finding is about it (or the master);
+/// - together they keep the anchors in their ranges: the boosts are scaled
+///   back as one until they do;
+/// - each says what it does to the anchors and the lead;
+/// - the ceiling waits while other fixes raise faders (they push the
+///   limiter and the true peak up: measure again after them).
+fn settle(
+    p: &Project,
+    report: &Report,
+    ctx: &Context,
+    pred: &super::predict::Predict,
+    held: &[usize],
+    anchor_units: &[usize],
+    out: &mut [(FindingOut, f64)],
+) {
+    let mix = &ctx.mix;
+    let anchor_ids: Vec<&str> = report
+        .elements
+        .iter()
+        .filter(|e| e.anchor.is_some())
+        .map(|e| e.id.as_str())
+        .collect();
+    for (f, _) in out.iter_mut() {
+        let before = f.fix.len();
+        f.fix.retain(|op| !super::roles::touches_silenced(p, op));
+        let about_anchor = f.element.as_deref().is_some_and(|el| {
+            anchor_ids.contains(&el)
+                || report
+                    .elements
+                    .iter()
+                    .any(|e| e.anchor.is_some() && el == model::insert_id(p, e.insert))
+        });
+        let master = f.element.as_deref() == Some(model::insert_id(p, 0).as_str())
+            || matches!(f.rule, "master-overload" | "weak-anchor" | "squashed-kick");
+        // Not about an anchor: its level stays; and a fix for another part
+        // does not touch it at all (a setting at fault on the anchor
+        // itself — an EQ boost making the whole mix bright — may go back).
+        let part = f.element.is_some();
+        let lead = f
+            .element
+            .as_deref()
+            .is_some_and(|el| report.elements.iter().any(|e| e.lead && e.id == el));
+        if !about_anchor && !master {
+            // A supporting part never moves an anchor; the lead and the
+            // whole mix may bring one over its range down.
+            let kept = if part && !lead { anchor_units } else { held };
+            f.fix.retain(|op| {
+                !moves_held(p, mix, kept, op) || (!part && volume_change(p, op).is_none())
+            });
+        }
+        if f.fix.is_empty() && before > 0 {
+            f.fix_label.clear();
+        }
+    }
+    // The boosts, scaled back as one while the anchors would fall under
+    // their ranges (and further than they are).
+    let anchors: Vec<(usize, f64)> = report
+        .elements
+        .iter()
+        .enumerate()
+        .filter_map(|(k, e)| e.range_db.map(|r| (k, r[0])))
+        .collect();
+    let all = |out: &[(FindingOut, f64)]| -> Vec<Value> {
+        let mut seen: Vec<String> = vec![];
+        let mut ops = vec![];
+        for (f, _) in out {
+            for op in &f.fix {
+                let path = op["path"].as_str().unwrap_or("").to_string();
+                if !seen.contains(&path) {
+                    seen.push(path);
+                    ops.push(op.clone());
+                }
+            }
+        }
+        ops
+    };
+    let zero = vec![0.0; mix.units.len()];
+    let short = |ops: &[Value]| -> bool {
+        let g = pred.gains(ops);
+        anchors
+            .iter()
+            .any(|&(k, lo)| match (pred.worst(k, &zero), pred.worst(k, &g)) {
+                (Some(now), Some(then)) => then < lo - 0.5 && then < now - 0.3,
+                _ => false,
+            })
+    };
+    if !anchors.is_empty() && short(&all(out)) {
+        let boosts: Vec<(usize, usize, f64)> = out
+            .iter()
+            .enumerate()
+            .flat_map(|(i, (f, _))| {
+                f.fix.iter().enumerate().filter_map(move |(j, op)| {
+                    volume_change(p, op)
+                        .filter(|d| *d > 0.05)
+                        .map(|d| (i, j, d))
+                })
+            })
+            .filter(|(i, j, _)| !moves_held(p, mix, held, &out[*i].0.fix[*j]))
+            .collect();
+        let scaled = |out: &[(FindingOut, f64)], k: f64| -> Vec<(FindingOut, f64)> {
+            let mut v: Vec<(FindingOut, f64)> = out.to_vec();
+            for &(i, j, d) in &boosts {
+                let op = &mut v[i].0.fix[j];
+                let to = op["value"].as_f64().unwrap_or(0.0);
+                op["value"] = json!(round3(to * gain(d * k - d)));
+            }
+            v
+        };
+        let (mut lo, mut hi) = (0.0, 1.0);
+        for _ in 0..12 {
+            let m = (lo + hi) / 2.0;
+            if short(&all(&scaled(out, m))) {
+                hi = m;
+            } else {
+                lo = m;
+            }
+        }
+        let held_back = scaled(out, lo);
+        for (i, (f, s)) in held_back.into_iter().enumerate() {
+            if boosts.iter().any(|b| b.0 == i) {
+                out[i].0 = FindingOut {
+                    fix_label: format!(
+                        "{} (held to {:.0}% of the boost: with the other fixes it would push the anchors under their ranges)",
+                        f.fix_label,
+                        lo * 100.0
+                    ),
+                    ..f
+                };
+                out[i].1 = s;
+            }
+        }
+    }
+    // What each fix does to the anchors and the lead.
+    let watched: Vec<usize> = report
+        .elements
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.anchor.is_some() || e.lead)
+        .map(|(k, _)| k)
+        .collect();
+    for (f, _) in out.iter_mut() {
+        if f.fix.is_empty() {
+            continue;
+        }
+        let g = pred.gains(&f.fix);
+        if g.iter().all(|x| x.abs() < 0.05) {
+            continue;
+        }
+        let mut said = vec![];
+        for &k in &watched {
+            let e = &report.elements[k];
+            if f.element.as_deref() == Some(e.id.as_str()) {
+                continue;
+            }
+            let d = pred.moved(k, &g);
+            if d.abs() >= 0.3 {
+                f.side_effects.push(super::report::SideEffect {
+                    id: e.id.clone(),
+                    delta_db: dsp::r1(d),
+                });
+                said.push(format!("{} {:+.1} dB", e.name, d));
+            }
+        }
+        if !said.is_empty() {
+            f.fix_label = format!("{} — against the mix: {}", f.fix_label, said.join(", "));
+        }
+    }
+    // The ceiling after the boosts.
+    // A boost: a part louder on the whole (a gain moved along its chain,
+    // the same sound, is none).
+    let boosting = out.iter().any(|(f, _)| {
+        f.rule != "true-peak"
+            && f.fix
+                .iter()
+                .any(|op| volume_change(p, op).is_some_and(|d| d > 0.05))
+            && pred.gains(&f.fix).iter().any(|g| *g > 0.05)
+    });
+    if boosting {
+        for (f, _) in out
+            .iter_mut()
+            .filter(|(f, _)| f.rule == "true-peak" && f.key == "true-peak|master")
+        {
+            if f.fix
+                .iter()
+                .any(|op| op["path"].as_str().is_some_and(|x| x.ends_with("/ceiling")))
+            {
+                f.fix.clear();
+                f.fix_label.clear();
+                f.severity = "info";
+                f.detail.push_str(" Other fixes here raise faders, which drive the limiter harder and the true peak up: apply them, measure again, then size the ceiling — lowering it now only chases the boosts.");
+            }
+        }
+    }
 }
 
 /// Sections whose loudness hardly changes: no build.
@@ -3408,12 +4355,31 @@ mod tests {
     }
 
     #[test]
-    fn raising_a_part_restores_its_cut_insert_first() {
+    fn raising_a_part_alone_on_its_insert_moves_that_fader_only() {
         let p = fixture(|v| v["mixer"]["inserts"][3]["volume"] = json!(0.5));
-        // Channel lead (index 2) on insert 3, alone there.
+        // Channel lead (index 2) on insert 3, alone there: one level of the
+        // gain chain, the insert's.
         let ops = level_ops(&p, Some(2), 3, 9.0);
-        assert_eq!(ops[0], set("/mixer/inserts/3/volume".into(), json!(1.0)));
-        assert_eq!(ops[1]["path"], json!("/channels/2/volume"));
+        assert_eq!(ops.len(), 1, "{ops:?}");
+        assert_eq!(
+            ops[0],
+            set(
+                "/mixer/inserts/3/volume".into(),
+                json!(round3(0.5 * gain(9.0)))
+            )
+        );
+    }
+
+    #[test]
+    fn a_channel_sharing_its_insert_rises_no_further_than_unity() {
+        // The pad joins the lead on insert 3: the channel carries the change.
+        let p = fixture(|v| {
+            v["channels"][3]["mixer"] = json!(3);
+            v["channels"][2]["volume"] = json!(0.8);
+        });
+        let ops = level_ops(&p, Some(2), 3, 6.0);
+        assert_eq!(ops, vec![set("/channels/2/volume".into(), json!(1.0))]);
+        assert!((max_gain_db(&p, Some(2), 3) - dsp::amp_db(1.0 / 0.8)).abs() < 1e-9);
     }
 
     #[test]

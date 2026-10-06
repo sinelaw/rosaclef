@@ -675,17 +675,26 @@ impl Effect for Compressor {
 
 // ------------------------------------------------------------------- Limiter
 
-/// A lookahead peak limiter that never lets a sample over its ceiling: the
-/// gain each sample needs is held over the lookahead window (a running
-/// minimum), released slowly upward, and smoothed by a moving average as
-/// long as the window — so the gain is already down when a peak leaves the
-/// delay line, without clipping it.
+/// A lookahead peak limiter that never lets a sample over its ceiling, nor
+/// the peaks between samples a converter or an encoder reconstructs (a
+/// true-peak limiter): the gain each stretch between two samples needs —
+/// its two samples and the signal between them, oversampled 4× as ITU-R
+/// BS.1770 measures true peak — is held over the lookahead window (a
+/// running minimum), released slowly upward, and smoothed by a moving
+/// average as long as the window — so the gain is already down when a peak
+/// leaves the delay line, without clipping it.
 pub struct Limiter {
     sr: f32,
-    /// The window (samples); the audio is delayed by `len - 1`.
+    /// The window (samples); the audio is delayed by `len - 1 + TP_LAG` (a
+    /// stretch's need is known `TP_LAG` samples after its first sample).
     len: usize,
     buf: [Vec<f32>; 2],
     w: usize,
+    /// The oversampling interpolator's phases and each channel's last
+    /// samples (a ring).
+    tp: [[f32; TP_TAPS]; TP_PHASES],
+    hist: [[f32; TP_TAPS]; 2],
+    at: usize,
     /// The running minimum of the needed gain: (sample index, gain),
     /// increasing gains.
     held: std::collections::VecDeque<(u64, f32)>,
@@ -708,8 +717,11 @@ impl Limiter {
         Limiter {
             sr,
             len,
-            buf: [vec![0.0; len], vec![0.0; len]],
+            buf: [vec![0.0; len + TP_LAG], vec![0.0; len + TP_LAG]],
             w: 0,
+            tp: tp_phases(),
+            hist: [[0.0; TP_TAPS]; 2],
+            at: 0,
             held: std::collections::VecDeque::with_capacity(len + 1),
             t: 0,
             rel: 1.0,
@@ -724,6 +736,37 @@ impl Limiter {
     }
 }
 
+const TP_PHASES: usize = 4;
+const TP_TAPS: usize = 12;
+/// How many samples back the oversampled stretch lies (the interpolator's
+/// delay, rounded up): the stretch from that sample to the next.
+const TP_LAG: usize = 6;
+
+/// The 4× oversampling interpolator's phases (48 taps, a windowed sinc as
+/// ITU-R BS.1770 Annex 2 describes; each phase passes DC at unity).
+fn tp_phases() -> [[f32; TP_TAPS]; TP_PHASES] {
+    let n = TP_PHASES * TP_TAPS;
+    let mid = (n as f64 - 1.0) / 2.0;
+    let mut h = [[0f32; TP_TAPS]; TP_PHASES];
+    for i in 0..n {
+        let t = (i as f64 - mid) / TP_PHASES as f64;
+        let pi = std::f64::consts::PI;
+        let sinc = if t.abs() < 1e-12 {
+            1.0
+        } else {
+            (pi * t).sin() / (pi * t)
+        };
+        let x = 2.0 * pi * (i as f64 + 0.5) / n as f64;
+        let w = 0.35875 - 0.48829 * x.cos() + 0.14128 * (2.0 * x).cos() - 0.01168 * (3.0 * x).cos();
+        h[i % TP_PHASES][i / TP_PHASES] = (sinc * w) as f32;
+    }
+    for ph in &mut h {
+        let s: f32 = ph.iter().sum();
+        ph.iter_mut().for_each(|x| *x /= s);
+    }
+    h
+}
+
 impl Effect for Limiter {
     fn set_device(&mut self, d: &Device, _ctx: &Ctx) {
         self.input = db_to_gain(d.param("gain") as f32);
@@ -735,7 +778,25 @@ impl Effect for Limiter {
         let c = self.ceiling;
         for i in 0..left.len() {
             let (xl, xr) = (left[i] * self.input, right[i] * self.input);
-            let peak = xl.abs().max(xr.abs());
+            // The stretch `TP_LAG` samples back: its two samples, and the
+            // signal between them oversampled.
+            self.hist[0][self.at] = xl;
+            self.hist[1][self.at] = xr;
+            self.at = (self.at + 1) % TP_TAPS;
+            let back = |k: usize| (self.at + TP_TAPS - 1 - k) % TP_TAPS;
+            let mut peak = 0f32;
+            for ch in &self.hist {
+                peak = peak
+                    .max(ch[back(TP_LAG)].abs())
+                    .max(ch[back(TP_LAG - 1)].abs());
+                for ph in &self.tp {
+                    let mut acc = 0.0;
+                    for (j, k) in ph.iter().enumerate() {
+                        acc += k * ch[back(j)];
+                    }
+                    peak = peak.max(acc.abs());
+                }
+            }
             let need = if peak > c { c / peak } else { 1.0 };
             // The least gain any sample in the window needs.
             while self.held.back().is_some_and(|h| h.1 >= need) {
@@ -761,7 +822,7 @@ impl Effect for Limiter {
             let g = (self.sum / n as f64) as f32;
             self.buf[0][self.w] = xl;
             self.buf[1][self.w] = xr;
-            self.w = (self.w + 1) % n;
+            self.w = (self.w + 1) % (n + TP_LAG);
             let (ol, or) = (self.buf[0][self.w] * g, self.buf[1][self.w] * g);
             // Rounding aside, nothing reaches the clamp; what does is
             // metered with the rest.
@@ -827,5 +888,54 @@ mod tests {
         // reads that much, not the smoothed fraction of it.
         let (max, _) = lim.take_gain_reduction().unwrap();
         assert!(max > 5.0, "{max}");
+    }
+
+    /// The peak between samples (8× windowed-sinc reconstruction).
+    fn true_peak(x: &[f32]) -> f32 {
+        let taps = 32i64;
+        let mut peak = 0f32;
+        for n in taps as usize..x.len() - taps as usize {
+            for k in 0..8 {
+                let t = n as f64 + k as f64 / 8.0;
+                let mut v = 0f64;
+                for m in (t as i64 - taps)..=(t as i64 + taps) {
+                    let d = t - m as f64;
+                    let sinc = if d.abs() < 1e-9 {
+                        1.0
+                    } else {
+                        (std::f64::consts::PI * d).sin() / (std::f64::consts::PI * d)
+                    };
+                    let w = 0.5 + 0.5 * (std::f64::consts::PI * d / (taps as f64 + 1.0)).cos();
+                    v += x[m as usize] as f64 * sinc * w;
+                }
+                peak = peak.max(v.abs() as f32);
+            }
+        }
+        peak
+    }
+
+    #[test]
+    fn the_limiter_holds_the_peaks_between_samples_too() {
+        let sr = 48000.0;
+        let mut lim = Limiter::new(sr);
+        lim.ceiling = db_to_gain(-1.0);
+        lim.input = db_to_gain(6.0);
+        lim.release = settle_coef(0.08, sr);
+        // 6 kHz with its peaks between the samples: the samples alone read
+        // 0.7 dB under the true peak.
+        let n = 9600;
+        let f = 6000.0 / sr as f64;
+        let mut l: Vec<f32> = (0..n)
+            .map(|i| {
+                (0.9 * (2.0 * std::f64::consts::PI * f * i as f64 + std::f64::consts::PI / 8.0)
+                    .sin()) as f32
+            })
+            .collect();
+        let mut r = l.clone();
+        for (a, b) in l.chunks_mut(128).zip(r.chunks_mut(128)) {
+            lim.process(a, b);
+        }
+        let tp = gain_to_db(true_peak(&l[2400..]));
+        assert!(tp <= -0.8, "true peak {tp:.2} dB over the -1 dB ceiling");
     }
 }

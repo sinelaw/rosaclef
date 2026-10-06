@@ -263,6 +263,8 @@ function decodeReport(r) {
         kind: str(e.kind),
         role: str(e.role),
         lead: e.lead === true,
+        anchor: str(e.anchor),
+        range: nums(e.rangeDb),
         buriedIn: (e.buriedIn ?? []).map((u) => ({ from: int(u.fromBar), to: int(u.toBar), rel: num(u.relativeToMixDb) })),
         insert: int(e.insert),
         rms: num(e.rmsDbfs),
@@ -985,13 +987,15 @@ function paintSpectrum(g, w, h, r) {
 function verdictText(v) {
   return v === "inaudible"
     ? t("mixcheck.parts.verdict.inaudible")
-    : v === "buried"
-      ? t("mixcheck.parts.verdict.buried")
-      : v === "dominant"
-        ? t("mixcheck.parts.verdict.dominant")
-        : v === "overloading"
-          ? t("mixcheck.parts.verdict.overloading")
-          : t("mixcheck.parts.verdict.ok");
+    : v === "weak"
+      ? t("mixcheck.parts.verdict.weak")
+      : v === "buried"
+        ? t("mixcheck.parts.verdict.buried")
+        : v === "dominant"
+          ? t("mixcheck.parts.verdict.dominant")
+          : v === "overloading"
+            ? t("mixcheck.parts.verdict.overloading")
+            : t("mixcheck.parts.verdict.ok");
 }
 
 /** One part of the mix: its level against the mix, its audibility, who masks it, and what to do. */
@@ -1010,6 +1014,11 @@ function elementRow(b, e) {
     b.open("span", "role", "mx-el-role lead");
     b.attr("title", t("mixcheck.parts.lead.title"));
     b.text(t("mixcheck.parts.lead.label"));
+    b.close();
+  } else if (e.anchor !== "" && e.range.length === 2) {
+    b.open("span", "role", "mx-el-role anchor");
+    b.attr("title", tf("mixcheck.parts.anchor.title", [e.name, fmt(e.range[0], 0), fmt(e.range[1], 0)]));
+    b.text(e.anchor === "kick" ? t("mixcheck.parts.anchor.kick.label") : t("mixcheck.parts.anchor.bass.label"));
     b.close();
   } else if (e.role !== "") b.leaf("span", "role", "mx-el-role", e.role);
   b.leaf("span", "sp", "spacer", "");
@@ -1264,7 +1273,7 @@ export function mixcheckPanel(b, ask) {
       b.leaf("span", "b", "", t("mixcheck.parts.legend.audible"));
       b.close();
       const order = r.elements.slice().sort((x, y) => {
-        const rank = (v) => (v === "inaudible" ? 0 : v === "buried" ? 1 : v === "overloading" ? 2 : v === "dominant" ? 3 : 4);
+        const rank = (v) => (v === "inaudible" ? 0 : v === "weak" ? 1 : v === "buried" ? 2 : v === "overloading" ? 3 : v === "dominant" ? 4 : 5);
         return rank(x.verdict) - rank(y.verdict) || y.share - x.share;
       });
       for (const e of order) elementRow(b, e);

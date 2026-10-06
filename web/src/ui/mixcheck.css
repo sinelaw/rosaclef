@@ -633,6 +633,7 @@
   background: var(--bad);
   border-color: transparent;
 }
+.mx-verdict.weak,
 .mx-verdict.buried {
   color: #0b0a0d;
   background: var(--warn);
@@ -657,7 +658,8 @@
   color: var(--dim);
   font-size: 9.5px;
 }
-.mx-el-role.lead {
+.mx-el-role.lead,
+.mx-el-role.anchor {
   color: var(--champagne);
   font-weight: 600;
   text-transform: uppercase;

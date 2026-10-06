@@ -27,8 +27,10 @@ pub mod findings;
 pub mod model;
 pub mod options;
 pub mod patch;
+pub mod predict;
 pub mod reference;
 pub mod report;
+pub mod roles;
 pub mod targets;
 pub mod text;
 pub mod timeline;
@@ -411,6 +413,29 @@ fn verify(env: &Env, project: &Project, o: &Options, r: &mut Report) -> Result<(
                 if let Some(f) = still {
                     // The same problem, smaller or elsewhere.
                     v["still"] = json!(format!("{}: {}", f.at, f.detail));
+                }
+                // What it did to every other part against the mix: the
+                // anchors and the lead always, the rest when 1 dB or more.
+                let about = r.findings[i].element.clone();
+                let moved: Vec<Value> = r
+                    .elements
+                    .iter()
+                    .filter(|e| about.as_deref() != Some(e.id.as_str()))
+                    .filter_map(|e| {
+                        let a = e.relative_to_mix_db.flatten()?;
+                        let b = r2
+                            .elements
+                            .iter()
+                            .find(|x| x.id == e.id)?
+                            .relative_to_mix_db
+                            .flatten()?;
+                        let watched = e.anchor.is_some() || e.lead;
+                        ((watched && (b - a).abs() >= 0.3) || (b - a).abs() >= 1.0)
+                            .then(|| json!({"id": e.id, "name": e.name, "deltaDb": dsp::r1(b - a)}))
+                    })
+                    .collect();
+                if !moved.is_empty() {
+                    v["sideEffects"] = json!(moved);
                 }
                 v
             }

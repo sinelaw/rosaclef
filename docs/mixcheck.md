@@ -123,10 +123,21 @@ what-if is a second render; `--verify`, one per finding fix and suggestion
   buried may still be felt. `maskedBy` names the parts with the strongest
   excitation where it is loudest, the band and the excitation ratio.
 - **The limiter** on the master looks ahead 1.5 ms and holds the gain each
-  sample needs over that window, so no sample passes its ceiling (it measures
-  sample peaks: the peaks between samples run over it by up to a dB or more on
-  bright, dense material — `true-peak` measures those). Its metered gain
-  reduction is what it applies.
+  stretch between two samples needs over that window — the two samples and the
+  signal between them, oversampled 4× as BS.1770 measures true peak — so
+  neither a sample nor a peak between samples passes its ceiling (a true-peak
+  limiter: the ceiling is the true peak). Its metered gain reduction is what
+  it applies.
+- **Roles.** Besides the lead, the kick and the bass are **anchors** (a drum
+  channel named for a kick — kick, bd, bass drum —, and the bass the Critic
+  reads; not a layer). They are judged by their level against the mix too —
+  audible is not balanced — against a range set by the style: dance music (a
+  kick on most beats) keeps the kick at −9 to −6 dB and the bass at −13 to
+  −10; other music −15 to −6 (`rangeDb`). The other findings' fixes hold the
+  anchors where they are and never cut one to make room for a supporting part.
+- **Silenced on purpose.** A channel muted, or at volume 0 (under −60 dB) with
+  no lane bringing it up, and a muted insert, are left out: no finding is about
+  them and no fix touches them.
 - **Notes are not its business.** Harmonic clashes are read from the notes
   by the Critic (`rosaclef critic`, its harmony checks); a mix check measures
   the sound, and every fix it proposes changes the mixer only — faders, EQ,
@@ -169,8 +180,13 @@ silent parts are left out.
 ```
 
 - Ids: `channel:<id>`, `insert:<index>/<name>`; notes by `pattern` and `noteIndex`.
-- `verdict`: `inaudible` (audible under 25 % of the time it plays; strict 35,
-  loose 15), `buried` (any part audible under 60 % of the time; the lead also
+- `anchor` (`kick`, `bass`) and `rangeDb`: an anchor and where it belongs.
+- `verdict`: `weak` — an anchor under its range by half a dB, over the range
+  or in a quarter of its stretches, however audible;
+  `inaudible` (audible under 25 % of the time it plays; strict 35,
+  loose 15; a transition — a riser, an impact — judged on its attack: the
+  frames within 6 dB of its peak over the second before, not its tail),
+  `buried` (any part audible under 60 % of the time; the lead also
   when it sits more than 10 LU under the mix however audible — strict 8, loose
   13 — over the range, or in stretches covering a fifth of where it plays:
   sections, or 4 bars without them, each pass apart, listed in `buriedIn`),
@@ -224,7 +240,9 @@ silent parts are left out.
 - `--verify` measures every finding's `fix` (the whole check again with it
   applied: `verified.resolved`, `summary`, `new` findings, `worse` — findings
   already there that grew under it — `levelMatchDb` when it changes the
-  loudness by 1 dB or more (play it that much louder to compare fairly), and
+  loudness by 1 dB or more (play it that much louder to compare fairly),
+  `sideEffects` — what it did to the other parts against the mix: the anchors
+  and the lead when they move 0.3 dB or more, any part at 1 dB —, and
   `still` — what and where — when not resolved), then the suggestions (`verified`: the part's
   level, audibility and verdict), one render each, at most 10. The summary
   gives the dynamics that moved (LRA, PLR, the master compressor's and
@@ -265,15 +283,23 @@ rule takes more than a third of the list. One problem is one finding, with one
 fix: an overload or a low-end build-up lists every stretch it happens in
 ("bars 1–7, 9–12 (pass 2), 13–18"; more than four read "bars 2–140 (112 bars,
 in 20 stretches)"). Every fix is a change to the mixer — faders, EQ, dynamics,
-the master's automation — never to the notes. Fixes go to the setting at fault
+the master's automation — never to the notes. A fix moves one level of the
+gain chain: a part's insert fader when the insert carries it alone (up to 2),
+else its channel volume, never raised past unity; a lane driving that fader
+moves instead, and is never pushed past unity by a fix. Taken together the
+fixes keep the anchors in their ranges — the boosts are scaled back as one
+when they would not — and each says what it does to the anchors and the lead
+against the mix (`sideEffects`, the model's prediction; `--verify` measures
+them). Fixes go to the setting at fault
 when there is one — a limiter's drive, an EQ's boost, a fader pushed above
 unity — rather than turning everything else down. Each is a rule of the Critic
 (category *Mix check*), with a JSON Patch `fix` where the mixer can fix it:
 
 | rule | when | fix |
 |---|---|---|
+| `weak-anchor` | the kick or the bass under its range against the mix (`rangeDb`) by half a dB, over the range or in a quarter of its stretches — heard, and weak: the groove loses its weight. The stretches under the range are named | the anchor up at its level of the gain chain until its weakest stretch is back in its range (the model's prediction), the other anchors up with what that adds to the mix, and the limiter's input down by as much: the loudness and the other anchors' places kept |
 | `masked-lead` | the lead is buried or inaudible, or more than 10 LU under the mix (strict 8, loose 13) over the range or in stretches (`buriedIn`; the finding names their bars). The lead is the part named like one (lead, vocal, melody, topline, solo — not backing, chop, choir, harmony, double, ad-lib), else the loudest the Critic reads as a lead: one per song | its balance: an automation lane holding it down put back, a masker's EQ boost over it back to +2 dB, pushed faders back to unity, the lead up (6 dB at most), and only the parts covering it down, 4 dB at most; else an EQ cut on its masker where it covers it |
-| `inaudible-part` | a part is inaudible (strict: buried too), playing 5 % of the range or more; a channel volume 12 dB or more under the others' is named; notes much softer or sparser here than elsewhere in the song are named | the level the model says it needs, 6 dB at most (more only when its own fader sits that far under the others'); beyond that the finding calls it an arrangement conflict. A low part covered by what another (not a bass) carries under it is offered a high-pass at 150 Hz on that part |
+| `inaudible-part` | a part is inaudible (strict: buried too), playing 5 % of the range or more; a channel volume 12 dB or more under the others' is named; notes much softer or sparser here than elsewhere in the song are named. A layer covered by the part it layers is info, with no fix (it is heard as that part) | the first of, in this order: an automation lane lifting what covers it over unity, back to unity there (the cause); under the kick and the bass below 300 Hz, a high-pass on it (120–150 Hz) leaving the lows to them; a cut in what covers it, never an anchor; and only then its level — the level the model says it needs, 6 dB at most (more only when its own fader sits that far under the others'); beyond that the finding calls it an arrangement conflict |
 | `part-dropout` | a part (not the lead) whose own level falls 10 dB (strict 8, loose 13) under its loudest stretch and sits 15 dB under the mix there; warn when a volume lane holds it down and it is gone (25 dB under the mix), else info; the notes are named when they are softer or sparser there (pattern, velocity) | the lane back up there |
 | `dominant-part` | a part is 60 % or more of the mix's loudness (strict 50, loose 75) — the lead 80 % (strict 70, loose 90): the band behind it disappears; warn when its faders sit 3 dB or more over unity, else info | its faders back to unity |
 | `low-end-buildup` | a part carrying a quarter of the lows boosts them 6 dB or more with an EQ (strict 4, loose 9) in a mix that itself leans low (lows within 4 dB of the rule's threshold, or the low mids within 2); else for 2 bars or more, under 250 Hz is 14 dB over 500 Hz–6 kHz, or 250–500 Hz 6 dB over a balanced tilt (drum breaks and a part playing alone aside) | that EQ's boost down to +3 dB or less; a low-mid bell boost back to +2 dB; else, on the part carrying the most low end (not the bass or drums), a low-shelf cut at 150 Hz — or a bell cut at 350 Hz when the excess is in the low mids |
@@ -286,14 +312,16 @@ unity — rather than turning everything else down. Each is a rule of the Critic
 | `phase-correlation` | the mix's correlation is negative or it loses 6 dB in mono; a part's correlation under −0.3 (however quiet: it vanishes in mono) | — (the mixer has no polarity switch); the finding names the cause: its insert's stereo effects, else the audio files it plays (one channel out of polarity) |
 | `part-over-compression` | a compressor on a part takes 8 dB on average where it plays (strict 6, loose 12), or 15 dB at its peaks with an attack under 2 ms | about 3 dB of reduction, 4:1 at most, attack 10 ms, release 150 ms, the makeup down by as much (the loudness kept) |
 | `over-compression` | a master compressor or limiter takes 6 dB or more on average (strict 4, loose 9), over 3 dB at least half the time: the mix is squashed flat | down to about 3 dB of gain reduction: a compressor glues instead (ratio 2.5:1 at most, attack at least 10 ms, release 150 ms when under 100), its threshold where it takes about 3 dB and its makeup down by as much (the loudness kept); a limiter's drive down |
-| `master-overload` | bars where the limiter's input peaks over +1 dBFS and it reduces 8 dB or more (strict: 0 / 5, loose: +3 / 11) — loud genres run a limiter 6 dB deep on their peaks; catching the odd peak is mastering, not overload | a limiter driven more than 3 dB: its drive first; then the parts carrying 15 % or more of the mix down (up to three); when none does, the rest of the drive and every fader down |
+| `master-overload` | bars where the limiter's input peaks over +1 dBFS and it reduces 8 dB or more (strict: 0 / 5, loose: +3 / 11) — loud genres run a limiter 6 dB deep on their peaks; catching the odd peak is mastering, not overload | a limiter driven more than 3 dB: its drive first; then the parts carrying 15 % or more of the mix down (up to three; not the anchors); when none does, the rest of the drive and every fader down |
+| `squashed-kick` | bars where the master limiter takes 3 dB or more (strict 2, loose 5) off the kick's hits on average, 1 dB more than off the rest of the bar: its transients flattened, the drums without punch | the limiter's input gain down until it takes about 2 dB off the hits (1 to 6 dB) — less going in, not a lower ceiling |
 | `limiter-pumping` | the master limiter's (or bus compressor's) gain reduction swings 4 dB or more within a beat, over 3 dB a fifth of the time | less drive, until the limiter takes 3 dB at most (a compressor: a higher threshold); a release that holds steady instead of recovering between hits: about half a beat for a limiter (100–300 ms), a beat for a compressor (150–600 ms) |
 | `fast-limiter-release` | the master limiter releases in under 20 ms and takes 3 dB or more: it rides the bass's waveform and distorts the lows | release about half a beat (100–300 ms) |
 | `section-lift` (info) | a chorus (a section named chorus, drop, hook or refrain) less than 1 LU (strict 0.5, loose 2) louder than the verses' average — a heuristic: a chorus often lifts by density and width; not judged while `master-overload` or `over-compression` fires (the limiter clamps everything) | a master volume lane holding it 1.5 dB or more down: back up there, and the rest of the song down on it (3 dB at most) — never the choruses over the lane's level elsewhere (the master fader is after the limiter); else what in the mixer holds it back, named: lanes holding parts 3 dB or more down there (put back), the master limiter taking 1.5 dB more there than in the verses (its drive down by as much), a part that is most of the mix's loudness; else none (the arrangement has to lift it) |
 | `section-loudness-flat` (info) | three or more sections all within 1.5 LU (strict 2.5, loose 1.0); not judged while the limiter clamps everything | a master volume lane: the sparse sections 1.5–3 dB down |
 | `loud-master` (info) | no `--target`, and the master louder than −10 LUFS (strict −12, loose −8): streaming services turn it down (most to −14, Apple to −16) | the limiter's drive down to land near −12 |
+| `gain-staging` (info) | channels over unity on an insert whose fader is under unity: the gain at the wrong end of the chain | the insert's fader up (to unity at most) and its channels down by as much (lanes on them too): the same sound |
 | `master-fader` | the master fader, which comes after the limiter, is off unity: down 1 dB or more (info: the ceiling no longer sets the peaks), or up (warn: it pushes them over) | the fader to 0 dB and the limiter's input gain by as much (the same loudness; the input gain goes to −24 dB) |
-| `true-peak` | the output's true peak over the delivery target's limit (`--target`), else −1 dBTP (strict −2, loose 0) — ranked last: the drive and release come first | the limiter's ceiling down to land 0.5 dB under the limit (no limiter: the master fader) |
+| `true-peak` | the output's true peak over the delivery target's limit (`--target`), else −1 dBTP (strict −2, loose 0) — ranked last: the drive and release come first. Info, its fix held back, while other fixes in the report raise faders (they drive the limiter and the true peak up: measure again after them). Also info when the ceiling sits lower than the limit needs (the true peak a dB or more under it) | the smallest move that reaches the limit: the ceiling down by as much as the true peak is over it, and a tenth (no limiter: the master fader); a limiter taking 6 dB or more: its input gain down first. A ceiling lower than needed: up to where the true peak meets the limit, a few tenths under |
 
 `rosaclef critic --audio` adds them to the Critic's findings (a whole-song mix
 check, cached): `--fix KEY` or `--fix RULE` applies them (each was measured on

@@ -392,6 +392,22 @@
             "type": "boolean",
             "description": "The song's lead (one per song: named like one, else the loudest the Critic reads as a lead). Also buried when it sits far under the mix (10 LU; strict 8, loose 13)."
           },
+          "anchor": {
+            "enum": [
+              "kick",
+              "bass"
+            ],
+            "description": "An anchor of the groove: a drum channel named for a kick, or the bass (not a layer). Judged by its level against the mix too (rangeDb); the other findings' fixes hold it where it is and never cut it to make room for a supporting part."
+          },
+          "rangeDb": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "Where the anchor belongs against the mix (dB: low, high). Dance music (a kick on most beats): kick -9 to -6, bass -13 to -10; other music -15 to -6."
+          },
           "insert": {
             "type": "integer"
           },
@@ -584,11 +600,12 @@
             "enum": [
               "inaudible",
               "buried",
+              "weak",
               "ok",
               "dominant",
               "overloading"
             ],
-            "description": "inaudible: audible under 25 % of the time it plays (strict 35, loose 15). buried: audible under 60 % of the time; for the lead, also more than 10 LU under the mix (strict 8, loose 13), over the range or in stretches (buriedIn). overloading: its own peak over 0 dBFS, or 40 % or more of a master that overloads (its limiter's input over 0 dBFS with 3 dB or more of reduction). dominant: 45 % or more of the mix's energy, within 3 dB of the mix's loudness. ok: none of these."
+            "description": "inaudible: audible under 25 % of the time it plays (strict 35, loose 15). buried: audible under 60 % of the time; for the lead, also more than 10 LU under the mix (strict 8, loose 13), over the range or in stretches (buriedIn). overloading: its own peak over 0 dBFS, or 40 % or more of a master that overloads (its limiter's input over 0 dBFS with 3 dB or more of reduction). dominant: 45 % or more of the mix's energy, within 3 dB of the mix's loudness. ok: none of these. weak: an anchor (kick, bass) under its range against the mix (rangeDb) over the range or in a quarter of its stretches, however audible."
           },
           "suggestions": {
             "type": "array",
@@ -710,6 +727,7 @@
           },
           "rule": {
             "enum": [
+              "weak-anchor",
               "masked-lead",
               "inaudible-part",
               "part-dropout",
@@ -725,11 +743,13 @@
               "part-over-compression",
               "over-compression",
               "master-overload",
+              "squashed-kick",
               "limiter-pumping",
               "fast-limiter-release",
               "section-lift",
               "section-loudness-flat",
               "loud-master",
+              "gain-staging",
               "master-fader",
               "true-peak"
             ]
@@ -787,9 +807,29 @@
           "fixLabel": {
             "type": "string"
           },
+          "sideEffects": {
+            "type": "array",
+            "description": "What the fix does to the anchors and the lead against the mix (the model's prediction, where it moves one 0.3 dB or more): the fixes hold the anchors in their ranges together, and say what they cost the others.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "deltaDb"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "deltaDb": {
+                  "type": "number"
+                }
+              }
+            }
+          },
           "verified": {
             "type": "object",
-            "description": "--verify: the whole check again with the fix applied: resolved (the finding is gone), summary, new (findings it brings), worse (findings already there that grew), still (where and what remains when not resolved), levelMatchDb (how much louder to play it to compare at the same loudness, when it changes the loudness 1 dB or more)."
+            "description": "--verify: the whole check again with the fix applied: resolved (the finding is gone), summary, new (findings it brings), worse (findings already there that grew), still (where and what remains when not resolved), levelMatchDb (how much louder to play it to compare at the same loudness, when it changes the loudness 1 dB or more), sideEffects (what it did to the other parts against the mix, measured: the anchors and the lead when they move 0.3 dB or more, the rest at 1 dB or more)."
           },
           "fromBeat": {
             "type": "number",
@@ -845,7 +885,9 @@
         },
         "overridden": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "What-if ops setting a value an automation lane drives (it overrides them while it plays)."
         },
         "master": {

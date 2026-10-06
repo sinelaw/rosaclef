@@ -1,0 +1,419 @@
+{
+ "format": "rosaclef/1",
+ "meta": {
+  "title": "Groove fixture"
+ },
+ "transport": {
+  "bpm": 124,
+  "beatsPerBar": 4
+ },
+ "channels": [
+  {
+   "id": "kick",
+   "name": "Kick",
+   "instrument": {
+    "type": "drum",
+    "options": {
+     "kind": "kick"
+    }
+   },
+   "volume": 0.9,
+   "mixer": 1
+  },
+  {
+   "id": "bass",
+   "name": "Sub Bass",
+   "instrument": {
+    "type": "analog",
+    "params": {
+     "drift": 0,
+     "cutoff": 300
+    },
+    "options": {
+     "wave1": "saw"
+    }
+   },
+   "volume": 0.8,
+   "mixer": 2
+  },
+  {
+   "id": "acid",
+   "name": "Acid",
+   "instrument": {
+    "type": "analog",
+    "params": {
+     "drift": 0,
+     "cutoff": 500,
+     "resonance": 0.6
+    },
+    "options": {
+     "wave1": "saw"
+    }
+   },
+   "volume": 0.5,
+   "mixer": 3
+  },
+  {
+   "id": "pad",
+   "name": "Veil Pad",
+   "instrument": {
+    "type": "wavetable"
+   },
+   "volume": 1.4,
+   "mixer": 4
+  },
+  {
+   "id": "shimmer",
+   "name": "Stardust Shimmer",
+   "instrument": {
+    "type": "additive"
+   },
+   "volume": 0.0,
+   "mixer": 4
+  },
+  {
+   "id": "impact",
+   "name": "Impact",
+   "instrument": {
+    "type": "transition",
+    "params": {
+     "length": 8,
+     "intensity": 0.8,
+     "space": 0.7
+    },
+    "options": {
+     "kind": "impact"
+    }
+   },
+   "volume": 0.9,
+   "mixer": 5
+  }
+ ],
+ "patterns": [
+  {
+   "id": "beat",
+   "name": "Beat",
+   "length": 4,
+   "notes": [
+    {
+     "channel": "kick",
+     "pitch": 60,
+     "start": 0,
+     "length": 0.25,
+     "velocity": 1.0
+    },
+    {
+     "channel": "bass",
+     "pitch": 33,
+     "start": 0.5,
+     "length": 0.4,
+     "velocity": 0.9
+    },
+    {
+     "channel": "kick",
+     "pitch": 60,
+     "start": 1,
+     "length": 0.25,
+     "velocity": 1.0
+    },
+    {
+     "channel": "bass",
+     "pitch": 33,
+     "start": 1.5,
+     "length": 0.4,
+     "velocity": 0.9
+    },
+    {
+     "channel": "kick",
+     "pitch": 60,
+     "start": 2,
+     "length": 0.25,
+     "velocity": 1.0
+    },
+    {
+     "channel": "bass",
+     "pitch": 33,
+     "start": 2.5,
+     "length": 0.4,
+     "velocity": 0.9
+    },
+    {
+     "channel": "kick",
+     "pitch": 60,
+     "start": 3,
+     "length": 0.25,
+     "velocity": 1.0
+    },
+    {
+     "channel": "bass",
+     "pitch": 33,
+     "start": 3.5,
+     "length": 0.4,
+     "velocity": 0.9
+    }
+   ]
+  },
+  {
+   "id": "acid",
+   "name": "Acid",
+   "length": 4,
+   "notes": [
+    {
+     "channel": "acid",
+     "pitch": 45,
+     "start": 0.0,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 48,
+     "start": 0.25,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 52,
+     "start": 0.5,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 45,
+     "start": 0.75,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 50,
+     "start": 1.0,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 45,
+     "start": 1.25,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 48,
+     "start": 1.5,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 57,
+     "start": 1.75,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 45,
+     "start": 2.0,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 48,
+     "start": 2.25,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 52,
+     "start": 2.5,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 45,
+     "start": 2.75,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 50,
+     "start": 3.0,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 45,
+     "start": 3.25,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 48,
+     "start": 3.5,
+     "length": 0.2,
+     "velocity": 0.8
+    },
+    {
+     "channel": "acid",
+     "pitch": 57,
+     "start": 3.75,
+     "length": 0.2,
+     "velocity": 0.8
+    }
+   ]
+  },
+  {
+   "id": "pad",
+   "name": "Pad",
+   "length": 4,
+   "notes": [
+    {
+     "channel": "pad",
+     "pitch": 60,
+     "start": 0,
+     "length": 4,
+     "velocity": 0.7
+    },
+    {
+     "channel": "pad",
+     "pitch": 63,
+     "start": 0,
+     "length": 4,
+     "velocity": 0.7
+    },
+    {
+     "channel": "pad",
+     "pitch": 67,
+     "start": 0,
+     "length": 4,
+     "velocity": 0.7
+    },
+    {
+     "channel": "shimmer",
+     "pitch": 84,
+     "start": 0,
+     "length": 4,
+     "velocity": 0.7
+    }
+   ]
+  },
+  {
+   "id": "hit",
+   "name": "Impact",
+   "length": 8,
+   "notes": [
+    {
+     "channel": "impact",
+     "pitch": 48,
+     "start": 0,
+     "length": 8,
+     "velocity": 0.94
+    }
+   ]
+  }
+ ],
+ "playlist": {
+  "tracks": [
+   {
+    "name": "Beat"
+   },
+   {
+    "name": "Acid"
+   },
+   {
+    "name": "Pad"
+   },
+   {
+    "name": "FX"
+   }
+  ],
+  "clips": [
+   {
+    "pattern": "beat",
+    "track": 0,
+    "start": 0,
+    "length": 32
+   },
+   {
+    "pattern": "acid",
+    "track": 1,
+    "start": 0,
+    "length": 32
+   },
+   {
+    "pattern": "pad",
+    "track": 2,
+    "start": 0,
+    "length": 32
+   },
+   {
+    "pattern": "hit",
+    "track": 3,
+    "start": 16,
+    "length": 8
+   }
+  ]
+ },
+ "mixer": {
+  "inserts": [
+   {
+    "name": "Master",
+    "effects": [
+     {
+      "type": "limiter",
+      "params": {
+       "gain": 2,
+       "ceiling": -1
+      }
+     }
+    ]
+   },
+   {
+    "name": "Kick",
+    "volume": 0.12
+   },
+   {
+    "name": "Sub",
+    "volume": 0.9
+   },
+   {
+    "name": "Acid",
+    "volume": 0.6
+   },
+   {
+    "name": "Pad",
+    "volume": 0.25
+   },
+   {
+    "name": "FX",
+    "volume": 0.8
+   }
+  ]
+ },
+ "score": {
+  "marks": [
+   {
+    "start": 0,
+    "end": 16,
+    "color": "#c97b84",
+    "label": "Build"
+   },
+   {
+    "start": 16,
+    "end": 32,
+    "color": "#d4af37",
+    "label": "Drop"
+   }
+  ]
+ }
+}

@@ -652,12 +652,37 @@ pub fn audibility(
         levels[i] = mix.inside.iter().map(|h| level(e, *h)).collect();
         loudest[i] = levels[i].iter().copied().fold(0.0, f64::max);
     }
+    // A transition (a riser, an impact) is heard by its attack: the hops
+    // within 6 dB of its peak over the second before, not the tail it
+    // leaves under the music.
+    let second = ((mix.a.sr as f64 / super::analyze::HOP as f64).round() as usize).max(1);
+    let attack: Vec<Option<Vec<bool>>> = elements
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            let transition = e
+                .channel
+                .is_some_and(|c| mix.p.channels[c].instrument.kind == "transition");
+            transition.then(|| {
+                let l = &levels[i];
+                (0..l.len())
+                    .map(|k| {
+                        let recent = l[k.saturating_sub(second)..=k]
+                            .iter()
+                            .copied()
+                            .fold(0.0, f64::max);
+                        l[k] >= recent * 0.25
+                    })
+                    .collect()
+            })
+        })
+        .collect();
     let mut maskers: Vec<Vec<Masker>> = vec![vec![]; n];
     for (k, &h) in mix.inside.iter().enumerate() {
         let active: Vec<usize> = (0..n)
             .filter(|i| {
                 let l = levels[*i][k];
-                l > 1e-8 && l > loudest[*i] * 1e-4
+                l > 1e-8 && l > loudest[*i] * 1e-4 && attack[*i].as_ref().is_none_or(|m| m[k])
             })
             .collect();
         if active.is_empty() {

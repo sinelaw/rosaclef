@@ -167,7 +167,10 @@ right before editing it, and never rewrite the whole file from memory.
   range or only in some sections (`buriedIn` lists the bars; an automation lane holding it down there is
   named and put back). Every part has `bySection` (its level against the mix per section) and, where
   it drops out (10 dB under its own level), `buriedIn` and a `part-dropout` finding naming the lane
-  that holds it down. Also `--by bar|section|8-beats` (`--by section --text`: each part's level per
+  that holds it down. The kick and the bass are anchors (`"anchor": "kick"`, `rangeDb`): `weak` (and a
+  `weak-anchor` finding) when under their range against the mix however audible; the other fixes hold
+  them where they are, and each fix's `sideEffects` says what it does to them and the lead (`--verify`
+  measures it). Apply the fixes in the order given and measure again between rounds. Also `--by bar|section|8-beats` (`--by section --text`: each part's level per
   section), `--focus rbass,4,master`,
   `--checks levels,audibility,masking,dynamics,gainreduction,spectrum,stereo`,
   `--target spotify|apple|youtube|ebu-r128|…`, `--reference samples/ref.wav` (level-matched A/B),

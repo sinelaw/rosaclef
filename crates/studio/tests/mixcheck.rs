@@ -367,14 +367,16 @@ fn gain_reduction_of_signals_of_known_level() {
         c.stat.mean
     );
     assert!(c.stat.pct_time_above3 >= 95.0, "{}", c.stat.pct_time_above3);
+    // A true-peak limiter: 7 dB on the samples, more on the square's edges,
+    // whose reconstruction overshoots between the samples.
     let l = gr("insert:2/Lim");
     assert!(
-        (l.stat.max - 7.0).abs() <= 0.3,
+        (6.7..=9.3).contains(&l.stat.max),
         "limiter max {}",
         l.stat.max
     );
     assert!(
-        (l.stat.mean - 7.0).abs() <= 0.5,
+        (6.5..=9.5).contains(&l.stat.mean),
         "limiter mean {}",
         l.stat.mean
     );
@@ -860,11 +862,15 @@ fn findings_name_the_setting_at_fault_and_verify_their_fixes() {
         "{:?}",
         o.fix
     );
-    // Inter-sample peaks over 0 dBTP: the ceiling comes down.
+    // A true-peak limiter holds the true peak to its ceiling (0 dB here,
+    // over the -1 dBTP limit): driven this hard, less into it first — or,
+    // while other fixes raise faders, the ceiling waits for them.
     let tp = finding(&r, "true-peak");
-    assert!(r.master.true_peak_dbtp.unwrap() > 0.0);
+    assert!(r.master.true_peak_dbtp.unwrap() <= 0.05);
     assert!(
-        sets(tp, "/mixer/inserts/0/effects/1/params/ceiling").is_some_and(|c| c < 0.0),
+        tp.fix.is_empty()
+            || sets(tp, "/mixer/inserts/0/effects/1/params/gain").is_some_and(|g| g < 11.0)
+            || sets(tp, "/mixer/inserts/0/effects/1/params/ceiling").is_some_and(|c| c < 0.0),
         "{:?}",
         tp.fix
     );
@@ -1139,4 +1145,176 @@ fn panning_reverb_and_dynamics_faults_are_named() {
     );
     let f = finding(&r, "master-fader");
     assert_eq!(sets(f, "/mixer/inserts/0/volume"), Some(1.0), "{f:?}");
+}
+
+// ------------------------------------------------------------ anchors
+
+/// A dance groove (from a real session's critique): a four-on-the-floor kick
+/// turned far down, a sub, an acid line in their band, a pad pushed over
+/// unity into a low insert fader, a part at volume 0 and an impact.
+fn groove() -> Value {
+    serde_json::from_str(include_str!("mixcheck/groove.json")).unwrap()
+}
+
+fn uses(f: &mixcheck::report::FindingOut, prefix: &str) -> bool {
+    f.fix
+        .iter()
+        .any(|op| op["path"].as_str().unwrap_or("").starts_with(prefix))
+}
+
+#[test]
+fn anchors_are_judged_by_their_place_in_the_mix_and_held_there() {
+    let dir = scratch("groove");
+    let p = project(groove());
+    let r = check(&dir, &p, json!({"by": "section"}));
+    let kick = element(&r, "channel:kick");
+    assert_eq!(kick.anchor, Some("kick"));
+    assert_eq!(
+        kick.range_db,
+        Some([-9.0, -6.0]),
+        "four on the floor: dance"
+    );
+    assert_eq!(
+        kick.verdict, "weak",
+        "a kick 12 dB under a dance mix is weak, however audible"
+    );
+    assert_eq!(element(&r, "channel:bass").anchor, Some("bass"));
+    assert_eq!(
+        element(&r, "channel:acid").anchor,
+        None,
+        "one bass: the sub, not the acid line above it"
+    );
+    // Only the anchors' own findings move them.
+    for f in r
+        .findings
+        .iter()
+        .filter(|f| !matches!(f.rule, "weak-anchor" | "squashed-kick"))
+    {
+        for prefix in [
+            "/channels/0/",
+            "/channels/1/",
+            "/mixer/inserts/1/",
+            "/mixer/inserts/2/",
+        ] {
+            assert!(!uses(f, prefix), "{} moves an anchor ({prefix})", f.rule);
+        }
+    }
+    // Applied, the kick is back in its range, the loudness kept.
+    let w = finding(&r, "weak-anchor");
+    let q = mixcheck::patched(&p, &w.fix, "fix").unwrap();
+    let r2 = check(&dir, &q, json!({"by": "section"}));
+    for s in &element(&r2, "channel:kick").by_section {
+        assert!(
+            s.relative_to_mix_db >= -9.5,
+            "the kick at {} dB in {:?}",
+            s.relative_to_mix_db,
+            s.section
+        );
+    }
+    let loud = |r: &Report| r.master.integrated_lufs.flatten().unwrap();
+    assert!(
+        (loud(&r) - loud(&r2)).abs() <= 1.0,
+        "loudness {} → {}",
+        loud(&r),
+        loud(&r2)
+    );
+    // A part at volume 0 is the producer's choice: not judged, not touched.
+    assert!(!r.elements.iter().any(|e| e.id == "channel:shimmer"));
+    assert!(!r.findings.iter().any(|f| uses(f, "/channels/4/")));
+    // The pad's gain moves to its insert: the same sound, the channel at unity.
+    let g = finding(&r, "gain-staging");
+    let q = mixcheck::patched(&p, &g.fix, "fix").unwrap();
+    assert!(q.channels[3].volume <= 1.0);
+    let r3 = check(&dir, &q, json!({}));
+    assert!((loud(&r) - loud(&r3)).abs() <= 0.1);
+    // A transition is heard by its attack, not judged by its tail.
+    assert_ne!(element(&r, "channel:impact").verdict, "inaudible");
+}
+
+#[test]
+fn the_ceiling_moves_only_as_far_as_the_true_peak_needs() {
+    let dir = scratch("ceiling");
+    let mut v = groove();
+    // The kick in its range: no other fix raises a fader.
+    v["mixer"]["inserts"][1]["volume"] = json!(0.4);
+    v["mixer"]["inserts"][0]["effects"][0]["params"] = json!({"gain": 4, "ceiling": -0.2});
+    let p = project(v.clone());
+    let r = check(&dir, &p, json!({}));
+    let tp = |r: &Report| r.master.true_peak_dbtp.unwrap();
+    // A true-peak limiter: the true peak is the ceiling.
+    assert!(tp(&r) <= -0.1, "true peak {}", tp(&r));
+    let f = finding(&r, "true-peak");
+    let to = sets(f, "/mixer/inserts/0/effects/0/params/ceiling").unwrap_or_else(|| {
+        panic!(
+            "{}: {} | {:?}",
+            f.detail,
+            f.fix_label,
+            r.findings
+                .iter()
+                .map(|f| (f.rule, f.fix_label.clone()))
+                .collect::<Vec<_>>()
+        )
+    });
+    assert!((-1.4..=-1.0).contains(&to), "the ceiling to {to}");
+    let r2 = check(
+        &dir,
+        &mixcheck::patched(&p, &f.fix, "fix").unwrap(),
+        json!({}),
+    );
+    assert!(tp(&r2) <= -0.95, "true peak {}", tp(&r2));
+    // A ceiling far lower than the limit needs is given back.
+    v["mixer"]["inserts"][0]["effects"][0]["params"] = json!({"gain": 4, "ceiling": -4});
+    let p = project(v);
+    let r = check(&dir, &p, json!({}));
+    let f = r
+        .findings
+        .iter()
+        .find(|f| f.key == "true-peak|ceiling")
+        .expect("a ceiling lower than needed");
+    let to = sets(f, "/mixer/inserts/0/effects/0/params/ceiling").unwrap();
+    assert!((-1.6..=-1.1).contains(&to), "the ceiling to {to}");
+}
+
+#[test]
+fn a_part_under_the_kick_and_the_bass_is_high_passed_and_the_anchors_kept() {
+    let dir = scratch("acid");
+    let mut v = groove();
+    v["mixer"]["inserts"][1]["volume"] = json!(0.4);
+    // The acid line down in the kick's and the sub's band.
+    v["channels"][2]["instrument"]["params"] = json!({"drift": 0, "cutoff": 220, "resonance": 0});
+    v["mixer"]["inserts"][3]["volume"] = json!(0.08);
+    let p = project(v);
+    let r = check(&dir, &p, json!({"threshold": "strict"}));
+    let acid = element(&r, "channel:acid");
+    let f = r
+        .findings
+        .iter()
+        .find(|f| f.element.as_deref() == Some("channel:acid"))
+        .unwrap_or_else(|| panic!("acid {} {:?}", acid.verdict, acid.audibility));
+    let hp = f.fix.iter().any(|op| {
+        op["path"] == json!("/mixer/inserts/3/effects/0")
+            && op["value"]["options"]["mode"] == json!("highpass")
+    });
+    assert!(hp, "{}: {}", f.rule, f.fix_label);
+    // Nothing for a supporting part touches the kick or the sub.
+    for f in r.findings.iter().filter(|f| {
+        f.element.as_deref().is_some_and(|e| {
+            e != "channel:kick" && e != "channel:bass" && !e.starts_with("insert:0")
+        })
+    }) {
+        for prefix in [
+            "/channels/0/",
+            "/channels/1/",
+            "/mixer/inserts/1/",
+            "/mixer/inserts/2/",
+        ] {
+            assert!(
+                !uses(f, prefix),
+                "{} ({:?}) moves an anchor: {}",
+                f.rule,
+                f.element,
+                f.fix_label
+            );
+        }
+    }
 }
