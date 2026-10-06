@@ -675,32 +675,50 @@ impl Effect for Compressor {
 
 // ------------------------------------------------------------------- Limiter
 
+/// A lookahead peak limiter that never lets a sample over its ceiling: the
+/// gain each sample needs is held over the lookahead window (a running
+/// minimum), released slowly upward, and smoothed by a moving average as
+/// long as the window — so the gain is already down when a peak leaves the
+/// delay line, without clipping it.
 pub struct Limiter {
     sr: f32,
-    look: usize,
+    /// The window (samples); the audio is delayed by `len - 1`.
+    len: usize,
     buf: [Vec<f32>; 2],
     w: usize,
-    gain: f32,
+    /// The running minimum of the needed gain: (sample index, gain),
+    /// increasing gains.
+    held: std::collections::VecDeque<(u64, f32)>,
+    t: u64,
+    /// The held gain, released upward.
+    rel: f32,
+    /// The last `len` released gains and their sum (the moving average).
+    avg: Vec<f32>,
+    sum: f64,
+    a: usize,
     input: f32,
     ceiling: f32,
     release: f32,
-    attack: f32,
     meter: GrMeter,
 }
 
 impl Limiter {
     fn new(sr: f32) -> Limiter {
-        let look = (sr * 0.0015) as usize;
+        let len = ((sr * 0.0015) as usize).max(1) + 1;
         Limiter {
             sr,
-            look,
-            buf: [vec![0.0; look + 1], vec![0.0; look + 1]],
+            len,
+            buf: [vec![0.0; len], vec![0.0; len]],
             w: 0,
-            gain: 1.0,
+            held: std::collections::VecDeque::with_capacity(len + 1),
+            t: 0,
+            rel: 1.0,
+            avg: vec![1.0; len],
+            sum: len as f64,
+            a: 0,
             input: 1.0,
             ceiling: 0.966,
             release: 0.999,
-            attack: settle_coef(0.0015 / 3.0, sr),
             meter: GrMeter::default(),
         }
     }
@@ -713,34 +731,51 @@ impl Effect for Limiter {
         self.release = settle_coef(d.param("release") as f32 / 1000.0, self.sr);
     }
     fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
-        let n = self.look + 1;
+        let n = self.len;
+        let c = self.ceiling;
         for i in 0..left.len() {
             let (xl, xr) = (left[i] * self.input, right[i] * self.input);
             let peak = xl.abs().max(xr.abs());
-            let target = if peak > self.ceiling {
-                self.ceiling / peak
+            let need = if peak > c { c / peak } else { 1.0 };
+            // The least gain any sample in the window needs.
+            while self.held.back().is_some_and(|h| h.1 >= need) {
+                self.held.pop_back();
+            }
+            self.held.push_back((self.t, need));
+            while self.held.front().is_some_and(|h| h.0 + n as u64 <= self.t) {
+                self.held.pop_front();
+            }
+            self.t += 1;
+            let held = self.held.front().map(|h| h.1).unwrap_or(1.0);
+            // Down at once, up at the release's pace: never above `held`.
+            self.rel = if held < self.rel {
+                held
             } else {
-                1.0
+                held + (self.rel - held) * self.release
             };
-            let coef = if target < self.gain {
-                self.attack
-            } else {
-                self.release
-            };
-            self.gain = target + (self.gain - target) * coef;
+            // The moving average over the window: every gain in it is at
+            // most the one the delayed peak needs, so the average is too.
+            self.sum += (self.rel - self.avg[self.a]) as f64;
+            self.avg[self.a] = self.rel;
+            self.a = (self.a + 1) % n;
+            let g = (self.sum / n as f64) as f32;
+            self.buf[0][self.w] = xl;
+            self.buf[1][self.w] = xr;
+            self.w = (self.w + 1) % n;
+            let (ol, or) = (self.buf[0][self.w] * g, self.buf[1][self.w] * g);
+            // Rounding aside, nothing reaches the clamp; what does is
+            // metered with the rest.
+            let over = ol.abs().max(or.abs());
+            let applied = if over > c { g * c / over } else { g };
+            left[i] = ol.clamp(-c, c);
+            right[i] = or.clamp(-c, c);
             if self.meter.on {
-                self.meter.add(if self.gain < 1.0 {
-                    -gain_to_db(self.gain)
+                self.meter.add(if applied < 1.0 {
+                    -gain_to_db(applied)
                 } else {
                     0.0
                 });
             }
-            self.buf[0][self.w] = xl;
-            self.buf[1][self.w] = xr;
-            self.w = (self.w + 1) % n;
-            let c = self.ceiling;
-            left[i] = (self.buf[0][self.w] * self.gain).clamp(-c, c);
-            right[i] = (self.buf[1][self.w] * self.gain).clamp(-c, c);
         }
     }
     fn take_gain_reduction(&mut self) -> Option<(f32, f32)> {
@@ -748,5 +783,49 @@ impl Effect for Limiter {
     }
     fn set_metering(&mut self, on: bool) {
         self.meter.on = on;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_limiter_holds_every_sample_to_its_ceiling_and_meters_it() {
+        let sr = 48000.0;
+        let mut lim = Limiter::new(sr);
+        lim.ceiling = db_to_gain(-1.0);
+        lim.input = db_to_gain(6.0);
+        lim.release = settle_coef(0.08, sr);
+        lim.set_metering(true);
+        // Noise bursts and a lone one-sample spike.
+        let mut seed = 1u32;
+        let mut rnd = || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
+        };
+        let n = 48000;
+        let mut l: Vec<f32> = (0..n)
+            .map(|i| {
+                if (i / 2400) % 4 == 0 {
+                    rnd() * 0.9
+                } else {
+                    rnd() * 0.05
+                }
+            })
+            .collect();
+        l[30000] = 1.0;
+        let mut r = l.clone();
+        let mut peak = 0f32;
+        for (a, b) in l.chunks_mut(128).zip(r.chunks_mut(128)) {
+            lim.process(a, b);
+            peak = a.iter().chain(b.iter()).fold(peak, |p, x| p.max(x.abs()));
+        }
+        let c = db_to_gain(-1.0);
+        assert!(peak <= c + 1e-6, "peak {peak} over the ceiling {c}");
+        // The bursts come in at about +5 dB over the ceiling: the meter
+        // reads that much, not the smoothed fraction of it.
+        let (max, _) = lim.take_gain_reduction().unwrap();
+        assert!(max > 5.0, "{max}");
     }
 }

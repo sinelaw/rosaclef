@@ -225,6 +225,14 @@ pub struct ElementOut {
     pub active_pct: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation: Option<Option<f64>>,
+    /// Its left against its right (dB; positive: left), where it plays.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub balance_db: Option<f64>,
+    /// How much its insert's effects change its level (dB): a channel alone
+    /// on an insert with effects, measured before and after them (its
+    /// fader aside). A reverb or delay adding a lot is a wash.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub insert_effects_db: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audibility: Option<AudibilityOut>,
     /// Its own spectrum at the master where it plays: the six bands of
@@ -297,6 +305,10 @@ pub struct FindingOut {
     /// `--verify`: the check again with `fix` applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verified: Option<Value>,
+    /// How bad it is, in its rule's own measure (for --verify: a finding
+    /// that grows under another's fix got worse).
+    #[serde(skip)]
+    pub score: f64,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -384,6 +396,9 @@ pub fn master_numbers(
     let (mut ll, mut rr, mut lr) = (0.0, 0.0, 0.0);
     let mut six = [0f64; BANDS];
     let mut corr_min: Option<f64> = None;
+    // Hops with sound: silences (an intro's rests, a break) would inflate
+    // the crest factor.
+    let mut sounding = 0usize;
     let loudest = hops
         .iter()
         .map(|h| {
@@ -399,6 +414,9 @@ pub fn master_numbers(
         ll += x;
         rr += y;
         lr += z;
+        if x + y > loudest * 1e-6 {
+            sounding += 1;
+        }
         if x + y > loudest * 1e-3 {
             if let Some(c) = model::correlation(x, y, z) {
                 corr_min = Some(corr_min.map_or(c, |m: f64| m.min(c)));
@@ -409,7 +427,8 @@ pub fn master_numbers(
         }
     }
     let n = hops.len().max(1) as f64;
-    let rms = (ll + rr) / (2.0 * n);
+    // RMS where it sounds; a sine reads -3 dBFS (not AES17's 0).
+    let rms = (ll + rr) / (2.0 * sounding.max(1) as f64);
     let mut m = MasterOut::default();
     if o.has(Check::Levels) {
         m.integrated_lufs = Some(l.integrated.map(r1));
@@ -446,7 +465,8 @@ fn gr_stat(series: &[&GrSeries], hops: &[usize]) -> Option<GrStat> {
     }
     let (mut max, mut sum, mut above) = (0f64, 0f64, 0usize);
     for &h in hops {
-        let m: f64 = series.iter().map(|g| g.max[h] as f64).fold(0.0, f64::max);
+        // Devices in a chain add their reductions (dB): both summed.
+        let m: f64 = series.iter().map(|g| g.max[h] as f64).sum();
         let mean: f64 = series.iter().map(|g| g.mean[h] as f64).sum();
         max = max.max(m);
         sum += mean;
@@ -691,7 +711,23 @@ fn lead_of(mix: &Mix, roles: &[&'static str], hops: &[usize]) -> Option<String> 
     };
     let named = |e: &Element| {
         let n = format!("{} {}", e.id, e.name).to_ascii_lowercase();
+        // Not the parts around the lead: backing vocals, chops, a choir.
         ["lead", "vocal", "vox", "melody", "topline", "solo"]
+            .iter()
+            .any(|w| n.contains(w))
+            && ![
+                "backing",
+                "back ",
+                "bgv",
+                "bv ",
+                "chop",
+                "choir",
+                "harmony",
+                "harmonies",
+                "double",
+                "adlib",
+                "ad-lib",
+            ]
             .iter()
             .any(|w| n.contains(w))
     };
@@ -1041,7 +1077,9 @@ pub fn build<'a>(
         {
             // Heard, but far under the mix: a lead the song leans on.
             "buried"
-        } else if own_peak > 1.0 || (overloaded && share >= 0.4) {
+        } else if overloaded && share >= 0.4 {
+            // A part's own peak over 0 dBFS clips nothing in the engine (it
+            // is floating point): only its share of a master that overloads.
             "overloading"
         } else if share >= 0.45 && rel.is_some_and(|r| r >= -3.0) {
             "dominant"
@@ -1098,6 +1136,14 @@ pub fn build<'a>(
         }
         if o.has(Check::Stereo) {
             out.correlation = Some(mix.correlation(e.stream, &active).map(r2));
+            out.balance_db = mix.balance(e.stream, &active).map(r1);
+        }
+        if let Some(d) = e.dry.filter(|_| ins.effects.iter().any(|x| x.enabled)) {
+            let dry_ms = active.iter().map(|h| mix.ms(d, *h)).sum::<f64>() / active.len() as f64;
+            let fader = (ins.volume * ins.volume).max(1e-8);
+            if dry_ms > 1e-12 && own_ms > 1e-12 {
+                out.insert_effects_db = Some(r1(dsp::db(own_ms / (dry_ms * fader))));
+            }
         }
         if o.has(Check::Spectrum) {
             let mut six = [0f64; BANDS];

@@ -186,8 +186,12 @@ pub struct Element {
     pub name: String,
     pub channel: Option<usize>,
     pub insert: usize,
-    /// The stream of its own tap.
+    /// The stream of its own tap: a channel alone on its insert is heard
+    /// after the insert (its effects, its fader); others at the channel.
     pub stream: usize,
+    /// A channel heard after its insert: the channel's own tap, before the
+    /// insert's effects (what they add is the difference).
+    pub dry: Option<usize>,
     /// The units (see [`Mix::units`]) it is made of.
     pub units: Vec<usize>,
 }
@@ -306,12 +310,15 @@ impl<'a> Mix<'a> {
         });
         for c in 0..p.channels.len() {
             let i = route(c);
+            let alone = i > 0 && routed[i].len() == 1 && !clips_on(i);
+            let post = ins_stream[i].filter(|_| alone);
             elements.push(Element {
                 id: channel_id(p, c),
                 name: p.channels[c].name.clone(),
                 channel: Some(c),
                 insert: i,
-                stream: ch_stream[c],
+                stream: post.unwrap_or(ch_stream[c]),
+                dry: post.map(|_| ch_stream[c]),
                 units: match ins_unit[i] {
                     Some(u) => vec![u],
                     None => vec![ch_unit[c]],
@@ -327,6 +334,7 @@ impl<'a> Mix<'a> {
                     channel: None,
                     insert: i,
                     stream: st,
+                    dry: None,
                     units: match ins_unit[i] {
                         Some(u) => vec![u],
                         None => routed[i].iter().map(|c| ch_unit[*c]).collect(),
@@ -372,6 +380,7 @@ impl<'a> Mix<'a> {
             channel: None,
             insert: i,
             stream: st,
+            dry: None,
             units,
         })
     }
@@ -435,6 +444,10 @@ impl<'a> Mix<'a> {
         self.attributed(u, &|s| self.a.kms_at(s, b) as f64)
     }
 
+    /// An insert's stream (after its effects and fader), when it has one.
+    pub fn insert_stream(&self, i: usize) -> Option<usize> {
+        self.ins_stream.get(i).copied().flatten()
+    }
     pub fn ms(&self, s: usize, h: usize) -> f64 {
         let f = self.a.frame(s, h);
         (f[F_LL] + f[F_RR]) as f64 * 0.5
@@ -460,6 +473,17 @@ impl<'a> Mix<'a> {
             z += c.2;
         }
         correlation(x, y, z)
+    }
+    /// Stream `s`'s left against its right over hops `hs` (dB; positive:
+    /// left), when it has any.
+    pub fn balance(&self, s: usize, hs: &[usize]) -> Option<f64> {
+        let (mut l, mut r) = (0.0, 0.0);
+        for &h in hs {
+            let c = self.corr_terms(s, h);
+            l += c.0;
+            r += c.1;
+        }
+        (l + r > 1e-12).then(|| (10.0 * ((l + 1e-12) / (r + 1e-12)).log10()).clamp(-40.0, 40.0))
     }
     /// The units, loudest first by `energy(unit, hop)` over hops `hs`, each
     /// with its share of the total.
@@ -522,6 +546,10 @@ pub struct Audibility {
     /// Hops where it plays, and where it is audible.
     pub active: usize,
     pub audible: usize,
+    /// The same weighted by its loudness alone in each: its loud moments
+    /// count more than its decays and tails (masked by nature).
+    pub active_w: f64,
+    pub audible_w: f64,
     /// Its loudness alone and in the mix (mean sones over active hops).
     pub alone: f64,
     pub partial: f64,
@@ -541,11 +569,12 @@ pub struct Masker {
 }
 
 impl Audibility {
+    /// The share of it that is heard: its hops weighted by its loudness.
     pub fn fraction(&self) -> f64 {
-        if self.active == 0 {
+        if self.active == 0 || self.active_w <= 0.0 {
             1.0
         } else {
-            self.audible as f64 / self.active as f64
+            self.audible_w / self.active_w
         }
     }
 }
@@ -613,8 +642,8 @@ pub fn audibility(
 ) -> (Vec<Audibility>, Vec<Vec<f64>>) {
     let n = elements.len();
     let mut out = vec![Audibility::default(); n];
-    let mut tried: Vec<Vec<(usize, usize)>> =
-        trials.iter().map(|t| vec![(0, 0); t.len()]).collect();
+    let mut tried: Vec<Vec<(f64, f64)>> =
+        trials.iter().map(|t| vec![(0.0, 0.0); t.len()]).collect();
     // Activity: within 40 dB of the element's loudest hop, above -80 dBFS.
     let level = |e: &Element, h: usize| -> f64 { e.units.iter().map(|u| mix.unit_ms(*u, h)).sum() };
     let mut loudest = vec![0f64; n];
@@ -651,6 +680,7 @@ pub fn audibility(
             }
             let a = &mut out[i];
             a.active += 1;
+            a.active_w += alone;
             a.alone += alone;
             a.partial += part;
             for u in &e.units {
@@ -661,6 +691,7 @@ pub fn audibility(
             let ok = part >= theta * alone;
             if ok {
                 a.audible += 1;
+                a.audible_w += alone;
             } else {
                 // Who masks it: the strongest other part in its loudest bands.
                 let smax = s.iter().copied().fold(0.0, f64::max);
@@ -718,9 +749,9 @@ pub fn audibility(
                 }
                 let (al, pa) = ear.loudness(&s2, &m2);
                 let r = &mut tried[i][t];
-                r.0 += 1;
+                r.0 += al;
                 if al >= AUDIBLE_SONES && pa >= theta * al {
-                    r.1 += 1;
+                    r.1 += al;
                 }
             }
         }
@@ -741,7 +772,7 @@ pub fn audibility(
         .into_iter()
         .map(|t| {
             t.into_iter()
-                .map(|(n, k)| if n == 0 { 1.0 } else { k as f64 / n as f64 })
+                .map(|(n, k)| if n <= 0.0 { 1.0 } else { k / n })
                 .collect()
         })
         .collect();

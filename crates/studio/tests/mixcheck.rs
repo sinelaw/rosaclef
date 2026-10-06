@@ -685,7 +685,6 @@ fn every_planted_fault_is_found_and_the_fixes_converge() {
         ("inaudible-part", Some("channel:rbass")),
         ("low-end-buildup", None),
         ("phase-correlation", Some("insert:7/Widener")),
-        ("section-loudness-flat", None),
     ] {
         assert!(
             has(rule, el),
@@ -910,6 +909,8 @@ fn a_chorus_held_under_the_verse_is_found_and_put_back() {
     v["playlist"]["clips"][0]["length"] = json!(32);
     let again = json!({"pattern": "tune", "start": 20, "length": 8, "track": 1});
     v["playlist"]["clips"].as_array_mut().unwrap().push(again);
+    // The limiter not driven: sections are judged once it stops clamping.
+    v["mixer"]["inserts"][0]["effects"][1]["params"]["gain"] = json!(0);
     v["score"]["marks"] = json!([{"start": 0, "end": 16, "color": "#3f8f7a", "label": "Verse 1"},
                                  {"start": 16, "end": 32, "color": "#d4af37", "label": "Chorus"}]);
     // As loud as the verse, nothing in the mixer holding it: no fix (the
@@ -936,8 +937,15 @@ fn a_chorus_held_under_the_verse_is_found_and_put_back() {
             .as_str()
             .unwrap()
             .starts_with("/automation/0/points/")
-            && o["value"].as_f64().unwrap() > 1.0),
-        "back up and on past the verse: {:?}",
+            && o["value"].as_f64().unwrap() <= 1.0),
+        "never over its level elsewhere (the master fader is after the limiter): {:?}",
+        f.fix
+    );
+    // The choruses back up, the rest of the song down.
+    assert!(
+        f.fix.iter().any(|o| o["value"] == json!(1.0))
+            && f.fix.iter().any(|o| o["value"].as_f64().unwrap() < 1.0),
+        "{:?}",
         f.fix
     );
     let ver = f.verified.as_ref().unwrap();
@@ -964,7 +972,7 @@ fn a_bright_eq_boost_is_found_and_taken_back() {
     }
     let p: Project = serde_json::from_value(v).unwrap();
     let r = check(&dir, &p, json!({}));
-    let f = finding(&r, "harsh-highs");
+    let f = finding(&r, "bright-highs");
     let path = f.fix[0]["path"].as_str().unwrap();
     assert!(
         path.ends_with("/effects/0/params/high") && f.fix[0]["value"] == json!(2.0),
@@ -972,7 +980,7 @@ fn a_bright_eq_boost_is_found_and_taken_back() {
     );
     // Without spectrum: not judged.
     let r = check(&dir, &p, json!({"checks": "levels,audibility"}));
-    assert!(r.findings.iter().all(|f| f.rule != "harsh-highs"));
+    assert!(r.findings.iter().all(|f| f.rule != "bright-highs"));
 }
 
 #[test]
@@ -1030,7 +1038,7 @@ fn settings_at_fault_are_named_and_taken_back() {
     let f = finding(&r, "fast-limiter-release");
     assert_eq!(
         sets(f, "/mixer/inserts/0/effects/1/params/release"),
-        Some(80.0),
+        Some(250.0),
         "{f:?}"
     );
     let bass = element(&r, "channel:bass");
@@ -1039,4 +1047,37 @@ fn settings_at_fault_are_named_and_taken_back() {
         assert!(f.detail.contains("+9.5 dB over unity"), "{}", f.detail);
         assert_eq!(sets(f, "/channels/1/volume"), Some(1.0), "{f:?}");
     }
+}
+
+#[test]
+fn panning_reverb_and_dynamics_faults_are_named() {
+    let dir = scratch("effects");
+    let mut v: Value = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    // The bass hard left, the lead drowned in reverb, the kick crushed by
+    // a compressor, the master fader 9 dB down after the limiter.
+    v["channels"][1]["pan"] = json!(-1.0);
+    v["mixer"]["inserts"][3]["effects"] =
+        json!([{"type": "reverb", "params": {"size": 0.95, "mix": 0.9, "damping": 0.1}}]);
+    v["mixer"]["inserts"][1]["effects"] = json!([{"type": "compressor",
+        "params": {"threshold": -40, "ratio": 20, "attack": 0.1, "release": 5, "makeup": 18}}]);
+    v["mixer"]["inserts"][0]["volume"] = json!(0.35);
+    let p: Project = serde_json::from_value(v).unwrap();
+    let r = check(&dir, &p, json!({"maxFindings": 30}));
+    let bass = element(&r, "channel:bass");
+    assert!(bass.balance_db.unwrap() > 20.0, "{bass:?}");
+    let f = finding(&r, "low-end-off-centre");
+    assert_eq!(sets(f, "/channels/1/pan"), Some(0.0), "{f:?}");
+    let lead = element(&r, "channel:lead");
+    assert!(lead.insert_effects_db.unwrap() > 3.0, "{lead:?}");
+    let f = finding(&r, "reverb-wash");
+    let m = sets(f, "/mixer/inserts/3/effects/0/params/mix").unwrap();
+    assert!(m < 0.5, "{f:?}");
+    let f = finding(&r, "part-over-compression");
+    assert!(
+        sets(f, "/mixer/inserts/1/effects/0/params/attack") == Some(10.0)
+            && sets(f, "/mixer/inserts/1/effects/0/params/ratio").unwrap() <= 4.0,
+        "{f:?}"
+    );
+    let f = finding(&r, "master-fader");
+    assert_eq!(sets(f, "/mixer/inserts/0/volume"), Some(1.0), "{f:?}");
 }

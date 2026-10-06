@@ -803,7 +803,7 @@ pub static DEVICES: &[DeviceSpec] = &[
         doc: "Brickwall-style peak limiter; keep one on the master.",
         best_for: "",
         params: &[
-            p("gain", "Input", 0.0, 24.0, 0.0, "dB", "Input gain into the limiter."),
+            p("gain", "Input", -24.0, 24.0, 0.0, "dB", "Input gain into the limiter (negative: a trim before it)."),
             p("ceiling", "Ceiling", -12.0, 0.0, -0.3, "dB", "Maximum output level."),
             pe("release", "Release", 5.0, 1000.0, 80.0, "ms", "Release time."),
         ],

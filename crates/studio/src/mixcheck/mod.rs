@@ -352,6 +352,31 @@ fn verify(env: &Env, project: &Project, o: &Options, r: &mut Report) -> Result<(
                     "summary": d["summary"],
                     "new": d["findings"]["new"],
                 });
+                // What was there already and grew under this fix.
+                let worse: Vec<&str> = r2
+                    .findings
+                    .iter()
+                    .filter(|f| &f.key != key)
+                    .filter(|f| {
+                        r.findings.iter().any(|b| {
+                            b.key == f.key && f.score > b.score + (b.score.abs() * 0.1).max(0.5)
+                        })
+                    })
+                    .map(|f| f.key.as_str())
+                    .collect();
+                if !worse.is_empty() {
+                    v["worse"] = json!(worse);
+                }
+                // A quieter mix sounds worse at first: compare at the same
+                // loudness.
+                if let (Some(a), Some(b)) = (
+                    r.master.integrated_lufs.flatten(),
+                    r2.master.integrated_lufs.flatten(),
+                ) {
+                    if (b - a).abs() >= 1.0 {
+                        v["levelMatchDb"] = json!(dsp::r1(a - b));
+                    }
+                }
                 if let Some(f) = still {
                     // The same problem, smaller or elsewhere.
                     v["still"] = json!(format!("{}: {}", f.at, f.detail));
