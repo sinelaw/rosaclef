@@ -82,7 +82,35 @@ const view = {
   patched /*: { patch: String, json: String }[] */: [],
   /** Fixes left out of Quick fix (by finding key): all are in by default. */
   excluded /*: String[] */: [],
+  /** Which project the panel is about: a measure under way when another
+   * one opens is dropped. */
+  song: 0,
 };
+
+/** Another project is open: nothing measured of the last one stays. */
+/** function resetMixcheck() => Undefined */
+function resetMixcheck() {
+  stopAudition();
+  view.song = view.song + 1;
+  view.busy = false;
+  view.job = 0;
+  view.error = "";
+  view.edits = -1;
+  view.report = emptyReport();
+  view.previous = emptyReport();
+  view.showPrevious = false;
+  view.scope = "song";
+  view.section = "";
+  view.reference = "";
+  view.open = "";
+  view.applied = [];
+  view.appliedEdits = -1;
+  view.patched = [];
+  view.excluded = [];
+  invalidate();
+}
+
+hooks.opened = resetMixcheck;
 
 /** function emptyGr() => MixGr */
 function emptyGr() {
@@ -377,6 +405,7 @@ function loadCatalog() {
 export function runMixcheck() {
   if (view.busy) return undefined;
   const edits = state.edits;
+  const song = view.song;
   view.busy = true;
   view.error = "";
   view.job = 0;
@@ -398,6 +427,7 @@ export function runMixcheck() {
     }
   )
     .then((r) => {
+      if (view.song !== song) return false;
       view.busy = false;
       view.edits = edits;
       if (view.report.ok) view.previous = view.report;
@@ -411,6 +441,7 @@ export function runMixcheck() {
       return true;
     })
     .catch((e) => {
+      if (view.song !== song) return false;
       view.busy = false;
       view.error = errText(e);
       invalidate();

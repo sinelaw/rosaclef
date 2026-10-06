@@ -31,6 +31,9 @@ function onMessage(text) {
   const m = JSON.parse(text);
   const kind = String(m.t);
   if (kind === "welcome" || kind === "switched") {
+    // Another project (opened, imported, or found on reconnecting): what
+    // was measured of the last one goes.
+    if ((kind === "switched" || (state.loaded && state.folder !== String(m.folder))) && hooks.opened) hooks.opened();
     state.folder = String(m.folder);
     state.samples = m.samples;
     state.rev = Number(m.rev);
