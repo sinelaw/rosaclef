@@ -56,6 +56,8 @@ const view = {
   busy: false,
   /** The job id of the measuring under way (its progress). */
   job: 0,
+  /** Which of several stretches a Try is measuring ("" when one). */
+  stretch: "",
   error: "",
   /** The project version the report is about (-1: none yet). */
   edits: -1,
@@ -449,13 +451,15 @@ function isApplied(key) {
 
 /** Every fix not applied yet, as one patch: in the findings' order, the
  * first to set a setting keeps it. */
-/** function allFixes(r: MixReport) => { patch: String, n: Int } */
+/** function allFixes(r: MixReport) => { patch: String, n: Int, ranges: String[] } */
 function allFixes(r) {
   /** const seen: String[] */
   const seen = [];
   /** const ops: String[] */
   const ops = [];
   let n = 0;
+  /** const spans: Int[][] */
+  const spans = [];
   for (const f of r.findings) {
     if (f.patch === "" || isApplied(f.key) || view.excluded.includes(f.key) || clash(f.patch) !== "") continue;
     const list = JSON.parse(f.patch);
@@ -467,9 +471,51 @@ function allFixes(r) {
       ops.push(JSON.stringify(op));
       used = true;
     }
-    if (used) n += 1;
+    if (!used) continue;
+    n += 1;
+    spans.push(local(r, f) ? [Math.max(r.fromBar, f.fromBar - 1), Math.min(r.toBar, f.toBar + 1)] : loudest(r));
   }
-  return { patch: `[${ops.join(",")}]`, n: n };
+  return { patch: `[${ops.join(",")}]`, n: n, ranges: stretches(r, spans) };
+}
+
+/** Where a fix for the whole range is tried: the loudest bars (the master's
+ * loudness, peaks and limiter are at their worst there), four of them. */
+/** function loudest(r: MixReport) => Int[] */
+function loudest(r) {
+  let bar = r.fromBar;
+  let top = -1000;
+  for (const row of r.rows) {
+    if (row.sMax > top) {
+      top = row.sMax;
+      bar = row.bar;
+    }
+  }
+  const lo = Math.max(r.fromBar, bar - 1);
+  return [lo, Math.min(r.toBar, lo + 3)];
+}
+
+/** Bar spans as Try's ranges ("5:9"), sorted, those that meet or nearly
+ * meet joined; [""] (the report's range) when they would cover most of it. */
+/** function stretches(r: MixReport, spans: Int[][]) => String[] */
+function stretches(r, spans) {
+  const sorted = spans.slice().sort((a, b) => a[0] - b[0]);
+  /** const out: Int[][] */
+  const out = [];
+  for (const s of sorted) {
+    if (out.length > 0 && s[0] <= out[out.length - 1][1] + 2) out[out.length - 1][1] = Math.max(out[out.length - 1][1], s[1]);
+    else out.push([s[0], s[1]]);
+  }
+  let bars = 0;
+  for (const s of out) bars += s[1] - s[0] + 1;
+  if (out.length === 0 || bars * 2 > r.toBar - r.fromBar + 1) return [""];
+  return out.map((s) => `${s[0]}:${s[1]}`);
+}
+
+/** "bars 5–9" for a range "5:9". */
+/** function rangeText(range: String) => String */
+function rangeText(range) {
+  const ab = range.split(":");
+  return ab[0] === ab[1] ? tf("format.barLower", [ab[0]]) : tf("format.barRange", [ab[0], ab[1]]);
 }
 
 /** The song beat where bar `bar` (from 1) starts. */
@@ -489,15 +535,42 @@ function local(r, f) {
 
 /** Measure a change without making it (a what-if: the project is not touched). */
 /** A local finding is tried over its bars and one either side (a shorter
- * render); `range` "" tries it over the report's range. */
-/** function tryPatch(patch: String, range: String) => Undefined */
-function tryPatch(patch, range) {
+ * render); several ranges are measured one after another (Try all: each
+ * fix's bars); [""] tries it over the report's range. */
+/** function tryPatch(patch: String, ranges: String[]) => Undefined */
+function tryPatch(patch, ranges) {
   if (view.busy || !fresh()) return undefined;
   view.busy = true;
-  view.job = 0;
-  invalidate();
+  /** const said: String[] */
+  const said = [];
+  tryFrom(patch, ranges, 0, said)
+    .then((ok) => {
+      view.busy = false;
+      view.stretch = "";
+      view.tried = view.tried.filter((x) => x.patch !== patch).concat([{ patch: patch, summary: said.join("\n") }]);
+      invalidate();
+      return ok;
+    })
+    .catch((e) => {
+      view.busy = false;
+      view.stretch = "";
+      toast(t("mixcheck.try.failed.title"), errText(e), "error");
+      invalidate();
+      return false;
+    });
+}
+
+/** Measure `patch` over ranges[i] and those after it, one after another;
+ * `said` gathers what each found. */
+/** function tryFrom(patch: String, ranges: String[], i: Int, said: String[]) => Promise<Boolean> */
+function tryFrom(patch, ranges, i, said) {
   const q = request();
-  followJob(
+  const range = ranges[i];
+  const many = ranges.length > 1;
+  view.job = 0;
+  view.stretch = many ? tf("mixcheck.try.stretch", [rangeText(range), String(i + 1), String(ranges.length)]) : "";
+  invalidate();
+  return followJob(
     "mixcheck",
     {
       project: encodeProject(state.project),
@@ -509,20 +582,11 @@ function tryPatch(patch, range) {
     (id) => {
       view.job = id;
     }
-  )
-    .then((r) => {
-      view.busy = false;
-      const summary = r.whatIf === undefined || r.whatIf === null ? "" : String(r.whatIf.summary);
-      view.tried = view.tried.filter((x) => x.patch !== patch).concat([{ patch: patch, summary: summary }]);
-      invalidate();
-      return true;
-    })
-    .catch((e) => {
-      view.busy = false;
-      toast(t("mixcheck.try.failed.title"), errText(e), "error");
-      invalidate();
-      return false;
-    });
+  ).then((r) => {
+    const summary = r.whatIf === undefined || r.whatIf === null ? "" : String(r.whatIf.summary);
+    said.push(many ? tf("mixcheck.try.stretchSummary", [rangeText(range), summary]) : summary);
+    return i + 1 < ranges.length ? tryFrom(patch, ranges, i + 1, said) : Promise.resolve(true);
+  });
 }
 
 /** Apply a fix: the endpoint patches the project as it is and validates it;
@@ -1106,7 +1170,7 @@ function elementRow(b, e) {
       if (exp.length > 0) b.leaf("span", "e", "mx-expect", tf("mixcheck.parts.suggestion.expected", [exp.join(", ")]));
       if (tried) b.leaf("span", "t", "mx-tried", tf("mixcheck.parts.suggestion.measured", [tried.summary]));
       b.leaf("span", "sp", "spacer", "");
-      button(b, "try", "small ghost", t("common.try"), t("mixcheck.parts.suggestion.try.title"), () => tryPatch(s.patch, ""));
+      button(b, "try", "small ghost", t("common.try"), t("mixcheck.parts.suggestion.try.title"), () => tryPatch(s.patch, [""]));
       button(b, "apply", "small gold", t("mixcheck.parts.suggestion.apply.label"), t("mixcheck.parts.suggestion.apply.title"), () =>
         applyPatch(s.patch, `${e.name}: ${s.why}`, [])
       );
@@ -1238,7 +1302,7 @@ export function mixcheckPanel(b, ask) {
     b.leaf("div", "fill", "mx-progress-fill", "");
     b.style("width", `${Math.round(f * 1000) / 10}%`);
     b.close();
-    b.leaf("div", "progl", "mx-progress-label", jobLabel(view.job));
+    b.leaf("div", "progl", "mx-progress-label", view.stretch !== "" ? `${view.stretch} · ${jobLabel(view.job)}` : jobLabel(view.job));
   }
 
   b.open("div", "scroll", "mx-scroll");
@@ -1440,7 +1504,7 @@ function findingsView(b, r, ask) {
       if (f.label !== "") b.leaf("div", "fl", "mx-fixlabel", tf("mixcheck.findings.fix.text", [f.label]));
     } else if (f.patch !== "") {
       const tried = view.tried.find((x) => x.patch === f.patch);
-      button(b, "try", "small ghost", t("common.try"), tf("mixcheck.findings.tryHere.title", [where]), () => tryPatch(f.patch, near ? `${lo}:${hi}` : ""));
+      button(b, "try", "small ghost", t("common.try"), tf("mixcheck.findings.tryHere.title", [where]), () => tryPatch(f.patch, [near ? `${lo}:${hi}` : ""]));
       button(b, "fix", "small gold", t("mixcheck.findings.fix.label"), tf("fix.applyOneUndo", [f.label]), () => applyPatch(f.patch, f.label, [f.key]));
       b.close();
       if (f.label !== "") b.leaf("div", "fl", "mx-fixlabel", tf("mixcheck.findings.fix.text", [f.label]));
@@ -1449,6 +1513,13 @@ function findingsView(b, r, ask) {
     b.close();
     b.close();
   }
+}
+
+/** What Try all measures. */
+/** function tryAllTitle(ranges: String[]) => String */
+function tryAllTitle(ranges) {
+  if (ranges[0] === "") return t("mixcheck.quick.tryAll.title");
+  return tf("mixcheck.quick.tryAll.bars.title", [ranges.map((x) => rangeText(x)).join(", ")]);
 }
 
 /** Every fix at once: try them, hear them, apply them (one undo step). */
@@ -1467,7 +1538,7 @@ function quickFix(b, r) {
   b.open("div", "acts", "mx-acts");
   listenButton(b, "*all", all.patch);
   b.leaf("span", "sp", "spacer", "");
-  button(b, "try", "small ghost", t("mixcheck.quick.tryAll.label"), t("mixcheck.quick.tryAll.title"), () => tryPatch(all.patch, ""));
+  button(b, "try", "small ghost", t("mixcheck.quick.tryAll.label"), tryAllTitle(all.ranges), () => tryPatch(all.patch, all.ranges));
   button(b, "fix", "small gold", t("mixcheck.quick.applyAll.label"), t("mixcheck.quick.applyAll.title"), () =>
     applyPatch(
       all.patch,

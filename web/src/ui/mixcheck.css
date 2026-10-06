@@ -565,6 +565,7 @@
 }
 .mx-tried {
   color: var(--emerald);
+  white-space: pre-line;
 }
 
 /* ---------------------------------------------------------------- parts */
