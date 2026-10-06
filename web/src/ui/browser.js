@@ -165,10 +165,7 @@ function pickRow(b, depth, pick, sub, doc, icon) {
   const on = state.audition.on && state.audition.key === pick.key;
   b.open("div", `p-${pick.key}`, on ? "b-item pick on" : "b-item pick");
   b.style("--depth", String(depth));
-  b.attr(
-    "title",
-    `${doc}${doc !== "" ? "\n" : ""}${t("browser.pick.title")}`
-  );
+  b.attr("title", `${doc}${doc !== "" ? "\n" : ""}${t("browser.pick.title")}`);
   b.attr("draggable", "true");
   b.on("dragstart", (e) => {
     dragPick.on = true;
@@ -179,13 +176,7 @@ function pickRow(b, depth, pick, sub, doc, icon) {
     dragPick.over = "";
     invalidate();
   });
-  b.on("pointerenter", (e) =>
-    hint(
-      doc !== ""
-        ? tf("browser.pick.withDoc.hint", [pick.name, doc])
-        : tf("browser.pick.hint", [pick.name])
-    )
-  );
+  b.on("pointerenter", (e) => hint(doc !== "" ? tf("browser.pick.withDoc.hint", [pick.name, doc]) : tf("browser.pick.hint", [pick.name])));
   b.on("click", (e) => tryPick(pick));
   b.on("dblclick", (e) => {
     addPick(pick);
@@ -236,9 +227,7 @@ function songFolder(b) {
   const searching = words().length > 0;
   if (searching && chans.length === 0) return undefined;
   const open = isOpen("song") || searching;
-  folderRow(b, "song", 0, "song", t("browser.song.label"), String(chans.length), t("browser.song.title"), open, () =>
-    toggle("song")
-  );
+  folderRow(b, "song", 0, "song", t("browser.song.label"), String(chans.length), t("browser.song.title"), open, () => toggle("song"));
   b.close();
   if (!open) return undefined;
   for (const ch of chans) {
@@ -274,12 +263,21 @@ function soundfontKids(b, d, parentHit) {
     if (shown.length === 0) continue;
     const key = `gm-${f}`;
     const open = isOpen(key) || (words().length > 0 && !parentHit);
-    folderRow(b, key, 1, "", t(fam.label), String(shown.length), `${d.label}: ${language() === "en" ? fam.name.toLowerCase() : t(fam.label)}`, open, () => toggle(key));
+    folderRow(b, key, 1, "", t(fam.label), String(shown.length), `${d.label}: ${language() === "en" ? fam.name.toLowerCase() : t(fam.label)}`, open, () =>
+      toggle(key)
+    );
     b.close();
     if (!open) continue;
     for (const pr of shown) {
       const pick = devicePick(d.type, `sf-${pr.name}`, pr.name, [{ key: "program", value: pr.name }], []);
-      pickRow(b, 2, pick, pr.bank === 128 ? t("browser.soundfont.kit.label") : pr.bank === 0 ? `#${pr.program + 1}` : t("browser.soundfont.variation.label"), `${d.label} · ${t(fam.label)}`, "");
+      pickRow(
+        b,
+        2,
+        pick,
+        pr.bank === 128 ? t("browser.soundfont.kit.label") : pr.bank === 0 ? `#${pr.program + 1}` : t("browser.soundfont.variation.label"),
+        `${d.label} · ${t(fam.label)}`,
+        ""
+      );
     }
   }
 }
@@ -313,15 +311,25 @@ function instrumentFolders(b) {
     const key = `dev-${d.type}`;
     const open = isOpen(key) || (searching && !selfHit);
     const base = devicePick(d.type, `dev-${d.type}`, d.label, [], []);
-    folderRow(b, key, 0, icon, d.label, searching && !selfHit ? tf("browser.instrument.matchCount", [String(matches), String(count)]) : String(count), doc, open, () => {
-      if (d.type === "sampler") {
-        toggle(key);
-        return undefined;
+    folderRow(
+      b,
+      key,
+      0,
+      icon,
+      d.label,
+      searching && !selfHit ? tf("browser.instrument.matchCount", [String(matches), String(count)]) : String(count),
+      doc,
+      open,
+      () => {
+        if (d.type === "sampler") {
+          toggle(key);
+          return undefined;
+        }
+        // The row plays the instrument as it comes, and shows what it holds.
+        tryPick(base);
+        openFolder(key);
       }
-      // The row plays the instrument as it comes, and shows what it holds.
-      tryPick(base);
-      openFolder(key);
-    });
+    );
     const credit = collectionFor(d.type);
     if (credit) {
       // Sampled instruments: who made the samples, and their license.
@@ -437,10 +445,17 @@ function searchBox(b) {
   });
   // Always there (hidden while empty): an element appearing after the input
   // would make the tree re-attach the row, and the input lose the focus.
-  iconButton(b, "clear", tree.query === "" ? "small ghost b-search-clear empty" : "small ghost b-search-clear", "close", t("browser.search.clear.title"), () => {
-    tree.query = "";
-    invalidate();
-  });
+  iconButton(
+    b,
+    "clear",
+    tree.query === "" ? "small ghost b-search-clear empty" : "small ghost b-search-clear",
+    "close",
+    t("browser.search.clear.title"),
+    () => {
+      tree.query = "";
+      invalidate();
+    }
+  );
   b.close();
 }
 

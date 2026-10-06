@@ -346,10 +346,7 @@ export function onAutoDblClick(e, lg, x, y) {
 /** function autoHint(lg: LaneGeo, x: Number, y: Number) => String */
 export function autoHint(lg, x, y) {
   const rel = y - lg.top;
-  if (rel < DIV_H)
-    return auto.collapsed
-      ? t("lanes.divider.collapsed.hint")
-      : t("lanes.divider.expanded.hint");
+  if (rel < DIV_H) return auto.collapsed ? t("lanes.divider.collapsed.hint") : t("lanes.divider.expanded.hint");
   const lanes = state.project.automation;
   const k = Math.floor((rel - DIV_H) / LANE_H);
   if (auto.collapsed || k < 0 || k >= lanes.length) return "";
@@ -361,18 +358,10 @@ export function autoHint(lg, x, y) {
   const tp = state.project.transport;
   if (hit >= 0) {
     const pt = lane.points[hit];
-    return tf("lanes.point.hover.hint", [
-      info.label,
-      formatValue(info, pt.value),
-      barBeat(pt.beat, tp),
-    ]);
+    return tf("lanes.point.hover.hint", [info.label, formatValue(info, pt.value), barBeat(pt.beat, tp)]);
   }
   const beat = x / lg.zoom;
-  return tf("lanes.lane.hover.hint", [
-    info.label,
-    formatValue(info, laneValueAt(lane.points, beat)),
-    barBeat(beat, tp),
-  ]);
+  return tf("lanes.lane.hover.hint", [info.label, formatValue(info, laneValueAt(lane.points, beat)), barBeat(beat, tp)]);
 }
 
 // ------------------------------------------------------------------ render

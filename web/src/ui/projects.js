@@ -234,10 +234,15 @@ function createProject(name, demo) {
 
 /** function duplicateProject(name: String, to: String) => Undefined */
 function duplicateProject(name, to) {
-  act(tf("projects.duplicate.busy", [name]), tf("projects.duplicate.failed", [name]), sendJson("/api/projects/duplicate", "POST", { name: name, to: to }), (r) => {
-    toast(t("projects.duplicate.done.title"), `“${name}” → “${String(r.name)}”`, "info");
-    refreshProjects();
-  });
+  act(
+    tf("projects.duplicate.busy", [name]),
+    tf("projects.duplicate.failed", [name]),
+    sendJson("/api/projects/duplicate", "POST", { name: name, to: to }),
+    (r) => {
+      toast(t("projects.duplicate.done.title"), `“${name}” → “${String(r.name)}”`, "info");
+      refreshProjects();
+    }
+  );
 }
 
 /** function renameProject(name: String, to: String) => Undefined */
@@ -250,13 +255,17 @@ function renameProject(name, to) {
 
 /** function deleteProject(p: ProjectInfo) => Undefined */
 function deleteProject(p) {
-  const kept =
-    state.backend === "local" ? t("projects.delete.confirm.keptLocal") : tf("projects.delete.confirm.keptLibrary", [pm.library]);
+  const kept = state.backend === "local" ? t("projects.delete.confirm.keptLocal") : tf("projects.delete.confirm.keptLibrary", [pm.library]);
   if (!confirmBox(tf("projects.delete.confirm", [p.title, p.name, kept]))) return undefined;
-  act(tf("projects.delete.busy", [p.name]), tf("projects.delete.failed", [p.name]), sendJson(`/api/projects/${encodeURIComponent(p.name)}`, "DELETE", {}), (r) => {
-    toast(t("common.movedToTrash"), p.name, "info");
-    refreshProjects();
-  });
+  act(
+    tf("projects.delete.busy", [p.name]),
+    tf("projects.delete.failed", [p.name]),
+    sendJson(`/api/projects/${encodeURIComponent(p.name)}`, "DELETE", {}),
+    (r) => {
+      toast(t("common.movedToTrash"), p.name, "info");
+      refreshProjects();
+    }
+  );
 }
 
 /** function importKind(fileName: String) => String */
@@ -302,10 +311,15 @@ function importMidiHere() {
 function importAudio() {
   pickFiles("audio/*", (files) => {
     for (const f of files) {
-      act(tf("projects.importAudio.busy", [f.name]), tf("projects.importAudio.failed", [f.name]), uploadFile(`/api/samples?name=${encodeURIComponent(f.name)}`, f), (r) => {
-        toast(t("browser.sampleAdded"), String(r.path), "info");
-        refreshFiles();
-      });
+      act(
+        tf("projects.importAudio.busy", [f.name]),
+        tf("projects.importAudio.failed", [f.name]),
+        uploadFile(`/api/samples?name=${encodeURIComponent(f.name)}`, f),
+        (r) => {
+          toast(t("browser.sampleAdded"), String(r.path), "info");
+          refreshFiles();
+        }
+      );
     }
   });
 }
@@ -319,10 +333,7 @@ function exportProject(p) {
 /** Delete the trash for good: deleted projects, or this project's deleted files. */
 /** function emptyTrash(scope: String) => Undefined */
 function emptyTrash(scope) {
-  const question =
-    scope === "library"
-      ? t("projects.emptyTrash.confirm.library")
-      : t("projects.emptyTrash.confirm.project");
+  const question = scope === "library" ? t("projects.emptyTrash.confirm.library") : t("projects.emptyTrash.confirm.project");
   if (!confirmBox(question)) return undefined;
   act(t("projects.emptyTrash.busy"), t("projects.emptyTrash.failed"), sendJson("/api/trash/empty", "POST", { scope: scope }), (r) => {
     const n = Number(r.removed);
@@ -334,24 +345,32 @@ function emptyTrash(scope) {
 
 /** function renameFile(path: String, to: String) => Undefined */
 function renameFile(path, to) {
-  act(tf("projects.file.rename.busy", [path]), tf("projects.file.rename.failed", [path]), sendJson("/api/files/rename", "POST", { path: path, to: to }), (r) => {
-    const refs = Number(r.references);
-    toast(t("projects.file.rename.done.title"), refs > 0 ? tf("projects.file.rename.done.body", [String(r.path), String(refs)]) : String(r.path), "info");
-    refreshFiles();
-  });
+  act(
+    tf("projects.file.rename.busy", [path]),
+    tf("projects.file.rename.failed", [path]),
+    sendJson("/api/files/rename", "POST", { path: path, to: to }),
+    (r) => {
+      const refs = Number(r.references);
+      toast(t("projects.file.rename.done.title"), refs > 0 ? tf("projects.file.rename.done.body", [String(r.path), String(refs)]) : String(r.path), "info");
+      refreshFiles();
+    }
+  );
 }
 
 /** function deleteFile(f: FileInfo) => Undefined */
 function deleteFile(f) {
-  const question = f.used
-    ? tf("projects.file.delete.confirm.used", [f.path])
-    : tf("projects.file.delete.confirm", [f.path]);
+  const question = f.used ? tf("projects.file.delete.confirm.used", [f.path]) : tf("projects.file.delete.confirm", [f.path]);
   if (!confirmBox(question)) return undefined;
   if (pm.preview === f.path) stopPlaying();
-  act(tf("projects.file.delete.busy", [f.name]), tf("projects.file.delete.failed", [f.name]), sendJson(`/api/files?path=${encodeURIComponent(f.path)}`, "DELETE", {}), (r) => {
-    toast(t("common.movedToTrash"), String(r.trashed), "info");
-    refreshFiles();
-  });
+  act(
+    tf("projects.file.delete.busy", [f.name]),
+    tf("projects.file.delete.failed", [f.name]),
+    sendJson(`/api/files?path=${encodeURIComponent(f.path)}`, "DELETE", {}),
+    (r) => {
+      toast(t("common.movedToTrash"), String(r.trashed), "info");
+      refreshFiles();
+    }
+  );
 }
 
 // ------------------------------------------------------------------ opening
@@ -518,12 +537,7 @@ function importNote(b, im) {
   b.close();
   b.open("div", "txt", "pm-imp-text");
   b.leaf("b", "t", "", im.into ? tf("projects.imported.into.label", [im.source]) : tf("projects.imported.asNew.label", [im.source, im.name]));
-  const summary =
-    n === 0
-      ? t("projects.imported.clean")
-      : n === 1
-        ? t("projects.imported.notes.one")
-        : tf("projects.imported.notes.other", [String(n)]);
+  const summary = n === 0 ? t("projects.imported.clean") : n === 1 ? t("projects.imported.notes.one") : tf("projects.imported.notes.other", [String(n)]);
   b.leaf("span", "s", "", summary);
   if (n > 0) {
     b.open("ul", "w", "pm-warnings");
@@ -654,12 +668,7 @@ function projectsView(b) {
   if (pm.loaded && shown === 0) {
     b.open("div", "empty", "pm-empty");
     b.leaf("h3", "h", "", q !== "" ? t("projects.list.noMatch.label") : t("projects.list.empty.label"));
-    b.leaf(
-      "p",
-      "p",
-      "",
-      q !== "" ? tf("projects.list.noMatch.body", [pm.filter]) : t("projects.list.empty.body")
-    );
+    b.leaf("p", "p", "", q !== "" ? tf("projects.list.noMatch.body", [pm.filter]) : t("projects.list.empty.body"));
     b.close();
   }
 }
@@ -670,8 +679,13 @@ function fileRow(b, f) {
   const url = `/files/${encodePath(f.path)}`;
   b.open("div", `f-${f.path}`, playing ? "pm-file playing" : "pm-file");
   if (f.kind === "audio") {
-    iconButton(b, "play", playing ? "small on" : "small", playing ? "stop" : "play", playing ? t("projects.file.preview.stop.title") : tf("projects.file.preview.play.title", [f.name]), () =>
-      togglePreview(f)
+    iconButton(
+      b,
+      "play",
+      playing ? "small on" : "small",
+      playing ? "stop" : "play",
+      playing ? t("projects.file.preview.stop.title") : tf("projects.file.preview.play.title", [f.name]),
+      () => togglePreview(f)
     );
   } else {
     b.open("span", "doc", "pm-doc");
@@ -691,9 +705,13 @@ function fileRow(b, f) {
   iconButton(b, "dl", "small ghost", "export", tf("projects.file.download.title", [f.name]), () => {
     download(url, f.name);
   });
-  iconButton(b, "ren", "small ghost", "draw", f.managed ? t("projects.file.managed.title") : tf("projects.file.rename.title", [f.name]), () => compose("file", f.path, f.name));
+  iconButton(b, "ren", "small ghost", "draw", f.managed ? t("projects.file.managed.title") : tf("projects.file.rename.title", [f.name]), () =>
+    compose("file", f.path, f.name)
+  );
   if (f.managed) b.attr("disabled", "true");
-  iconButton(b, "del", "small ghost danger", "trash", f.managed ? t("projects.file.managed.title") : tf("projects.file.delete.title", [f.name]), () => deleteFile(f));
+  iconButton(b, "del", "small ghost danger", "trash", f.managed ? t("projects.file.managed.title") : tf("projects.file.delete.title", [f.name]), () =>
+    deleteFile(f)
+  );
   if (f.managed) b.attr("disabled", "true");
   b.close();
   b.close();
@@ -766,16 +784,15 @@ function filesView(b) {
     b.close();
     b.leaf("b", "n", "", dir === "" ? t("projects.files.folder.root.label") : `${dir}/`);
     const count =
-      inDir.length === 0 ? t("common.empty") : inDir.length === 1 ? tf("projects.files.folder.size.one", [bytes(size)]) : tf("projects.files.folder.size.other", [String(inDir.length), bytes(size)]);
+      inDir.length === 0
+        ? t("common.empty")
+        : inDir.length === 1
+          ? tf("projects.files.folder.size.one", [bytes(size)])
+          : tf("projects.files.folder.size.other", [String(inDir.length), bytes(size)]);
     b.leaf("span", "c", "", count);
     b.close();
     if (inDir.length === 0) {
-      b.leaf(
-        "div",
-        "none",
-        "pm-none",
-        dir === "samples" ? t("projects.files.folder.samples.empty") : t("projects.files.folder.renders.empty")
-      );
+      b.leaf("div", "none", "pm-none", dir === "samples" ? t("projects.files.folder.samples.empty") : t("projects.files.folder.renders.empty"));
     }
     for (const f of inDir) fileRow(b, f);
     b.close();
@@ -817,8 +834,13 @@ export function projectsOverlay(b) {
     b.close();
   }
   b.open("div", "tabs", "seg pm-tabs");
-  button(b, "projects", pm.tab === "projects" ? "on" : "", tf("projects.tab.projects.label", [String(pm.projects.length)]), t("projects.tab.projects.title"), () =>
-    showTab("projects")
+  button(
+    b,
+    "projects",
+    pm.tab === "projects" ? "on" : "",
+    tf("projects.tab.projects.label", [String(pm.projects.length)]),
+    t("projects.tab.projects.title"),
+    () => showTab("projects")
   );
   button(b, "files", pm.tab === "files" ? "on" : "", t("projects.tab.files.label"), t("projects.tab.files.title"), () => showTab("files"));
   b.close();
@@ -831,14 +853,7 @@ export function projectsOverlay(b) {
   b.close();
 
   b.open("footer", "foot", "pm-foot");
-  b.leaf(
-    "span",
-    "l",
-    "",
-    pm.tab === "files"
-      ? t("projects.footer.files.label")
-      : t("projects.footer.projects.label")
-  );
+  b.leaf("span", "l", "", pm.tab === "files" ? t("projects.footer.files.label") : t("projects.footer.projects.label"));
   button(
     b,
     "trash",

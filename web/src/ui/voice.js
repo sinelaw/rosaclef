@@ -713,7 +713,7 @@ function scaleName(id) {
 /** A key and scale in the summary ("C♯ major"). */
 /** function keyText(key: String, scale: String) => String */
 function keyText(key, scale) {
-  if (scale === "term.chromatic") return t("chromatic");
+  if (scale === "chromatic") return t("term.chromatic");
   if (scale === "major") return tf("voice.summary.key.major", [key]);
   if (scale === "minor") return tf("voice.summary.key.minor", [key]);
   if (scale === "harmonic") return tf("voice.summary.key.harmonic", [key]);
@@ -1315,7 +1315,7 @@ function summary(r) {
     return parts.join(" · ");
   }
   const k = resolveKey(shaped().take, voice.settings);
-  const scale = voice.settings.scale === "term.chromatic" ? t("chromatic") : keyText(KEY_NAMES[k.key], k.scale);
+  const scale = voice.settings.scale === "chromatic" ? t("term.chromatic") : keyText(KEY_NAMES[k.key], k.scale);
   return tf("voice.summary.melody", [String(r.notes.length), scale, barText]);
 }
 

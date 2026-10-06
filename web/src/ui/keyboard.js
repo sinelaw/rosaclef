@@ -208,12 +208,7 @@ function typedLabel(pitch) {
 /** What the computer keys play, for hints. */
 function typedHint() {
   const base = keyboard.typed;
-  return tf("keyboard.typed.hint", [
-    noteName(base),
-    noteName(base + 16),
-    noteName(base + 12),
-    noteName(base + TYPED_SPAN),
-  ]);
+  return tf("keyboard.typed.hint", [noteName(base), noteName(base + 16), noteName(base + 12), noteName(base + TYPED_SPAN)]);
 }
 
 /** Move the computer keys an octave down (-1) or up (1); the strip follows them. */
@@ -271,12 +266,7 @@ export function toggleRecordKeys() {
   growTake(take.run);
   openDock("piano");
   revealTyped();
-  hint(
-    tf("keyboard.record.started.hint", [
-      pat.name,
-      gridName(),
-    ])
-  );
+  hint(tf("keyboard.record.started.hint", [pat.name, gridName()]));
   invalidate();
 }
 
@@ -498,11 +488,7 @@ export function keyboardStrip(b, compact) {
   b.leaf("span", "o", "kb-octave", noteName(keyboard.low));
   octaveButton(b, "up", "right", 1);
   b.close();
-  const recTip = keyboard.armed
-    ? t("keyboard.record.stop.title")
-    : t(
-        "keyboard.record.start.title"
-      );
+  const recTip = keyboard.armed ? t("keyboard.record.stop.title") : t("keyboard.record.start.title");
   toolButton(b, "rec", keyboard.armed ? "kb-shift kb-rec armed" : "kb-shift kb-rec", "record", recTip, () => toggleRecordKeys());
   b.close();
   b.close();
@@ -514,13 +500,7 @@ export function keyboardStrip(b, compact) {
       invalidate();
     }
   });
-  b.on("pointerenter", (e) =>
-    hint(
-      ch
-        ? tf("keyboard.keys.hint", [ch.name, ch.detail, typedHint()])
-        : t("keyboard.keys.noChannel.hint")
-    )
-  );
+  b.on("pointerenter", (e) => hint(ch ? tf("keyboard.keys.hint", [ch.name, ch.detail, typedHint()]) : t("keyboard.keys.noChannel.hint")));
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });
@@ -589,12 +569,7 @@ function targetView(b, ch) {
   }
   b.open("div", `ch-${ch.trying ? state.audition.key : ch.id}`, ch.trying ? "kb-target trying" : "kb-target");
   b.style("--c", ch.color);
-  b.attr(
-    "title",
-    ch.trying
-      ? tf("keyboard.target.trying.title", [ch.detail])
-      : tf("keyboard.target.channel.title", [ch.name, ch.detail])
-  );
+  b.attr("title", ch.trying ? tf("keyboard.target.trying.title", [ch.detail]) : tf("keyboard.target.channel.title", [ch.name, ch.detail]));
   b.open("div", "ch", "kb-ch");
   b.leaf("span", "l", "kb-label", ch.trying ? t("keyboard.target.trying.label") : t("keyboard.target.keys.label"));
   b.leaf("b", "n", "", ch.name);

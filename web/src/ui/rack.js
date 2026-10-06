@@ -219,13 +219,7 @@ function rackRow(b, pat, ch, idx) {
         if (s === playStep) cls = `${cls} play`;
         b.leaf("div", `s${s}`, cls, "");
         b.style("--c", ch.color);
-        b.on("pointerenter", (e) =>
-          hint(
-            ni >= 0
-              ? tf("rack.step.remove.title", [ch.name, stepName(s)])
-              : tf("rack.step.place.title", [ch.name, stepName(s)])
-          )
-        );
+        b.on("pointerenter", (e) => hint(ni >= 0 ? tf("rack.step.remove.title", [ch.name, stepName(s)]) : tf("rack.step.place.title", [ch.name, stepName(s)])));
         if (ni >= 0) b.style("--vel", String(pat.notes[ni].velocity));
         b.on("pointerdown", (e) => {
           e.preventDefault();
@@ -445,18 +439,11 @@ function arpControls(b, ch) {
   b.open("div", "arp", "param-group arp");
   b.open("div", "head", "arp-head");
   b.leaf("div", "t", "param-group-title", t("rack.arp.label"));
-  button(
-    b,
-    "on",
-    a.on ? "small gold" : "small",
-    a.on ? t("common.on") : t("common.off"),
-    t("rack.arp.on.title"),
-    () => {
-      commit(() => {
-        a.on = !a.on;
-      });
-    }
-  );
+  button(b, "on", a.on ? "small gold" : "small", a.on ? t("common.on") : t("common.off"), t("rack.arp.on.title"), () => {
+    commit(() => {
+      a.on = !a.on;
+    });
+  });
   b.close();
   if (a.on) {
     b.open("div", "opts", "options");
@@ -535,20 +522,11 @@ function arpControls(b, ch) {
     );
     b.open("div", "mode", "option");
     b.leaf("label", "l", "", t("rack.arp.mode.label"));
-    select(
-      b,
-      "sel",
-      "",
-      a.mode,
-      ["free", "sort"],
-      [t("rack.arp.mode.option.free"), t("rack.arp.mode.option.sort")],
-      t("rack.arp.mode.title"),
-      (v) => {
-        commit(() => {
-          a.mode = v;
-        });
-      }
-    );
+    select(b, "sel", "", a.mode, ["free", "sort"], [t("rack.arp.mode.option.free"), t("rack.arp.mode.option.sort")], t("rack.arp.mode.title"), (v) => {
+      commit(() => {
+        a.mode = v;
+      });
+    });
     b.close();
     b.close();
   }
@@ -648,20 +626,11 @@ function instrumentChooser(b, ch) {
   b.open("div", "swap", "field insp-swap");
   b.leaf("label", "l", "", t("rack.inspector.instrument.label"));
   b.open("div", "row", "insp-swap-row");
-  select(
-    b,
-    "sel",
-    "",
-    ch.instrument.type,
-    kinds,
-    labels,
-    t("rack.inspector.instrument.title"),
-    (v) => {
-      if (v === ch.instrument.type) return undefined;
-      const spec = deviceSpec(v, "instrument");
-      replaceInstrument(ch, { key: `dev-${v}`, name: spec ? spec.label : v, device: newDevice(v) });
-    }
-  );
+  select(b, "sel", "", ch.instrument.type, kinds, labels, t("rack.inspector.instrument.title"), (v) => {
+    if (v === ch.instrument.type) return undefined;
+    const spec = deviceSpec(v, "instrument");
+    replaceInstrument(ch, { key: `dev-${v}`, name: spec ? spec.label : v, device: newDevice(v) });
+  });
   button(b, "browse", "small", t("rack.inspector.sounds.label"), t("rack.inspector.sounds.title"), () => {
     browseInstrument(ch.instrument.type);
     hint(tf("rack.inspector.sounds.hint", [ch.name]));
@@ -748,18 +717,9 @@ function layerControls(b, ch) {
     }
     b.open("div", "add", "option");
     b.leaf("label", "l", "", t("rack.layer.add.label"));
-    select(
-      b,
-      "sel",
-      "",
-      "",
-      [""].concat(kinds),
-      [t("rack.layer.add.option.none")].concat(labels),
-      t("rack.layer.add.title"),
-      (v) => {
-        if (v !== "") addLayer(ch, v);
-      }
-    );
+    select(b, "sel", "", "", [""].concat(kinds), [t("rack.layer.add.option.none")].concat(labels), t("rack.layer.add.title"), (v) => {
+      if (v !== "") addLayer(ch, v);
+    });
     b.close();
   }
   b.close();
@@ -833,14 +793,7 @@ export function rack(b) {
   } else {
     b.open("div", "guide", "rack-guide");
     b.leaf("b", "t", "", `${pat.name}`);
-    b.leaf(
-      "span",
-      "d",
-      "",
-      t(
-        "rack.guide.label"
-      )
-    );
+    b.leaf("span", "d", "", t("rack.guide.label"));
     b.close();
     if (state.project.channels.length > 0) ruler(b, Math.min(64, Math.round(pat.length / STEP)));
     let idx = 0;

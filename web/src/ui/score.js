@@ -56,7 +56,7 @@ import { browseInstrument } from "./browser.js";
 import { toast } from "./toast.js";
 import { filmView, newFilmView } from "./film.js";
 import { trackIx, trackIndex, noteIx, noteIndex, insertIndex } from "#brands";
-import { t, tf, tk, tx } from "../i18n.js";
+import { t, tf, tk } from "../i18n.js";
 
 // ------------------------------------------------------------------ state
 
@@ -719,17 +719,8 @@ function movePart(v, parts, to, t0, t1, where) {
   /** const how: String[] */
   const how = [];
   if (res.copies > 0)
-    how.push(
-      res.copies === 1
-        ? tf("score.move.done.patternCopied.one", [what])
-        : tf("score.move.done.patternCopied.other", [String(res.copies), what])
-    );
-  if (res.unrolled > 0)
-    how.push(
-      res.unrolled === 1
-        ? t("score.move.done.clipUnrolled.one")
-        : tf("score.move.done.clipUnrolled.other", [String(res.unrolled)])
-    );
+    how.push(res.copies === 1 ? tf("score.move.done.patternCopied.one", [what]) : tf("score.move.done.patternCopied.other", [String(res.copies), what]));
+  if (res.unrolled > 0) how.push(res.unrolled === 1 ? t("score.move.done.clipUnrolled.one") : tf("score.move.done.clipUnrolled.other", [String(res.unrolled)]));
   const also = how.join("; ");
   const one = res.notes === 1;
   const body =
@@ -834,20 +825,12 @@ function partMenu(b, v, c) {
     selectChannel(id);
     openDock("rack");
   });
-  menuItem(
-    b,
-    v,
-    "sound",
-    "swap",
-    t("score.partMenu.sound.label"),
-    tf("score.partMenu.sound.title", [ch.name]),
-    () => {
-      selectChannel(id);
-      openDock("rack");
-      browseInstrument(ch.instrument.type);
-      hint(tf("score.partMenu.sound.hint", [ch.name]));
-    }
-  );
+  menuItem(b, v, "sound", "swap", t("score.partMenu.sound.label"), tf("score.partMenu.sound.title", [ch.name]), () => {
+    selectChannel(id);
+    openDock("rack");
+    browseInstrument(ch.instrument.type);
+    hint(tf("score.partMenu.sound.hint", [ch.name]));
+  });
   menuItem(b, v, "roll", "piano", t("score.partMenu.roll.label"), tf("score.partMenu.roll.title", [ch.name]), () => {
     const pat = partPattern(v, c.score, id);
     if (pat !== "" && state.pattern !== pat) {
@@ -1044,14 +1027,7 @@ function onPaperMove(e, v, c, geo) {
     setHover(v, "name", si, ni, 0);
     const st = c.score.staves[s.labels[ni].staff];
     const ch = channelById(st.channel);
-    hint(
-      ch
-        ? tf("score.page.partName.hint", [
-            ch.name,
-            instrumentLabel(ch.instrument),
-          ])
-        : tf("score.page.partName.hint.noChannel", [st.name])
-    );
+    hint(ch ? tf("score.page.partName.hint", [ch.name, instrumentLabel(ch.instrument)]) : tf("score.page.partName.hint.noChannel", [st.name]));
     if (g.sys >= 0) {
       v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
       invalidate();
@@ -1071,19 +1047,10 @@ function onPaperMove(e, v, c, geo) {
       setHover(v, "note", si, hi, 0);
       const n = c.score.notes[s.heads[hi].src];
       const ch = channelById(n.channel);
-      hint(
-        tf("score.page.note.hint", [
-          spelledName(n.pitch, c.score.fifths),
-          ch ? ch.name : n.channel,
-        ])
-      );
+      hint(tf("score.page.note.hint", [spelledName(n.pitch, c.score.fifths), ch ? ch.name : n.channel]));
     } else if (x >= s.x0 - 0.5 && x <= s.x1 && canSeek(v)) {
       setHover(v, "paper", si, -1, seekTick(v, s, x));
-      hint(
-        tf("score.page.paper.hint", [
-          String(barOf(c.score, seekTick(v, s, x))),
-        ])
-      );
+      hint(tf("score.page.paper.hint", [String(barOf(c.score, seekTick(v, s, x)))]));
     } else {
       setHover(v, "", -1, -1, 0);
       hint(t("score.page.select.hint"));
@@ -1218,11 +1185,7 @@ function paperView(b, v, c, geo, sc) {
       "div",
       "s",
       "",
-      v.tool === "write"
-        ? ""
-        : state.project.score.hidden.length > 0
-          ? t("score.page.empty.hiddenParts")
-          : t("score.page.empty.drawNotes")
+      v.tool === "write" ? "" : state.project.score.hidden.length > 0 ? t("score.page.empty.hiddenParts") : t("score.page.empty.drawNotes")
     );
     b.close();
   }
@@ -1265,14 +1228,7 @@ function pdfMenu(b, v) {
     b.close();
   }
   item("vector", t("score.pdf.vector.label"), t("score.pdf.vector.description"), false);
-  item(
-    "shown",
-    t("score.pdf.asShown.label"),
-    v.ink === "wet"
-      ? t("score.pdf.asShown.description.wet")
-      : t("score.pdf.asShown.description.dry"),
-    true
-  );
+  item("shown", t("score.pdf.asShown.label"), v.ink === "wet" ? t("score.pdf.asShown.description.wet") : t("score.pdf.asShown.description.dry"), true);
   b.close();
 }
 
@@ -1664,7 +1620,15 @@ function eye(b, key, on, tip, onClick) {
 }
 
 const CLEF_IDS = ["auto", "treble", "treble8vb", "bass", "alto", "grand", "percussion"];
-const CLEF_NAMES = [tk("common.auto"), tk("score.clef.option.treble"), tk("score.clef.option.treble8vb"), tk("score.clef.option.bass"), tk("score.clef.option.alto"), tk("score.clef.option.grand"), tk("score.clef.option.percussion")];
+const CLEF_NAMES = [
+  tk("common.auto"),
+  tk("score.clef.option.treble"),
+  tk("score.clef.option.treble8vb"),
+  tk("score.clef.option.bass"),
+  tk("score.clef.option.alto"),
+  tk("score.clef.option.grand"),
+  tk("score.clef.option.percussion"),
+];
 
 /** function sideView(b: Builder, v: ScoreView, c: Cached, sc: Scope, geo: PageGeo) => Undefined */
 function sideView(b, v, c, sc, geo) {
@@ -1692,10 +1656,7 @@ function sideView(b, v, c, sc, geo) {
     b.leaf("span", "dot", "score-dot", "");
     b.style("--c", ch.color);
     b.leaf("button", "name", "score-part-name hot", ch.name);
-    const tip = tf("score.side.part.title", [
-      ch.name,
-      instrumentLabel(ch.instrument),
-    ]);
+    const tip = tf("score.side.part.title", [ch.name, instrumentLabel(ch.instrument)]);
     b.attr("title", tip);
     b.on("pointerenter", (e) => hint(tip));
     b.on("click", (e) => {
@@ -1731,7 +1692,12 @@ function sideView(b, v, c, sc, geo) {
           settings.hidden = [];
         });
     });
-    b.leaf("button", "cond", v.condense ? "btn small ghost on-text" : "btn small ghost", v.condense ? t("score.side.condense.checkedLabel") : t("score.side.condense.label"));
+    b.leaf(
+      "button",
+      "cond",
+      v.condense ? "btn small ghost on-text" : "btn small ghost",
+      v.condense ? t("score.side.condense.checkedLabel") : t("score.side.condense.label")
+    );
     b.attr("title", t("score.side.condense.title"));
     b.on("click", (e) => {
       v.condense = !v.condense;
@@ -2021,9 +1987,7 @@ function moveRangeSelect(b, v, c) {
     "",
     ids,
     names,
-    parts.length === 1
-      ? tf("score.range.move.title.one", [who.join(", ")])
-      : tf("score.range.move.title.other", [who.join(", ")]),
+    parts.length === 1 ? tf("score.range.move.title.one", [who.join(", ")]) : tf("score.range.move.title.other", [who.join(", ")]),
     (val) => {
       if (val === "") return undefined;
       const r = v.range;
@@ -2265,35 +2229,21 @@ function ribbon(b, v) {
   const p = state.project;
   b.open("div", "ribbon", "score-ribbon");
   b.open("div", "tools", "score-group");
-  iconButton(
-    b,
-    "sel",
-    v.tool === "select" ? "small on" : "small",
-    "select",
-    t("score.ribbon.select.title"),
-    () => {
-      v.tool = "select";
-      v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
-      invalidate();
-    }
-  );
+  iconButton(b, "sel", v.tool === "select" ? "small on" : "small", "select", t("score.ribbon.select.title"), () => {
+    v.tool = "select";
+    v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
+    invalidate();
+  });
   iconButton(b, "write", v.tool === "write" ? "small on" : "small", "draw", t("score.ribbon.write.title"), () => {
     v.tool = "write";
     v.range.on = false;
     invalidate();
   });
-  iconButton(
-    b,
-    "pan",
-    v.tool === "pan" ? "small on" : "small",
-    "hand",
-    t("score.ribbon.hand.title"),
-    () => {
-      v.tool = "pan";
-      v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
-      invalidate();
-    }
-  );
+  iconButton(b, "pan", v.tool === "pan" ? "small on" : "small", "hand", t("score.ribbon.hand.title"), () => {
+    v.tool = "pan";
+    v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
+    invalidate();
+  });
   if (v.tool === "write") {
     b.open("div", "values", "score-values");
     for (const val of VALUES) {
