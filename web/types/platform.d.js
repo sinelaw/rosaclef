@@ -109,6 +109,22 @@ export const stopPreview;
 /** const fmtDate: (Number) => String */
 export const fmtDate;
 
+/** Load the interface's translations: a JSON object of English text → translated text. Resolves to how many it holds. */
+/** const loadMessages: (String) => Promise<Int> */
+export const loadMessages;
+/** Forget the translations (the interface speaks English). */
+/** const clearMessages: () => Undefined */
+export const clearMessages;
+/** A text in the interface's language: its translation, else the text as it is. */
+/** const message: (String) => String */
+export const message;
+/** The interface's language (a BCP 47 tag): dates follow it, and the page says it is in it. */
+/** const setUiLocale: (String) => Undefined */
+export const setUiLocale;
+/** The languages the browser asks for, the favorite first ("de-DE", "en"…). */
+/** const browserLanguages: () => String[] */
+export const browserLanguages;
+
 /** const nowIso: () => String */
 export const nowIso;
 

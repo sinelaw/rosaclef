@@ -253,7 +253,43 @@ export function nowIso() {
 }
 
 export function fmtDate(ms) {
-  return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return new Date(ms).toLocaleString(uiLocale || undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+// ------------------------------------------------------------------ translations
+
+/** The interface's translations (English text → translated text) and its locale ("" = the browser's). */
+let messages = new Map();
+let uiLocale = "";
+
+export async function loadMessages(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status}`);
+  const o = await r.json();
+  const m = new Map();
+  for (const k of Object.keys(o)) {
+    if (typeof o[k] === "string" && o[k] !== "") m.set(k, o[k]);
+  }
+  messages = m;
+  return m.size;
+}
+
+export function clearMessages() {
+  messages = new Map();
+}
+
+export function message(text) {
+  return messages.get(text) ?? text;
+}
+
+export function setUiLocale(code) {
+  uiLocale = code;
+  document.documentElement.lang = code;
+}
+
+export function browserLanguages() {
+  const l = navigator.languages && navigator.languages.length > 0 ? navigator.languages : [navigator.language || "en"];
+  return l.map((x) => String(x));
 }
 
 export function download(url, name) {

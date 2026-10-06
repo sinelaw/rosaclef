@@ -4,7 +4,8 @@ import { drag, fmt, sendJson, download } from "#platform";
 import { state, begin, changed, commit, undo, redo, hint, invalidate } from "../store.js";
 import { barBeat, semitonesText } from "../model.js";
 import { togglePlay, stop, record, setMode, setOutput, toggleMetronome } from "../audio.js";
-import { iconButton, button, knobAt, meter } from "./widgets.js";
+import { iconButton, button, knobAt, meter, glyph } from "./widgets.js";
+import { t, language, setLanguage, LANGUAGES } from "../i18n.js";
 import { isAutomated, shownValue, openMenu } from "../automation.js";
 import { toast } from "./toast.js";
 import { projectsButton } from "./projects.js";
@@ -302,6 +303,32 @@ export function topbar(b) {
     exportSong();
   });
   b.leaf("span", "t", "", "Export");
+  b.close();
+  languageSwitch(b);
+  b.close();
+}
+
+/** The language switcher, at the right end of the top bar: the language's code over a menu of every language, each in its own name. */
+/** function languageSwitch(b: Builder) => Undefined */
+function languageSwitch(b) {
+  const code = language();
+  const tip = code === "en" ? "Language" : `${t("Language")} · Language`;
+  b.open("label", "lang", "lang-switch");
+  b.attr("title", tip);
+  b.on("pointerenter", (e) => hint(tip));
+  glyph(b, "globe");
+  b.leaf("span", "code", "lang-code", code.split("-")[0].toUpperCase());
+  b.open("select", "sel", "lang-select");
+  b.attr("aria-label", tip);
+  b.prop("value", code);
+  b.on("change", (e) => {
+    setLanguage(e.value, () => invalidate());
+  });
+  for (const l of LANGUAGES) {
+    b.leaf("option", l.code, "", l.code === "en" || code === "en" ? l.name : `${l.name} — ${t(l.english)}`);
+    b.attr("value", l.code);
+    b.attr("lang", l.code);
+  }
   b.close();
   b.close();
 }

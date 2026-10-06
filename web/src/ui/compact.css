@@ -183,6 +183,10 @@ body {
   height: 32px;
   padding: 0 10px;
 }
+.studio.compact .lang-switch {
+  height: 32px;
+  padding: 0 8px;
+}
 
 /* A phone on its side: one top row, the transport scrolls within it. */
 @media (max-height: 479px) {
