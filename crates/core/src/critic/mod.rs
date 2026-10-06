@@ -240,7 +240,6 @@ pub static RULES: &[Rule] = &[
     r("limiter-pumping", "Mix check", "Limiter pumping", "Gain reduction swinging with every beat makes the whole mix breathe; a slower release or less drive keeps it steady."),
     r("masked-lead", "Mix check", "Masked lead", "The lead carries the song: if other parts cover its frequencies it disappears, however loud its fader."),
     r("inaudible-part", "Mix check", "Inaudible part", "A part buried under others costs CPU and clutter and adds nothing: bring it out or take it away."),
-    r("harmonic-clash", "Mix check", "Harmonic clash", "Notes a minor second, major seventh or tritone apart, held together and both audible, grind (measured with the parts' real levels)."),
     r("low-end-buildup", "Mix check", "Low-end build-up", "Too much energy under 250–500 Hz makes a mix muddy and boomy and eats the headroom."),
     r("phase-correlation", "Mix check", "Phase and mono", "A negative correlation means the channels cancel: on a phone or a club's mono system parts disappear."),
     r("section-loudness-flat", "Mix check", "No build between sections", "Sections at the same loudness give the song nowhere to go; the drop hits harder after a quieter build."),

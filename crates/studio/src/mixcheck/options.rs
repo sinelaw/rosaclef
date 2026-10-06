@@ -14,18 +14,16 @@ pub enum Check {
     Masking,
     Dynamics,
     GainReduction,
-    Clashes,
     Spectrum,
     Stereo,
 }
 
-pub const CHECKS: [(&str, Check); 8] = [
+pub const CHECKS: [(&str, Check); 7] = [
     ("levels", Check::Levels),
     ("audibility", Check::Audibility),
     ("masking", Check::Masking),
     ("dynamics", Check::Dynamics),
     ("gainreduction", Check::GainReduction),
-    ("clashes", Check::Clashes),
     ("spectrum", Check::Spectrum),
     ("stereo", Check::Stereo),
 ];
@@ -314,7 +312,6 @@ pub fn parse_check(s: &str) -> Result<Check, String> {
     let alias = match s.as_str() {
         "gr" | "gain-reduction" => "gainreduction",
         "level" => "levels",
-        "clash" => "clashes",
         "spe" | "spec" => "spectrum",
         "phase" | "correlation" => "stereo",
         x => x,

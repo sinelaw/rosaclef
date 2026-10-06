@@ -83,16 +83,18 @@ enum Command {
         /// List the checks (and which are off).
         #[arg(long)]
         rules: bool,
-        /// Also run the audio checks ("Mix check": overload, pumping, masking,
-        /// clashes, low end, phase, build): renders the song once (cached),
+        /// Also run the audio checks ("Mix check": overload, true peak,
+        /// pumping, compression, masking, low end, phase, build): renders the
+        /// song once (cached),
         /// like `rosaclef mixcheck`.
         #[arg(long)]
         audio: bool,
     },
     /// Mix diagnostics from one render: loudness, the limiter, masking and
-    /// audibility, gain reduction, clashes, spectrum and stereo — over any
-    /// range — with findings and JSON Patch fixes. Exit status: 0 no
-    /// warnings, 1 warnings, 2 error. See docs/mixcheck.md.
+    /// audibility, gain reduction, spectrum and stereo — over any range —
+    /// with findings and JSON Patch fixes to the mixer. Exit status: 0 no
+    /// warnings, 1 warnings, 2 error. The project folder's AGENTS.md
+    /// explains it; `--schema` prints the report's JSON Schema.
     Mixcheck(MixcheckArgs),
     /// Render the song (or a pattern) to a WAV file.
     Render {
@@ -195,7 +197,7 @@ struct MixcheckArgs {
     /// Channel ids, insert indices or names, "master" (comma-separated).
     #[arg(long, value_name = "ID,…")]
     focus: Option<String>,
-    /// levels,audibility,masking,dynamics,gainreduction,clashes,spectrum,stereo (default: all).
+    /// levels,audibility,masking,dynamics,gainreduction,spectrum,stereo (default: all).
     #[arg(long, value_name = "LIST")]
     checks: Option<String>,
     /// RFC 6902 operations applied in memory (never written): JSON or @file.json.

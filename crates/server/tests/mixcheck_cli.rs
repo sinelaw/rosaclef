@@ -46,7 +46,7 @@ fn exit_status_and_errors() {
         .iter()
         .any(|f| f["rule"] == "master-overload"));
 
-    // Only the clashes, none of them high: no warnings.
+    // Bar 1 alone, levels only: no warnings.
     let (code, out, _) = mixcheck(&dir, &["--range", "1:1", "--checks", "levels", "--text"]);
     assert_eq!(code, 0, "{out}");
     assert!(out.lines().count() <= 40);

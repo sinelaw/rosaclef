@@ -2,8 +2,7 @@
 
 `rosaclef mixcheck` answers mix questions with numbers, from **one render**:
 *is the rhythm bass audible here? is section C overloading the master? is the
-lead masked in the intro? what is the limiter doing at bar 94? which part
-clashes in bar 65?* It replaces copying the project to cut bars out, stripping
+lead masked in the intro? what is the limiter doing at bar 94?* It replaces copying the project to cut bars out, stripping
 the limiter by hand, soloing inserts one render at a time, and parsing WAVs
 with ad-hoc scripts.
 
@@ -28,7 +27,7 @@ rosaclef mixcheck [PATH]
   --range BAR:BAR | --beats B:B | --section NAME   # default: the whole song
   --by bar|section|N-beats                          # the rows of perBar
   --focus ID[,ID…]                                  # channel ids, insert indices or names, "master"
-  --checks levels,audibility,masking,dynamics,gainreduction,clashes,spectrum,stereo
+  --checks levels,audibility,masking,dynamics,gainreduction,spectrum,stereo
   --what-if JSONPATCH|@file.json                    # RFC 6902, in memory only
   --compare A.json B.json                           # the report of B, with what changed from A
   --verify                                          # re-measure each finding's fix and each suggestion under its patch
@@ -119,27 +118,10 @@ what-if is a second render; `--verify`, one per finding fix and suggestion
   not count. `audibleFractionPct` is the share of the
   part's frames that are audible; `maskedBy` names the parts with the strongest
   excitation where it is loudest, the band and by how much.
-- **Clashes** — notes of two parts sounding together a minor second (or minor
-  ninth…), a major seventh or a tritone apart, from the notes as they play and
-  the parts' measured levels at that moment, weighed by overlap × the quieter
-  part's level. Short passing tones are left out unless `--threshold strict`.
-  Each names both notes (`pattern`, `noteIndex`, pitch) and the same two notes
-  clashing again in a loop are one clash (`alsoInBars`). The chord sounding
-  with them (every note, read above the lowest) can make the interval a
-  colour, not a mistake: the tensions of a dominant seventh (♭9, ♯9, ♯11, ♭13,
-  13), a major seventh chord's seventh and ♯11, a lydian ♯11 over a major
-  chord, a diminished chord's tritone — and a passing or approach note (by
-  step, a beat or less), or a suspension (held over from the chord before, on
-  which it belonged, and moving on by step). Those rank low and say why
-  (`idiom`). A wrong note ranks high and says why (`outOfChord`): the other
-  parts play a plain major or minor triad, the note is not in it but a
-  semitone from one of its notes that two parts or more sound, lasts 1.5 beats
-  or more and resolves nowhere (extended and altered chords are left alone; a
-  wrong note in the bass is judged before chord colours, since it would read
-  as the root of a false chord);
-  one finding per wrong note, however many parts it rubs against. Clashes are
-  reported, never fixed: the notes are the song's, and a mix check's fixes
-  touch the mixer only (faders, EQ, dynamics, the master's automation).
+- **Notes are not its business.** Harmonic clashes are read from the notes
+  by the Critic (`rosaclef critic`, its harmony checks); a mix check measures
+  the sound, and every fix it proposes changes the mixer only — faders, EQ,
+  dynamics, automation — never a note.
 
 ## The report
 
@@ -169,9 +151,6 @@ silent parts are left out.
                   "suggestions": [ { "why": "…", "patch": [ { "op": "add", "path": "/channels/37/volume", "value": 1.2 } ],
                                      "expectedRelativeToMixDb": -11.5, "expectedAudibleFractionPct": 72 } ] } ],
   "gainReduction": [ { "id": "insert:0/Master", "effect": 1, "type": "limiter", "max": 6.3, "mean": 2.1, "pctTimeAbove3": 41 } ],
-  "clashes": [ { "bar": 65, "beatInBar": 0.25, "a": { "channel": "counter", "pattern": "counter-b", "noteIndex": 81, "pitch": "C#5" },
-                 "b": { "channel": "pad", "pattern": "pad-C", "noteIndex": 4, "pitch": "C4" }, "interval": "m9", "overlapBeats": 3.7,
-                 "severity": "high" } ],
   "findings": [ { "severity": "warn", "rule": "master-overload", "key": "master-overload|master", "where": "bars 52–59",
                   "detail": "pre-limiter peaks +5.2 dBFS (its input gain alone adds +6.0 dB); …", "fix": [ … ],
                   "fixLabel": "the limiter's input gain +6.0 → +0.8 dB",
@@ -208,8 +187,8 @@ silent parts are left out.
   gives the dynamics that moved (LRA, PLR, the master compressor's and
   limiter's mean reduction), so "resolved" can be weighed; `--text` shows
   both and names the new findings.
-- Finding keys are stable (`master-overload|master`, `masked-lead|channel:sax`,
-  `harmonic-clash|<pattern>:<note>|<pattern>:<note>`): the same problem keeps
+- Finding keys are stable (`master-overload|master`, `masked-lead|channel:sax`):
+  the same problem keeps
   its key when it moves or shrinks, so `whatIf`/`compare` list it as resolved
   only when it is gone.
 - `whatIf` / `compare`: the master's numbers that moved (`from`, `to`,
@@ -245,7 +224,6 @@ unity — rather than turning everything else down. Each is a rule of the Critic
 | `over-compression` | a master compressor or limiter takes 6 dB or more on average (strict 4, loose 9), over 3 dB at least half the time: the mix is squashed flat | down to about 3 dB of gain reduction: a compressor glues instead (ratio 2.5:1 at most, attack at least 10 ms, release 150 ms when under 100), its threshold where it takes about 3 dB and its makeup down by as much (the loudness kept); a limiter's drive down |
 | `masked-lead` | the lead is buried or inaudible, or more than 10 LU under the mix (strict 8, loose 13) over the range or in stretches (`buriedIn`; the finding names their bars). The lead is the part named like one (lead, vocal, melody, topline, solo), else the loudest the Critic reads as a lead: one per song | its balance (a masker's EQ boost over it back, boosted faders over it back to unity, the lead up), else an EQ cut on its masker where it covers it, or more level |
 | `inaudible-part` | a part is inaudible (strict: buried too), playing 5 % of the range or more; a channel volume 12 dB or more under the others' is named | the level the model says it needs — only when the model says it helps and the faders can reach it (else the finding says so); more than 12 dB only when its own fader is that far under the others' |
-| `harmonic-clash` | a clash of high severity (strict: medium too). Minor seconds and ninths rank highest; a major seventh and a tritone one step lower; notes more than two octaves apart are not clashes; a colour of the chord, a passing note or a suspension ranks low; a wrong note (`outOfChord`) ranks high | — (the notes are the song's: the finding names both, by `pattern` and `noteIndex`) |
 | `low-end-buildup` | a part carrying a quarter of the lows boosts them 6 dB or more with an EQ (strict 4, loose 9) in a mix whose lows lean 3 dB over (strict 2, loose 5); else for 2 bars or more, under 250 Hz is 14 dB over 500 Hz–6 kHz, or 250–500 Hz 6 dB over a balanced tilt (drum breaks aside) | that EQ's boost down to +3 dB or less; else, on the part boosting its lows or (not the bass or drums) carrying the most low end, a low-shelf cut at 150 Hz — or a bell cut at 350 Hz when the excess is in the low mids |
 | `phase-correlation` | the mix's correlation is negative or it loses 6 dB in mono; a part's correlation under −0.3 (however quiet: it vanishes in mono) | — |
 | `section-loudness-flat` | three or more sections all within 1.5 LU (strict 2.5, loose 1.0) | a master volume lane: the sparse sections 1.5–3 dB down |
@@ -274,7 +252,7 @@ The **Mix check** tab of the Maestro panel reads like a mastering meter:
   the playlist) and the spectrum, with a reference track level-matched over it;
 - the parts, the most in need first: their verdict, level against the mix and
   audibility; open one for its maskers and suggestions;
-- the clashes (click a note to select it in the piano roll) and every row.
+- every row.
 
 **Try** runs a what-if (the song is not touched) and shows what changed;
 **Apply** makes the change, one undo step. The report is marked stale when the
@@ -295,7 +273,7 @@ cores render faster; the cache answers every further question about the range.
 
 `crates/studio/src/mixcheck/`: `timeline` (bars, passes, sections, ranges),
 `analyze` (the tapped render and the measurements), `cache`, `model`
-(loudness, attribution, masking), `clashes`, `report` (the report and its
+(loudness, attribution, masking), `report` (the report and its
 schema, `mixcheck.schema.json`), `findings` (rules, fixes, suggestions),
 `targets`, `reference`, `diff`, `patch` (RFC 6902), `text`, `critic`, `options`
 (the request, shared by every interface). The engine's taps, gain-reduction
@@ -308,8 +286,8 @@ Tests:
   (checked against `mixcheck.schema.json`), a quiet pluck masked by a loud sub,
   gain reduction of signals of known level, bars through a meter change and a
   repeat, a range measured like the same bars of the whole song (a repeat's
-  second pass too), the cache in memory and on disk, what-if, clashes reported
-  with their notes and no fix touching them, and bad requests (ranges, a reference outside the folder, a fix to a
+  second pass too), the cache in memory and on disk, what-if, fixes touching
+  the mixer only, and bad requests (ranges, a reference outside the folder, a fix to a
   song read only in part) refused by name.
 - Unit tests: the FFT, K-weighting, true peak, loudness and loudness range of
   signals of known loudness (after EBU Tech 3341 / 3342), JSON Patch.

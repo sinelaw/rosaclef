@@ -217,44 +217,6 @@ pub fn summary(r: &Report) -> String {
             out.push(format!("  … {} more not ok", n - 6));
         }
     }
-    if let Some(cl) = &r.clashes {
-        let shown = cl.iter().filter(|c| c.severity != "low").count();
-        let top: Vec<String> = cl
-            .iter()
-            .filter(|c| c.severity != "low")
-            .take(3)
-            .map(|c| {
-                format!(
-                    "  bar {} beat {:.2}: {} {} vs {} {} ({}, {:.2} beats, {})",
-                    c.bar,
-                    c.beat_in_bar + 1.0,
-                    c.a.channel,
-                    c.a.pitch,
-                    c.b.channel,
-                    c.b.pitch,
-                    c.interval,
-                    c.overlap_beats,
-                    c.severity
-                )
-            })
-            .collect();
-        if !top.is_empty() {
-            out.push("clashes:".into());
-            out.extend(top);
-            let low = cl.len() - shown;
-            if shown > 3 || low > 0 {
-                out.push(format!(
-                    "  … {} more{} (--json lists them)",
-                    shown.saturating_sub(3) + low,
-                    if low > 0 {
-                        format!(", {low} of low severity")
-                    } else {
-                        String::new()
-                    }
-                ));
-            }
-        }
-    }
     let rows: Vec<(String, f64)> = r
         .per_bar
         .iter()

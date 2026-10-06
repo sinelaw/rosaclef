@@ -4,7 +4,6 @@
 //! elements are left out.
 
 use super::analyze::{Analysis, GrSeries, F_LL, F_LR, F_PEAK, F_RR, F_SIX, F_TP};
-use super::clashes::{self, interval_name, note_name};
 use super::dsp::{self, r1, BANDS, BAND_NAMES, BARKS};
 use super::model::{self, Audibility, Change, Ear, Element, Loudness, Mix};
 use super::options::{By, Check, Options, Threshold};
@@ -29,8 +28,6 @@ pub struct Report {
     pub elements: Vec<ElementOut>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub gain_reduction: Vec<GrOut>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub clashes: Option<Vec<ClashOut>>,
     pub findings: Vec<FindingOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub history: Option<HistoryOut>,
@@ -257,41 +254,6 @@ pub struct GrOut {
     pub kind: String,
     #[serde(flatten)]
     pub stat: GrStat,
-}
-
-#[derive(Serialize, Clone, Debug, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct NoteRef {
-    pub channel: String,
-    pub pattern: String,
-    pub note_index: usize,
-    pub pitch: String,
-    pub midi: i32,
-    pub level_db: f64,
-}
-
-#[derive(Serialize, Clone, Debug, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ClashOut {
-    pub bar: u32,
-    /// The written beat where the notes start to overlap.
-    pub beat: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pass: Option<u32>,
-    pub beat_in_bar: f64,
-    pub a: NoteRef,
-    pub b: NoteRef,
-    pub interval: String,
-    pub overlap_beats: f64,
-    pub severity: &'static str,
-    /// Why the chord makes it a colour (ranked low).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub idiom: Option<&'static str>,
-    /// A wrong note: not in the chord, held, resolving nowhere (ranked high).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub out_of_chord: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub also_in_bars: Vec<u32>,
 }
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
@@ -1139,54 +1101,6 @@ pub fn build<'a>(
     }
     r.elements = outs.into_iter().map(|x| x.0).collect();
 
-    // ---- clashes
-    if o.has(Check::Clashes) {
-        let notes = clashes::played(p, t, &res.ranges);
-        let level = |c: usize, from: f64, to: f64| -> Option<f64> {
-            let u = mix
-                .units
-                .iter()
-                .position(|u| u.channel == Some(c))
-                .or_else(|| {
-                    mix.units.iter().position(|u| {
-                        u.channel.is_none() && u.insert == p.channels[c].mixer.index()
-                    })
-                })?;
-            let hs: Vec<usize> = hops
-                .iter()
-                .copied()
-                .filter(|h| {
-                    let pf = a.hops[*h].perf;
-                    pf >= from - 0.05 && pf < to + 0.05
-                })
-                .collect();
-            if hs.is_empty() {
-                return None;
-            }
-            let e: f64 = hs.iter().map(|h| mix.unit_ms(u, *h)).sum::<f64>();
-            let m: f64 = hs.iter().map(|h| mix.ms(mix.master_pre, *h)).sum::<f64>();
-            (e > 1e-10 && m > 0.0).then(|| dsp::db(e / m))
-        };
-        let found = clashes::find(
-            &notes,
-            t,
-            &level,
-            o.threshold == Threshold::Strict,
-            o.threshold == Threshold::Loose,
-        );
-        let cap = (o.max_findings * 2).max(10);
-        r.clashes = Some(
-            found
-                .iter()
-                .filter(|c| {
-                    o.threshold == Threshold::Strict || c.severity != "low" || found.len() <= cap
-                })
-                .take(cap)
-                .map(|c| clash_out(p, t, c))
-                .collect(),
-        );
-    }
-
     // ---- history
     if o.history {
         r.history = Some(history(&mix, t, &blocks, &hops, &master_lims));
@@ -1260,38 +1174,6 @@ pub fn band_span(w: &[f64; BARKS], share: f64) -> (usize, usize) {
         on.first().copied().unwrap_or(0),
         on.last().copied().unwrap_or(0),
     )
-}
-
-fn clash_out(p: &Project, t: &Timeline, c: &clashes::Clash) -> ClashOut {
-    let r = |n: &clashes::Played, db: f64| NoteRef {
-        channel: p.channels[n.channel].id.clone(),
-        pattern: p.patterns[n.pattern].id.clone(),
-        note_index: n.note,
-        pitch: note_name(n.pitch),
-        midi: n.pitch,
-        level_db: r1(db),
-    };
-    let (span, beat) = t.at_perf(c.from);
-    let pass = t.pass_of(span, beat);
-    let mut also: Vec<u32> = c.also.iter().map(|x| x.0).collect();
-    also.sort();
-    also.dedup();
-    let bar = t.bar_of(beat);
-    also.retain(|b| *b != bar);
-    ClashOut {
-        bar,
-        beat: (beat * 1000.0).round() / 1000.0,
-        pass: (t.repeats_in(beat, beat + 1e-3) || pass > 1).then_some(pass),
-        beat_in_bar: (t.beat_in_bar(beat) * 1000.0).round() / 1000.0,
-        a: r(&c.a, c.a_db),
-        b: r(&c.b, c.b_db),
-        interval: interval_name(c.semis),
-        overlap_beats: (c.overlap * 100.0).round() / 100.0,
-        severity: c.severity,
-        idiom: c.idiom,
-        out_of_chord: c.out_of_chord.clone(),
-        also_in_bars: also,
-    }
 }
 
 fn history(

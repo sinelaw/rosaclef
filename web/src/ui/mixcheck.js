@@ -10,16 +10,16 @@
 // momentary) against a delivery target's bracket, true peak, PLR and LRA,
 // gain-reduction meters, phase correlation, a loudness history, the spectrum
 // (against a level-matched reference), then the mix's parts with their
-// audibility, the clashes, and the findings ranked with their fixes.
+// audibility, and the findings ranked with their fixes.
 
 import { getJson, sendJson, fmt } from "#platform";
-import { state, commit, invalidate, fixSelection, selectPattern, selectChannel, selectInsert, hint } from "../store.js";
+import { state, commit, invalidate, fixSelection, selectChannel, selectInsert, hint } from "../store.js";
 import { encodeProject, decodeProject } from "../model.js";
 import { button, select, glyph } from "./widgets.js";
 import { openDock, setTop, setView, isCompact } from "./panes.js";
 import { revealBeat } from "./playlist.js";
 import { toast } from "./toast.js";
-import { insertIx, noteIx } from "#brands";
+import { insertIx } from "#brands";
 
 const BANDS = ["Sub", "Bass", "Low mid", "Mid", "High mid", "Air"];
 const BAND_TIPS = ["under 60 Hz", "60–250 Hz", "250–500 Hz", "500 Hz–2 kHz", "2–6 kHz", "over 6 kHz"];
@@ -93,7 +93,6 @@ function emptyReport() {
     rows: [],
     elements: [],
     gr: [],
-    clashes: [],
     findings: [],
     history: { step: 0.2, t: [], m: [], s: [], tp: [], gr: [], bars: [] },
     whatIf: "",
@@ -162,11 +161,6 @@ function decodeMaster(m) {
 /** function patchText<T>(p: T) => String */
 function patchText(p) {
   return p === undefined || p === null || p.length === 0 ? "" : JSON.stringify(p);
-}
-
-/** function decodeNote<T>(n: T) => MixNote */
-function decodeNote(n) {
-  return { channel: str(n.channel), pattern: str(n.pattern), note: int(n.noteIndex), pitch: str(n.pitch), level: num(n.levelDb) };
 }
 
 /** function decodeReport<T>(r: T) => MixReport */
@@ -259,20 +253,6 @@ function decodeReport(r) {
       };
     }),
     gr: (r.gainReduction ?? []).map((g) => decodeGr(g)),
-    clashes: (r.clashes ?? []).map((c) => ({
-      bar: int(c.bar),
-      beat: num(c.beat),
-      pass: int(c.pass),
-      beatInBar: num(c.beatInBar),
-      a: decodeNote(c.a),
-      b: decodeNote(c.b),
-      interval: str(c.interval),
-      overlap: num(c.overlapBeats),
-      severity: str(c.severity),
-      idiom: str(c.idiom),
-      wrong: str(c.outOfChord),
-      also: (c.alsoInBars ?? []).map((x) => int(x)),
-    })),
     findings: (r.findings ?? []).map((f) => ({
       severity: str(f.severity),
       rule: str(f.rule),
@@ -855,38 +835,6 @@ function elementRow(b, e) {
   b.close();
 }
 
-/** function clashRow(b: Builder, c: MixClash, i: Int) => Undefined */
-function clashRow(b, c, i) {
-  b.open("div", `c${i}`, `mx-clash ${c.severity}`);
-  b.open("button", "bar", "mx-link mx-barref");
-  b.attr("title", "Show the bar in the playlist");
-  b.on("click", (e) => revealBar(c.beat - c.beatInBar));
-  b.text(`bar ${c.bar}${c.pass > 1 ? `′${c.pass}` : ""} · ${fmt(c.beatInBar + 1, 2)}`);
-  b.close();
-  b.open("span", "notes", "mx-clash-notes");
-  for (const n of [c.a, c.b]) {
-    b.open("button", `${n.pattern}-${n.note}`, "mx-link");
-    b.attr("title", `Select the note in the piano roll (${n.pattern}, note ${n.note}); ${signed(n.level)} dB against the mix`);
-    b.on("click", (e) => {
-      selectPattern(n.pattern);
-      selectChannel(n.channel);
-      state.selection = [noteIx(n.note)];
-      openDock("piano");
-      invalidate();
-    });
-    b.text(`${n.channel} ${n.pitch}`);
-    b.close();
-  }
-  b.close();
-  b.open("span", "iv", "mx-interval");
-  if (c.idiom !== "") b.attr("title", `A colour of the chord: ${c.idiom}`);
-  if (c.wrong !== "") b.attr("title", `A wrong note: ${c.wrong}`);
-  b.text(`${c.interval} · ${fmt(c.overlap, 2)} beats${c.idiom !== "" ? " · colour" : c.wrong !== "" ? " · wrong note" : ""}`);
-  b.close();
-  b.leaf("span", "sp", "spacer", "");
-  b.close();
-}
-
 // ------------------------------------------------------------------ the panel
 
 /** The Mix check panel (in the Maestro panel, over the terminal). */
@@ -1003,7 +951,7 @@ export function mixcheckPanel(b, ask) {
       "p",
       "p",
       "",
-      "One render of the song (or a range): loudness and true peak against a delivery target, the limiter's work, phase, the spectrum, how audible each part is under the others, harmonic clashes (reported; the fixes touch the mixer only). The agent gets the same numbers from `rosaclef mixcheck`."
+      "One render of the song (or a range): loudness and true peak against a delivery target, the limiter's work, phase, the spectrum, how audible each part is under the others. The fixes touch the mixer only. The agent gets the same numbers from `rosaclef mixcheck`."
     );
     b.close();
   } else {
@@ -1038,9 +986,6 @@ export function mixcheckPanel(b, ask) {
         return rank(x.verdict) - rank(y.verdict) || y.share - x.share;
       });
       for (const e of order) elementRow(b, e);
-    }
-    if (r.clashes.length > 0 && section(b, "clashes", "Clashes", `${r.clashes.filter((c) => c.severity === "high").length} high`)) {
-      for (let i = 0; i < Math.min(r.clashes.length, 30); i++) clashRow(b, r.clashes[i], i);
     }
     if (section(b, "rows", "Bars", "momentary max · pre-limiter peak · limiter")) barsView(b, r);
     for (const w of r.warnings) b.leaf("div", `w-${w}`, "mx-warning", w);

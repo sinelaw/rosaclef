@@ -449,37 +449,28 @@ fn what_if_never_touches_the_project_and_reports_the_change() {
 }
 
 #[test]
-fn a_clash_names_the_notes_and_leaves_them_alone() {
-    let dir = scratch("clash");
+fn fixes_touch_the_mixer_only() {
+    // The notes are the song's (clashes are the Critic's, read from the
+    // notes): a mix check's fixes change the mixer and nothing else.
+    let dir = scratch("mixer-only");
     let p: Project = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
-    // Lead C#5 (pattern tune, note 1) over the pad's C4 in bar 2.
-    let r = check(&dir, &p, json!({"range": "2:4", "threshold": "strict"}));
-    let cl = r.clashes.as_ref().unwrap();
-    let c = cl
-        .iter()
-        .find(|c| c.a.pattern == "tune" && c.a.note_index == 1 && c.interval == "m9")
-        .unwrap_or_else(|| panic!("{cl:?}"));
-    assert_eq!(c.bar, 2);
-    assert_eq!(c.a.pitch, "C#5");
-    // The notes are the song's: a mix check reports them, and its fixes
-    // touch the mixer only.
-    let f = r
-        .findings
-        .iter()
-        .find(|f| f.rule == "harmonic-clash")
-        .unwrap();
-    assert!(f.fix.is_empty() && f.fix_label.is_empty(), "{f:?}");
-    assert!(f.detail.contains("pattern tune, note 1"), "{}", f.detail);
+    let r = check(&dir, &p, json!({"threshold": "strict"}));
+    assert!(!r.findings.is_empty());
     for f in &r.findings {
         for op in &f.fix {
             let path = op["path"].as_str().unwrap();
             assert!(
-                !path.starts_with("/patterns"),
-                "{} touches notes: {op}",
+                path.starts_with("/mixer")
+                    || path.starts_with("/channels")
+                    || path.starts_with("/automation")
+                    || path.starts_with("/playlist/clips"),
+                "{} touches {path}",
                 f.key
             );
         }
     }
+    let err = Options::from_json(&json!({"checks": "clashes"})).unwrap_err();
+    assert!(err.contains("checks:"), "{err}");
 }
 
 /// A small JSON Schema checker for what mixcheck.schema.json uses: type,
@@ -717,21 +708,6 @@ fn every_planted_fault_is_found_and_the_fixes_converge() {
             .count(),
         1
     );
-    // The planted clash, down to the note.
-    let c = r
-        .clashes
-        .as_ref()
-        .unwrap()
-        .iter()
-        .find(|c| {
-            c.a.channel == "counter"
-                && c.a.pitch == "C#5"
-                && c.b.channel == "pad"
-                && c.b.pitch == "C4"
-        })
-        .expect("the counter's C#5 over the pad's C4");
-    assert_eq!((c.interval.as_str(), c.a.note_index), ("m9", 0));
-
     // Applying the fixes, as an agent would, round after round: the limiter
     // stops fighting and the lead comes through.
     let mut ops: Vec<Value> = vec![];

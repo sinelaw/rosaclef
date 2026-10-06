@@ -36,7 +36,7 @@ const PLUGINS = [
     id: "mixcheck",
     label: "Mix check",
     icon: "meter",
-    tip: "Measure the mix from one render: loudness and true peak against a delivery target, the limiter, phase, spectrum, masking, clashes — the same as `rosaclef mixcheck`",
+    tip: "Measure the mix from one render: loudness and true peak against a delivery target, the limiter, phase, spectrum, masking — the same as `rosaclef mixcheck`",
   },
 ];
 

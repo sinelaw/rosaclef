@@ -1,6 +1,6 @@
 //! `rosaclef mixcheck`: fast, numeric mix diagnostics for agents and
 //! producers — loudness, peaks and the limiter, masking and audibility,
-//! gain reduction, harmonic clashes, the spectrum and the stereo image, over
+//! gain reduction, the spectrum and the stereo image, over
 //! any range of the song, from **one render**.
 //!
 //! The same request ([`Options`], read from JSON) and the same report
@@ -12,7 +12,6 @@
 //! - [`analyze`]: the tapped render with pre-roll and the measurements.
 //! - [`cache`]: renders keyed on a hash of what makes the sound.
 //! - [`model`]: loudness, attribution of the mix, the masking model.
-//! - [`clashes`]: harmonic clashes from the notes and the levels.
 //! - [`report`]: the report and how it is computed.
 //! - [`findings`]: the rules, their fixes, and suggestions.
 //! - [`targets`], [`reference`]: delivery targets, A/B against a recording.
@@ -21,7 +20,6 @@
 
 pub mod analyze;
 pub mod cache;
-pub mod clashes;
 pub mod critic;
 pub mod diff;
 pub mod dsp;

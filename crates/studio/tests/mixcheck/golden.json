@@ -325,58 +325,6 @@
       "pctTimeAbove3": 3.0
     }
   ],
-  "clashes": [
-    {
-      "bar": 2,
-      "beat": 6.0,
-      "beatInBar": 2.0,
-      "a": {
-        "channel": "lead",
-        "pattern": "tune",
-        "noteIndex": 1,
-        "pitch": "C#5",
-        "midi": 73,
-        "levelDb": -11.5
-      },
-      "b": {
-        "channel": "pad",
-        "pattern": "tune",
-        "noteIndex": 3,
-        "pitch": "C4",
-        "midi": 60,
-        "levelDb": -8.4
-      },
-      "interval": "m9",
-      "overlapBeats": 2.0,
-      "severity": "high",
-      "outOfChord": "C#5 is not in the chord the other parts play (C E G) and is held 2.0 beats"
-    },
-    {
-      "bar": 2,
-      "beat": 6.0,
-      "beatInBar": 2.0,
-      "a": {
-        "channel": "lead",
-        "pattern": "tune",
-        "noteIndex": 1,
-        "pitch": "C#5",
-        "midi": 73,
-        "levelDb": -11.5
-      },
-      "b": {
-        "channel": "pad",
-        "pattern": "tune",
-        "noteIndex": 5,
-        "pitch": "G4",
-        "midi": 67,
-        "levelDb": -8.4
-      },
-      "interval": "TT",
-      "overlapBeats": 2.0,
-      "severity": "high",
-      "outOfChord": "C#5 is not in the chord the other parts play (C E G) and is held 2.0 beats"
-    }
-  ],
   "findings": [
     {
       "severity": "warn",
@@ -443,18 +391,6 @@
         }
       ],
       "fixLabel": "Lead sits 10.2 dB under the mix: Kick's faders back to unity (1.6 dB down), and Lead up 5.5 dB brings it to -4.9 dB"
-    },
-    {
-      "severity": "warn",
-      "rule": "harmonic-clash",
-      "key": "harmonic-clash|tune:1|tune:3",
-      "where": "bar 2",
-      "detail": "lead C#5 (pattern tune, note 1) against pad C4 (pattern tune, note 3): m9 held 2.00 beats, the quieter at -11.5 dB against the mix. lead C#5 is not in the chord the other parts play (C E G) and is held 2.0 beats: a wrong note, not a colour",
-      "element": "channel:lead",
-      "fromBar": 2,
-      "toBar": 2,
-      "fromBeat": 4.0,
-      "fix": []
     }
   ],
   "history": {

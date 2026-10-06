@@ -12,14 +12,13 @@ use rosaclef_core::Project;
 use serde_json::{json, Value};
 
 /// The rules, in the order findings rank.
-pub const RULES: [&str; 10] = [
+pub const RULES: [&str; 9] = [
     "master-overload",
     "true-peak",
     "limiter-pumping",
     "over-compression",
     "masked-lead",
     "inaudible-part",
-    "harmonic-clash",
     "low-end-buildup",
     "phase-correlation",
     "section-loudness-flat",
@@ -1514,108 +1513,6 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     -c * 10.0,
                 ));
             }
-        }
-    }
-
-    // harmonic-clash
-    if let Some(cl) = &report.clashes {
-        // The channels in focus: those reported, and those on inserts reported.
-        let focus: Vec<String> = if o.focus.is_empty() {
-            vec![]
-        } else {
-            let inserts: Vec<usize> = report
-                .elements
-                .iter()
-                .filter(|e| e.kind == "insert")
-                .map(|e| e.insert)
-                .collect();
-            p.channels
-                .iter()
-                .filter(|c| {
-                    report
-                        .elements
-                        .iter()
-                        .any(|e| e.id == format!("channel:{}", c.id))
-                        || inserts.contains(&c.mixer.index())
-                })
-                .map(|c| c.id.clone())
-                .collect()
-        };
-        // A wrong note grinds against several parts: one finding for it.
-        let mut wrong_seen: Vec<(String, usize)> = vec![];
-        for c in cl {
-            let wanted = c.severity == "high" || (strict && c.severity == "medium");
-            if !wanted {
-                continue;
-            }
-            if !o.focus.is_empty() && !focus.contains(&c.a.channel) && !focus.contains(&c.b.channel)
-            {
-                continue;
-            }
-            let also = if c.also_in_bars.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    " (also in bars {})",
-                    c.also_in_bars
-                        .iter()
-                        .map(|b| b.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            };
-            let quieter = if c.a.level_db <= c.b.level_db {
-                &c.a
-            } else {
-                &c.b
-            };
-            // The wrong note, when it is one: it is the finding's part.
-            let wrong = c.out_of_chord.as_ref().map(|w| {
-                if w.starts_with(&format!("{} ", c.a.pitch)) {
-                    &c.a
-                } else {
-                    &c.b
-                }
-            });
-            if let Some(w) = wrong {
-                let id = (w.pattern.clone(), w.note_index);
-                if wrong_seen.contains(&id) {
-                    continue;
-                }
-                wrong_seen.push(id);
-            }
-            let why = c
-                .out_of_chord
-                .as_ref()
-                .map(|w| {
-                    format!(
-                        " {} {w}: a wrong note, not a colour",
-                        wrong.map(|n| n.channel.as_str()).unwrap_or("")
-                    )
-                })
-                .unwrap_or_default();
-            out.push((
-                FindingOut {
-                    element: Some(format!("channel:{}", wrong.unwrap_or(quieter).channel)),
-                    from_bar: Some(c.bar),
-                    to_bar: Some(c.bar),
-                    ..finding(
-                        "harmonic-clash",
-                        &format!(
-                            "{}:{}|{}:{}",
-                            c.a.pattern, c.a.note_index, c.b.pattern, c.b.note_index
-                        ),
-                        bars_label(&[(c.bar, c.bar, c.pass)]),
-                        format!(
-                            "{} {} (pattern {}, note {}) against {} {} (pattern {}, note {}): {} held {:.2} beats, the quieter at {:+.1} dB against the mix{also}.{why}",
-                            c.a.channel, c.a.pitch, c.a.pattern, c.a.note_index,
-                            c.b.channel, c.b.pitch, c.b.pattern, c.b.note_index,
-                            c.interval, c.overlap_beats, quieter.level_db
-                        ),
-                    )
-                },
-                c.overlap_beats + if wrong.is_some() { 10.0 } else { 0.0 },
-            ));
         }
     }
 
