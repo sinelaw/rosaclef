@@ -194,7 +194,8 @@ fn a_mixer_change_replays_the_instruments_and_measures_the_same() {
         disk_cache: true,
         any_file: true,
     };
-    let o = Options::from_json(&json!({"range": "1:2"})).unwrap();
+    // A range no other test measures: its report is in no cache yet.
+    let o = Options::from_json(&json!({"range": "2:3"})).unwrap();
     mixcheck::run(&env, &p, &o).unwrap();
     let kept = |d: &Path| {
         std::fs::read_dir(d.join(".rosaclef/mixcheck"))
@@ -218,7 +219,7 @@ fn a_mixer_change_replays_the_instruments_and_measures_the_same() {
     );
     let mut replayed = mixcheck::run(&env, &q, &o).unwrap();
     assert!(!replayed.render.cached, "a new mix is measured");
-    let fresh_o = Options::from_json(&json!({"range": "1:2", "cache": false})).unwrap();
+    let fresh_o = Options::from_json(&json!({"range": "2:3", "cache": false})).unwrap();
     let mut fresh = mixcheck::run(&env, &q, &fresh_o).unwrap();
     replayed.render = Default::default();
     fresh.render = Default::default();
