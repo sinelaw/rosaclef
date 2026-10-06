@@ -1987,11 +1987,19 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 .sum();
             lows > 0.0 && drummed >= 0.9 * lows
         };
+        // Nor does a part playing alone (a solo intro): its own tone is not
+        // a balance.
+        let solo = |i: usize| {
+            mix.ranked(&rows_hops[i], &|u, h| mix.unit_six(u, h).iter().sum())
+                .first()
+                .is_some_and(|(_, share)| *share >= 0.85)
+        };
         let hit = |i: usize| {
             report.per_bar[i].spectrum_db.as_ref().is_some_and(|sp| {
                 let (low, m) = excess(sp);
                 low > thr || m > mud
             }) && !drum_break(i)
+                && !solo(i)
         };
         // A part whose EQ boosts its lows hard, carrying a good share of the
         // lows of a mix that leans low: the setting is the cause, all along.
@@ -2089,10 +2097,33 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 })
                 .collect();
             let (low, m) = excess(&sp_avg);
-            let (fix, label) = match culprit {
+            // The low mids over, from a part's EQ boost there: that boost.
+            let honk = low_e
+                .iter()
+                .filter(|(_, share)| *share > 0.1)
+                .find_map(|(u, _)| {
+                    lowmid_boost(p, mix.units[*u].insert)
+                        .filter(|b| b.3 >= pick(6.0, 4.0, 9.0))
+                        .map(|b| (*u, b))
+                })
+                .filter(|_| m - mud > low - thr);
+            let (fix, label) = match (honk, culprit) {
+                (Some((u, (j, band, freq, boost))), _) => {
+                    let insert = mix.units[u].insert;
+                    (
+                        vec![set(
+                            format!("/mixer/inserts/{insert}/effects/{j}/params/{band}"),
+                            json!(EQ_KEEP),
+                        )],
+                        format!(
+                            "the {band} band of the EQ on {} ({freq:.0} Hz) from {boost:+.1} to {EQ_KEEP:+.1} dB",
+                            model::insert_id(p, insert)
+                        ),
+                    )
+                }
                 // The low mids (250-500 Hz) over: a bell there; the lows: a
                 // shelf.
-                Some((u, _)) if m - mud > low - thr => eq_ops(
+                (None, Some((u, _))) if m - mud > low - thr => eq_ops(
                     p,
                     mix.units[*u].insert,
                     "mid",
@@ -2100,7 +2131,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     ("midFreq", 350.0),
                     &[("midQ", 1.0)],
                 ),
-                Some((u, _)) => eq_ops(
+                (None, Some((u, _))) => eq_ops(
                     p,
                     mix.units[*u].insert,
                     "low",
@@ -2108,7 +2139,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     ("lowFreq", 150.0),
                     &[],
                 ),
-                None => match low_e.first() {
+                (None, None) => match low_e.first() {
                     Some((u, _)) => (
                         lower_unit(p, mix, *u, 2.0),
                         format!("{} down 2 dB", short_name(p, mix, *u)),
