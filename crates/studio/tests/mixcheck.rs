@@ -927,18 +927,13 @@ fn a_chorus_held_under_the_verse_is_found_and_put_back() {
             .as_str()
             .unwrap()
             .starts_with("/automation/0/points/")
-            && o["value"] == json!(1.0)),
-        "{:?}",
+            && o["value"].as_f64().unwrap() > 1.0),
+        "back up and on past the verse: {:?}",
         f.fix
     );
     let ver = f.verified.as_ref().unwrap();
+    assert_eq!(ver["resolved"], json!(true), "{ver}");
     assert_eq!(ver["new"], json!([]), "{ver}");
-    let r = check(&dir, &p, json!({"whatIf": f.fix}));
-    let still = r.findings.iter().find(|f| f.rule == "section-lift");
-    assert!(
-        still.is_none_or(|f| f.fix.is_empty()),
-        "the lane is put back: {still:?}"
-    );
 
     // A what-if on the fader the lane drives does nothing, and says so.
     let r = check(

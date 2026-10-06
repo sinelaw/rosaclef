@@ -503,16 +503,17 @@ fn lane_dip(p: &Project, e: &Element, stretches: &[(f64, f64)]) -> Option<Dip> {
                 .map(|c| format!("channel/{}/volume", p.channels[c].id)),
         )
         .collect();
-    lane_dip_on(p, &targets, stretches, &e.name)
+    lane_dip_on(p, &targets, stretches, &e.name, 6.0)
 }
 
-/// A lane driving one of `targets` that holds `who` 6 dB or more down in
+/// A lane driving one of `targets` that holds `who` `min_lift` dB or more down in
 /// `stretches` (written beats) and up elsewhere.
 fn lane_dip_on(
     p: &Project,
     targets: &[String],
     stretches: &[(f64, f64)],
     who: &str,
+    min_lift: f64,
 ) -> Option<Dip> {
     if stretches.is_empty() {
         return None;
@@ -543,7 +544,7 @@ fn lane_dip_on(
             return None;
         }
         let lift = dsp::amp_db(high / low);
-        if lift < 6.0 {
+        if lift < min_lift {
             return None;
         }
         let ops: Vec<Value> = l
@@ -1981,20 +1982,25 @@ fn section_lift(ctx: &Context, gap: f64) -> Option<(FindingOut, f64)> {
         .iter()
         .map(|((si, _), _)| (secs[*si].start, secs[*si].end))
         .collect();
+    stretches.sort_by(|a, b| a.0.total_cmp(&b.0));
     stretches.dedup();
-    let dip = lane_dip_on(p, &["insert/0/volume".into()], &stretches, "the mix");
+    // A master lane dipping 1.5 dB or more there is the cause.
+    let dip = lane_dip_on(p, &["insert/0/volume".into()], &stretches, "the mix", 1.5);
     let names: Vec<String> = low
         .iter()
         .map(|((si, pass), l)| {
             if *pass > 1 {
-                format!("{} ({}) {:.1}", secs[*si].name, pass, l)
+                format!("{} (pass {}) at {:.1} LUFS", secs[*si].name, pass, l)
             } else {
-                format!("{} {:.1}", secs[*si].name, l)
+                format!("{} at {:.1} LUFS", secs[*si].name, l)
             }
         })
         .collect();
-    let (s0, s1) = stretches[0];
-    let (fb, tb) = (t.bar_of(s0), t.bar_of((s1 - 1e-6).max(s0)));
+    let bars: Vec<(u32, u32, Option<u32>)> = stretches
+        .iter()
+        .map(|(s0, s1)| (t.bar_of(*s0), t.bar_of((s1 - 1e-6).max(*s0)), None))
+        .collect();
+    let (fb, tb) = (bars[0].0, bars[bars.len() - 1].1);
     let cause = match &dip {
         Some(d) => format!(
             " The master volume lane holds it down {:.1} dB there.",
@@ -2005,7 +2011,20 @@ fn section_lift(ctx: &Context, gap: f64) -> Option<(FindingOut, f64)> {
             .into(),
     };
     let (fix, fix_label) = match dip {
-        Some(d) => (d.ops, d.said),
+        Some(mut d) => {
+            // Back up, and on until the quietest chorus clears the verses
+            // (3 dB over the lane's level elsewhere at most).
+            let need = verse + gap + 0.5 - worst;
+            let more = (need - d.lift).clamp(0.0, 3.0);
+            if more > 0.0 {
+                for op in &mut d.ops {
+                    let v = op["value"].as_f64().unwrap_or(0.0);
+                    op["value"] = json!(round3(v * gain(more)));
+                }
+                d.said = format!("{}, and {more:.1} dB more there", d.said);
+            }
+            (d.ops, d.said)
+        }
         None => (vec![], String::new()),
     };
     Some((
@@ -2017,11 +2036,10 @@ fn section_lift(ctx: &Context, gap: f64) -> Option<(FindingOut, f64)> {
             ..finding(
                 "section-lift",
                 "master",
-                format!("bars {fb}–{tb}"),
+                bars_label(&bars),
                 format!(
-                    "{} {} LUFS against the verses' {verse:.1}: the chorus should be {gap:.1} LU or more louder.{cause}",
+                    "{}, against the verses' {verse:.1} LUFS: a chorus should be {gap:.1} LU or more louder than the verses.{cause}",
                     names.join(", "),
-                    if low.len() > 1 { "are at" } else { "is at" },
                 ),
             )
         },
