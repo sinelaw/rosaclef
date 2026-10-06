@@ -3,7 +3,7 @@
 //! Numbers are rounded to 0.1 dB (percentages to whole numbers); silent
 //! elements are left out.
 
-use super::analyze::{Analysis, F_TP};
+use super::analyze::{Analysis, GrSeries, F_LL, F_LR, F_PEAK, F_RR, F_SIX, F_TP};
 use super::clashes::{self, interval_name, note_name};
 use super::dsp::{self, r1, BANDS, BAND_NAMES, BARKS};
 use super::model::{self, Audibility, Change, Ear, Element, Loudness, Mix};
@@ -238,10 +238,8 @@ pub struct GrOut {
     pub effect: usize,
     #[serde(rename = "type")]
     pub kind: String,
-    pub max: f64,
-    pub mean: f64,
-    #[serde(rename = "pctTimeAbove3")]
-    pub pct_time_above3: f64,
+    #[serde(flatten)]
+    pub stat: GrStat,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -335,8 +333,9 @@ fn amp(a: f64) -> f64 {
     r1(dsp::amp_db(a))
 }
 
-fn lufs_opt(x: Option<f64>) -> Option<f64> {
-    x.map(r1)
+/// Correlations are rounded to 0.01.
+fn r2(x: f64) -> f64 {
+    (x * 100.0).round() / 100.0
 }
 
 pub fn pct(x: f64) -> f64 {
@@ -391,18 +390,14 @@ pub fn master_numbers(
         .iter()
         .map(|h| {
             let f = a.frame(s, *h);
-            (f[super::analyze::F_LL] + f[super::analyze::F_RR]) as f64
+            (f[F_LL] + f[F_RR]) as f64
         })
         .fold(0.0, f64::max);
     for &h in hops {
         let f = a.frame(s, h);
-        peak = peak.max(f[super::analyze::F_PEAK] as f64);
+        peak = peak.max(f[F_PEAK] as f64);
         tp = tp.max(f[F_TP] as f64);
-        let (x, y, z) = (
-            f[super::analyze::F_LL] as f64,
-            f[super::analyze::F_RR] as f64,
-            f[super::analyze::F_LR] as f64,
-        );
+        let (x, y, z) = (f[F_LL] as f64, f[F_RR] as f64, f[F_LR] as f64);
         ll += x;
         rr += y;
         lr += z;
@@ -412,16 +407,16 @@ pub fn master_numbers(
             }
         }
         for (b, v) in six.iter_mut().enumerate() {
-            *v += f[super::analyze::F_SIX + b] as f64;
+            *v += f[F_SIX + b] as f64;
         }
     }
     let n = hops.len().max(1) as f64;
     let rms = (ll + rr) / (2.0 * n);
     let mut m = MasterOut::default();
     if o.has(Check::Levels) {
-        m.integrated_lufs = Some(lufs_opt(l.integrated));
-        m.short_term_lufs_max = Some(lufs_opt(l.short_max));
-        m.momentary_lufs_max = Some(lufs_opt(l.momentary_max));
+        m.integrated_lufs = Some(l.integrated.map(r1));
+        m.short_term_lufs_max = Some(l.short_max.map(r1));
+        m.momentary_lufs_max = Some(l.momentary_max.map(r1));
         m.true_peak_dbtp = Some(amp(tp));
         m.sample_peak_dbfs = Some(amp(peak));
         m.rms_dbfs = Some(r1(dsp::db(rms)));
@@ -429,12 +424,12 @@ pub fn master_numbers(
     if o.has(Check::Dynamics) {
         m.plr_db = Some(l.integrated.map(|i| r1(dsp::amp_db(tp) - i)));
         m.crest_factor_db = Some(r1(dsp::amp_db(peak) - dsp::db(rms)));
-        m.lra = Some(lufs_opt(l.lra));
+        m.lra = Some(l.lra.map(r1));
     }
     if o.has(Check::Stereo) {
         m.correlation = Some(json!({
-            "mean": model::correlation(ll, rr, lr).map(|c| (c * 100.0).round() / 100.0),
-            "min": corr_min.map(|c| (c * 100.0).round() / 100.0),
+            "mean": model::correlation(ll, rr, lr).map(r2),
+            "min": corr_min.map(r2),
             "monoLossDb": model::mono_loss(ll, rr, lr).map(r1),
         }));
     }
@@ -447,7 +442,7 @@ pub fn master_numbers(
     m
 }
 
-fn gr_stat(series: &[&super::analyze::GrSeries], hops: &[usize]) -> Option<GrStat> {
+fn gr_stat(series: &[&GrSeries], hops: &[usize]) -> Option<GrStat> {
     if series.is_empty() || hops.is_empty() {
         return None;
     }
@@ -562,7 +557,30 @@ fn row_key(
     (k, pass)
 }
 
-#[allow(clippy::too_many_arguments)]
+/// A row of `perBar` as it is gathered.
+struct RowAcc {
+    key: (i64, u32),
+    hops: Vec<usize>,
+    blocks: Vec<usize>,
+    /// The first and last written beats of its blocks.
+    first: f64,
+    last: f64,
+}
+
+fn row_of(rows: &mut Vec<RowAcc>, key: (i64, u32)) -> &mut RowAcc {
+    let i = rows.iter().rposition(|r| r.key == key).unwrap_or_else(|| {
+        rows.push(RowAcc {
+            key,
+            hops: vec![],
+            blocks: vec![],
+            first: f64::INFINITY,
+            last: 0.0,
+        });
+        rows.len() - 1
+    });
+    &mut rows[i]
+}
+
 pub fn build<'a>(
     a: &'a Analysis,
     p: &'a Project,
@@ -604,26 +622,16 @@ pub fn build<'a>(
         r.master.pre_limiter_peak_dbfs = Some(amp(peak_of(mix.master_lim, &hops)));
         r.master.pre_effects_peak_dbfs = Some(amp(peak_of(mix.master_pre, &hops)));
     }
-    let master_lims: Vec<&super::analyze::GrSeries> =
-        a.gr.iter()
-            .filter(|g| g.insert == 0 && g.kind == "limiter")
-            .collect();
-    let master_comps: Vec<&super::analyze::GrSeries> =
-        a.gr.iter()
-            .filter(|g| g.insert == 0 && g.kind == "compressor")
-            .collect();
+    let master_lims = a.master_gr("limiter");
     if o.has(Check::GainReduction) {
         r.master.limiter_gain_reduction_db = gr_stat(&master_lims, &hops);
-        r.master.compressor_gain_reduction_db = gr_stat(&master_comps, &hops);
+        r.master.compressor_gain_reduction_db = gr_stat(&a.master_gr("compressor"), &hops);
         for g in &a.gr {
-            let s = gr_stat(&[g], &hops).unwrap_or_default();
             r.gain_reduction.push(GrOut {
                 id: model::insert_id(p, g.insert),
                 effect: g.fx,
                 kind: g.kind.clone(),
-                max: s.max,
-                mean: s.mean,
-                pct_time_above3: s.pct_time_above3,
+                stat: gr_stat(&[g], &hops).unwrap_or_default(),
             });
         }
     }
@@ -640,49 +648,25 @@ pub fn build<'a>(
 
     // ---- rows
     let out_kms = |b: usize| a.kms_at(mix.master_out, b) as f64;
-    let lo = Loudness { a };
-    let mut keys: Vec<(i64, u32)> = vec![];
-    let mut row_hops: Vec<Vec<usize>> = vec![];
-    let mut row_blocks: Vec<Vec<usize>> = vec![];
-    let mut row_beats: Vec<(f64, f64)> = vec![];
-    let find = |k: (i64, u32), keys: &mut Vec<(i64, u32)>| -> usize {
-        match keys.iter().rposition(|x| *x == k) {
-            Some(i) => i,
-            None => {
-                keys.push(k);
-                keys.len() - 1
-            }
-        }
-    };
+    // One row per key, in playing order.
+    let mut rows: Vec<RowAcc> = vec![];
     for &h in &hops {
         let pos = a.hops[h];
-        let i = find(row_key(t, o.by, &sections, pos.span, pos.beat), &mut keys);
-        if row_hops.len() <= i {
-            row_hops.resize(i + 1, vec![]);
-            row_beats.resize(i + 1, (f64::INFINITY, 0.0));
-        }
-        row_hops[i].push(h);
+        row_of(&mut rows, row_key(t, o.by, &sections, pos.span, pos.beat))
+            .hops
+            .push(h);
     }
     for &b in &blocks {
         let pos = a.lblocks[b];
-        let i = find(row_key(t, o.by, &sections, pos.span, pos.beat), &mut keys);
-        if row_blocks.len() <= i {
-            row_blocks.resize(i + 1, vec![]);
-        }
-        if row_beats.len() <= i {
-            row_beats.resize(i + 1, (f64::INFINITY, 0.0));
-        }
-        row_blocks[i].push(b);
-        let rb = &mut row_beats[i];
-        rb.0 = rb.0.min(pos.beat);
-        rb.1 = rb.1.max(pos.beat);
+        let row = row_of(&mut rows, row_key(t, o.by, &sections, pos.span, pos.beat));
+        row.blocks.push(b);
+        row.first = row.first.min(pos.beat);
+        row.last = row.last.max(pos.beat);
     }
-    row_hops.resize(keys.len(), vec![]);
-    row_blocks.resize(keys.len(), vec![]);
-    let other_dyn: Vec<&super::analyze::GrSeries> = a.gr.iter().filter(|g| g.insert != 0).collect();
-    for (i, key) in keys.iter().enumerate() {
-        let (hs, bs) = (&row_hops[i], &row_blocks[i]);
-        let (b0, b1) = row_beats[i];
+    let other_dyn: Vec<&GrSeries> = a.gr.iter().filter(|g| g.insert != 0).collect();
+    for acc in &rows {
+        let (key, hs, bs) = (acc.key, &acc.hops, &acc.blocks);
+        let (b0, b1) = (acc.first, acc.last);
         let mut row = Row::default();
         let first = if b0.is_finite() { b0 } else { 0.0 };
         match o.by {
@@ -718,15 +702,10 @@ pub fn build<'a>(
             row.pass = Some(key.1);
         }
         if o.has(Check::Levels) {
-            let mom: Vec<f64> = bs.iter().map(|b| lo.window(&out_kms, *b, 4)).collect();
-            let short: Vec<f64> = bs.iter().map(|b| lo.window(&out_kms, *b, 30)).collect();
-            let mx = |v: &[f64]| {
-                let m = v.iter().copied().fold(0.0, f64::max);
-                (m > 0.0).then(|| r1(dsp::lufs(m)))
-            };
-            row.lufs = Some(model::integrated(&mom).map(r1));
-            row.lufs_momentary_max = Some(mx(&mom));
-            row.lufs_short_term_max = Some(mx(&short));
+            let l = loudness_of(a, bs, &out_kms);
+            row.lufs = Some(l.integrated.map(r1));
+            row.lufs_momentary_max = Some(l.momentary_max.map(r1));
+            row.lufs_short_term_max = Some(l.short_max.map(r1));
             let ms: f64 =
                 hs.iter().map(|h| mix.ms(mix.master_out, *h)).sum::<f64>() / hs.len().max(1) as f64;
             row.rms_dbfs = opt_db(ms).or(Some(-120.0));
@@ -756,15 +735,7 @@ pub fn build<'a>(
             }
         }
         if o.has(Check::Stereo) {
-            let (mut x, mut y, mut z) = (0.0, 0.0, 0.0);
-            for &h in hs {
-                let c = mix.corr_terms(mix.master_out, h);
-                x += c.0;
-                y += c.1;
-                z += c.2;
-            }
-            row.correlation =
-                Some(model::correlation(x, y, z).map(|c| (c * 100.0).round() / 100.0));
+            row.correlation = Some(mix.correlation(mix.master_out, hs).map(r2));
         }
         if o.has(Check::Spectrum) {
             let mut six = [0f64; BANDS];
@@ -778,18 +749,14 @@ pub fn build<'a>(
             row.spectrum_db = Some(six.iter().map(|v| r1(dsp::db(v / n))).collect());
         }
         if o.has(Check::Levels) {
-            let mut e: Vec<(usize, f64)> = (0..mix.units.len())
-                .map(|u| (u, hs.iter().map(|h| mix.unit_ms(u, *h)).sum::<f64>()))
-                .collect();
-            let total: f64 = e.iter().map(|x| x.1).sum();
-            e.sort_by(|x, y| y.1.total_cmp(&x.1));
             row.top_contributors = Some(
-                e.iter()
-                    .filter(|x| total > 0.0 && x.1 / total >= 0.05)
+                mix.ranked(hs, &|u, h| mix.unit_ms(u, h))
+                    .iter()
+                    .filter(|x| x.1 >= 0.05)
                     .take(3)
                     .map(|x| Contributor {
                         id: mix.units[x.0].id.clone(),
-                        share_of_energy_pct: pct(x.1 / total),
+                        share_of_energy_pct: pct(x.1),
                     })
                     .collect(),
             );
@@ -848,13 +815,6 @@ pub fn build<'a>(
             (Some(x), Some(m)) => Some(r1(x - m)),
             _ => None,
         };
-        let (mut x, mut y, mut z) = (0.0, 0.0, 0.0);
-        for &h in &active {
-            let c = mix.corr_terms(e.stream, h);
-            x += c.0;
-            y += c.1;
-            z += c.2;
-        }
         let au = &aud[i];
         let frac = au.fraction();
         let verdict = if want_aud && frac < inaudible_at {
@@ -908,8 +868,7 @@ pub fn build<'a>(
             out.relative_to_mix_db = Some(rel);
         }
         if o.has(Check::Stereo) {
-            out.correlation =
-                Some(model::correlation(x, y, z).map(|c| (c * 100.0).round() / 100.0));
+            out.correlation = Some(mix.correlation(e.stream, &active).map(r2));
         }
         if want_aud {
             out.audibility = Some(audibility_out(&mix, au, o));
@@ -1031,7 +990,7 @@ pub fn build<'a>(
         roles,
         audibility: kept_aud,
         include_master,
-        rows_hops: row_hops,
+        rows_hops: rows.into_iter().map(|r| r.hops).collect(),
     };
     Ok((r, ctx))
 }
@@ -1130,7 +1089,7 @@ fn history(
     t: &Timeline,
     blocks: &[usize],
     hops: &[usize],
-    lims: &[&super::analyze::GrSeries],
+    lims: &[&GrSeries],
 ) -> HistoryOut {
     let a = mix.a;
     let kms = |b: usize| a.kms_at(mix.master_out, b) as f64;

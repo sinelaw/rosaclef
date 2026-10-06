@@ -164,8 +164,14 @@ function patchText(p) {
   return p === undefined || p === null || p.length === 0 ? "" : JSON.stringify(p);
 }
 
+/** function decodeNote<T>(n: T) => MixNote */
+function decodeNote(n) {
+  return { channel: str(n.channel), pattern: str(n.pattern), note: int(n.noteIndex), pitch: str(n.pitch), level: num(n.levelDb) };
+}
+
 /** function decodeReport<T>(r: T) => MixReport */
 function decodeReport(r) {
+  const empty = emptyReport();
   const rg = r.range;
   const t = r.target;
   const ref = r.reference;
@@ -181,7 +187,7 @@ function decodeReport(r) {
     master: decodeMaster(r.master),
     target:
       t === undefined || t === null
-        ? { id: "", name: "", lufs: NaN, truePeak: NaN, status: "", gain: NaN, notes: [] }
+        ? empty.target
         : {
             id: str(t.id),
             name: str(t.name),
@@ -193,7 +199,7 @@ function decodeReport(r) {
           },
     reference:
       ref === undefined || ref === null
-        ? { file: "", levelMatch: NaN, spectrumDiff: [], summary: "", master: emptyMaster() }
+        ? empty.reference
         : {
             file: str(ref.file),
             levelMatch: num(ref.levelMatchDb),
@@ -256,8 +262,8 @@ function decodeReport(r) {
       beat: num(c.beat),
       pass: int(c.pass),
       beatInBar: num(c.beatInBar),
-      a: { channel: str(c.a.channel), pattern: str(c.a.pattern), note: int(c.a.noteIndex), pitch: str(c.a.pitch), level: num(c.a.levelDb) },
-      b: { channel: str(c.b.channel), pattern: str(c.b.pattern), note: int(c.b.noteIndex), pitch: str(c.b.pitch), level: num(c.b.levelDb) },
+      a: decodeNote(c.a),
+      b: decodeNote(c.b),
       interval: str(c.interval),
       overlap: num(c.overlapBeats),
       severity: str(c.severity),
@@ -279,7 +285,7 @@ function decodeReport(r) {
     })),
     history:
       h === undefined || h === null
-        ? { step: 0.2, t: [], m: [], s: [], tp: [], gr: [], bars: [] }
+        ? empty.history
         : {
             step: num(h.stepSeconds),
             t: nums(h.t),

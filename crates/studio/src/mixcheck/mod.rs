@@ -244,12 +244,16 @@ pub fn patched(project: &Project, ops: &[Value], what: &str) -> Result<Project, 
 pub fn run(env: &Env, project: &Project, o: &Options) -> Result<Report, Error> {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     let t0 = env.folder.fs.now_ms();
-    let mut r = if o.what_if.is_empty() {
-        report_of(env, project, o)?
+    // The report is of the project as the what-if leaves it.
+    let what_if = if o.what_if.is_empty() {
+        None
     } else {
+        Some(patched(project, &o.what_if, "whatIf")?)
+    };
+    let p_now = what_if.as_ref().unwrap_or(project);
+    let mut r = report_of(env, p_now, o)?;
+    if what_if.is_some() {
         let base = report_of(env, project, o)?;
-        let p2 = patched(project, &o.what_if, "whatIf")?;
-        let mut r = report_of(env, &p2, o)?;
         let mut d = diff::diff(&base, &r);
         if let Some(m) = d.as_object_mut() {
             m.insert("ops".into(), json!(o.what_if.len()));
@@ -261,15 +265,9 @@ pub fn run(env: &Env, project: &Project, o: &Options) -> Result<Report, Error> {
         r.what_if = Some(d);
         r.render.renders += base.render.renders;
         r.render.cached &= base.render.cached;
-        r
-    };
-    let p_now = if o.what_if.is_empty() {
-        project.clone()
-    } else {
-        patched(project, &o.what_if, "whatIf")?
-    };
+    }
     if o.verify {
-        verify(env, &p_now, o, &mut r)?;
+        verify(env, p_now, o, &mut r)?;
     }
     r.render.ms = (env.folder.fs.now_ms() - t0).max(0.0) as u64;
     Ok(r)
@@ -342,11 +340,7 @@ pub fn has_warnings(r: &Report) -> bool {
 /// A request object (the endpoint's body) run on `current` (unless it
 /// carries `project`): the report, and whether it asks for the text too.
 pub fn run_request(env: &Env, current: &Project, body: &str) -> Result<(Report, bool), Error> {
-    let req: Value = if body.trim().is_empty() {
-        json!({})
-    } else {
-        serde_json::from_str(body).map_err(|e| Error(format!("not JSON: {e}")))?
-    };
+    let req = request_of(body)?;
     let o = Options::from_json(&req)?;
     let project = request_project(current, body)?;
     let r = run(env, &project, &o)?;
@@ -374,7 +368,7 @@ pub fn api(env: &Env, current: &Project, body: &str) -> Result<Value, Error> {
 
 /// A request's `apply`: the project patched (None without `apply`).
 pub fn apply_request(current: &Project, body: &str) -> Result<Option<Project>, Error> {
-    let req: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+    let req = request_of(body).unwrap_or(Value::Null);
     let Some(ops) = req.get("apply") else {
         return Ok(None);
     };
@@ -386,6 +380,14 @@ pub fn apply_request(current: &Project, body: &str) -> Result<Option<Project>, E
         ));
     }
     patched(&project, &ops, "apply").map(Some)
+}
+
+/// A request body: a JSON object, or nothing (every default).
+fn request_of(body: &str) -> Result<Value, Error> {
+    if body.trim().is_empty() {
+        return Ok(json!({}));
+    }
+    serde_json::from_str(body).map_err(|e| Error(format!("not JSON: {e}")))
 }
 
 /// What a client can ask (GET /api/mixcheck): the checks, the delivery
@@ -410,12 +412,7 @@ pub fn request_project(current: &Project, body: &str) -> Result<Project, Error> 
 /// [`request_project`], and whether reading it for playback left out
 /// content this version does not know (a patched copy would lose it).
 fn request_playable(current: &Project, body: &str) -> Result<(Project, bool), Error> {
-    let req: Value = if body.trim().is_empty() {
-        json!({})
-    } else {
-        serde_json::from_str(body).map_err(|e| Error(format!("not JSON: {e}")))?
-    };
-    match req.get("project") {
+    match request_of(body)?.get("project") {
         Some(v) if !v.is_null() => rosaclef_core::compat::value_for_playback(v.clone())
             .map(|p| {
                 let lossy = rosaclef_core::compat::lossy(&p);

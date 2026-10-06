@@ -98,6 +98,13 @@ impl Analysis {
     pub fn stream(&self, key: StreamKey) -> Option<usize> {
         self.streams.iter().position(|k| *k == key)
     }
+    /// The gain reduction of the master's effects of `kind`.
+    pub fn master_gr(&self, kind: &str) -> Vec<&GrSeries> {
+        self.gr
+            .iter()
+            .filter(|g| g.insert == 0 && g.kind == kind)
+            .collect()
+    }
     /// Stream `s`'s values at hop `h`.
     pub fn frame(&self, s: usize, h: usize) -> &[f32] {
         let f = &self.frames[s];

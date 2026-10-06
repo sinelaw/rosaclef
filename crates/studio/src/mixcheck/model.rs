@@ -285,10 +285,10 @@ impl<'a> Mix<'a> {
             }
         }
         let mut ch_unit = vec![usize::MAX; p.channels.len()];
-        for c in 0..p.channels.len() {
+        for (c, cu) in ch_unit.iter_mut().enumerate() {
             let i = route(c);
             if ins_unit[i].is_none() {
-                ch_unit[c] = units.len();
+                *cu = units.len();
                 units.push(Unit {
                     id: channel_id(p, c),
                     channel: Some(c),
@@ -449,6 +449,29 @@ impl<'a> Mix<'a> {
     pub fn corr_terms(&self, s: usize, h: usize) -> (f64, f64, f64) {
         let f = self.a.frame(s, h);
         (f[F_LL] as f64, f[F_RR] as f64, f[F_LR] as f64)
+    }
+    /// The stereo correlation of stream `s` over hops `hs`.
+    pub fn correlation(&self, s: usize, hs: &[usize]) -> Option<f64> {
+        let (mut x, mut y, mut z) = (0.0, 0.0, 0.0);
+        for &h in hs {
+            let c = self.corr_terms(s, h);
+            x += c.0;
+            y += c.1;
+            z += c.2;
+        }
+        correlation(x, y, z)
+    }
+    /// The units, loudest first by `energy(unit, hop)` over hops `hs`, each
+    /// with its share of the total.
+    pub fn ranked(&self, hs: &[usize], energy: &dyn Fn(usize, usize) -> f64) -> Vec<(usize, f64)> {
+        let mut e: Vec<(usize, f64)> = (0..self.units.len())
+            .map(|u| (u, hs.iter().map(|h| energy(u, *h)).sum::<f64>()))
+            .collect();
+        let total: f64 = e.iter().map(|x| x.1).sum();
+        e.sort_by(|x, y| y.1.total_cmp(&x.1));
+        e.into_iter()
+            .map(|(u, x)| (u, if total > 0.0 { x / total } else { 0.0 }))
+            .collect()
     }
     pub fn six(&self, s: usize, h: usize) -> [f64; BANDS] {
         let f = self.a.frame(s, h);
@@ -611,14 +634,11 @@ pub fn audibility(
             let e = &elements[i];
             let mut s = [0.0; BARKS];
             for u in &e.units {
-                for z in 0..BARKS {
-                    s[z] += x.units[*u][z];
+                for (sz, v) in s.iter_mut().zip(&x.units[*u]) {
+                    *sz += v;
                 }
             }
-            let mut m = [0.0; BARKS];
-            for z in 0..BARKS {
-                m[z] = (x.total[z] - s[z]).max(0.0);
-            }
+            let m: [f64; BARKS] = std::array::from_fn(|z| (x.total[z] - s[z]).max(0.0));
             let (alone, part) = ear.loudness(&s, &m);
             // Too quiet to hear even in silence: not masking's doing.
             if alone < AUDIBLE_SONES {
@@ -629,8 +649,8 @@ pub fn audibility(
             a.alone += alone;
             a.partial += part;
             for u in &e.units {
-                for z in 0..BARKS {
-                    a.spectrum[z] += x.raw[*u][z];
+                for (sz, v) in a.spectrum.iter_mut().zip(&x.raw[*u]) {
+                    *sz += v;
                 }
             }
             let ok = part >= theta * alone;
@@ -639,8 +659,8 @@ pub fn audibility(
             } else {
                 // Who masks it: the strongest other part in its loudest bands.
                 let smax = s.iter().copied().fold(0.0, f64::max);
-                for z in 0..BARKS {
-                    if s[z] < smax * 0.1 || s[z] <= 0.0 {
+                for (z, &sz) in s.iter().enumerate() {
+                    if sz < smax * 0.1 || sz <= 0.0 {
                         continue;
                     }
                     let Some(&u) = x.top[z]
@@ -650,7 +670,7 @@ pub fn audibility(
                         continue;
                     };
                     let v = x.units[u][z];
-                    if v <= s[z] * 0.25 {
+                    if v <= sz * 0.25 {
                         continue;
                     }
                     let list = &mut maskers[i];
@@ -668,9 +688,9 @@ pub fn audibility(
                         }
                     };
                     let mk = &mut list[slot];
-                    let w = s[z] / smax;
+                    let w = sz / smax;
                     mk.weight += w;
-                    mk.db_sum += dsp::db(v / s[z]);
+                    mk.db_sum += dsp::db(v / sz);
                     mk.n += 1;
                     mk.bands[z] += w;
                 }

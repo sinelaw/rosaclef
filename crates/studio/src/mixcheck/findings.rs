@@ -289,17 +289,6 @@ pub fn clash_fix(p: &Project, c: &Clash, notes: &[Played]) -> Option<(Vec<Value>
 
 // ------------------------------------------------------------------ rules
 
-/// A bar (or bars) for people; `pass`: one pass of a repeat (`Some(n)`),
-/// or through a repeat (`Some(0)`).
-fn bars_label(from: u32, to: u32, pass: Option<u32>) -> String {
-    let list = if from == to {
-        format!("{from}")
-    } else {
-        format!("{from}–{to}")
-    };
-    bars_label_list(&list, from == to, pass)
-}
-
 /// Runs of consecutive rows (in playing order) where `hit` holds. A run
 /// follows the performance (through a repeat) and breaks where the music
 /// does not go on (another passage of a section).
@@ -337,44 +326,51 @@ fn runs(report: &Report, ctx: &Context, hit: &dyn Fn(usize) -> bool) -> Vec<(usi
 fn place_of(report: &Report, runs: &[(usize, usize)]) -> (String, String, u32, u32) {
     let parts: Vec<(u32, u32, Option<u32>)> =
         runs.iter().map(|(a, b)| row_bars(report, *a, *b)).collect();
-    let mut label = vec![];
-    let mut key = vec![];
-    for (f, t, pass) in &parts {
-        let span = if f == t {
-            format!("{f}")
-        } else {
-            format!("{f}–{t}")
-        };
-        let (l, k) = match pass {
-            Some(0) => (" (with the repeat)".to_string(), ":all".to_string()),
-            Some(n) if *n > 1 => (format!(" (pass {n})"), format!(":pass{n}")),
-            _ => (String::new(), String::new()),
-        };
-        label.push(format!("{span}{l}"));
-        key.push(format!("{f}-{t}{k}"));
-    }
-    let single = parts.len() == 1 && parts[0].0 == parts[0].1;
-    let label = format!(
-        "{} {}",
-        if single { "bar" } else { "bars" },
-        label.join(", ")
-    );
+    let key: Vec<String> = parts
+        .iter()
+        .map(|(f, t, pass)| {
+            let k = match pass {
+                Some(0) => ":all".to_string(),
+                Some(n) if *n > 1 => format!(":pass{n}"),
+                _ => String::new(),
+            };
+            format!("{f}-{t}{k}")
+        })
+        .collect();
     let from = parts.iter().map(|x| x.0).min().unwrap_or(0);
     let to = parts.iter().map(|x| x.1).max().unwrap_or(0);
-    (label, format!("bars:{}", key.join(",")), from, to)
+    (
+        bars_label(&parts),
+        format!("bars:{}", key.join(",")),
+        from,
+        to,
+    )
 }
 
-fn bars_label_list(list: &str, single: bool, pass: Option<u32>) -> String {
-    let b = if single {
-        format!("bar {list}")
-    } else {
-        format!("bars {list}")
-    };
-    match pass {
-        Some(0) => format!("{b} (with the repeat)"),
-        Some(n) if n > 1 => format!("{b} (pass {n})"),
-        _ => b,
-    }
+/// Bars for people: "bar 3", "bars 1–7, 9–12 (pass 2)"; a pass of `Some(0)`
+/// runs through a repeat.
+fn bars_label(parts: &[(u32, u32, Option<u32>)]) -> String {
+    let list: Vec<String> = parts
+        .iter()
+        .map(|(f, t, pass)| {
+            let span = if f == t {
+                format!("{f}")
+            } else {
+                format!("{f}–{t}")
+            };
+            match pass {
+                Some(0) => format!("{span} (with the repeat)"),
+                Some(n) if *n > 1 => format!("{span} (pass {n})"),
+                _ => span,
+            }
+        })
+        .collect();
+    let single = parts.len() == 1 && parts[0].0 == parts[0].1;
+    format!(
+        "{} {}",
+        if single { "bar" } else { "bars" },
+        list.join(", ")
+    )
 }
 
 fn row_bars(report: &Report, a: usize, b: usize) -> (u32, u32, Option<u32>) {
@@ -394,38 +390,34 @@ fn row_bars(report: &Report, a: usize, b: usize) -> (u32, u32, Option<u32>) {
     (from, to, pass)
 }
 
-/// Units ranked by their energy over hops `hs`, with their share.
-fn contributors(mix: &Mix, hs: &[usize]) -> Vec<(usize, f64)> {
-    let mut e: Vec<(usize, f64)> = (0..mix.units.len())
-        .map(|u| (u, hs.iter().map(|h| mix.unit_ms(u, *h)).sum::<f64>()))
-        .collect();
-    let total: f64 = e.iter().map(|x| x.1).sum();
-    e.sort_by(|x, y| y.1.total_cmp(&x.1));
-    e.into_iter()
-        .map(|(u, x)| (u, if total > 0.0 { x / total } else { 0.0 }))
-        .collect()
-}
-
-fn unit_name(p: &Project, mix: &Mix, u: usize) -> String {
-    let unit = &mix.units[u];
-    let ins = &p.mixer.inserts[unit.insert];
-    let name = match unit.channel {
-        Some(c) => p.channels[c].name.clone(),
-        None => ins.name.clone(),
-    };
-    format!(
-        "{name} (insert {}, fader {:+.1} dB)",
-        unit.insert,
-        dsp::amp_db(ins.volume)
-    )
-}
-
 /// A unit's name, as the producer knows it.
 fn short_name(p: &Project, mix: &Mix, u: usize) -> String {
     let unit = &mix.units[u];
     match unit.channel {
         Some(c) => p.channels[c].name.clone(),
         None => p.mixer.inserts[unit.insert].name.clone(),
+    }
+}
+
+/// A unit's name with where it sits in the mixer.
+fn unit_name(p: &Project, mix: &Mix, u: usize) -> String {
+    let insert = mix.units[u].insert;
+    format!(
+        "{} (insert {insert}, fader {:+.1} dB)",
+        short_name(p, mix, u),
+        dsp::amp_db(p.mixer.inserts[insert].volume)
+    )
+}
+
+/// A finding with no fix yet, keyed `rule|key`.
+fn finding(rule: &'static str, key: &str, at: String, detail: String) -> FindingOut {
+    FindingOut {
+        severity: "warn",
+        rule,
+        key: format!("{rule}|{key}"),
+        at,
+        detail,
+        ..Default::default()
     }
 }
 
@@ -573,12 +565,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 .iter()
                 .filter_map(|i| report.per_bar[*i].pre_limiter_peak_dbfs)
                 .fold(-99.0, f64::max);
-            let lims: Vec<&super::analyze::GrSeries> = mix
-                .a
-                .gr
-                .iter()
-                .filter(|g| g.insert == 0 && g.kind == "limiter")
-                .collect();
+            let lims = mix.a.master_gr("limiter");
             let (mut grmax, mut above) = (0f64, 0usize);
             for h in &hs {
                 let m = lims.iter().map(|g| g.max[*h] as f64).fold(0.0, f64::max);
@@ -587,7 +574,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     above += 1;
                 }
             }
-            let top = contributors(mix, &hs);
+            let top = mix.ranked(&hs, &|u, h| mix.unit_ms(u, h));
             let named: Vec<String> = top
                 .iter()
                 .take(3)
@@ -614,17 +601,11 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             };
             out.push((
                 FindingOut {
-                    severity: "warn",
-                    rule: "master-overload",
-                    key: format!("master-overload|{key}"),
-                    at,
-                    detail,
-                    element: None,
                     from_bar: Some(fb),
                     to_bar: Some(tb),
-                    from_beat: None,
                     fix,
                     fix_label,
+                    ..finding("master-overload", &key, at, detail)
                 },
                 pre + grmax,
             ));
@@ -686,20 +667,20 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             }
             out.push((
                 FindingOut {
-                    severity: "warn",
-                    rule: "limiter-pumping",
-                    key: format!("limiter-pumping|insert:0#{}", g.fx),
-                    at: format!("master {} (effect {})", g.kind, g.fx),
-                    detail: format!(
-                        "its gain reduction swings {:.1} dB within a beat (median), above 3 dB {}% of the time (mean {:.1} dB): the mix breathes with the beat.",
-                        median, pct(above), mean
-                    ),
                     element: Some(model::insert_id(p, 0)),
                     from_bar: Some(report.range.from_bar),
                     to_bar: Some(report.range.to_bar),
-                    from_beat: None,
                     fix,
                     fix_label: "a slower release and less drive".into(),
+                    ..finding(
+                        "limiter-pumping",
+                        &format!("insert:0#{}", g.fx),
+                        format!("master {} (effect {})", g.kind, g.fx),
+                        format!(
+                            "its gain reduction swings {:.1} dB within a beat (median), above 3 dB {}% of the time (mean {:.1} dB): the mix breathes with the beat.",
+                            median, pct(above), mean
+                        ),
+                    )
                 },
                 median,
             ));
@@ -752,78 +733,71 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     .join(", ")
             })
             .unwrap_or_default();
-        let rel = e.relative_to_mix_db.flatten();
-        let first_fix = e.suggestions.first();
-        let level = rel
+        let level = e
+            .relative_to_mix_db
+            .flatten()
             .map(|r| format!(" ({r:+.1} dB against the mix)"))
             .unwrap_or_default();
-        if lead && matches!(e.verdict, "inaudible" | "buried") {
-            out.push((
-                FindingOut {
-                    severity: "warn",
-                    rule: "masked-lead",
-                    key: format!("masked-lead|{}", e.id),
-                    at: format!(
-                        "{} in bars {}–{}",
-                        e.name, report.range.from_bar, report.range.to_bar
+        let masked = if maskers.is_empty() {
+            ".".to_string()
+        } else {
+            format!("; masked by {maskers}.")
+        };
+        let at = format!(
+            "{} in bars {}–{}",
+            e.name, report.range.from_bar, report.range.to_bar
+        );
+        let found = if lead && matches!(e.verdict, "inaudible" | "buried") {
+            Some((
+                finding(
+                    "masked-lead",
+                    &e.id,
+                    at,
+                    format!(
+                        "the lead is audible only {frac:.0}% of the time it plays{level}{masked}"
                     ),
-                    detail: format!(
-                        "the lead is audible only {frac:.0}% of the time it plays{level}{}",
-                        if maskers.is_empty() {
-                            ".".to_string()
-                        } else {
-                            format!("; masked by {maskers}.")
-                        }
-                    ),
-                    element: Some(e.id.clone()),
-                    from_bar: Some(report.range.from_bar),
-                    to_bar: Some(report.range.to_bar),
-                    from_beat: None,
-                    fix: first_fix.map(|s| s.patch.clone()).unwrap_or_default(),
-                    fix_label: first_fix.map(|s| s.why.clone()).unwrap_or_default(),
-                },
-                100.0 - frac,
-            ));
+                ),
+                e.suggestions.first(),
+            ))
         } else if e.verdict == "inaudible" || (strict && e.verdict == "buried") {
-            let gain_fix = e
+            // A part takes its level fix when it has one, else its best.
+            let fix = e
                 .suggestions
                 .iter()
                 .find(|s| s.why.contains("louder"))
-                .or(first_fix);
-            out.push((
+                .or(e.suggestions.first());
+            let stuck = if fix.is_none() {
+                " No level its faders can reach brings it out: give it room (another register, a cut in what covers it) or take it out."
+            } else {
+                ""
+            };
+            let detail = format!(
+                "{} is {}: audible {frac:.0}% of the time it plays{level}{masked}{stuck}",
+                e.name, e.verdict
+            );
+            Some((
                 FindingOut {
                     severity: if e.verdict == "inaudible" {
                         "warn"
                     } else {
                         "info"
                     },
-                    rule: "inaudible-part",
-                    key: format!("inaudible-part|{}", e.id),
-                    at: format!(
-                        "{} in bars {}–{}",
-                        e.name, report.range.from_bar, report.range.to_bar
-                    ),
-                    detail: format!(
-                        "{} is {}: audible {frac:.0}% of the time it plays{level}{}{}",
-                        e.name,
-                        e.verdict,
-                        if maskers.is_empty() {
-                            ".".to_string()
-                        } else {
-                            format!("; masked by {maskers}.")
-                        },
-                        if gain_fix.is_none() {
-                            " No level its faders can reach brings it out: give it room (another register, a cut in what covers it) or take it out."
-                        } else {
-                            ""
-                        }
-                    ),
+                    ..finding("inaudible-part", &e.id, at, detail)
+                },
+                fix,
+            ))
+        } else {
+            None
+        };
+        if let Some((f, fix)) = found {
+            out.push((
+                FindingOut {
                     element: Some(e.id.clone()),
                     from_bar: Some(report.range.from_bar),
                     to_bar: Some(report.range.to_bar),
-                    from_beat: None,
-                    fix: gain_fix.map(|s| s.patch.clone()).unwrap_or_default(),
-                    fix_label: gain_fix.map(|s| s.why.clone()).unwrap_or_default(),
+                    fix: fix.map(|s| s.patch.clone()).unwrap_or_default(),
+                    fix_label: fix.map(|s| s.why.clone()).unwrap_or_default(),
+                    ..f
                 },
                 100.0 - frac,
             ));
@@ -835,20 +809,16 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             {
                 out.push((
                     FindingOut {
-                        severity: "warn",
-                        rule: "phase-correlation",
-                        key: format!("phase-correlation|{}", e.id),
-                        at: e.name.clone(),
-                        detail: format!(
-                            "{} has a stereo correlation of {c:+.2}: its sides cancel when the mix is played in mono (phone, club).",
-                            e.name
-                        ),
                         element: Some(e.id.clone()),
-                        from_bar: None,
-                        to_bar: None,
-                        from_beat: None,
-                        fix: vec![],
-                        fix_label: String::new(),
+                        ..finding(
+                            "phase-correlation",
+                            &e.id,
+                            e.name.clone(),
+                            format!(
+                                "{} has a stereo correlation of {c:+.2}: its sides cancel when the mix is played in mono (phone, club).",
+                                e.name
+                            ),
+                        )
                     },
                     -c * 10.0,
                 ));
@@ -901,27 +871,32 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                         .join(", ")
                 )
             };
+            let quieter = if c.a.level_db <= c.b.level_db {
+                &c.a
+            } else {
+                &c.b
+            };
             out.push((
                 FindingOut {
-                    severity: "warn",
-                    rule: "harmonic-clash",
-                    key: format!(
-                        "harmonic-clash|{}:{}|{}:{}",
-                        c.a.pattern, c.a.note_index, c.b.pattern, c.b.note_index
-                    ),
-                    at: bars_label(c.bar, c.bar, c.pass),
-                    detail: format!(
-                        "{} {} (pattern {}, note {}) against {} {} (pattern {}, note {}): a {} held {:.2} beats, the quieter at {:+.1} dB against the mix{also}.",
-                        c.a.channel, c.a.pitch, c.a.pattern, c.a.note_index,
-                        c.b.channel, c.b.pitch, c.b.pattern, c.b.note_index,
-                        c.interval, c.overlap_beats, c.a.level_db.min(c.b.level_db)
-                    ),
-                    element: Some(format!("channel:{}", if c.a.level_db <= c.b.level_db { &c.a.channel } else { &c.b.channel })),
+                    element: Some(format!("channel:{}", quieter.channel)),
                     from_bar: Some(c.bar),
                     to_bar: Some(c.bar),
-                    from_beat: None,
                     fix: c.fix.clone().unwrap_or_default(),
                     fix_label: c.fix_label.clone().unwrap_or_default(),
+                    ..finding(
+                        "harmonic-clash",
+                        &format!(
+                            "{}:{}|{}:{}",
+                            c.a.pattern, c.a.note_index, c.b.pattern, c.b.note_index
+                        ),
+                        bars_label(&[(c.bar, c.bar, c.pass)]),
+                        format!(
+                            "{} {} (pattern {}, note {}) against {} {} (pattern {}, note {}): a {} held {:.2} beats, the quieter at {:+.1} dB against the mix{also}.",
+                            c.a.channel, c.a.pitch, c.a.pattern, c.a.note_index,
+                            c.b.channel, c.b.pitch, c.b.pattern, c.b.note_index,
+                            c.interval, c.overlap_beats, quieter.level_db
+                        ),
+                    )
                 },
                 c.overlap_beats,
             ));
@@ -957,31 +932,19 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 .iter()
                 .flat_map(|i| rows_hops[*i].iter().copied())
                 .collect();
-            let mut low_e: Vec<(usize, f64)> = (0..mix.units.len())
-                .map(|u| {
-                    (
-                        u,
-                        hs.iter()
-                            .map(|h| {
-                                let s = mix.unit_six(u, *h);
-                                s[0] + s[1] + s[2]
-                            })
-                            .sum::<f64>(),
-                    )
-                })
-                .collect();
-            let total: f64 = low_e.iter().map(|x| x.1).sum();
-            low_e.sort_by(|x, y| y.1.total_cmp(&x.1));
+            // Who is under 500 Hz, with their shares there.
+            let low_e = mix.ranked(&hs, &|u, h| {
+                let s = mix.unit_six(u, h);
+                s[0] + s[1] + s[2]
+            });
             let role = |u: usize| {
                 mix.units[u]
                     .channel
                     .and_then(|c| ctx.roles.get(c).copied())
                     .unwrap_or("")
             };
-            let culprit = low_e.iter().find(|(u, e)| {
-                !matches!(role(*u), "bass" | "drums")
-                    && *e > total * 0.1
-                    && mix.units[*u].insert > 0
+            let culprit = low_e.iter().find(|(u, share)| {
+                !matches!(role(*u), "bass" | "drums") && *share > 0.1 && mix.units[*u].insert > 0
             });
             let sp_avg: Vec<f64> = (0..6)
                 .map(|k| {
@@ -1029,25 +992,20 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             let names: Vec<String> = low_e
                 .iter()
                 .take(3)
-                .filter(|x| total > 0.0 && x.1 / total >= 0.1)
-                .map(|(u, e)| format!("{} {:.0}%", short_name(p, mix, *u), e / total * 100.0))
+                .filter(|x| x.1 >= 0.1)
+                .map(|(u, share)| format!("{} {:.0}%", short_name(p, mix, *u), share * 100.0))
                 .collect();
+            let detail = format!(
+                "below 250 Hz is {:+.1} dB against 500 Hz–6 kHz and 250–500 Hz {:+.1} dB over a balanced tilt: the low end builds up. Under 500 Hz: {}.",
+                low, m, names.join(", ")
+            );
             out.push((
                 FindingOut {
-                    severity: "warn",
-                    rule: "low-end-buildup",
-                    key: format!("low-end-buildup|{key}"),
-                    at,
-                    detail: format!(
-                        "below 250 Hz is {:+.1} dB against 500 Hz–6 kHz and 250–500 Hz {:+.1} dB over a balanced tilt: the low end builds up. Under 500 Hz: {}.",
-                        low, m, names.join(", ")
-                    ),
-                    element: None,
                     from_bar: Some(fb),
                     to_bar: Some(tb),
-                    from_beat: None,
                     fix,
                     fix_label: label,
+                    ..finding("low-end-buildup", &key, at, detail)
                 },
                 low.max(m),
             ));
@@ -1064,20 +1022,16 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             {
                 out.push((
                     FindingOut {
-                        severity: "warn",
-                        rule: "phase-correlation",
-                        key: "phase-correlation|master".into(),
-                        at: "master".into(),
-                        detail: format!(
-                            "the mix's correlation is {:+.2} and it loses {:.1} dB in mono: parts cancel on mono playback.",
-                            mean.unwrap_or(0.0), -loss.unwrap_or(0.0)
-                        ),
                         element: Some(model::insert_id(p, 0)),
-                        from_bar: None,
-                        to_bar: None,
-                        from_beat: None,
-                        fix: vec![],
-                        fix_label: String::new(),
+                        ..finding(
+                            "phase-correlation",
+                            "master",
+                            "master".into(),
+                            format!(
+                                "the mix's correlation is {:+.2} and it loses {:.1} dB in mono: parts cancel on mono playback.",
+                                mean.unwrap_or(0.0), -loss.unwrap_or(0.0)
+                            ),
+                        )
                     },
                     -loss.unwrap_or(0.0),
                 ));
@@ -1116,19 +1070,11 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
     // At most a third of the list (and at least 3) for one rule: one
     // problem does not crowd out the others.
     let per_rule = (o.max_findings / 3).max(3);
-    let mut counts: Vec<(&str, usize)> = vec![];
+    let mut counts = [0usize; RULES.len()];
     v.retain(|(f, _)| {
-        let c = match counts.iter_mut().find(|c| c.0 == f.rule) {
-            Some(c) => {
-                c.1 += 1;
-                c.1
-            }
-            None => {
-                counts.push((f.rule, 1));
-                1
-            }
-        };
-        c <= per_rule
+        let i = RULES.iter().position(|r| *r == f.rule).unwrap_or(0);
+        counts[i] += 1;
+        counts[i] <= per_rule
     });
     v.into_iter().take(o.max_findings).map(|x| x.0).collect()
 }
@@ -1254,24 +1200,11 @@ fn flat_sections(report: &Report, ctx: &Context, spread_at: f64) -> Option<(Find
             }
         })
         .collect();
+    let (fb, tb) = (report.range.from_bar, report.range.to_bar);
     Some((
         FindingOut {
-            severity: "warn",
-            rule: "section-loudness-flat",
-            key: format!(
-                "section-loudness-flat|bars:{}-{}",
-                report.range.from_bar, report.range.to_bar
-            ),
-            at: format!("bars {}–{}", report.range.from_bar, report.range.to_bar),
-            detail: format!(
-                "the sections are all within {:.1} LU of each other (LUFS: {}): nothing builds.",
-                max - min,
-                names.join(", ")
-            ),
-            element: None,
-            from_bar: Some(report.range.from_bar),
-            to_bar: Some(report.range.to_bar),
-            from_beat: None,
+            from_bar: Some(fb),
+            to_bar: Some(tb),
             fix,
             fix_label: if lane_exists {
                 String::new()
@@ -1279,6 +1212,16 @@ fn flat_sections(report: &Report, ctx: &Context, spread_at: f64) -> Option<(Find
                 "a master volume lane: the sparse sections 1.5–3 dB down, the busiest at full level"
                     .into()
             },
+            ..finding(
+                "section-loudness-flat",
+                &format!("bars:{fb}-{tb}"),
+                format!("bars {fb}–{tb}"),
+                format!(
+                    "the sections are all within {:.1} LU of each other (LUFS: {}): nothing builds.",
+                    max - min,
+                    names.join(", ")
+                ),
+            )
         },
         spread_at - (max - min),
     ))

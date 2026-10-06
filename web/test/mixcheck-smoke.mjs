@@ -23,8 +23,10 @@ await page.click(".maestro-tab:has-text('Mix check')");
 await page.waitForSelector(".mx-empty");
 ok("the Mix check tab opens");
 
-// Bars 12–14 of the demo: the piano's F#3 grinds against the bass's G2 in bar 13.
+// Bars 12–14 of the demo: the piano's F#3 rubs against the bass's G2 in bar 13
+// (a major seventh: a finding at the strict threshold).
 await page.selectOption(".mx-bar .mx-select >> nth=0", "bars");
+await page.selectOption(".mx-bar2 .mx-select >> nth=0", "strict");
 await page.fill(".mx-num >> nth=0", "12");
 await page.press(".mx-num >> nth=0", "Tab");
 await page.fill(".mx-num >> nth=1", "14");

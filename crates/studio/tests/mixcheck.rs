@@ -8,7 +8,7 @@ use rosaclef_studio::fonts::{DirFonts, Fonts};
 use rosaclef_studio::mixcheck::{self, timeline, Env, Options, Report};
 use rosaclef_studio::Folder;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 fn scratch(name: &str) -> PathBuf {
@@ -285,12 +285,28 @@ fn gain_reduction_of_signals_of_known_level() {
     };
     let c = gr("insert:1/Comp");
     assert_eq!(c.kind, "compressor");
-    assert!((c.max - 9.0).abs() <= 0.3, "compressor max {}", c.max);
-    assert!((c.mean - 9.0).abs() <= 0.5, "compressor mean {}", c.mean);
-    assert!(c.pct_time_above3 >= 95.0, "{}", c.pct_time_above3);
+    assert!(
+        (c.stat.max - 9.0).abs() <= 0.3,
+        "compressor max {}",
+        c.stat.max
+    );
+    assert!(
+        (c.stat.mean - 9.0).abs() <= 0.5,
+        "compressor mean {}",
+        c.stat.mean
+    );
+    assert!(c.stat.pct_time_above3 >= 95.0, "{}", c.stat.pct_time_above3);
     let l = gr("insert:2/Lim");
-    assert!((l.max - 7.0).abs() <= 0.3, "limiter max {}", l.max);
-    assert!((l.mean - 7.0).abs() <= 0.5, "limiter mean {}", l.mean);
+    assert!(
+        (l.stat.max - 7.0).abs() <= 0.3,
+        "limiter max {}",
+        l.stat.max
+    );
+    assert!(
+        (l.stat.mean - 7.0).abs() <= 0.5,
+        "limiter mean {}",
+        l.stat.mean
+    );
     // Per bar, too.
     let row = r.per_bar.iter().find(|x| x.bar == Some(2)).unwrap();
     let map = row.gain_reduction_db.as_ref().unwrap();
@@ -621,7 +637,7 @@ fn bad_requests_are_refused_by_name() {
 /// sub, keys and pad, a counter-melody's C#5 over the pad's C4, warm keys
 /// thickening the low mids, a "widener" whose channels cancel, and four
 /// sections at one loudness — with a repeated chorus and a 3/4 outro.
-fn trouble(dir: &PathBuf) -> Project {
+fn trouble(dir: &Path) -> Project {
     use std::f64::consts::TAU;
     wav(dir, "widener.wav", 8.0, |_| 0.0);
     // The widener: the right channel is the left upside down.
