@@ -24,6 +24,7 @@ import { decodeProject, encodeProject, meterMap, barAt, barLines, cloneProject, 
 import { startAudio, seek, setMode, play, stop } from "../audio.js";
 import { button, iconButton, select, textInput, glyph } from "./widgets.js";
 import { toast } from "./toast.js";
+import { t, tf, tk } from "../i18n.js";
 import { trackIndex, clipIndex, trackIx, clipIx, insertIx } from "#brands";
 
 export const drums = {
@@ -65,52 +66,59 @@ export const drums = {
 };
 
 const PLAY_LABELS = [
-  { key: "a", value: "Groove A" },
-  { key: "b", value: "Groove B" },
-  { key: "hits", value: "Hits" },
-  { key: "count", value: "Count-in" },
-  { key: "rest", value: "Rest" },
+  { key: "a", value: tk("Groove A") },
+  { key: "b", value: tk("Groove B") },
+  { key: "hits", value: tk("Hits") },
+  { key: "count", value: tk("Count-in") },
+  { key: "rest", value: tk("Rest") },
 ];
 const PLAY_SHORT = [
   { key: "a", value: "A" },
   { key: "b", value: "B" },
-  { key: "hits", value: "Hits" },
-  { key: "count", value: "Count" },
-  { key: "rest", value: "Rest" },
+  { key: "hits", value: tk("Hits") },
+  { key: "count", value: tk("Count") },
+  { key: "rest", value: tk("Rest") },
 ];
 const FILL_LABELS = [
-  { key: "none", value: "No fill" },
-  { key: "beat", value: "1-beat fill" },
-  { key: "half", value: "2-beat fill" },
-  { key: "bar", value: "1-bar fill" },
+  { key: "none", value: tk("No fill") },
+  { key: "beat", value: tk("1-beat fill") },
+  { key: "half", value: tk("2-beat fill") },
+  { key: "bar", value: tk("1-bar fill") },
 ];
 const ROLE_LABELS = [
-  { key: "kick", value: "Kick" },
-  { key: "snare", value: "Snare" },
-  { key: "rim", value: "Side stick" },
-  { key: "clap", value: "Clap" },
-  { key: "hat", value: "Hi-hat" },
-  { key: "pedal", value: "Hat foot" },
-  { key: "openhat", value: "Open hat" },
-  { key: "ride", value: "Ride" },
-  { key: "bell", value: "Ride bell" },
-  { key: "crash", value: "Crash" },
-  { key: "tom1", value: "High tom" },
-  { key: "tom2", value: "Mid tom" },
-  { key: "tom3", value: "Floor tom" },
-  { key: "cowbell", value: "Cowbell" },
-  { key: "shaker", value: "Shaker" },
-  { key: "tamb", value: "Tambourine" },
+  { key: "kick", value: tk("Kick") },
+  { key: "snare", value: tk("Snare") },
+  { key: "rim", value: tk("Side stick") },
+  { key: "clap", value: tk("Clap") },
+  { key: "hat", value: tk("Hi-hat") },
+  { key: "pedal", value: tk("Hat foot") },
+  { key: "openhat", value: tk("Open hat") },
+  { key: "ride", value: tk("Ride") },
+  { key: "bell", value: tk("Ride bell") },
+  { key: "crash", value: tk("Crash") },
+  { key: "tom1", value: tk("High tom") },
+  { key: "tom2", value: tk("Mid tom") },
+  { key: "tom3", value: tk("Floor tom") },
+  { key: "cowbell", value: tk("Cowbell") },
+  { key: "shaker", value: tk("Shaker") },
+  { key: "tamb", value: tk("Tambourine") },
 ];
 const FEELS = ["tight", "natural", "loose"];
-const FEEL_LABELS = ["Tight", "Natural", "Loose"];
+const FEEL_LABELS = [tk("Tight"), tk("Natural"), tk("Loose")];
 const SWINGS = ["0", "0.2", "0.3", "0.4", "0.5", "0.7"];
-const SWING_LABELS = ["Straight", "Swing 20%", "Swing 30%", "Swing 40%", "Swing 50%", "Swing 70%"];
 
+/** The label of `key` in a table, in the interface's language. */
 /** function labelOf(list: KS[], key: String) => String */
 function labelOf(list, key) {
   const e = list.find((x) => x.key === key);
-  return e ? e.value : key;
+  return e ? t(e.value) : key;
+}
+
+/** The label of a swing amount of SWINGS ("0.2" → "Swing 20%"). */
+/** function swingLabel(s: String) => String */
+function swingLabel(s) {
+  const pct = Math.round(Number(s) * 100);
+  return pct === 0 ? t("Straight") : tf("Swing {0}%", [String(pct)]);
 }
 
 /** function errText<E>(e: E) => String */
@@ -152,7 +160,7 @@ function loadCatalog() {
     })
     .catch((e) => {
       drums.asked = false;
-      toast("Could not load the drum grooves", errText(e), "error");
+      toast(t("Could not load the drum grooves"), errText(e), "error");
       return false;
     });
 }
@@ -165,6 +173,35 @@ function grooveOf(id) {
 /** function grooveLabel(g: GrooveInfo) => String */
 function grooveLabel(g) {
   return `${g.style} · ${g.name}`;
+}
+
+/** The kit dropdown's first choice: the groove's own kit. */
+/** function suggestedKit(g: GrooveInfo) => String */
+function suggestedKit(g) {
+  return g.kit === "Ebony" ? t("Suggested (drum machine)") : tf("Suggested ({0})", [g.kit]);
+}
+
+/** A groove's time signature, tempo range and kit (and the song's tempo when it is out of that range). */
+/** function tempoInfo(g: GrooveInfo, bpm: Number, fits: Boolean) => String */
+function tempoInfo(g, bpm, fits) {
+  const vals = [g.meter, String(g.tempo[0]), String(g.tempo[1]), g.kit, String(Math.round(bpm))];
+  if (fits) return g.kit === "Ebony" ? tf("{0} · {1}–{2} BPM · suggests the drum machine", vals) : tf("{0} · {1}–{2} BPM · suggests {3}", vals);
+  return g.kit === "Ebony"
+    ? tf("{0} · {1}–{2} BPM (the song is at {4}) · suggests the drum machine", vals)
+    : tf("{0} · {1}–{2} BPM (the song is at {4}) · suggests {3}", vals);
+}
+
+/** A groove's tooltip in the library: what it is, and what a click does. */
+/** function grooveTip(g: GrooveInfo, pat: Pattern?) => String */
+function grooveTip(g, pat) {
+  const vals = [g.name, g.meter, String(g.tempo[0]), String(g.tempo[1]), pat ? pat.name : "", g.kit];
+  if (pat)
+    return g.kit === "Ebony"
+      ? tf("{0}: {1}, {2}–{3} BPM, suggests the drum machine. Click: play it in {4}", vals)
+      : tf("{0}: {1}, {2}–{3} BPM, suggests {5}. Click: play it in {4}", vals);
+  return g.kit === "Ebony"
+    ? tf("{0}: {1}, {2}–{3} BPM, suggests the drum machine. Click: make a drum pattern here", vals)
+    : tf("{0}: {1}, {2}–{3} BPM, suggests {5}. Click: make a drum pattern here", vals);
 }
 
 // ------------------------------------------------------------------ meters
@@ -275,10 +312,17 @@ function partMisfit(d) {
       for (let k = 0; k < s.bars; k++) {
         const r = meterAt(first + k);
         if (!fits(g, r)) {
-          const name = s.name || `Section ${i + 1}`;
+          const name = s.name || tf("Section {0}", [String(i + 1)]);
           return {
             at: i,
-            why: `${name} (bars ${first + 1}–${first + s.bars}) is in ${r.label}, but plays ${g.name} (${g.meter}). Select it — or put the song cursor there — and pick a ${r.label} groove.`,
+            why: tf("{0} (bars {1}–{2}) is in {3}, but plays {4} ({5}). Select it — or put the song cursor there — and pick a {3} groove.", [
+              name,
+              String(first + 1),
+              String(first + s.bars),
+              r.label,
+              g.name,
+              g.meter,
+            ]),
           };
         }
       }
@@ -293,8 +337,14 @@ function partMisfit(d) {
 function misfit(g, runs) {
   for (const r of runs) {
     if (Math.abs(g.barBeats - r.barBeats) > 1e-6) {
-      const where = r.bar > 0 ? `bar ${r.bar + 1} is in ${r.label}` : `the song is in ${r.label}`;
-      return `${g.name} is in ${g.meter}, but ${where}. Pick a groove in ${r.label}, or change the time signature (Time, in the top bar).`;
+      return r.bar > 0
+        ? tf("{0} is in {1}, but bar {2} is in {3}. Pick a groove in {3}, or change the time signature (Time, in the top bar).", [
+            g.name,
+            g.meter,
+            String(r.bar + 1),
+            r.label,
+          ])
+        : tf("{0} is in {1}, but the song is in {2}. Pick a groove in {2}, or change the time signature (Time, in the top bar).", [g.name, g.meter, r.label]);
     }
   }
   return "";
@@ -338,7 +388,7 @@ function startPart(groove) {
     })
     .catch((e) => {
       drums.busy = false;
-      toast("Could not start the drum part", errText(e), "error");
+      toast(t("Could not start the drum part"), errText(e), "error");
       invalidate();
       return false;
     });
@@ -361,7 +411,7 @@ function guessAgain() {
     })
     .catch((e) => {
       drums.busy = false;
-      toast("Could not guess the sections", errText(e), "error");
+      toast(t("Could not guess the sections"), errText(e), "error");
       invalidate();
       return false;
     });
@@ -392,16 +442,38 @@ export function writeDrums() {
         p.score = np.score;
         p.drums = np.drums;
       });
-      toast(
-        "Drums written",
-        `${Number(r.report.patterns)} patterns in ${Number(r.report.clips)} clips on track ${Math.round(Number(r.report.track)) + 1} (${np.playlist.tracks[Math.round(Number(r.report.track))]?.name ?? "Drums"})${Number(r.report.kept) > 0 ? `, ${Number(r.report.kept)} kept as you edited them` : ""}${Number(r.report.left ?? 0) > 0 ? `; ${Number(r.report.left)} bar${Number(r.report.left) === 1 ? "" : "s"} left to your own drum patterns` : ""}. Ctrl+Z undoes it.`,
-        "info"
-      );
+      const kept = Number(r.report.kept);
+      const left = Number(r.report.left ?? 0);
+      const vals = [
+        String(Number(r.report.patterns)),
+        String(Number(r.report.clips)),
+        String(Math.round(Number(r.report.track)) + 1),
+        np.playlist.tracks[Math.round(Number(r.report.track))]?.name ?? t("Drums"),
+        String(kept),
+        String(left),
+      ];
+      /** let body: String */
+      let body = "";
+      if (kept > 0) {
+        if (left === 1)
+          body = tf("{0} patterns in {1} clips on track {2} ({3}), {4} kept as you edited them; 1 bar left to your own drum patterns. Ctrl+Z undoes it.", vals);
+        else if (left > 0)
+          body = tf(
+            "{0} patterns in {1} clips on track {2} ({3}), {4} kept as you edited them; {5} bars left to your own drum patterns. Ctrl+Z undoes it.",
+            vals
+          );
+        else body = tf("{0} patterns in {1} clips on track {2} ({3}), {4} kept as you edited them. Ctrl+Z undoes it.", vals);
+      } else {
+        if (left === 1) body = tf("{0} patterns in {1} clips on track {2} ({3}); 1 bar left to your own drum patterns. Ctrl+Z undoes it.", vals);
+        else if (left > 0) body = tf("{0} patterns in {1} clips on track {2} ({3}); {5} bars left to your own drum patterns. Ctrl+Z undoes it.", vals);
+        else body = tf("{0} patterns in {1} clips on track {2} ({3}). Ctrl+Z undoes it.", vals);
+      }
+      toast(t("Drums written"), body, "info");
       return true;
     })
     .catch((e) => {
       drums.busy = false;
-      toast("Could not write the drums", errText(e), "error");
+      toast(t("Could not write the drums"), errText(e), "error");
       invalidate();
       return false;
     });
@@ -430,7 +502,7 @@ function sendPreview(seek) {
     })
     .catch((e) => {
       stopPreview();
-      toast("Could not play the drums", errText(e), "error");
+      toast(t("Could not play the drums"), errText(e), "error");
       return false;
     });
 }
@@ -521,9 +593,9 @@ function stepper(b, key, label, value, tip, onStep) {
   b.open("div", key, "drums-field");
   b.leaf("span", "l", "drums-label", label);
   b.open("div", "n", "drums-stepper");
-  iconButton(b, "dn", "small", "minus", `${tip}: fewer`, () => onStep(-1));
+  iconButton(b, "dn", "small", "minus", tf("{0}: fewer", [tip]), () => onStep(-1));
   b.leaf("span", "v", "drums-num", String(value));
-  iconButton(b, "up", "small", "plus", `${tip}: more`, () => onStep(1));
+  iconButton(b, "up", "small", "plus", tf("{0}: more", [tip]), () => onStep(1));
   b.close();
   b.close();
 }
@@ -605,7 +677,7 @@ function grooveGrid(b, key, title, g, isB, rows, edited) {
   b.open("div", key, "drums-grid");
   b.open("div", "t", "drums-grid-title");
   b.text(title);
-  if (edited) b.leaf("span", "e", "drums-edited", "edited");
+  if (edited) b.leaf("span", "e", "drums-edited", t("edited"));
   b.close();
   for (const row of rows) {
     const role = row[0];
@@ -617,7 +689,7 @@ function grooveGrid(b, key, title, g, isB, rows, edited) {
       const c = steps[i];
       const kind = c === "X" ? "acc" : c === "x" ? "hit" : c === "g" ? "ghost" : c === "f" ? "feather" : "rest";
       b.open("span", `${i}`, `drums-cell ${kind}${i % perBeat === 0 ? " beat" : ""}`);
-      b.attr("title", `${labelOf(ROLE_LABELS, role)}, step ${i + 1}: click for a hit, then an accent, a ghost note, a rest`);
+      b.attr("title", tf("{0}, step {1}: click for a hit, then an accent, a ghost note, a rest", [labelOf(ROLE_LABELS, role), String(i + 1)]));
       b.on("click", (e) => {
         editRows(g, isB, (rs) => {
           const k = rs.findIndex((x) => x[0] === role);
@@ -634,14 +706,14 @@ function grooveGrid(b, key, title, g, isB, rows, edited) {
   /** const free: String[] */
   const free = [""];
   /** const freeLabels: String[] */
-  const freeLabels = ["+ Drum…"];
+  const freeLabels = [t("+ Drum…")];
   for (const e of ROLE_LABELS) {
     if (!rows.some((r) => r[0] === e.key)) {
       free.push(e.key);
-      freeLabels.push(e.value);
+      freeLabels.push(t(e.value));
     }
   }
-  select(b, "add", "drums-add", "", free, freeLabels, "Add a drum to this part", (v) => {
+  select(b, "add", "drums-add", "", free, freeLabels, t("Add a drum to this part"), (v) => {
     if (v === "") return undefined;
     const len = rows.length > 0 ? rows[0][1].replace(/[ |]/g, "").length : g.steps;
     editRows(g, isB, (rs) => {
@@ -670,7 +742,7 @@ function grooveView(b, d) {
   /** const ids: String[] */
   const ids = forMain ? [] : [""];
   /** const labels: String[] */
-  const labels = forMain ? [] : [`Pick a ${run.label} groove…`];
+  const labels = forMain ? [] : [tf("Pick a {0} groove…", [run.label])];
   /** const why: String[] */
   const why = forMain ? [] : [""];
   for (const x of gs) {
@@ -681,25 +753,25 @@ function grooveView(b, d) {
   grooveField(
     b,
     "groove",
-    several ? `Groove · ${run.label}` : "Groove",
+    several ? tf("Groove · {0}", [run.label]) : t("Groove"),
     value,
     ids,
     labels,
     why,
     several
-      ? `The groove the drummer plays in ${run.label} (where the song cursor or the selected section is): A in verses, the bigger B in choruses`
-      : "The groove the drummer plays: A in verses, the bigger B in choruses",
+      ? tf("The groove the drummer plays in {0} (where the song cursor or the selected section is): A in verses, the bigger B in choruses", [run.label])
+      : t("The groove the drummer plays: A in verses, the bigger B in choruses"),
     (v) => setGrooveIn(run, v)
   );
   b.open("div", "nav", "drums-nav");
-  iconButton(b, "prev", "small", "left", "The previous groove in this time signature (keeps playing)", () => stepGroove(-1));
-  iconButton(b, "next", "small", "right", "The next groove in this time signature (keeps playing)", () => stepGroove(1));
+  iconButton(b, "prev", "small", "left", t("The previous groove in this time signature (keeps playing)"), () => stepGroove(-1));
+  iconButton(b, "next", "small", "right", t("The next groove in this time signature (keeps playing)"), () => stepGroove(1));
   iconButton(
     b,
     "play",
     drums.previewing ? "small on" : "small",
     drums.previewing ? "stop" : "play",
-    drums.previewing ? "Stop" : "Play the song with these drums, from where they start (nothing is written until you press Write drums)",
+    drums.previewing ? t("Stop") : t("Play the song with these drums, from where they start (nothing is written until you press Write drums)"),
     () => {
       if (drums.previewing) stopPreview();
       else playPreview();
@@ -712,7 +784,7 @@ function grooveView(b, d) {
     b.open("div", "meter", "drums-info warn");
     b.text(wrong.why);
     if (wrong.at !== drums.section) {
-      button(b, "go", "small", "Select it", "Select that section (the groove above then picks for its time signature)", () => {
+      button(b, "go", "small", t("Select it"), t("Select that section (the groove above then picks for its time signature)"), () => {
         drums.section = wrong.at;
         invalidate();
       });
@@ -722,23 +794,18 @@ function grooveView(b, d) {
   if (g) {
     const bpm = state.project.transport.bpm;
     const fits = bpm >= g.tempo[0] && bpm <= g.tempo[1];
-    b.leaf(
-      "div",
-      "info",
-      fits ? "drums-info" : "drums-info warn",
-      `${g.meter} · ${g.tempo[0]}–${g.tempo[1]} BPM${fits ? "" : ` (the song is at ${Math.round(bpm)})`} · suggests ${g.kit === "Ebony" ? "the drum machine" : g.kit}`
-    );
+    b.leaf("div", "info", fits ? "drums-info" : "drums-info warn", tempoInfo(g, bpm, fits));
   }
   b.open("div", "opts", "drums-opts");
   /** const kits: String[] */
   const kits = [""];
   /** const kitLabels: String[] */
-  const kitLabels = [g ? `Suggested (${g.kit === "Ebony" ? "drum machine" : g.kit})` : "Suggested"];
+  const kitLabels = [g ? suggestedKit(g) : t("Suggested")];
   for (const k of drums.catalog.kits) {
     kits.push(k);
-    kitLabels.push(k === "Ebony" ? "Ebony drum machine" : k);
+    kitLabels.push(k === "Ebony" ? t("Ebony drum machine") : k);
   }
-  field(b, "kit", "Kit", d.kit, kits, kitLabels, "A General MIDI kit (one channel), or the Ebony drum machine (a channel per drum)", (v) =>
+  field(b, "kit", t("Kit"), d.kit, kits, kitLabels, t("A General MIDI kit (one channel), or the Ebony drum machine (a channel per drum)"), (v) =>
     edit((x) => {
       x.kit = v;
     })
@@ -746,11 +813,11 @@ function grooveView(b, d) {
   field(
     b,
     "feel",
-    "Feel",
+    t("Feel"),
     d.feel,
     FEELS,
-    FEEL_LABELS,
-    "Tight: on the grid. Natural: the backbeat sits a little late, small differences. Loose: more of both.",
+    FEEL_LABELS.map((x) => t(x)),
+    t("Tight: on the grid. Natural: the backbeat sits a little late, small differences. Loose: more of both."),
     (v) =>
       edit((x) => {
         x.feel = v;
@@ -761,8 +828,8 @@ function grooveView(b, d) {
     /** const swings: String[] */
     const swings = SWINGS.includes(sw) ? SWINGS : SWINGS.concat([sw]);
     /** const swingLabels: String[] */
-    const swingLabels = SWINGS.includes(sw) ? SWING_LABELS : SWING_LABELS.concat([`Swing ${Math.round(d.swing * 100)}%`]);
-    field(b, "swing", "Swing", sw, swings, swingLabels, "Delays the off 16th notes (the song's own swing applies on top)", (v) =>
+    const swingLabels = SWINGS.includes(sw) ? SWINGS.map(swingLabel) : SWINGS.map(swingLabel).concat([tf("Swing {0}%", [String(Math.round(d.swing * 100))])]);
+    field(b, "swing", t("Swing"), sw, swings, swingLabels, t("Delays the off 16th notes (the song's own swing applies on top)"), (v) =>
       edit((x) => {
         x.swing = Number(v);
       })
@@ -772,10 +839,10 @@ function grooveView(b, d) {
   if (g) {
     const changed = d.grooves.some((x) => x.groove === g.id);
     b.open("div", "grids", "drums-grids");
-    grooveGrid(b, "a", "A · verse", g, false, partRows(d, g, false), changed && !sameRows(partRows(d, g, false), g.a));
-    grooveGrid(b, "b", "B · chorus", g, true, partRows(d, g, true), changed && !sameRows(partRows(d, g, true), g.b));
+    grooveGrid(b, "a", t("A · verse"), g, false, partRows(d, g, false), changed && !sameRows(partRows(d, g, false), g.a));
+    grooveGrid(b, "b", t("B · chorus"), g, true, partRows(d, g, true), changed && !sameRows(partRows(d, g, true), g.b));
     if (changed) {
-      button(b, "reset", "small", "Reset groove", `Back to the library's ${g.name} (your changes to this groove, and its kept patterns, go)`, () =>
+      button(b, "reset", "small", t("Reset groove"), tf("Back to the library's {0} (your changes to this groove, and its kept patterns, go)", [g.name]), () =>
         edit((x) => {
           x.grooves = x.grooves.filter((e) => e.groove !== g.id);
           x.kept = x.kept.filter((k) => !k.slot.startsWith(`${g.id}/`));
@@ -847,18 +914,22 @@ function sectionsView(b, d) {
   if (drums.section >= d.sections.length) drums.section = Math.max(0, d.sections.length - 1);
   b.open("section", "sections", "drums-step drums-sections");
   b.open("div", "head", "drums-head");
-  b.leaf("div", "t", "drums-title", "Sections");
+  b.leaf("div", "t", "drums-title", t("Sections"));
   b.leaf(
     "div",
     "sub",
     "drums-sub",
-    total > 0 ? `bars ${d.start}–${d.start + total - 1}${d.ending === "hit" ? `, ending on ${d.start + total}` : ""}` : "none yet"
+    total > 0
+      ? d.ending === "hit"
+        ? tf("bars {0}–{1}, ending on {2}", [String(d.start), String(d.start + total - 1), String(d.start + total)])
+        : tf("bars {0}–{1}", [String(d.start), String(d.start + total - 1)])
+      : t("none yet")
   );
   b.open("div", "acts", "drums-actions");
-  button(b, "guess", "small", "Guess from playlist", "Make the sections again from the playlist: a new one wherever the arrangement changes", () =>
+  button(b, "guess", "small", t("Guess from playlist"), t("Make the sections again from the playlist: a new one wherever the arrangement changes"), () =>
     guessAgain()
   );
-  button(b, "add", "small", "Add section", "Add a section at the end", () =>
+  button(b, "add", "small", t("Add section"), t("Add a section at the end"), () =>
     edit((x) => {
       x.sections.push({ name: `Section ${x.sections.length + 1}`, bars: 8, play: "a", fill: "beat", crash: x.sections.length > 0, groove: "" });
       drums.section = x.sections.length - 1;
@@ -872,20 +943,28 @@ function sectionsView(b, d) {
     const s = d.sections[i];
     b.open("button", `s${i}`, `drums-sec play-${s.play}${i === drums.section ? " on" : ""}`);
     b.style("flex", `${Math.max(1, s.bars)} 1 0`);
+    const secName = s.name || tf("Section {0}", [String(i + 1)]);
+    const secVals = [secName, String(s.bars), labelOf(PLAY_LABELS, s.play), labelOf(FILL_LABELS, s.fill)];
     b.attr(
       "title",
-      `${s.name || `Section ${i + 1}`}: ${s.bars} bars, ${labelOf(PLAY_LABELS, s.play)}${s.crash ? ", crash" : ""}${s.fill !== "none" ? `, ${labelOf(FILL_LABELS, s.fill)}` : ""}`
+      s.fill !== "none"
+        ? s.crash
+          ? tf("{0}: {1} bars, {2}, crash, {3}", secVals)
+          : tf("{0}: {1} bars, {2}, {3}", secVals)
+        : s.crash
+          ? tf("{0}: {1} bars, {2}, crash", secVals)
+          : tf("{0}: {1} bars, {2}", secVals)
     );
     b.on("click", (e) => {
       drums.section = i;
       invalidate();
     });
-    b.leaf("span", "n", "drums-sec-name", s.name || `Section ${i + 1}`);
+    b.leaf("span", "n", "drums-sec-name", secName);
     b.leaf(
       "span",
       "m",
       "drums-sec-meta",
-      `${s.crash ? "✶ " : ""}${s.bars} · ${labelOf(PLAY_SHORT, s.play)}${s.groove !== "" ? "*" : ""}${s.fill !== "none" ? ` ▸${s.fill === "bar" ? "bar" : s.fill === "half" ? "2" : "1"}` : ""}`
+      `${s.crash ? "✶ " : ""}${s.bars} · ${labelOf(PLAY_SHORT, s.play)}${s.groove !== "" ? "*" : ""}${s.fill !== "none" ? ` ▸${s.fill === "bar" ? t("bar") : s.fill === "half" ? "2" : "1"}` : ""}`
     );
     b.close();
   }
@@ -896,14 +975,14 @@ function sectionsView(b, d) {
     const at = drums.section;
     b.open("div", "edit", "drums-edit");
     b.open("label", "name", "drums-field");
-    b.leaf("span", "l", "drums-label", "Name");
-    textInput(b, "i", "drums-name", s.name, `Section ${at + 1}`, (v) =>
+    b.leaf("span", "l", "drums-label", t("Name"));
+    textInput(b, "i", "drums-name", s.name, tf("Section {0}", [String(at + 1)]), (v) =>
       edit((x) => {
         x.sections[at].name = v.trim();
       })
     );
     b.close();
-    stepper(b, "bars", "Bars", s.bars, "Bars in this section", (by) =>
+    stepper(b, "bars", t("Bars"), s.bars, t("Bars in this section"), (by) =>
       edit((x) => {
         x.sections[at].bars = Math.min(999, Math.max(1, x.sections[at].bars + by));
       })
@@ -911,11 +990,11 @@ function sectionsView(b, d) {
     field(
       b,
       "play",
-      "Plays",
+      t("Plays"),
       s.play,
       PLAY_LABELS.map((x) => x.key),
-      PLAY_LABELS.map((x) => x.value),
-      "Groove A (verse), the bigger Groove B (chorus), hits (crash and kick on each downbeat), a count-in on the side stick, or rest",
+      PLAY_LABELS.map((x) => t(x.value)),
+      t("Groove A (verse), the bigger Groove B (chorus), hits (crash and kick on each downbeat), a count-in on the side stick, or rest"),
       (v) =>
         edit((x) => {
           x.sections[at].play = v;
@@ -924,19 +1003,19 @@ function sectionsView(b, d) {
     field(
       b,
       "fill",
-      "Fill",
+      t("Fill"),
       s.fill,
       FILL_LABELS.map((x) => x.key),
-      FILL_LABELS.map((x) => x.value),
-      "A fill at the end of the section, into the next one",
+      FILL_LABELS.map((x) => t(x.value)),
+      t("A fill at the end of the section, into the next one"),
       (v) =>
         edit((x) => {
           x.sections[at].fill = v;
         })
     );
     b.open("div", "crash", "drums-field");
-    b.leaf("span", "l", "drums-label", "Crash");
-    button(b, "t", s.crash ? "small on" : "small", s.crash ? "On the 1" : "Off", "A crash cymbal on the section's first downbeat", () =>
+    b.leaf("span", "l", "drums-label", t("Crash"));
+    button(b, "t", s.crash ? "small on" : "small", s.crash ? t("On the 1") : t("Off"), t("A crash cymbal on the section's first downbeat"), () =>
       edit((x) => {
         x.sections[at].crash = !x.sections[at].crash;
       })
@@ -945,7 +1024,7 @@ function sectionsView(b, d) {
     /** const ids: String[] */
     const ids = [""];
     /** const labels: String[] */
-    const labels = ["Same groove"];
+    const labels = [t("Same groove")];
     /** const why: String[] */
     const why = [""];
     const runs = metersOf(at);
@@ -954,15 +1033,15 @@ function sectionsView(b, d) {
       labels.push(grooveLabel(g));
       why.push(g.id === s.groove ? "" : misfit(g, runs));
     }
-    grooveField(b, "groove", "Groove", s.groove, ids, labels, why, "Another groove for this section only (a half-time bridge)", (v) =>
+    grooveField(b, "groove", t("Groove"), s.groove, ids, labels, why, t("Another groove for this section only (a half-time bridge)"), (v) =>
       edit((x) => {
         x.sections[at].groove = v;
       })
     );
     b.open("div", "acts", "drums-actions drums-sec-acts");
-    iconButton(b, "left", "small", "left", "Move the section earlier", () => moveSection(at, -1));
-    iconButton(b, "right", "small", "right", "Move the section later", () => moveSection(at, 1));
-    iconButton(b, "del", "small", "trash", "Remove the section", () =>
+    iconButton(b, "left", "small", "left", t("Move the section earlier"), () => moveSection(at, -1));
+    iconButton(b, "right", "small", "right", t("Move the section later"), () => moveSection(at, 1));
+    iconButton(b, "del", "small", "trash", t("Remove the section"), () =>
       edit((x) => {
         x.sections.splice(at, 1);
       })
@@ -991,24 +1070,24 @@ function moveSection(i, by) {
 function writeView(b, d) {
   b.open("section", "write", "drums-step drums-write");
   b.open("div", "opts", "drums-opts");
-  stepper(b, "start", "Starts on bar", d.start, "The bar the first section starts on", (by) =>
+  stepper(b, "start", t("Starts on bar"), d.start, t("The bar the first section starts on"), (by) =>
     edit((x) => {
       x.start = Math.min(9999, Math.max(1, x.start + by));
     })
   );
-  field(b, "ending", "Ending", d.ending, ["hit", "none"], ["Final hit", "None"], "A crash and kick on the downbeat after the last section", (v) =>
+  field(b, "ending", t("Ending"), d.ending, ["hit", "none"], [t("Final hit"), t("None")], t("A crash and kick on the downbeat after the last section"), (v) =>
     edit((x) => {
       x.ending = v;
     })
   );
   b.open("div", "var", "drums-field");
-  b.leaf("span", "l", "drums-label", "Variations");
+  b.leaf("span", "l", "drums-label", t("Variations"));
   button(
     b,
     "t",
     d.variations ? "small on" : "small",
-    d.variations ? "Every 4 bars" : "Off",
-    "A small turnaround every 4th bar (an open hat or a pickup kick)",
+    d.variations ? t("Every 4 bars") : t("Off"),
+    t("A small turnaround every 4th bar (an open hat or a pickup kick)"),
     () =>
       edit((x) => {
         x.variations = !x.variations;
@@ -1016,8 +1095,8 @@ function writeView(b, d) {
   );
   b.close();
   b.open("div", "seed", "drums-field");
-  b.leaf("span", "l", "drums-label", "Fills");
-  button(b, "t", "small", "Other fills", "Pick other fills (and other small timing differences)", () =>
+  b.leaf("span", "l", "drums-label", t("Fills"));
+  button(b, "t", "small", t("Other fills"), t("Pick other fills (and other small timing differences)"), () =>
     edit((x) => {
       x.seed = x.seed + 1;
     })
@@ -1027,12 +1106,12 @@ function writeView(b, d) {
   const written = d.written.length;
   if (d.kept.length > 0) {
     b.open("div", "kept", "drums-kept");
-    b.leaf("div", "t", "drums-label", "Edited by hand — kept as you left them");
+    b.leaf("div", "t", "drums-label", t("Edited by hand — kept as you left them"));
     for (const k of d.kept) {
       const inSong = d.written.some((w) => w.slot === k.slot);
       b.open("div", k.slot, inSong ? "drums-kept-row" : "drums-kept-row gone");
-      b.leaf("span", "n", "drums-kept-name", inSong ? k.name : `${k.name} (not in the song now)`);
-      button(b, "reset", "small", "Reset", "Give this pattern back to the drummer: the next write makes it from the groove again", () =>
+      b.leaf("span", "n", "drums-kept-name", inSong ? k.name : tf("{0} (not in the song now)", [k.name]));
+      button(b, "reset", "small", t("Reset"), t("Give this pattern back to the drummer: the next write makes it from the groove again"), () =>
         edit((x) => {
           x.kept = x.kept.filter((e) => e.slot !== k.slot);
           forgetEdits(x, (s) => s === k.slot);
@@ -1048,32 +1127,34 @@ function writeView(b, d) {
       "div",
       "others",
       "drums-status warn",
-      `The song already has other drums (track ${others.join(", ")}); they play along with these. Mute or remove them if they should not.`
+      tf("The song already has other drums (track {0}); they play along with these. Mute or remove them if they should not.", [others.join(", ")])
     );
   }
   b.leaf(
     "div",
     "status",
     "drums-status",
-    (written > 0
-      ? `Written: ${written} pattern${written === 1 ? "" : "s"}. Edit them in the piano roll as you like: writing again keeps your edits.`
-      : "Not written yet: the song plays no drums from this part until you write it.") +
-      (ownClips() > 0 ? " Where your own drum patterns play (made or taken over above), writing leaves those bars to them." : "")
+    (written === 1
+      ? t("Written: 1 pattern. Edit them in the piano roll as you like: writing again keeps your edits.")
+      : written > 0
+        ? tf("Written: {0} patterns. Edit them in the piano roll as you like: writing again keeps your edits.", [String(written)])
+        : t("Not written yet: the song plays no drums from this part until you write it.")) +
+      (ownClips() > 0 ? " " + t("Where your own drum patterns play (made or taken over above), writing leaves those bars to them.") : "")
   );
   button(
     b,
     "go",
     drums.busy ? "drums-writebtn" : "gold drums-writebtn",
-    drums.busy ? "Working…" : written > 0 ? "Write drums again" : "Write drums",
-    "Write the drum part into patterns and clips on a Drums track (Ctrl+Z undoes it)",
+    drums.busy ? t("Working…") : written > 0 ? t("Write drums again") : t("Write drums"),
+    t("Write the drum part into patterns and clips on a Drums track (Ctrl+Z undoes it)"),
     () => writeDrums()
   );
   button(
     b,
     "remove",
     "small drums-remove",
-    "Remove drum part",
-    "Forget the drum part and go back to the grooves (the written patterns stay in the song; Ctrl+Z undoes it)",
+    t("Remove drum part"),
+    t("Forget the drum part and go back to the grooves (the written patterns stay in the song; Ctrl+Z undoes it)"),
     () => removePart()
   );
   b.close();
@@ -1158,17 +1239,17 @@ const EBONY_KEYS = [
   { role: "shaker", kind: "shaker", pitch: 60 },
 ];
 const PLAY_EDIT = [
-  { key: "a", value: "A · verse" },
-  { key: "b", value: "B · chorus" },
-  { key: "hits", value: "Hits" },
-  { key: "count", value: "Count-in" },
-  { key: "rest", value: "Rest" },
+  { key: "a", value: tk("A · verse") },
+  { key: "b", value: tk("B · chorus") },
+  { key: "hits", value: tk("Hits") },
+  { key: "count", value: tk("Count-in") },
+  { key: "rest", value: tk("Rest") },
 ];
 const FILL_EDIT = [
-  { key: "none", value: "None" },
-  { key: "beat", value: "1 beat" },
-  { key: "half", value: "2 beats" },
-  { key: "bar", value: "1 bar" },
+  { key: "none", value: tk("None") },
+  { key: "beat", value: tk("1 beat") },
+  { key: "half", value: tk("2 beats") },
+  { key: "bar", value: tk("1 bar") },
 ];
 
 /** function gmKey(role: String) => Number */
@@ -1400,7 +1481,7 @@ function remake(change, done) {
     })
     .catch((e) => {
       drums.pending = drums.pending - 1;
-      toast("Could not make the drum pattern", errText(e), "error");
+      toast(t("Could not make the drum pattern"), errText(e), "error");
       invalidate();
       return false;
     });
@@ -1468,7 +1549,7 @@ function newPattern(gid, bar) {
   if (!g) return undefined;
   const run = meterAt(bar);
   if (!fits(g, run)) {
-    toast("That groove does not fit here", `${g.name} is in ${g.meter}, but bar ${bar + 1} is in ${run.label}.`, "error");
+    toast(t("That groove does not fit here"), tf("{0} is in {1}, but bar {2} is in {3}.", [g.name, g.meter, String(bar + 1), run.label]), "error");
     return undefined;
   }
   const span = newSpan(bar);
@@ -1519,8 +1600,13 @@ function newPattern(gid, bar) {
       drums.focus = pointedBar().key;
       const name = patternOf(id)?.name ?? id;
       toast(
-        "Drum pattern made",
-        `${name} plays bars ${bar + 1}–${bar + span} on the ${state.project.playlist.tracks[drumTrack()]?.name ?? "Drums"} track. Ctrl+Z undoes it.`,
+        t("Drum pattern made"),
+        tf("{0} plays bars {1}–{2} on the {3} track. Ctrl+Z undoes it.", [
+          name,
+          String(bar + 1),
+          String(bar + span),
+          state.project.playlist.tracks[drumTrack()]?.name ?? t("Drums"),
+        ]),
         "info"
       );
     }
@@ -1697,7 +1783,7 @@ function duplicateTarget() {
     if (c) c.pattern = id;
   });
   drums.target = id;
-  toast("Pattern copied", `${pat.name} ${n} plays here now; change it without changing the others.`, "info");
+  toast(t("Pattern copied"), tf("{0} plays here now; change it without changing the others.", [`${pat.name} ${n}`]), "info");
 }
 
 /** Remove the target pattern and its clips. */
@@ -1712,7 +1798,7 @@ function removeTarget() {
   });
   state.clipSelection = [];
   drums.target = "";
-  toast("Drum pattern removed", `${pat.name} and its clips are gone. Ctrl+Z brings them back.`, "info");
+  toast(t("Drum pattern removed"), tf("{0} and its clips are gone. Ctrl+Z brings them back.", [pat.name]), "info");
 }
 
 /** Play the target on its own, looping (again: stop). */
@@ -1816,7 +1902,7 @@ function tryGroove(gid) {
     })
     .catch((e) => {
       if (seq === drums.trySeq) stopTrying();
-      toast("Could not play the groove", errText(e), "error");
+      toast(t("Could not play the groove"), errText(e), "error");
       return false;
     });
 }
@@ -1853,8 +1939,9 @@ function tryTick(seq) {
 /** function spansText(spans: { from: Number, to: Number }[]) => String */
 function spansText(spans) {
   const shown = spans.slice(0, 3).map((s) => (s.from === s.to ? `${s.from + 1}` : `${s.from + 1}–${s.to + 1}`));
-  const more = spans.length > 3 ? ` and ${spans.length - 3} more` : "";
-  return `${spans.length === 1 && spans[0].from === spans[0].to ? "bar" : "bars"} ${shown.join(", ")}${more}`;
+  if (spans.length === 1 && spans[0].from === spans[0].to) return tf("bar {0}", [shown.join(", ")]);
+  if (spans.length > 3) return tf("bars {0} and {1} more", [shown.join(", "), String(spans.length - 3)]);
+  return tf("bars {0}", [shown.join(", ")]);
 }
 
 /** What the tab works on, and where it plays: always on top. */
@@ -1871,16 +1958,16 @@ function targetView(b) {
   for (const x of state.project.patterns) if (isDrumPattern(x)) ids.push(x.id);
   if (pat && !ids.includes(pat.id)) ids.push(pat.id);
   b.open("section", "target", "drums-target");
-  b.leaf("span", "l", "drums-label", "Drums");
+  b.leaf("span", "l", "drums-label", t("Drums"));
   b.open("label", "pick", "drums-target-pick");
-  b.attr("title", "The drum pattern this tab edits: the one at the song cursor or the selected clip, or pick one");
+  b.attr("title", t("The drum pattern this tab edits: the one at the song cursor or the selected clip, or pick one"));
   b.open("select", "s", "select");
   b.prop("value", pat ? pat.id : "");
   b.on("change", (e) => {
     drums.target = e.value;
     invalidate();
   });
-  b.leaf("option", "-", "", `No drums at bar ${here + 1}`);
+  b.leaf("option", "-", "", tf("No drums at bar {0}", [String(here + 1)]));
   b.attr("value", "");
   for (const id of ids) {
     const x = patternOf(id);
@@ -1896,41 +1983,43 @@ function targetView(b) {
     b.open("span", "where", spans.length > 0 ? "drums-where" : "drums-where none");
     b.text(
       spans.length > 0
-        ? `→ ${tname !== "" ? `${tname} track` : `track ${trackIndex(track?.track ?? trackIx(0)) + 1}`}, ${spansText(spans)}`
-        : "→ not in the song yet"
+        ? tname !== ""
+          ? tf("→ {0} track, {1}", [tname, spansText(spans)])
+          : tf("→ track {0}, {1}", [String(trackIndex(track?.track ?? trackIx(0)) + 1), spansText(spans)])
+        : t("→ not in the song yet")
     );
     b.close();
     b.leaf("span", "meter", "drums-badge", run.label);
     const kitName = pat.drums.on
       ? pat.drums.kit !== ""
         ? pat.drums.kit
-        : `${grooveOf(pat.drums.groove)?.kit ?? "Standard Kit"} (suggested)`
+        : tf("{0} (suggested)", [grooveOf(pat.drums.groove)?.kit ?? "Standard Kit"])
       : patternKit(pat);
-    b.leaf("span", "kit", "drums-badge", kitName === "Ebony" ? "Ebony drum machine" : kitName);
+    b.leaf("span", "kit", "drums-badge", kitName === "Ebony" ? t("Ebony drum machine") : kitName);
     b.open("div", "acts", "drums-actions");
     if (spans.length > 0) {
       b.open("div", "len", "drums-stepper");
-      b.attr("title", "How many bars the clip at the cursor plays (the pattern loops)");
-      iconButton(b, "dn", "small", "minus", "The clip at the cursor plays a bar less", () => stretchClip(-1));
-      b.leaf("span", "v", "drums-num", `${clipBars(pat.id)} bars`);
-      iconButton(b, "up", "small", "plus", "The clip at the cursor plays a bar more (drum clips after it make room)", () => stretchClip(1));
+      b.attr("title", t("How many bars the clip at the cursor plays (the pattern loops)"));
+      iconButton(b, "dn", "small", "minus", t("The clip at the cursor plays a bar less"), () => stretchClip(-1));
+      b.leaf("span", "v", "drums-num", tf("{0} bars", [String(clipBars(pat.id))]));
+      iconButton(b, "up", "small", "plus", t("The clip at the cursor plays a bar more (drum clips after it make room)"), () => stretchClip(1));
       b.close();
     } else {
-      button(b, "place", "small", `Place at bar ${here + 1}`, "Put this pattern in the song at the song cursor", () => placeTarget(here));
+      button(b, "place", "small", tf("Place at bar {0}", [String(here + 1)]), t("Put this pattern in the song at the song cursor"), () => placeTarget(here));
     }
     iconButton(
       b,
       "loop",
       state.playing && state.mode === "pattern" && state.pattern === pat.id ? "small on" : "small",
       state.playing && state.mode === "pattern" && state.pattern === pat.id ? "stop" : "play",
-      "Play this pattern on its own, looping",
+      t("Play this pattern on its own, looping"),
       () => loopTarget()
     );
-    iconButton(b, "dup", "small", "copy", "Copy it to play here instead: a variation to change on its own", () => duplicateTarget());
-    iconButton(b, "del", "small", "trash", "Remove this pattern and its clips", () => removeTarget());
+    iconButton(b, "dup", "small", "copy", t("Copy it to play here instead: a variation to change on its own"), () => duplicateTarget());
+    iconButton(b, "del", "small", "trash", t("Remove this pattern and its clips"), () => removeTarget());
     b.close();
   } else {
-    b.leaf("span", "where", "drums-where none", `Nothing plays drums at bar ${here + 1}. Pick a groove to make a pattern here.`);
+    b.leaf("span", "where", "drums-where none", tf("Nothing plays drums at bar {0}. Pick a groove to make a pattern here.", [String(here + 1)]));
     b.leaf("span", "meter", "drums-badge", run.label);
     b.open("div", "acts", "drums-actions");
     const first = drums.catalog.grooves.find((g) => fits(g, run));
@@ -1938,8 +2027,8 @@ function targetView(b) {
       b,
       "new",
       "small gold",
-      `+ New pattern at bar ${here + 1}`,
-      `Make a drum pattern at the song cursor${first ? ` on ${first.name} (pick another groove after)` : ""}`,
+      tf("+ New pattern at bar {0}", [String(here + 1)]),
+      first ? tf("Make a drum pattern at the song cursor on {0} (pick another groove after)", [first.name]) : t("Make a drum pattern at the song cursor"),
       () => {
         if (first) newPattern(first.id, here);
       }
@@ -1947,7 +2036,7 @@ function targetView(b) {
     b.close();
   }
   if (pat) crossingView(b, pat);
-  if (drums.pending > 0) b.leaf("span", "busy", "drums-busy", "Making…");
+  if (drums.pending > 0) b.leaf("span", "busy", "drums-busy", t("Making…"));
   b.close();
 }
 
@@ -1980,13 +2069,18 @@ function crossingView(b, pat) {
   const c = cursorClip(pat.id);
   if (!c) return undefined;
   b.open("div", "cross", "drums-cross");
-  b.leaf("span", "t", "drums-status warn", `This clip runs on into ${x.label} at bar ${x.bar + 1}, but ${pat.name} is in ${targetMeter().label}.`);
+  b.leaf(
+    "span",
+    "t",
+    "drums-status warn",
+    tf("This clip runs on into {0} at bar {1}, but {2} is in {3}.", [x.label, String(x.bar + 1), pat.name, targetMeter().label])
+  );
   button(
     b,
     "cut",
     "small gold",
-    `End it at bar ${x.bar + 1}`,
-    `Shorten the clip to end where ${x.label} starts; then pick a ${x.label} groove for the bars from ${x.bar + 1}`,
+    tf("End it at bar {0}", [String(x.bar + 1)]),
+    tf("Shorten the clip to end where {0} starts; then pick a {0} groove for the bars from {1}", [x.label, String(x.bar + 1)]),
     () => {
       const at = barStart(x.bar);
       commit(() => {
@@ -2020,9 +2114,9 @@ function libraryView(b) {
   b.open("div", "search", "drums-search");
   glyph(b, "search");
   b.leaf("input", "in", "text-input", "");
-  b.attr("placeholder", `Grooves in ${run.label}…`);
+  b.attr("placeholder", tf("Grooves in {0}…", [run.label]));
   b.attr("spellcheck", "false");
-  b.attr("aria-label", "Search the grooves");
+  b.attr("aria-label", t("Search the grooves"));
   b.prop("value", drums.query);
   b.on("input", (e) => {
     drums.query = e.value;
@@ -2036,12 +2130,12 @@ function libraryView(b) {
   });
   b.close();
   b.open("div", "list", "drums-lib-list");
-  if (drums.catalog.grooves.length === 0) b.leaf("div", "wait", "drums-sub", "Loading the grooves…");
+  if (drums.catalog.grooves.length === 0) b.leaf("div", "wait", "drums-sub", t("Loading the grooves…"));
   // The grooves that fit first, by style; the others after, greyed out.
   for (const fit of [true, false]) {
     const some = gs.filter((g) => fits(g, run) === fit);
     if (some.length === 0) continue;
-    if (!fit) b.leaf("div", "other", "drums-lib-other", `Not in ${run.label}`);
+    if (!fit) b.leaf("div", "other", "drums-lib-other", tf("Not in {0}", [run.label]));
     /** const styles: String[] */
     const styles = [];
     for (const g of some) if (!styles.includes(g.style)) styles.push(g.style);
@@ -2054,15 +2148,17 @@ function libraryView(b) {
         if (drums.trying === g.id) cls = `${cls} trying`;
         b.open("div", g.id, cls);
         const tip = fit
-          ? `${g.name}: ${g.meter}, ${g.tempo[0]}–${g.tempo[1]} BPM, suggests ${g.kit === "Ebony" ? "the drum machine" : g.kit}. Click: ${pat ? `play it in ${pat.name}` : "make a drum pattern here"}`
-          : `${g.name} is in ${g.meter}, but ${pat ? pat.name : "this bar"} is in ${run.label}`;
+          ? grooveTip(g, pat)
+          : pat
+            ? tf("{0} is in {1}, but {2} is in {3}", [g.name, g.meter, pat.name, run.label])
+            : tf("{0} is in {1}, but this bar is in {2}", [g.name, g.meter, run.label]);
         b.attr("title", tip);
         b.on("pointerenter", (e) => hint(tip));
         b.on("click", (e) => {
           if (fit) setTargetGroove(g.id);
         });
         b.open("button", "try", drums.trying === g.id ? "btn icon small ghost on" : "btn icon small ghost");
-        const tryTip = drums.trying === g.id ? "Stop" : `Hear ${g.name} first (the song is not changed)`;
+        const tryTip = drums.trying === g.id ? t("Stop") : tf("Hear {0} first (the song is not changed)", [g.name]);
         b.attr("title", tryTip);
         b.attr("aria-label", tryTip);
         b.on("click", (e) => {
@@ -2077,7 +2173,7 @@ function libraryView(b) {
       }
     }
   }
-  if (gs.length === 0 && drums.catalog.grooves.length > 0) b.leaf("div", "none", "drums-sub", `No groove matches “${drums.query.trim()}”`);
+  if (gs.length === 0 && drums.catalog.grooves.length > 0) b.leaf("div", "none", "drums-sub", tf("No groove matches “{0}”", [drums.query.trim()]));
   b.close();
   b.close();
 }
@@ -2096,7 +2192,7 @@ function segmented(b, key, label, value, choices, tip, onSet) {
     b.on("click", (e) => {
       if (c.key !== value) onSet(c.key);
     });
-    b.text(c.value);
+    b.text(t(c.value));
     b.close();
   }
   b.close();
@@ -2109,12 +2205,14 @@ function patternView(b) {
   const pat = targetPattern();
   b.open("section", "pattern", "drums-pattern");
   if (!pat) {
-    b.leaf("div", "t", "drums-title", "A drummer for the song");
+    b.leaf("div", "t", "drums-title", t("A drummer for the song"));
     b.leaf(
       "div",
       "sub",
       "drums-sub",
-      "Put the song cursor where the drums should play (or select a clip in the playlist), then pick a groove on the left: it becomes a drum pattern there, on a Drums track. Each pattern plays A or B, a fill, a crash; copy one to vary it. To give the whole song drums in one go, open the song drummer below."
+      t(
+        "Put the song cursor where the drums should play (or select a clip in the playlist), then pick a groove on the left: it becomes a drum pattern there, on a Drums track. Each pattern plays A or B, a fill, a crash; copy one to vary it. To give the whole song drums in one go, open the song drummer below."
+      )
     );
     b.close();
     return undefined;
@@ -2131,46 +2229,48 @@ function patternView(b) {
       "span",
       "i",
       fitsTempo ? "drums-info" : "drums-info warn",
-      `${g.style} · ${g.meter} · ${g.tempo[0]}–${g.tempo[1]} BPM${fitsTempo ? "" : ` (the song is at ${Math.round(bpm)})`}`
+      fitsTempo
+        ? tf("{0} · {1} · {2}–{3} BPM", [g.style, g.meter, String(g.tempo[0]), String(g.tempo[1])])
+        : tf("{0} · {1} · {2}–{3} BPM (the song is at {4})", [g.style, g.meter, String(g.tempo[0]), String(g.tempo[1]), String(Math.round(bpm))])
     );
     b.close();
-    iconButton(b, "prev", "small", "left", "The previous groove in this time signature", () => stepTargetGroove(-1));
-    iconButton(b, "next", "small", "right", "The next groove in this time signature", () => stepTargetGroove(1));
+    iconButton(b, "prev", "small", "left", t("The previous groove in this time signature"), () => stepTargetGroove(-1));
+    iconButton(b, "next", "small", "right", t("The next groove in this time signature"), () => stepTargetGroove(1));
     b.close();
     b.open("div", "opts", "drums-opts");
     segmented(
       b,
       "play",
-      "Plays",
+      t("Plays"),
       r.play,
       PLAY_EDIT,
-      "A: the groove (verse); B: its bigger part (chorus); hits: crash and kick on each downbeat; count-in on the side stick; rest",
+      t("A: the groove (verse); B: its bigger part (chorus); hits: crash and kick on each downbeat; count-in on the side stick; rest"),
       (v) =>
         changeTarget((x, pt) => {
           x.play = v;
         })
     );
-    segmented(b, "fill", "Fill at the end", r.fill, FILL_EDIT, "A fill in the last beats of the pattern, into what comes next", (v) =>
+    segmented(b, "fill", t("Fill at the end"), r.fill, FILL_EDIT, t("A fill in the last beats of the pattern, into what comes next"), (v) =>
       changeTarget((x, pt) => {
         x.fill = v;
       })
     );
     b.open("div", "crash", "drums-field");
-    b.leaf("span", "l", "drums-label", "Crash");
-    button(b, "t", r.crash ? "small on" : "small", r.crash ? "On the 1" : "Off", "A crash cymbal on the first downbeat", () =>
+    b.leaf("span", "l", "drums-label", t("Crash"));
+    button(b, "t", r.crash ? "small on" : "small", r.crash ? t("On the 1") : t("Off"), t("A crash cymbal on the first downbeat"), () =>
       changeTarget((x, pt) => {
         x.crash = !x.crash;
       })
     );
     b.close();
     b.open("div", "turn", "drums-field");
-    b.leaf("span", "l", "drums-label", "Turnaround");
+    b.leaf("span", "l", "drums-label", t("Turnaround"));
     button(
       b,
       "t",
       r.turnaround ? "small on" : "small",
-      r.turnaround ? "Every 4 bars" : "Off",
-      "A small turnaround every 4th bar (an open hat or a pickup kick)",
+      r.turnaround ? t("Every 4 bars") : t("Off"),
+      t("A small turnaround every 4th bar (an open hat or a pickup kick)"),
       () =>
         changeTarget((x, pt) => {
           x.turnaround = !x.turnaround;
@@ -2180,7 +2280,7 @@ function patternView(b) {
     b.close();
     b.open("div", "opts2", "drums-opts");
     const bars = Math.max(1, Math.round(pat.length / g.barBeats));
-    stepper(b, "bars", "Pattern bars", bars, "Bars in the pattern (a clip longer than that loops it)", (by) =>
+    stepper(b, "bars", t("Pattern bars"), bars, t("Bars in the pattern (a clip longer than that loops it)"), (by) =>
       changeTarget((x, pt, song) => {
         const old = pt.length;
         pt.length = Math.max(1, Math.min(64, Math.round(pt.length / g.barBeats) + by)) * g.barBeats;
@@ -2196,19 +2296,19 @@ function patternView(b) {
     /** const kits: String[] */
     const kits = [""];
     /** const kitLabels: String[] */
-    const kitLabels = [`Suggested (${g.kit === "Ebony" ? "drum machine" : g.kit})`];
+    const kitLabels = [suggestedKit(g)];
     for (const k of drums.catalog.kits) {
       kits.push(k);
-      kitLabels.push(k === "Ebony" ? "Ebony drum machine" : k);
+      kitLabels.push(k === "Ebony" ? t("Ebony drum machine") : k);
     }
     field(
       b,
       "kit",
-      "Kit",
+      t("Kit"),
       r.kit,
       kits,
       kitLabels,
-      "A General MIDI kit (one channel), or the Ebony drum machine (a channel per drum); the other patterns keep their kit",
+      t("A General MIDI kit (one channel), or the Ebony drum machine (a channel per drum); the other patterns keep their kit"),
       (v) =>
         changeTarget((x, pt) => {
           x.kit = v;
@@ -2217,11 +2317,11 @@ function patternView(b) {
     field(
       b,
       "feel",
-      "Feel",
+      t("Feel"),
       r.feel,
       FEELS,
-      FEEL_LABELS,
-      "Tight: on the grid. Natural: the backbeat sits a little late, small differences. Loose: more of both.",
+      FEEL_LABELS.map((x) => t(x)),
+      t("Tight: on the grid. Natural: the backbeat sits a little late, small differences. Loose: more of both."),
       (v) =>
         changeTarget((x, pt) => {
           x.feel = v;
@@ -2232,16 +2332,16 @@ function patternView(b) {
       /** const swings: String[] */
       const swings = SWINGS.includes(sw) ? SWINGS : SWINGS.concat([sw]);
       /** const swingLabels: String[] */
-      const swingLabels = SWINGS.includes(sw) ? SWING_LABELS : SWING_LABELS.concat([`Swing ${Math.round(r.swing * 100)}%`]);
-      field(b, "swing", "Swing", sw, swings, swingLabels, "Delays the off 16th notes (the song's own swing applies on top)", (v) =>
+      const swingLabels = SWINGS.includes(sw) ? SWINGS.map(swingLabel) : SWINGS.map(swingLabel).concat([tf("Swing {0}%", [String(Math.round(r.swing * 100))])]);
+      field(b, "swing", t("Swing"), sw, swings, swingLabels, t("Delays the off 16th notes (the song's own swing applies on top)"), (v) =>
         changeTarget((x, pt) => {
           x.swing = Number(v);
         })
       );
     }
     b.open("div", "seed", "drums-field");
-    b.leaf("span", "l", "drums-label", "Variation");
-    button(b, "t", "small", "Another fill", "Pick another fill (and other small timing differences)", () =>
+    b.leaf("span", "l", "drums-label", t("Variation"));
+    button(b, "t", "small", t("Another fill"), t("Pick another fill (and other small timing differences)"), () =>
       changeTarget((x, pt) => {
         x.seed = x.seed + 1;
       })
@@ -2253,7 +2353,7 @@ function patternView(b) {
         "div",
         "edited",
         "drums-status warn",
-        "Edited by hand below: changing a setting above makes the pattern again from the groove (Ctrl+Z brings your edits back)."
+        t("Edited by hand below: changing a setting above makes the pattern again from the groove (Ctrl+Z brings your edits back).")
       );
   } else {
     const w = state.project.drums.written.find((x) => x.id === pat.id);
@@ -2263,8 +2363,10 @@ function patternView(b) {
       "sub",
       "drums-sub",
       w
-        ? "Written by the song drummer (below): edit its notes here — writing the song again keeps your edits — or pick a groove on the left to make it a pattern of its own (writing the song again then leaves its bars to it)."
-        : "Drums made elsewhere (played in, imported or drawn): edit its notes here, or pick a groove on the left to make it again from one."
+        ? t(
+            "Written by the song drummer (below): edit its notes here — writing the song again keeps your edits — or pick a groove on the left to make it a pattern of its own (writing the song again then leaves its bars to it)."
+          )
+        : t("Drums made elsewhere (played in, imported or drawn): edit its notes here, or pick a groove on the left to make it again from one.")
     );
   }
   stepGrid(b, pat, g);
@@ -2316,17 +2418,17 @@ function stepGrid(b, pat, g) {
   /** const free: String[] */
   const free = [""];
   /** const freeLabels: String[] */
-  const freeLabels = ["+ Drum…"];
+  const freeLabels = [t("+ Drum…")];
   /** const freeRows: GridRow[] */
   const freeRows = [];
   for (const e of ROLE_LABELS) {
     if (rows.some((r) => r.role.split("@")[0] === e.key)) continue;
     if (kitCh) {
-      freeRows.push({ role: e.key, label: e.value, channel: kitCh.id, pitch: gmKey(e.key) });
+      freeRows.push({ role: e.key, label: t(e.value), channel: kitCh.id, pitch: gmKey(e.key) });
     } else {
       const eb = EBONY_KEYS.find((x) => x.role === e.key);
       const c = eb ? p.channels.find((x) => x.instrument.type === "drum" && optionValue(x.instrument, "kind") === eb.kind) : undefined;
-      if (eb && c) freeRows.push({ role: `${e.key}@${c.id}`, label: e.value, channel: c.id, pitch: eb.pitch });
+      if (eb && c) freeRows.push({ role: `${e.key}@${c.id}`, label: t(e.value), channel: c.id, pitch: eb.pitch });
     }
   }
   for (const r of freeRows) {
@@ -2337,7 +2439,7 @@ function stepGrid(b, pat, g) {
   const extra = drums.extraRows.filter((r) => r.channel !== "" && !rows.some((x) => x.role === r.role) && freeRows.some((x) => x.role === r.role));
   const all = rows.concat(extra);
   b.open("div", "grid", "drums-grid drums-pattern-grid");
-  if (all.length === 0) b.leaf("div", "none", "drums-sub", pat.drums.on && pat.drums.play === "rest" ? "Rest: no notes." : "No notes yet.");
+  if (all.length === 0) b.leaf("div", "none", "drums-sub", pat.drums.on && pat.drums.play === "rest" ? t("Rest: no notes.") : t("No notes yet."));
   for (const row of all) {
     b.open("div", row.role, "drums-row");
     b.leaf("span", "r", "drums-role", row.label);
@@ -2365,7 +2467,7 @@ function stepGrid(b, pat, g) {
     b.close();
   }
   if (free.length > 1) {
-    select(b, "add", "drums-add", "", free, freeLabels, "Add a drum to this pattern", (v) => {
+    select(b, "add", "drums-add", "", free, freeLabels, t("Add a drum to this pattern"), (v) => {
       const r = freeRows.find((x) => x.role === v);
       if (r) drums.extraRows.push(r);
       invalidate();
@@ -2419,8 +2521,8 @@ function mapView(b) {
   tracks.sort((a, b) => a - b);
   b.open("section", "map", "drums-map");
   b.open("div", "head", "drums-map-head");
-  b.leaf("span", "l", "drums-label", "Song");
-  b.leaf("span", "s", "drums-sub", dc.length > 0 ? "Click a clip to edit its pattern, or anywhere to move the song cursor" : "No drums in the song yet");
+  b.leaf("span", "l", "drums-label", t("Song"));
+  b.leaf("span", "s", "drums-sub", dc.length > 0 ? t("Click a clip to edit its pattern, or anywhere to move the song cursor") : t("No drums in the song yet"));
   b.close();
   b.open("div", "lanes", "drums-map-lanes");
   b.on("pointerdown", (e) => {
@@ -2448,7 +2550,10 @@ function mapView(b) {
       b.style("left", pct(x.clip.start));
       b.style("width", pct(x.clip.length));
       const s = barAt(tp, x.clip.start).bar;
-      b.attr("title", `${pat ? pat.name : x.clip.pattern}: bars ${s + 1}–${barAt(tp, x.clip.start + x.clip.length - 1e-6).bar + 1}`);
+      b.attr(
+        "title",
+        tf("{0}: bars {1}–{2}", [pat ? pat.name : x.clip.pattern, String(s + 1), String(barAt(tp, x.clip.start + x.clip.length - 1e-6).bar + 1)])
+      );
       b.on("pointerdown", (e) => {
         e.stopPropagation();
         targetClip(x.i);
@@ -2478,15 +2583,22 @@ function arrangeView(b) {
     invalidate();
   });
   b.leaf("span", "c", "b-caret", drums.arrange ? "▾" : "▸");
-  b.leaf("span", "t", "drums-title", "Song drummer");
+  b.leaf("span", "t", "drums-title", t("Song drummer"));
   const total = d.sections.reduce((n, s) => n + s.bars, 0);
   b.leaf(
     "span",
     "s",
     "drums-sub",
     d.on
-      ? `${d.sections.length} sections, bars ${d.start}–${d.start + total - 1} · ${d.written.length > 0 ? `${d.written.length} patterns written` : "not written yet"}`
-      : "Drums for the whole song at once: sections guessed from the playlist, each playing A or B with fills and crashes"
+      ? d.written.length > 0
+        ? tf("{0} sections, bars {1}–{2} · {3} patterns written", [
+            String(d.sections.length),
+            String(d.start),
+            String(d.start + total - 1),
+            String(d.written.length),
+          ])
+        : tf("{0} sections, bars {1}–{2} · not written yet", [String(d.sections.length), String(d.start), String(d.start + total - 1)])
+      : t("Drums for the whole song at once: sections guessed from the playlist, each playing A or B with fills and crashes")
   );
   b.close();
   if (drums.arrange) {
@@ -2503,9 +2615,9 @@ function arrangeView(b) {
         "div",
         "sub",
         "drums-sub",
-        "The song drummer guesses the sections from the playlist; you choose what each plays, then write them as patterns and clips on a Drums track."
+        t("The song drummer guesses the sections from the playlist; you choose what each plays, then write them as patterns and clips on a Drums track.")
       );
-      button(b, "go", "small gold", g ? `Start on ${g.name}` : "Start", "Guess the sections from the playlist (nothing is written yet)", () => {
+      button(b, "go", "small gold", g ? tf("Start on {0}", [g.name]) : t("Start"), t("Guess the sections from the playlist (nothing is written yet)"), () => {
         if (gid !== "") startPart(gid);
       });
       b.close();
@@ -2546,7 +2658,7 @@ export function drumsPanel(b) {
 /** function drumsTools(b: Builder) => Undefined */
 export function drumsTools(b) {
   const pat = targetPattern();
-  b.leaf("span", "l", "label", pat ? `Editing ${pat.name}` : "Pick a groove to make drums at the cursor");
+  b.leaf("span", "l", "label", pat ? tf("Editing {0}", [pat.name]) : t("Pick a groove to make drums at the cursor"));
 }
 
 /** Forget the drum part; the patterns it wrote stay in the song. */

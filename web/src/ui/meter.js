@@ -6,6 +6,7 @@
 import { listenWindow } from "#platform";
 import { state, commit, invalidate, hint } from "../store.js";
 import { meterMap } from "../model.js";
+import { t, tf } from "../i18n.js";
 
 /** The time signatures offered. */
 export const METERS = ["2/4", "3/4", "4/4", "5/4", "6/4", "7/4", "3/8", "5/8", "6/8", "7/8", "9/8", "12/8"];
@@ -53,16 +54,15 @@ export function removeMeter(bar) {
 /** The Time LCD: the song's time signature, picked from a list. */
 /** function meterLcd(b: Builder) => Undefined */
 export function meterLcd(b) {
-  const t = state.project.transport;
-  const now = meterOf(t, 0);
-  const tip = "Time signature the song starts in — right-click a bar in the playlist's ruler to change it from there";
+  const now = meterOf(state.project.transport, 0);
+  const tip = t("Time signature the song starts in — right-click a bar in the playlist's ruler to change it from there");
   b.open("label", "meter", "lcd timesig");
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));
-  b.leaf("span", "label", "lcd-label", "Time");
+  b.leaf("span", "label", "lcd-label", t("Time"));
   b.open("span", "value", "lcd-value");
   b.open("select", "s", "lcd-select");
-  b.attr("aria-label", "Time signature");
+  b.attr("aria-label", t("Time signature"));
   b.prop("value", now);
   b.on("change", (e) => setMeter(0, e.value));
   const choices = METERS.includes(now) ? METERS : [now].concat(METERS);
@@ -108,10 +108,10 @@ export function meterMenu(b) {
 
 /** function meterMenuBody(b: Builder) => Undefined */
 function meterMenuBody(b) {
-  const t = state.project.transport;
+  const tr = state.project.transport;
   const bar = menu.bar;
-  const now = meterOf(t, bar);
-  const changes = bar === 0 || t.meters.some((m) => m.bar === bar + 1);
+  const now = meterOf(tr, bar);
+  const changes = bar === 0 || tr.meters.some((m) => m.bar === bar + 1);
   b.leaf("div", "backdrop", "auto-backdrop", "");
   b.on("pointerdown", (e) => {
     e.preventDefault();
@@ -128,8 +128,13 @@ function meterMenuBody(b) {
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });
-  b.leaf("div", "t", "auto-menu-title", bar === 0 ? "Time signature" : `Time signature from bar ${bar + 1}`);
-  b.leaf("div", "s", "auto-menu-sub", bar === 0 ? `The song starts in ${now}` : changes ? `Changes to ${now} here` : `In ${now} here (no change)`);
+  b.leaf("div", "t", "auto-menu-title", bar === 0 ? t("Time signature") : tf("Time signature from bar {0}", [String(bar + 1)]));
+  b.leaf(
+    "div",
+    "s",
+    "auto-menu-sub",
+    bar === 0 ? tf("The song starts in {0}", [now]) : changes ? tf("Changes to {0} here", [now]) : tf("In {0} here (no change)", [now])
+  );
   b.open("div", "grid", "meter-grid");
   for (const m of METERS) {
     b.leaf("button", m, m === now ? "meter-choice on" : "meter-choice", m);
@@ -146,7 +151,7 @@ function meterMenuBody(b) {
       closeMeterMenu();
       removeMeter(bar);
     });
-    b.leaf("span", "l", "", `No change at bar ${bar + 1}`);
+    b.leaf("span", "l", "", tf("No change at bar {0}", [String(bar + 1)]));
     b.close();
   }
   b.close();
