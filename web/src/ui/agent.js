@@ -42,9 +42,7 @@ const PLUGINS = [
     id: "mixcheck",
     label: tk("panel.mixCheck"),
     icon: "meter",
-    tip: tk(
-      "agent.tab.mixcheck.title"
-    ),
+    tip: tk("agent.tab.mixcheck.title"),
   },
 ];
 
@@ -136,11 +134,7 @@ function mountTerm() {
   });
   term.push(tm);
   tm.fit();
-  tm.writeText(
-    "\x1b[38;2;227;196;122m  ✦ Rosaclef · Maestro\x1b[0m\r\n\x1b[38;2;163;151;128m  " +
-      t("agent.term.banner") +
-      "\x1b[0m\r\n\r\n"
-  );
+  tm.writeText("\x1b[38;2;227;196;122m  ✦ Rosaclef · Maestro\x1b[0m\r\n\x1b[38;2;163;151;128m  " + t("agent.term.banner") + "\x1b[0m\r\n\r\n");
   connectTerm();
 }
 
@@ -328,22 +322,8 @@ export function agentPanel(b) {
   if (showChooser) {
     b.open("div", "empty", "term-empty");
     b.leaf("h2", "h", "", t("agent.chooser.title"));
-    const intro =
-      state.backend === "local"
-        ? t(
-            "agent.chooser.intro.local"
-          )
-        : t("agent.chooser.intro.native");
-    b.leaf(
-      "p",
-      "p",
-      "",
-      agent.error !== ""
-        ? agent.error
-        : agent.exitCode >= 0
-          ? tf("agent.chooser.exited", [String(agent.exitCode)])
-          : intro
-    );
+    const intro = state.backend === "local" ? t("agent.chooser.intro.local") : t("agent.chooser.intro.native");
+    b.leaf("p", "p", "", agent.error !== "" ? agent.error : agent.exitCode >= 0 ? tf("agent.chooser.exited", [String(agent.exitCode)]) : intro);
     b.open("div", "grid", "agent-grid");
     for (const a of state.agents) {
       b.open("button", a.id, a.available ? "agent-choice" : "agent-choice na");
@@ -364,13 +344,7 @@ export function agentPanel(b) {
   for (const s of suggestions()) {
     b.leaf("span", s, "chip", s);
     b.attr("title", state.backend === "local" ? t("agent.suggest.shell.title") : t("agent.typeIntoPrompt"));
-    b.on("pointerenter", (e) =>
-      hint(
-        state.backend === "local"
-          ? tf("agent.suggest.shell.hint", [s])
-          : tf("agent.suggest.agent.hint", [s])
-      )
-    );
+    b.on("pointerenter", (e) => hint(state.backend === "local" ? tf("agent.suggest.shell.hint", [s]) : tf("agent.suggest.agent.hint", [s])));
     b.on("click", (e) => {
       typeIntoAgent(s);
     });

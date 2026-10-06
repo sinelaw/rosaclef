@@ -111,16 +111,18 @@ function exportSong() {
   exporting = true;
   toast(
     t("topbar.export.rendering.toast.title"),
-    state.backend === "local"
-      ? t("topbar.export.rendering.toast.bodyLocal")
-      : t("topbar.export.rendering.toast.bodyNative"),
+    state.backend === "local" ? t("topbar.export.rendering.toast.bodyLocal") : t("topbar.export.rendering.toast.bodyNative"),
     "info"
   );
   sendJson("/api/render", "POST", { bits: 24 })
     .then((r) => {
       exporting = false;
       const path = String(r.path);
-      toast(t("topbar.export.done.toast.title"), path + "\n" + tf("topbar.export.done.toast.body", [fmt(Number(r.duration), 1), fmt(Number(r.peakDb), 1)]), "info");
+      toast(
+        t("topbar.export.done.toast.title"),
+        path + "\n" + tf("topbar.export.done.toast.body", [fmt(Number(r.duration), 1), fmt(Number(r.peakDb), 1)]),
+        "info"
+      );
       download(String(r.url), path.split("/").pop() ?? "mixdown.wav");
       return true;
     })
@@ -141,9 +143,7 @@ function setTranspose(n) {
     });
 }
 
-const TRANSPOSE_TIP = tk(
-  "topbar.transpose.title"
-);
+const TRANSPOSE_TIP = tk("topbar.transpose.title");
 
 /** The master transpose, beside the tempo: what is written stays, what plays is shifted. */
 /** function transposeLcd(b: Builder) => Undefined */
@@ -261,14 +261,7 @@ export function topbar(b) {
     button(b, "browser", state.output === "browser" ? "on" : "", t("topbar.output.browser.label"), t("topbar.output.browser.title"), () =>
       setOutput("browser")
     );
-    button(
-      b,
-      "native",
-      state.output === "native" ? "on" : "",
-      t("topbar.output.native.label"),
-      t("topbar.output.native.title"),
-      () => setOutput("native")
-    );
+    button(b, "native", state.output === "native" ? "on" : "", t("topbar.output.native.label"), t("topbar.output.native.title"), () => setOutput("native"));
     b.close();
   }
 

@@ -284,13 +284,8 @@ function findingView(b, f, ask) {
     button(b, "back", "small ghost", t("critic.finding.unsuppress.label"), t("critic.finding.unsuppress.title"), () => setSuppressed(f.key, false));
   } else {
     if (f.fix !== "") button(b, "fix", "small gold", f.fix, tf("fix.applyOneUndo", [f.fix]), () => applyFixes([f.key], f.fix));
-    else if (state.backend !== "local")
-      button(b, "ask", "small ghost", t("agent.askMaestro"), t("critic.finding.ask.title"), () =>
-        ask(askText(f))
-      );
-    iconButton(b, "sup", "small ghost", "close", t("critic.finding.suppress.title"), () =>
-      setSuppressed(f.key, true)
-    );
+    else if (state.backend !== "local") button(b, "ask", "small ghost", t("agent.askMaestro"), t("critic.finding.ask.title"), () => ask(askText(f)));
+    iconButton(b, "sup", "small ghost", "close", t("critic.finding.suppress.title"), () => setSuppressed(f.key, true));
   }
   b.close();
   b.close();
@@ -301,15 +296,7 @@ function findingView(b, f, ask) {
 /** function rulesView(b: Builder) => Undefined */
 function rulesView(b) {
   b.open("div", "rules", "crit-rules");
-  b.leaf(
-    "p",
-    "intro",
-    "crit-intro",
-    tf(
-      "critic.rules.intro",
-      [String(view.catalog.length)]
-    )
-  );
+  b.leaf("p", "intro", "crit-intro", tf("critic.rules.intro", [String(view.catalog.length)]));
   for (const cat of CATEGORIES) {
     b.leaf("h4", `h-${cat.value}`, "crit-cat", t(cat.label));
     for (const r of view.catalog) {
@@ -372,10 +359,17 @@ export function criticPanel(b, ask) {
     b.text(tf("critic.filter.suppressed.label", [String(nSuppressed)]));
     b.close();
   }
-  iconButton(b, "checks", view.rules ? "small gold" : "small ghost", "critic", view.rules ? t("critic.checks.back.title") : t("critic.checks.choose.title"), () => {
-    view.rules = !view.rules;
-    invalidate();
-  });
+  iconButton(
+    b,
+    "checks",
+    view.rules ? "small gold" : "small ghost",
+    "critic",
+    view.rules ? t("critic.checks.back.title") : t("critic.checks.choose.title"),
+    () => {
+      view.rules = !view.rules;
+      invalidate();
+    }
+  );
   b.close();
 
   b.open("div", "scroll", "crit-scroll");

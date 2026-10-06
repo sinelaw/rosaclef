@@ -55,10 +55,7 @@ function paneDown(e, name) {
 /** function tab(b: Builder, id: String, label: String, icon: String, key: String) => Undefined */
 function tab(b, id, label, icon, key) {
   b.open("button", id, state.dock === id ? "tab on" : "tab");
-  b.attr(
-    "title",
-    workMode("dock") === "min" ? tf("shell.dock.tab.restore.title", [label, key]) : tf("shell.dock.tab.maximize.title", [label, key])
-  );
+  b.attr("title", workMode("dock") === "min" ? tf("shell.dock.tab.restore.title", [label, key]) : tf("shell.dock.tab.maximize.title", [label, key]));
   b.on("click", (e) => openDock(id));
   b.on("dblclick", (e) => {
     e.stopPropagation();
@@ -277,19 +274,15 @@ export function studio(b) {
 /** function hintBar(b: Builder) => Undefined */
 function hintBar(b) {
   b.open("footer", "hint", "hintbar");
-  b.leaf(
-    "span",
-    "h",
-    "hint",
-    state.hint !== ""
-      ? state.hint
-      : t(
-          "shell.hintbar.default"
-        )
-  );
+  b.leaf("span", "h", "hint", state.hint !== "" ? state.hint : t("shell.hintbar.default"));
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");
-  b.leaf("span", "t", "", !state.connected ? t("shell.status.offline") : state.backend === "local" ? t("shell.status.savedInBrowser") : t("shell.status.synced"));
+  b.leaf(
+    "span",
+    "t",
+    "",
+    !state.connected ? t("shell.status.offline") : state.backend === "local" ? t("shell.status.savedInBrowser") : t("shell.status.synced")
+  );
   b.close();
   b.leaf(
     "span",

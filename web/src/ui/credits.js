@@ -161,8 +161,7 @@ export function sampleCredit(b, type, preset) {
   b.leaf("b", "n", "", `${c.name} ${c.version.split(" ")[0]}`);
   b.leaf("span", "l", "", "· " + tf("credits.licenseName", [c.license]));
   b.close();
-  const tip =
-    preset === "" ? t("credits.sampleCredit.title") : tf("credits.sampleCredit.titleForPreset", [preset]);
+  const tip = preset === "" ? t("credits.sampleCredit.title") : tf("credits.sampleCredit.titleForPreset", [preset]);
   button(b, "open", "small", t("credits.sampleCredit.open.label"), tip, () => showCredits(c.id, preset));
   b.close();
 }

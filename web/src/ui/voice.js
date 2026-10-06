@@ -841,7 +841,7 @@ function settingsView(b) {
     t("term.length"),
     String(s.bars),
     ["0", "1", "2", "4", "8"],
-    [t("common.auto"), t("format.barsOne"), t("voice.settings.length.option.2"), t("voice.settings.length.option.4"), t("voice.settings.length.option.8")],
+    [t("common.auto"), t("format.barsOne"), tf("format.barsMany", ["2"]), tf("format.barsMany", ["4"]), tf("format.barsMany", ["8"])],
     t("voice.settings.length.title"),
     (v) => {
       s.bars = Math.round(Number(v));

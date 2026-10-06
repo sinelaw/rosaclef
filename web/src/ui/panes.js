@@ -327,9 +327,7 @@ export function paneControls(b, id) {
       winButton(b, "min", "minimize", tip, () => setWork(id, "min"));
     }
     if (mode === "max") {
-      const tip = pl
-        ? tf("panes.playlist.restoreShortcut.title", [key])
-        : tf("panes.dock.restoreShortcut.title", [key]);
+      const tip = pl ? tf("panes.playlist.restoreShortcut.title", [key]) : tf("panes.dock.restoreShortcut.title", [key]);
       winButton(b, "max", "restore", tip, () => setWork(id, "open"));
     } else {
       const tip = pl ? tf("panes.playlist.maximize.title", [key]) : tf("panes.dock.maximize.title", [key]);
