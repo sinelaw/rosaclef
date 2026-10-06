@@ -99,10 +99,66 @@ pub fn sound_of(project: &rosaclef_core::Project) -> Value {
     v
 }
 
+/// What makes the instruments' sound: [`sound_of`] without the mixer, the
+/// channels' volume, pan, mute and routing, and the automation lanes of
+/// those — all of which act after the instrument (the mix check's fixes
+/// change only these, but for an instrument's filter).
+pub fn instruments_of(project: &rosaclef_core::Project) -> Value {
+    let mut v = sound_of(project);
+    if let Some(m) = v.as_object_mut() {
+        m.remove("mixer");
+        if let Some(chs) = m.get_mut("channels").and_then(|c| c.as_array_mut()) {
+            for c in chs.iter_mut().filter_map(|c| c.as_object_mut()) {
+                for k in ["volume", "pan", "mute", "mixer"] {
+                    c.remove(k);
+                }
+            }
+        }
+        if let Some(lanes) = m.get_mut("automation").and_then(|a| a.as_array_mut()) {
+            lanes.retain(|l| {
+                let t = l.get("target").and_then(|t| t.as_str()).unwrap_or("");
+                let parts: Vec<&str> = t.split('/').collect();
+                !(parts[0] == "insert"
+                    || parts[0] == "channel"
+                        && parts.len() == 3
+                        && matches!(parts[2], "volume" | "pan"))
+            });
+        }
+    }
+    v
+}
+
 /// The cache key of a render.
 pub fn key(
     folder: Option<&Folder>,
     project: &rosaclef_core::Project,
+    samples: &[String],
+    segments: &[Segment],
+    preroll: f64,
+    sr: f32,
+) -> String {
+    key_of(folder, &sound_of(project), samples, segments, preroll, sr)
+}
+
+/// The key of a render's instrument outputs ([`instruments_of`]).
+pub fn dry_key(
+    folder: Option<&Folder>,
+    project: &rosaclef_core::Project,
+    samples: &[String],
+    segments: &[Segment],
+    preroll: f64,
+    sr: f32,
+) -> String {
+    let mut v = instruments_of(project);
+    if let Some(m) = v.as_object_mut() {
+        m.insert("dry".into(), Value::Bool(true));
+    }
+    key_of(folder, &v, samples, segments, preroll, sr)
+}
+
+fn key_of(
+    folder: Option<&Folder>,
+    sound: &Value,
     samples: &[String],
     segments: &[Segment],
     preroll: f64,
@@ -113,7 +169,7 @@ pub fn key(
         "{FORMAT}|{}|{sr}|{preroll}",
         env!("CARGO_PKG_VERSION")
     ));
-    h.str(&serde_json::to_string(&sound_of(project)).unwrap_or_default());
+    h.str(&serde_json::to_string(sound).unwrap_or_default());
     for s in segments {
         h.str(&format!("{}:{}", s.from, s.to));
     }
@@ -152,9 +208,58 @@ pub fn remember(key: &str, a: Arc<Analysis>) {
     }
 }
 
+// ------------------------------------------------------- instrument outputs
+
+/// The instruments' outputs of a render, per segment, per channel.
+pub type DryTakes = Vec<Vec<Arc<rosaclef_engine::DryTrack>>>;
+
+/// Memory the kept instrument outputs may hold: two renders' (the song's,
+/// and a what-if's that changed an instrument), each at most half.
+#[cfg(not(target_arch = "wasm32"))]
+pub const DRY_BYTES: usize = 512 << 20;
+#[cfg(target_arch = "wasm32")]
+pub const DRY_BYTES: usize = 128 << 20;
+
+static DRY: Mutex<Vec<(String, Arc<DryTakes>)>> = Mutex::new(Vec::new());
+
+/// The instrument outputs kept under `key`.
+pub fn dry(key: &str) -> Option<Arc<DryTakes>> {
+    let mut d = DRY.lock().unwrap_or_else(|e| e.into_inner());
+    let k = d.iter().position(|(k, _)| k == key)?;
+    // The most recently used last.
+    let e = d.remove(k);
+    let t = e.1.clone();
+    d.push(e);
+    Some(t)
+}
+
+/// How many renders' instrument outputs are kept.
+pub fn dry_count() -> usize {
+    DRY.lock().unwrap_or_else(|e| e.into_inner()).len()
+}
+
+/// Make room for a render's instrument outputs about to be recorded.
+pub fn room_for_dry() {
+    let mut d = DRY.lock().unwrap_or_else(|e| e.into_inner());
+    while d.len() >= 2 {
+        d.remove(0);
+    }
+}
+
+/// Keep a render's instrument outputs.
+pub fn keep_dry(key: &str, takes: DryTakes) {
+    let mut d = DRY.lock().unwrap_or_else(|e| e.into_inner());
+    d.retain(|(k, _)| k != key);
+    d.push((key.to_string(), Arc::new(takes)));
+    while d.len() > 2 {
+        d.remove(0);
+    }
+}
+
 /// Forget the remembered analyses (the disk keeps its own).
 pub fn forget() {
     MEMO.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    DRY.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
 /// About how much memory an analysis holds.

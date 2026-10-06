@@ -189,6 +189,109 @@ struct ChannelRt {
     shift: i32,
     /// The channel this one layers (it also plays that channel's notes).
     layer_of: Option<String>,
+    /// Its instrument's output being kept, or played again instead.
+    dry: Dry,
+}
+
+/// Frames in a [`DryTrack`]'s chunk.
+const DRY_CHUNK: usize = 1024;
+
+/// A channel's instrument output over a render (before the channel's
+/// volume and pan), kept so a later render of the same notes through a
+/// changed mixer can play it again instead of running the instrument — the
+/// mix check's fixes change only the mixer. Silent stretches take no memory.
+#[derive(Default, Debug)]
+pub struct DryTrack {
+    /// Each chunk: its left frames, then its right; `None` when silent.
+    chunks: Vec<Option<Box<[f32]>>>,
+}
+
+impl DryTrack {
+    /// Memory it holds.
+    pub fn bytes(&self) -> usize {
+        self.chunks.iter().flatten().count() * DRY_CHUNK * 2 * 4 + self.chunks.len() * 16
+    }
+
+    /// Frames `pos..pos + l.len()` into `l` and `r` (silence past its end).
+    fn read(&self, pos: usize, l: &mut [f32], r: &mut [f32]) {
+        let mut i = 0;
+        while i < l.len() {
+            let f = pos + i;
+            let off = f % DRY_CHUNK;
+            let k = (DRY_CHUNK - off).min(l.len() - i);
+            match self.chunks.get(f / DRY_CHUNK).and_then(|c| c.as_deref()) {
+                Some(c) => {
+                    l[i..i + k].copy_from_slice(&c[off..off + k]);
+                    r[i..i + k].copy_from_slice(&c[DRY_CHUNK + off..DRY_CHUNK + off + k]);
+                }
+                None => {
+                    l[i..i + k].fill(0.0);
+                    r[i..i + k].fill(0.0);
+                }
+            }
+            i += k;
+        }
+    }
+}
+
+/// A [`DryTrack`] being recorded: whole chunks go in as they fill.
+struct DryRec {
+    track: DryTrack,
+    stage: Vec<f32>,
+    fill: usize,
+}
+
+impl DryRec {
+    fn new() -> DryRec {
+        DryRec {
+            track: DryTrack::default(),
+            stage: vec![0.0; DRY_CHUNK * 2],
+            fill: 0,
+        }
+    }
+
+    fn push(&mut self, l: &[f32], r: &[f32]) {
+        let mut i = 0;
+        while i < l.len() {
+            let k = (DRY_CHUNK - self.fill).min(l.len() - i);
+            self.stage[self.fill..self.fill + k].copy_from_slice(&l[i..i + k]);
+            self.stage[DRY_CHUNK + self.fill..DRY_CHUNK + self.fill + k]
+                .copy_from_slice(&r[i..i + k]);
+            self.fill += k;
+            i += k;
+            if self.fill == DRY_CHUNK {
+                self.flush();
+            }
+        }
+    }
+
+    fn flush(&mut self) {
+        let silent = self.stage.iter().all(|x| *x == 0.0);
+        self.track.chunks.push(if silent {
+            None
+        } else {
+            Some(self.stage.clone().into_boxed_slice())
+        });
+        self.stage.fill(0.0);
+        self.fill = 0;
+    }
+
+    fn finish(mut self) -> DryTrack {
+        if self.fill > 0 {
+            self.flush();
+        }
+        self.track
+    }
+}
+
+/// What a channel does with its instrument's output.
+#[derive(Default)]
+enum Dry {
+    #[default]
+    Off,
+    Record(Box<DryRec>),
+    /// Play this track from this frame instead of the instrument.
+    Replay(Arc<DryTrack>, usize),
 }
 
 impl ChannelRt {
@@ -491,6 +594,7 @@ impl Engine {
                         peak: 0.0,
                         shift: 0,
                         layer_of: None,
+                        dry: Dry::Off,
                     }
                 }
             };
@@ -1337,6 +1441,66 @@ impl Engine {
         }
     }
 
+    /// Keep every channel's instrument output from now on (see
+    /// [`DryTrack`]); [`Engine::take_dry`] hands it over.
+    pub fn record_dry(&mut self) {
+        for ch in &mut self.channels {
+            ch.dry = Dry::Record(Box::new(DryRec::new()));
+        }
+    }
+
+    /// Memory the channels' kept outputs hold so far.
+    pub fn dry_bytes(&self) -> usize {
+        self.channels
+            .iter()
+            .map(|ch| match &ch.dry {
+                Dry::Record(r) => r.track.bytes() + r.stage.len() * 4,
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// Stop keeping the channels' outputs, dropping what was kept.
+    pub fn drop_dry(&mut self) {
+        for ch in &mut self.channels {
+            if matches!(ch.dry, Dry::Record(_)) {
+                ch.dry = Dry::Off;
+            }
+        }
+    }
+
+    /// The channels' outputs kept since [`Engine::record_dry`], in channel
+    /// order (empty when none were kept).
+    pub fn take_dry(&mut self) -> Vec<Arc<DryTrack>> {
+        if !self
+            .channels
+            .iter()
+            .all(|ch| matches!(ch.dry, Dry::Record(_)))
+        {
+            return vec![];
+        }
+        self.channels
+            .iter_mut()
+            .map(|ch| match std::mem::take(&mut ch.dry) {
+                Dry::Record(r) => Arc::new(r.finish()),
+                _ => Arc::new(DryTrack::default()),
+            })
+            .collect()
+    }
+
+    /// Play kept outputs (one per channel, in order, from their start)
+    /// instead of the instruments; false, changing nothing, when they are
+    /// not one per channel.
+    pub fn replay_dry(&mut self, tracks: &[Arc<DryTrack>]) -> bool {
+        if tracks.len() != self.channels.len() {
+            return false;
+        }
+        for (ch, t) in self.channels.iter_mut().zip(tracks) {
+            ch.dry = Dry::Replay(t.clone(), 0);
+        }
+        true
+    }
+
     /// A channel's last block (after its volume and pan), in project order.
     pub fn tap_channel(&self, i: usize) -> (&[f32], &[f32]) {
         let c = &self.channels[i];
@@ -1550,9 +1714,20 @@ fn clamp_insert(ix: InsertIx, project: &Project) -> InsertIx {
 fn play_channel(ch: &mut ChannelRt, n: usize) {
     ch.events.sort_by_key(|e| e.offset);
     let (bl, br) = (&mut ch.buf_l[..n], &mut ch.buf_r[..n]);
-    bl.fill(0.0);
-    br.fill(0.0);
-    ch.inst.process(&ch.events, bl, br);
+    match &mut ch.dry {
+        Dry::Replay(track, pos) => {
+            track.read(*pos, bl, br);
+            *pos += n;
+        }
+        dry => {
+            bl.fill(0.0);
+            br.fill(0.0);
+            ch.inst.process(&ch.events, bl, br);
+            if let Dry::Record(rec) = dry {
+                rec.push(bl, br);
+            }
+        }
+    }
     ch.events.clear();
     let (gl, il) = ch.gain_l.block(n);
     let (gr, ir) = ch.gain_r.block(n);

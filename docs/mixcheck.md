@@ -361,6 +361,12 @@ mostly the render: on a 40-channel project with an EQ, a compressor and a reverb
 on every insert, a 32-beat range (plus its pre-roll) takes 4.9 s, of which the
 engine's rendering is 3.5 s, the measuring 0.8 s and the report 0.3 s. More
 cores render faster; the cache answers every further question about the range.
+A change to the mixer alone (a fader, an effect, a channel's volume or pan — a
+fix applied) plays the instruments' outputs kept from the last render instead
+of running the instruments again: the demo song measures again in 8.7 s instead
+of 16.9, the same report to the last digit. The two latest renders' outputs are
+kept in memory (up to 256 MB each natively, 64 MB in the browser; silence takes
+none).
 
 ## Where it lives
 

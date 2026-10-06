@@ -302,7 +302,11 @@ pub trait EngineFactory {
 }
 
 /// Render `segments` (each after `preroll` beats of pre-roll) and measure
-/// every tap.
+/// every tap. The instruments' outputs are played from `replay` when given
+/// (a render of the same notes, the mixer changed); otherwise, while `keep`
+/// holds a list, they are kept there (`None` once they would take more than
+/// half of [`super::cache::DRY_BYTES`]).
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     project: &Project,
     timeline: &Timeline,
@@ -310,6 +314,8 @@ pub fn run(
     preroll: f64,
     sr: f32,
     factory: &mut dyn EngineFactory,
+    replay: Option<&super::cache::DryTakes>,
+    keep: &mut Option<super::cache::DryTakes>,
     mut progress: impl FnMut(f64),
 ) -> Analysis {
     let nch = project.channels.len();
@@ -389,6 +395,12 @@ pub fn run(
         engine.seek_span(span, beat);
         engine.play();
         engine.chase_notes();
+        let replaying =
+            replay.is_some_and(|takes| takes.get(si).is_some_and(|t| engine.replay_dry(t)));
+        if !replaying && keep.is_some() {
+            engine.record_dry();
+        }
+        let kept: usize = keep.iter().flatten().flatten().map(|t| t.bytes()).sum();
         engine.set_crew(true);
         for m in &mut meters {
             m.restart(sr);
@@ -459,6 +471,10 @@ pub fn run(
             if filled == CHUNK {
                 measure(&mut meters, &chunks, filled, &shape);
                 filled = 0;
+                if keep.is_some() && kept + engine.dry_bytes() > super::cache::DRY_BYTES / 2 {
+                    engine.drop_dry();
+                    *keep = None;
+                }
             }
             let beats = (perf - start).max(0.0);
             progress((done_beats + beats) / total.max(1e-9));
@@ -467,6 +483,14 @@ pub fn run(
             measure(&mut meters, &chunks, filled, &shape);
         }
         engine.set_crew(false);
+        if let Some(k) = keep.as_mut() {
+            let takes = engine.take_dry();
+            if takes.len() == project.channels.len() {
+                k.push(takes);
+            } else if !replaying {
+                *keep = None;
+            }
+        }
         // Where each finished hop and loudness block lies (at its middle).
         let nh = frame / HOP;
         let nb = frame / lblock;

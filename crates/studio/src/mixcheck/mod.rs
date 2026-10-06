@@ -162,7 +162,7 @@ pub fn measure(
     }
     let mut warnings = vec![];
     let mut decoded = vec![];
-    for path in samples {
+    for path in samples.iter().cloned() {
         match env
             .folder
             .resolve(&path)
@@ -180,11 +180,42 @@ pub fn measure(
         samples: decoded,
         warnings: vec![],
     };
+    // The instruments' outputs of a render of the same notes (the mixer
+    // changed since: a fix applied) are played again instead of the
+    // instruments; else this render's are kept for the next.
+    let dry_key = cache::dry_key(
+        Some(env.folder),
+        project,
+        &samples,
+        &segments,
+        pre,
+        o.sample_rate,
+    );
+    let replay = if o.cache { cache::dry(&dry_key) } else { None };
+    let mut keep = if o.cache && replay.is_none() {
+        cache::room_for_dry();
+        Some(vec![])
+    } else {
+        None
+    };
     crate::jobs::next_render();
-    let mut a = analyze::run(project, &t, &segments, pre, o.sample_rate, &mut f, |x| {
-        crate::jobs::rendered(x);
-        (env.progress)(x)
-    });
+    let mut a = analyze::run(
+        project,
+        &t,
+        &segments,
+        pre,
+        o.sample_rate,
+        &mut f,
+        replay.as_deref(),
+        &mut keep,
+        |x| {
+            crate::jobs::rendered(x);
+            (env.progress)(x)
+        },
+    );
+    if let Some(takes) = keep.filter(|k| k.len() == segments.len()) {
+        cache::keep_dry(&dry_key, takes);
+    }
     crate::jobs::measuring();
     a.warnings.extend(warnings);
     a.warnings.extend(f.warnings);

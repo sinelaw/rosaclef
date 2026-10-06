@@ -178,6 +178,60 @@ fn a_cached_report_is_the_same() {
     );
 }
 
+/// A change to the mixer only plays the instruments' kept outputs again
+/// instead of rendering them; the report is the same as a fresh render's.
+#[test]
+fn a_mixer_change_replays_the_instruments_and_measures_the_same() {
+    let dir = scratch("dry");
+    let p: Project = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    let folder = Folder::on_disk(&dir);
+    let fonts = fonts();
+    let env = Env {
+        folder: &folder,
+        fonts: &fonts,
+        setup: &|_| {},
+        progress: &|_| {},
+        disk_cache: false,
+        any_file: true,
+    };
+    let o = Options::from_json(&json!({"range": "1:2"})).unwrap();
+    mixcheck::run(&env, &p, &o).unwrap();
+    assert!(
+        mixcheck::cache::dry_count() >= 1,
+        "the instruments' outputs are kept"
+    );
+    // The mixer changes: faders, an effect, a channel's volume and pan.
+    let mut v = serde_json::to_value(&p).unwrap();
+    v["mixer"]["inserts"][2]["volume"] = json!(0.5);
+    v["mixer"]["inserts"][3]["effects"][0]["params"]["mix"] = json!(0.6);
+    v["channels"][3]["volume"] = json!(0.4);
+    v["channels"][3]["pan"] = json!(-0.5);
+    let q: Project = serde_json::from_value(v).unwrap();
+    assert_eq!(
+        mixcheck::cache::dry_key(None, &p, &[], &[], 1.0, 48000.0),
+        mixcheck::cache::dry_key(None, &q, &[], &[], 1.0, 48000.0),
+        "the mixer is not part of what the instruments play"
+    );
+    let mut replayed = mixcheck::run(&env, &q, &o).unwrap();
+    assert!(!replayed.render.cached, "a new mix is measured");
+    let fresh_o = Options::from_json(&json!({"range": "1:2", "cache": false})).unwrap();
+    let mut fresh = mixcheck::run(&env, &q, &fresh_o).unwrap();
+    replayed.render = Default::default();
+    fresh.render = Default::default();
+    assert_eq!(
+        serde_json::to_value(&replayed).unwrap(),
+        serde_json::to_value(&fresh).unwrap()
+    );
+    // An instrument's own setting is part of it.
+    let mut w = serde_json::to_value(&p).unwrap();
+    w["channels"][1]["instrument"]["params"]["cutoff"] = json!(900);
+    let r: Project = serde_json::from_value(w).unwrap();
+    assert_ne!(
+        mixcheck::cache::dry_key(None, &p, &[], &[], 1.0, 48000.0),
+        mixcheck::cache::dry_key(None, &r, &[], &[], 1.0, 48000.0)
+    );
+}
+
 // ------------------------------------------------------------ masking
 
 #[test]
