@@ -68,11 +68,7 @@ const overload = page.locator(".mx-find", { hasText: "master overload" });
 await overload.waitFor({ timeout: 5000 });
 const detail = await overload.textContent();
 if (!detail.includes("input gain")) throw new Error(`the overload does not name the drive: ${detail}`);
-await overload.locator(".btn:has-text('Try')").click();
-await page.waitForSelector(".mx-tried", { timeout: 120000 });
-const tried = await page.textContent(".mx-tried");
-if (!tried.includes("resolved")) throw new Error(`the what-if says: ${tried}`);
-ok(`a fix can be tried without making it (${tried.trim()})`);
+if ((await page.locator(".mx-find .btn:has-text('Try')").count()) !== 0) throw new Error("a Try button is back");
 
 // Quick fix: every fix, each with a box to leave it out.
 const quick = page.locator(".mx-quick");

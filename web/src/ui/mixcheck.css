@@ -558,14 +558,9 @@
   color: var(--dim);
   font-size: 10.5px;
 }
-.mx-tried,
 .mx-expect {
   color: var(--dim);
   font-size: 10.5px;
-}
-.mx-tried {
-  color: var(--emerald);
-  white-space: pre-line;
 }
 
 /* ---------------------------------------------------------------- parts */

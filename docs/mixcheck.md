@@ -339,13 +339,13 @@ Each finding with a fix has:
   playlist, whichever is open, with the playhead there;
 - **Before / after**: from the playhead, 4 bars as the song is, a click, then
   the same 4 bars with the fix — nothing is changed;
-- **Try**: a what-if (the song is not touched), over the finding's bars and one
-  either side when it is about some bars, else over the range;
 - **Apply fix**: the change, one undo step.
 
 **Quick fix**, above the findings, does the same with every ticked fix at once
-(where two set the same thing, the higher-ranked wins): Before / after, Try
-all, Apply all. After a fix is applied, the report's other fixes still apply
+(where two set the same thing, the higher-ranked wins): Before / after, Apply
+all. Before / after is how to judge a fix before making it — it plays, it does
+not render; the numbers come from **Measure again** once it is applied (Ctrl+Z
+takes it back). After a fix is applied, the report's other fixes still apply
 without measuring again — unless they set what an applied one set, or the song
 changed some other way (then they wait for **Measure again**: they point at
 notes and devices by position).
