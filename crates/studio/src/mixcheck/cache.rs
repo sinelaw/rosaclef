@@ -184,9 +184,18 @@ pub fn store(folder: &Folder, key: &str, a: &Analysis) {
     if folder.fs.create_dir_all(&d).is_err() {
         return;
     }
+    // Renders are no source: kept out of git wherever the project lives.
+    let ignore = d.join(".gitignore");
+    if !folder.fs.exists(&ignore) {
+        let _ = folder.fs.write(&ignore, b"*\n");
+    }
     let _ = folder.fs.write(&d.join(format!("{key}.bin")), &encode(a));
     // Keep the newest few.
-    if let Ok(mut files) = folder.fs.read_dir(&d) {
+    if let Ok(files) = folder.fs.read_dir(&d) {
+        let mut files: Vec<_> = files
+            .into_iter()
+            .filter(|f| f.extension().is_some_and(|x| x == "bin"))
+            .collect();
         if files.len() > DISK {
             files.sort_by(|a, b| {
                 let m =

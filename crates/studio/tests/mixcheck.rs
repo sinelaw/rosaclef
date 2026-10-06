@@ -151,11 +151,23 @@ fn a_cached_report_is_the_same() {
         serde_json::to_value(&a).unwrap(),
         serde_json::to_value(&b).unwrap()
     );
-    // And from the disk, as a new process would find it.
-    let key_files = std::fs::read_dir(dir.join(".rosaclef/mixcheck"))
+    // And from the disk, as a new process would find it (kept out of git).
+    let cache = dir.join(".rosaclef/mixcheck");
+    let key_files = std::fs::read_dir(&cache)
         .unwrap()
+        .filter(|f| {
+            f.as_ref()
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|x| x == "bin")
+        })
         .count();
     assert_eq!(key_files, 1);
+    assert_eq!(
+        std::fs::read_to_string(cache.join(".gitignore")).unwrap(),
+        "*\n"
+    );
     mixcheck::cache::forget();
     let mut c = mixcheck::run(&env, &p, &o).unwrap();
     assert!(c.render.cached, "read back from the disk");
