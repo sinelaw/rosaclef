@@ -56,7 +56,7 @@ import { browseInstrument } from "./browser.js";
 import { toast } from "./toast.js";
 import { filmView, newFilmView } from "./film.js";
 import { trackIx, trackIndex, noteIx, noteIndex, insertIndex } from "#brands";
-import { t, tf, tk } from "../i18n.js";
+import { t, tf, tk, tx } from "../i18n.js";
 
 // ------------------------------------------------------------------ state
 
@@ -1963,7 +1963,7 @@ function rangeBar(b, v, c) {
     b.leaf("button", "repeat", "btn small ghost", t("Repeat"));
     b.attr("title", t("Repeat these bars (play them twice; set how many times under Repeats)"));
     b.on("click", (e) => repeatRange(v, c.score));
-    b.leaf("button", "ending", "btn small ghost", t("Ending"));
+    b.leaf("button", "ending", "btn small ghost", tx("score volta", "Ending"));
     b.attr("title", t("Make these bars an ending: inside a repeat they play on the passes before the last; right after it, on the last"));
     b.on("click", (e) => endingRange(v, c.score));
   }

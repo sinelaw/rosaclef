@@ -74,7 +74,7 @@ import { decodeShot, musicJson, noMove } from "../model.js";
 import { TPQ } from "../notation.js";
 import { select, iconButton, glyph, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
-import { t, tf, tk } from "../i18n.js";
+import { t, tf, tk, tx } from "../i18n.js";
 
 // ------------------------------------------------------------------ state
 
@@ -1492,7 +1492,7 @@ function filmPanel(b, fv, f) {
   b.leaf("div", "eh", "score-side-h", t("Effects"));
   effectSliders(b, fv, a.effects, (type, x) => setEffect(anim().effects, type, x));
   drawingPanel(b, fv);
-  b.leaf("div", "kh", "score-side-h", t("Keys"));
+  b.leaf("div", "kh", "score-side-h", tx("film controls", "Keys"));
   b.leaf(
     "div",
     "keys",
@@ -1741,7 +1741,7 @@ function shotPanel(b, fv, f, inp, s) {
     "",
     s.ease === "" ? "smooth" : s.ease,
     EASES,
-    [t("Smooth"), t("Linear"), t("Ease in"), t("Ease out"), t("Snap")],
+    [tx("camera move", "Smooth"), t("Linear"), t("Ease in"), t("Ease out"), tx("camera move", "Snap")],
     t("The curve of the move"),
     (val) => commit(() => (s.ease = val === "smooth" ? "" : val))
   );

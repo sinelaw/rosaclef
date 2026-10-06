@@ -1,7 +1,8 @@
 // The interface's language: every text the studio shows goes through t() (or
 // tf() when it has values in it), keyed by its English wording. The
 // translations are JSON files in web/locales/ (English text → translated
-// text); web/locales/en.json lists every text, and tools/i18n.mjs keeps it in
+// text; tx() for a text that means different things in different places);
+// web/locales/en.json lists every text, and tools/i18n.mjs keeps it in
 // step with the code (docs/i18n.md).
 
 import { loadMessages, clearMessages, message, setUiLocale, browserLanguages, loadPref, savePref } from "#platform";
@@ -29,10 +30,28 @@ const PREF = "rosaclef.language";
 /** The language shown, and the one being loaded ("" = none). */
 const lang = { code: "en", loading: "" };
 
-/** A text in the interface's language. */
+/** Joins a context to a text in a key (gettext's msgctxt separator). */
+const CTX = "\u0004";
+
+/** A text in the interface's language. A key made by tkx() shows its text when it has no translation. */
 /** function t(text: String) => String */
 export function t(text) {
-  return message(text);
+  const m = message(text);
+  if (m !== text) return m;
+  const i = text.indexOf(CTX);
+  return i < 0 ? text : text.slice(i + 1);
+}
+
+/** A text that means different things in different places ("Bass": a clef, a band of the spectrum): the context tells them apart, so each can be translated on its own. */
+/** function tx(context: String, text: String) => String */
+export function tx(context, text) {
+  return t(`${context}${CTX}${text}`);
+}
+
+/** Marks a text with a context where it is written (a table of labels): the key t() translates where it is shown. */
+/** function tkx(context: String, text: String) => String */
+export function tkx(context, text) {
+  return `${context}${CTX}${text}`;
 }
 
 /** A text with values in it, in the interface's language: {0}, {1}… stand for the values, in order. */

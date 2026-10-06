@@ -2,7 +2,8 @@
 // The studio's translations (docs/i18n.md): every text the interface shows is
 // written in English inside t("…"), tf("…", [values]) or tk("…") in web/src;
 // web/locales/en.json lists them all, and each other locale maps them to its
-// language.
+// language. A text that means different things in different places is written
+// tx("context", "…"): its key is the context and the text joined by U+0004.
 //
 //   node tools/i18n.mjs            write web/locales/en.json from the code, and
 //                                  report what each locale is missing
@@ -31,18 +32,37 @@ function jsFiles(dir) {
   return out;
 }
 
+// A literal string: "…", '…' or `…` without ${}.
+const LIT = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\$]|\\.)*`/.source;
 // t("…"), tf("…", …) and tk("…") with a literal first argument (not a method: `x.t(`).
-const CALL = /(?<![\w.$])(?:t|tf|tk)\(\s*("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\$]|\\.)*`)/g;
+const CALL = new RegExp(`(?<![\\w.$])(?:t|tf|tk)\\(\\s*(${LIT})`, "g");
+// tx("context", "…") and tkx("context", "…"): the key is the context and the text, joined by U+0004.
+const CTX_CALL = new RegExp(`(?<![\\w.$])(?:tx|tkx)\\(\\s*(${LIT})\\s*,\\s*(${LIT})`, "g");
+const CTX = "\u0004";
+
+/** The value of a string literal of the code. */
+function literal(src) {
+  return Function(`"use strict"; return (${src});`)();
+}
+
+/** The text a key shows in English: a key with a context shows the text after it. */
+export function english(key) {
+  const i = key.indexOf(CTX);
+  return i < 0 ? key : key.slice(i + 1);
+}
 
 /** The texts the code marks for translation, in order of first appearance. */
 export function extract() {
   const keys = new Map();
   for (const file of jsFiles(join(web, "src"))) {
     const src = readFileSync(file, "utf8");
-    for (const m of src.matchAll(CALL)) {
-      const text = Function(`"use strict"; return (${m[1]});`)();
-      if (text === "") continue;
-      if (!keys.has(text)) keys.set(text, relative(web, file));
+    const found = [];
+    for (const m of src.matchAll(CALL)) found.push({ at: m.index, key: literal(m[1]) });
+    for (const m of src.matchAll(CTX_CALL)) found.push({ at: m.index, key: `${literal(m[1])}${CTX}${literal(m[2])}` });
+    found.sort((a, b) => a.at - b.at);
+    for (const f of found) {
+      if (f.key === "" || keys.has(f.key)) continue;
+      keys.set(f.key, relative(web, file));
     }
   }
   return keys;
@@ -67,7 +87,7 @@ const prune = args.has("--prune");
 
 const keys = extract();
 const en = {};
-for (const k of keys.keys()) en[k] = k;
+for (const k of keys.keys()) en[k] = english(k);
 
 const problems = [];
 const enPath = join(localesDir, "en.json");

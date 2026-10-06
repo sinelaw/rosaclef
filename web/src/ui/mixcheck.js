@@ -20,10 +20,10 @@ import { openDock, setTop, setView, isCompact } from "./panes.js";
 import { revealBeat } from "./playlist.js";
 import { toast } from "./toast.js";
 import { insertIx } from "#brands";
-import { t, tf, tk } from "../i18n.js";
+import { t, tf, tk, tkx } from "../i18n.js";
 
 /** The six bands' names and ranges: t() translates them where they show. */
-const BANDS = [tk("Sub"), tk("Bass"), tk("Low mid"), tk("Mid"), tk("High mid"), tk("Air")];
+const BANDS = [tk("Sub"), tkx("spectrum band", "Bass"), tk("Low mid"), tk("Mid"), tk("High mid"), tk("Air")];
 const BAND_TIPS = [tk("under 60 Hz"), "60–250 Hz", "250–500 Hz", "500 Hz–2 kHz", "2–6 kHz", tk("over 6 kHz")];
 
 const view = {
