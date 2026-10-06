@@ -268,7 +268,7 @@ These run on lead parts: their top line, one note per onset.
 | Master fader above 0 dB | Master volume above unity | Set it to 0 dB |
 | No limiter on the master | No enabled limiter | Add a limiter with a −1 dB ceiling |
 | Limiter not last | An enabled device after the master limiter | Move the limiter to the end |
-| No true-peak headroom | A limiter ceiling above −1 dB | Set the ceiling to −1 dB |
+| No true-peak headroom | A limiter ceiling above −1.5 dB (true peaks run about half a dB over it) | Set the ceiling to −1.5 dB |
 | Over-limited master | Limiter input gain above 6 dB | Drive it 3 dB |
 | Heavy master chain | More than 4 enabled devices, or several limiters | — |
 

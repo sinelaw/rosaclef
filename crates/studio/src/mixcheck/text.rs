@@ -116,6 +116,9 @@ pub fn summary(r: &Report) -> String {
     if !dyn_line.is_empty() {
         out.push(format!("        {}", dyn_line.join(" · ")));
     }
+    for w in &r.warnings {
+        out.push(format!("note: {w}"));
+    }
     if let Some(w) = &r.what_if {
         out.push(format!(
             "what-if: {}",
@@ -226,6 +229,61 @@ pub fn summary(r: &Report) -> String {
             out.push(format!("  … {} more", n - 6));
         }
     }
+    // The parts that are fine, in one line: their level and audibility.
+    if !r.focused {
+        let ok: Vec<String> = r
+            .elements
+            .iter()
+            .filter(|e| e.verdict == "ok")
+            .map(|e| {
+                let rel = e
+                    .relative_to_mix_db
+                    .flatten()
+                    .map(|v| format!(" {v:+.1} dB"))
+                    .unwrap_or_default();
+                let aud = e
+                    .audibility
+                    .as_ref()
+                    .map(|a| format!(" {:.0}%", a.audible_fraction_pct))
+                    .unwrap_or_default();
+                format!("{}{rel}{aud}", e.name)
+            })
+            .collect();
+        if !ok.is_empty() {
+            out.push(format!("ok (vs mix, audible): {}", ok.join(", ")));
+        }
+    }
+    // By section: each part's level against the mix there.
+    if rg.by == "section" {
+        let parts: Vec<String> = r
+            .elements
+            .iter()
+            .filter(|e| !e.by_section.is_empty())
+            .map(|e| {
+                let cells: Vec<String> = e
+                    .by_section
+                    .iter()
+                    .map(|u| {
+                        let name = u
+                            .section
+                            .clone()
+                            .unwrap_or_else(|| format!("{}–{}", u.from_bar, u.to_bar));
+                        let pass = u.pass.map(|p| format!("×{p}")).unwrap_or_default();
+                        format!("{name}{pass} {:.1}", u.relative_to_mix_db)
+                    })
+                    .collect();
+                format!("  {}: {}", e.name, cells.join(", "))
+            })
+            .collect();
+        if !parts.is_empty() {
+            out.push("dB against the mix by section:".into());
+            let n = parts.len();
+            out.extend(parts.into_iter().take(8));
+            if n > 8 {
+                out.push(format!("  … {} more", n - 8));
+            }
+        }
+    }
     let rows: Vec<(String, f64)> = r
         .per_bar
         .iter()
@@ -283,6 +341,10 @@ pub fn summary(r: &Report) -> String {
     if out.len() > MAX_LINES {
         let last = out.pop().unwrap_or_default();
         out.truncate(MAX_LINES - 2);
+        // No heading left without its lines.
+        while out.last().is_some_and(|l| l.ends_with(':')) {
+            out.pop();
+        }
         out.push("… (--json has everything)".into());
         out.push(last);
     }

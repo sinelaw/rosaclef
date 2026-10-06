@@ -165,7 +165,10 @@ right before editing it, and never rewrite the whole file from memory.
   `still`) and each suggestion. Fixes name the setting at fault (a limiter's drive, an EQ boost, a fader
   above unity); the song's lead (`"lead": true`) is also `buried` when it sits 10 LU under the mix, over the
   range or only in some sections (`buriedIn` lists the bars; an automation lane holding it down there is
-  named and put back). Also `--by bar|section|8-beats`, `--focus rbass,4,master`,
+  named and put back). Every part has `bySection` (its level against the mix per section) and, where
+  it drops out (10 dB under its own level), `buriedIn` and a `part-dropout` finding naming the lane
+  that holds it down. Also `--by bar|section|8-beats` (`--by section --text`: each part's level per
+  section), `--focus rbass,4,master`,
   `--checks levels,audibility,masking,dynamics,gainreduction,spectrum,stereo`,
   `--target spotify|apple|youtube|ebu-r128|…`, `--reference samples/ref.wav` (level-matched A/B),
   `--history`, `--compare A.json B.json`, `--threshold strict|loose`, `--max-findings N`.

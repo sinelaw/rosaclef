@@ -386,7 +386,7 @@
           },
           "role": {
             "type": "string",
-            "description": "The Critic's role: drums, bass, harmony, lead, part, fx, gen, arp, sample, idle."
+            "description": "The Critic's role: drums, bass, harmony, lead (the song's lead only; another part read as a lead is melody), melody, part, fx, gen, arp, sample, idle."
           },
           "lead": {
             "type": "boolean",
@@ -508,12 +508,45 @@
               "automated"
             ]
           },
-          "buriedIn": {
+          "bySection": {
             "type": "array",
-            "description": "The lead only: the stretches (sections, or 4 bars without them; each pass apart) where it sits under the floor while the whole range's level hides it.",
+            "description": "Its level against the mix per section (per 4 bars without sections), each pass apart, where it plays 2 s or more.",
             "items": {
               "type": "object",
               "properties": {
+                "section": {
+                  "type": "string"
+                },
+                "fromBar": {
+                  "type": "integer"
+                },
+                "toBar": {
+                  "type": "integer"
+                },
+                "pass": {
+                  "type": "integer"
+                },
+                "relativeToMixDb": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "fromBar",
+                "toBar",
+                "relativeToMixDb"
+              ]
+            }
+          },
+          "buriedIn": {
+            "type": "array",
+            "description": "The stretches of bySection where it is under: the lead under its floor while the whole range's level hides it; another part 10 dB or more under its own loudest stretch and 15 dB under the mix (a dropout).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section": {
+                  "type": "string"
+                },
                 "fromBar": {
                   "type": "integer"
                 },
@@ -667,11 +700,16 @@
             "enum": [
               "master-overload",
               "true-peak",
+              "loud-master",
               "limiter-pumping",
+              "fast-limiter-release",
               "over-compression",
               "masked-lead",
               "inaudible-part",
+              "part-dropout",
+              "dominant-part",
               "low-end-buildup",
+              "boxy-lowmids",
               "harsh-highs",
               "phase-correlation",
               "section-lift",

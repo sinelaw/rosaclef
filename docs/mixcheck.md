@@ -172,6 +172,18 @@ silent parts are left out.
   `"lead": true` (one per song). A part playing under 5 % of the range (a
   release tail) gets no audibility finding. With `spectrum` checked, each part
   has `spectrumDb`: its level in the six master bands where it plays.
+- `bySection`: each part's level against the mix per section (per 4 bars
+  without sections), each pass apart, where it plays 2 s or more; `--by
+  section --text` prints it as a table. A part other than the lead that
+  falls 10 dB under its own loudest stretch (strict 8, loose 13) and 15 dB
+  under the mix drops out there: `buriedIn` lists those stretches.
+- `role` is the Critic's; one part per song is `lead`, another the Critic
+  reads as a lead is `melody`.
+- A level fix on a fader an automation lane drives moves the lane's points
+  instead (the fader does nothing while the lane plays).
+- `--text` lists the parts that are fine on one line (level against the mix,
+  audible %), and notes (`note: range: the song ends at bar 40; measured
+  38–40`) when a range was cut to fit the song.
 - A part is audible where it carries at least 15 % of its own energy above
   the masking threshold of the rest (the same at every threshold).
 - `perBar` rows measure their loudness from the windows that start inside the
@@ -211,7 +223,8 @@ silent parts are left out.
   volume lane) does nothing while the lane plays: `whatIf.overridden` names
   it, and the lane's points are what to change.
 - `target`: the delivery target's verdict (`pass`, `warn`, `fail`), the gain
-  the platform applies and why. `reference`: the recording's numbers and the
+  the platform applies and why. Spotify asks −2 dBTP of a master louder than
+  −14 LUFS (−1 otherwise); the verdict and the `true-peak` finding follow it. `reference`: the recording's numbers and the
   differences, the spectrum level-matched (the reference moved to the mix's
   loudness, so tone is compared, not loudness). Over HTTP the reference must
   be a file in the project folder (at most 512 MB); the command line takes any
@@ -236,14 +249,19 @@ unity — rather than turning everything else down. Each is a rule of the Critic
 |---|---|---|
 | `master-overload` | bars where the limiter's input peaks over +1 dBFS and it reduces 6 dB or more (strict: 0 / 3, loose: +3 / 9) — catching the odd peak is mastering, not overload | a limiter driven more than 3 dB: its drive first; then the parts carrying 15 % or more of the mix down (up to three); when none does, the rest of the drive and every fader down |
 | `true-peak` | the output's true peak over the delivery target's limit (`--target`), else −1 dBTP (strict −2, loose 0): peaks between the samples clip when converted or encoded | the limiter's ceiling down to land 0.5 dB under the limit (no limiter: the master fader) |
+| `loud-master` (info) | no `--target`, and the master louder than −10 LUFS (strict −12, loose −8): every streaming service turns it down to about −14 | the limiter's drive down to land near −12 |
 | `limiter-pumping` | the master limiter's (or bus compressor's) gain reduction swings 4 dB or more within a beat, over 3 dB a fifth of the time | a slower release (at least 60 ms for a limiter, 150 ms for a compressor); less drive, until the limiter takes 3 dB at most (a compressor: a higher threshold) |
 | `over-compression` | a master compressor or limiter takes 6 dB or more on average (strict 4, loose 9), over 3 dB at least half the time: the mix is squashed flat | down to about 3 dB of gain reduction: a compressor glues instead (ratio 2.5:1 at most, attack at least 10 ms, release 150 ms when under 100), its threshold where it takes about 3 dB and its makeup down by as much (the loudness kept); a limiter's drive down |
+| `fast-limiter-release` | the master limiter releases in under 20 ms and takes 1 dB or more: it rides the bass's waveform and distorts the lows | release 80 ms |
 | `masked-lead` | the lead is buried or inaudible, or more than 10 LU under the mix (strict 8, loose 13) over the range or in stretches (`buriedIn`; the finding names their bars). The lead is the part named like one (lead, vocal, melody, topline, solo), else the loudest the Critic reads as a lead: one per song | its balance (a masker's EQ boost over it back, boosted faders over it back to unity, the lead up), else an EQ cut on its masker where it covers it, or more level |
 | `inaudible-part` | a part is inaudible (strict: buried too), playing 5 % of the range or more; a channel volume 12 dB or more under the others' is named | the level the model says it needs — only when the model says it helps and the faders can reach it (else the finding says so); more than 12 dB only when its own fader is that far under the others' |
+| `part-dropout` | a part (not the lead) drops out (see `bySection`); warn when a volume lane holds it down there, info when its notes do (the arrangement) | the lane back up there |
+| `dominant-part` | a part (not the lead) is 60 % or more of the mix's loudness (strict 50, loose 75); warn when its faders sit 3 dB or more over unity | its faders back to unity |
 | `low-end-buildup` | a part carrying a quarter of the lows boosts them 6 dB or more with an EQ (strict 4, loose 9) in a mix whose lows lean 3 dB over (strict 2, loose 5); else for 2 bars or more, under 250 Hz is 14 dB over 500 Hz–6 kHz, or 250–500 Hz 6 dB over a balanced tilt (drum breaks aside) | that EQ's boost down to +3 dB or less; else, on the part boosting its lows or (not the bass or drums) carrying the most low end, a low-shelf cut at 150 Hz — or a bell cut at 350 Hz when the excess is in the low mids |
+| `boxy-lowmids` | 250–500 Hz within 3 dB of 500 Hz–2 kHz (strict 4, loose 1) with a part carrying a quarter of it boosting it 6 dB or more with an EQ (a bell at 200–600 Hz, a low shelf at 250 Hz or more); or, with no such boost, 250–500 Hz over 500 Hz–2 kHz (strict −1, loose +2) | that boost back to +2 dB; else a −3 dB bell at 350 Hz on the part carrying the most of it (not the bass or drums) |
 | `harsh-highs` | above 6 kHz is within 2 dB of 2–6 kHz (strict 3, loose 0) over the range: bright and piercing | a part carrying a quarter of the highs that boosts them 6 dB or more (a high shelf, or a bell at 3 kHz or above): that boost back to +2 dB; else a −3 dB high shelf at 8 kHz on the part carrying the most highs |
-| `phase-correlation` | the mix's correlation is negative or it loses 6 dB in mono; a part's correlation under −0.3 (however quiet: it vanishes in mono) | — |
-| `section-lift` | a chorus (a section named chorus, drop, hook or refrain) less than 1 LU (strict 0.5, loose 2) louder than the verses' average | a master volume lane holding it 1.5 dB or more down: back up there, and on (3 dB at most) until the chorus clears the verses; else none (the arrangement has to lift it) |
+| `phase-correlation` | the mix's correlation is negative or it loses 6 dB in mono; a part's correlation under −0.3 (however quiet: it vanishes in mono) | — (the mixer has no polarity switch); the finding names the cause: its insert's stereo effects, else the audio files it plays (one channel out of polarity) |
+| `section-lift` | a chorus (a section named chorus, drop, hook or refrain) less than 1 LU (strict 0.5, loose 2) louder than the verses' average | a master volume lane holding it 1.5 dB or more down: back up there, and on (3 dB at most) until the chorus clears the verses; else what in the mixer holds it back, named: lanes holding parts 3 dB or more down there (put back), the master limiter taking 1.5 dB more there than in the verses (its drive down by as much), a part that is most of the mix's loudness; else none (the arrangement has to lift it) |
 | `section-loudness-flat` | three or more sections all within 1.5 LU (strict 2.5, loose 1.0) | a master volume lane: the sparse sections 1.5–3 dB down |
 
 `rosaclef critic --audio` adds them to the Critic's findings (a whole-song mix

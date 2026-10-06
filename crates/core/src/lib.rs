@@ -123,8 +123,10 @@ pub fn summary(p: &Project) -> String {
     }
     let _ = writeln!(s, "\nMixer ({} inserts):", p.mixer.inserts.len());
     for (i, ins) in p.mixer.inserts.iter().enumerate() {
-        let used =
-            i == 0 || p.channels.iter().any(|c| c.mixer.index() == i) || !ins.effects.is_empty();
+        let used = i == 0
+            || p.channels.iter().any(|c| c.mixer.index() == i)
+            || p.playlist.clips.iter().any(|c| c.mixer.index() == i)
+            || !ins.effects.is_empty();
         if !used {
             continue;
         }

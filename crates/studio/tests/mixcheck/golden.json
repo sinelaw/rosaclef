@@ -59,11 +59,11 @@
     "id": "spotify",
     "name": "Spotify",
     "lufs": -14.0,
-    "truePeakDbtp": -1.0,
+    "truePeakDbtp": -2.0,
     "status": "fail",
     "playbackGainDb": -7.1,
     "notes": [
-      "true peak -0.5 dBTP is over the -1.0 dBTP limit",
+      "true peak -0.5 dBTP is over the -2.0 dBTP limit (for a master louder than -14 LUFS)",
       "played 7.1 dB quieter (normalized to -14 LUFS): the extra loudness only costs dynamics"
     ]
   },
@@ -381,7 +381,7 @@
       "rule": "true-peak",
       "key": "true-peak|master",
       "where": "master (highest in bar 3)",
-      "detail": "the output's true peak reaches -0.5 dBTP, over Spotify's -1.0 dBTP: peaks between the samples clip when the song is converted or encoded. The limiter holds sample peaks to -1.0 dB; the peaks between samples go over it.",
+      "detail": "the output's true peak reaches -0.5 dBTP, over Spotify's -2.0 dBTP: peaks between the samples clip when the song is converted or encoded. The limiter holds sample peaks to -1.0 dB; the peaks between samples go over it.",
       "element": "insert:0/Master",
       "fromBar": 2,
       "toBar": 3,
@@ -390,10 +390,10 @@
         {
           "op": "add",
           "path": "/mixer/inserts/0/effects/1/params/ceiling",
-          "value": -2.0
+          "value": -3.0
         }
       ],
-      "fixLabel": "the limiter's ceiling -1.0 → -2.0 dB"
+      "fixLabel": "the limiter's ceiling -1.0 → -3.0 dB"
     },
     {
       "severity": "warn",
@@ -442,6 +442,31 @@
         }
       ],
       "fixLabel": "Lead sits 10.2 dB under the mix: Kick's faders back to unity (1.6 dB down), and Lead up 5.5 dB brings it to -4.9 dB"
+    },
+    {
+      "severity": "warn",
+      "rule": "boxy-lowmids",
+      "key": "boxy-lowmids|master",
+      "where": "bars 2–3",
+      "detail": "250–500 Hz is +3.0 dB against 500 Hz–2 kHz (a balanced mix keeps it 3 dB or more under): boxy, cardboard-like. At 250–500 Hz: Pad 67%, Kick 32%.",
+      "fromBar": 2,
+      "toBar": 3,
+      "fromBeat": 4.0,
+      "fix": [
+        {
+          "op": "add",
+          "path": "/mixer/inserts/4/effects/-",
+          "value": {
+            "type": "eq",
+            "params": {
+              "mid": -3.0,
+              "midFreq": 350.0,
+              "midQ": 1.0
+            }
+          }
+        }
+      ],
+      "fixLabel": "a new EQ on insert:4/Pad: a 3.0 dB bell cut at 350 Hz"
     }
   ],
   "history": {

@@ -61,6 +61,16 @@ impl Threshold {
             Threshold::Loose => -13.0,
         }
     }
+
+    /// How far (dB) a part falls under its own loudest stretch before it
+    /// drops out there.
+    pub fn dropout_db(self) -> f64 {
+        match self {
+            Threshold::Strict => 8.0,
+            Threshold::Normal => 10.0,
+            Threshold::Loose => 13.0,
+        }
+    }
 }
 
 /// The most findings a report lists.

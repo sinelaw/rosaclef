@@ -232,8 +232,14 @@ pub struct ElementOut {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spectrum_db: Option<Vec<f64>>,
     pub level: LevelOut,
-    /// The lead only: the stretches (sections, or 4 bars) where it sits
-    /// under the floor, when the whole range's level hides them.
+    /// Its level against the mix per section (per 4 bars without
+    /// sections), each pass apart: where it plays 2 s or more.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub by_section: Vec<UnderMix>,
+    /// The stretches of `bySection` where it is under: the lead under its
+    /// floor when the whole range's level hides it; another part playing
+    /// 10 dB or more under its own level in its loudest stretch, and 15 dB
+    /// under the mix (a dropout).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub buried_in: Vec<UnderMix>,
     /// inaudible | buried | ok | dominant | overloading
@@ -245,6 +251,8 @@ pub struct ElementOut {
 #[derive(Serialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct UnderMix {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
     pub from_bar: u32,
     pub to_bar: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -538,31 +546,41 @@ struct Under {
     share: f64,
 }
 
-/// A part's level against the mix per section (per 4 bars without
-/// sections: phrases), each pass apart: the stretches under `floor`, merged.
-fn under_mix(
+/// A stretch (a section, or 4 bars) and pass: its blocks where the part
+/// plays, the part's energy there and the mix's.
+struct Stretch {
+    key: (i64, u32),
+    blocks: Vec<usize>,
+    part: f64,
+    mix: f64,
+}
+
+impl Stretch {
+    /// Its level against the mix (dB).
+    fn rel(&self) -> f64 {
+        dsp::db(self.part / self.mix)
+    }
+    /// Its own level (dB, K-weighted mean square).
+    fn own(&self) -> f64 {
+        dsp::db(self.part / self.blocks.len().max(1) as f64)
+    }
+}
+
+/// A part's stretches (2 s of it or more), and how many blocks it plays in.
+fn stretches_of(
     mix: &Mix,
     t: &Timeline,
     sections: &[timeline::Section],
     e: &Element,
     blocks: &[usize],
-    floor: f64,
-) -> Option<Under> {
+) -> (Vec<Stretch>, usize) {
     let a = mix.a;
     let own = |b: usize| -> f64 { e.units.iter().map(|u| mix.unit_kms(*u, b)).sum() };
     let loudest = blocks.iter().map(|b| own(*b)).fold(0.0, f64::max);
-    if loudest <= 0.0 {
-        return None;
-    }
-    // A stretch and pass: its blocks where the part plays, the part's
-    // energy there and the mix's.
-    struct Stretch {
-        key: (i64, u32),
-        blocks: Vec<usize>,
-        part: f64,
-        mix: f64,
-    }
     let mut groups: Vec<Stretch> = vec![];
+    if loudest <= 0.0 {
+        return (groups, 0);
+    }
     let mut playing = 0usize;
     for &b in blocks {
         let x = own(b);
@@ -594,33 +612,52 @@ fn under_mix(
         }
     }
     // At least 2 s of it in a stretch to judge it.
-    let under: Vec<&Stretch> = groups
-        .iter()
-        .filter(|g| g.blocks.len() >= 20 && g.mix > 0.0 && dsp::db(g.part / g.mix) < floor)
-        .collect();
+    groups.retain(|g| g.blocks.len() >= 20 && g.mix > 0.0 && g.part > 0.0);
+    (groups, playing)
+}
+
+/// A stretch for the report: its bars, pass and section.
+fn stretch_out(mix: &Mix, t: &Timeline, sections: &[timeline::Section], g: &Stretch) -> UnderMix {
+    let bar = |b: usize| t.bar_of(mix.a.lblocks[b].beat);
+    UnderMix {
+        section: usize::try_from(g.key.0)
+            .ok()
+            .and_then(|i| sections.get(i))
+            .map(|s| s.name.clone()),
+        from_bar: bar(g.blocks[0]),
+        to_bar: bar(*g.blocks.last().unwrap_or(&g.blocks[0])),
+        pass: (g.key.1 > 1).then_some(g.key.1),
+        relative_to_mix_db: r1(g.rel()),
+    }
+}
+
+/// The stretches of a part that are `under`, merged.
+fn under_mix(
+    mix: &Mix,
+    t: &Timeline,
+    sections: &[timeline::Section],
+    groups: &[Stretch],
+    playing: usize,
+    under: &dyn Fn(&Stretch) -> bool,
+) -> Option<Under> {
+    let under: Vec<&Stretch> = groups.iter().filter(|g| under(g)).collect();
     if under.is_empty() || playing == 0 {
         return None;
     }
-    let bar = |b: usize| t.bar_of(a.lblocks[b].beat);
     let mut stretches: Vec<UnderMix> = vec![];
     for g in &under {
-        let (from, to) = (
-            bar(g.blocks[0]),
-            bar(*g.blocks.last().unwrap_or(&g.blocks[0])),
-        );
-        let pass = (g.key.1 > 1).then_some(g.key.1);
-        let rel = r1(dsp::db(g.part / g.mix));
+        let o = stretch_out(mix, t, sections, g);
         match stretches.last_mut() {
-            Some(s) if s.to_bar + 1 >= from && s.pass == pass && from >= s.from_bar => {
-                s.to_bar = to;
-                s.relative_to_mix_db = s.relative_to_mix_db.min(rel);
+            Some(s)
+                if s.to_bar + 1 >= o.from_bar && s.pass == o.pass && o.from_bar >= s.from_bar =>
+            {
+                s.to_bar = o.to_bar;
+                s.relative_to_mix_db = s.relative_to_mix_db.min(o.relative_to_mix_db);
+                if s.section != o.section {
+                    s.section = None;
+                }
             }
-            _ => stretches.push(UnderMix {
-                from_bar: from,
-                to_bar: to,
-                pass,
-                relative_to_mix_db: rel,
-            }),
+            _ => stretches.push(o),
         }
     }
     let blocks: Vec<usize> = under
@@ -976,9 +1013,24 @@ pub fn build<'a>(
         let is_lead = lead.as_deref() == Some(e.id.as_str());
         // A lead under the mix only in its choruses (say) is hidden by the
         // whole range's level: it is judged stretch by stretch too.
-        let under = is_lead
-            .then(|| under_mix(&mix, t, &sections, e, &blocks, lead_floor))
-            .flatten();
+        let (groups, playing) = stretches_of(&mix, t, &sections, e, &blocks);
+        // Another part: where it drops out — its own level 10 dB or more
+        // under its loudest stretch's, and 15 dB under the mix.
+        let top = groups
+            .iter()
+            .map(|g| g.own())
+            .fold(f64::NEG_INFINITY, f64::max);
+        let drop = o.threshold.dropout_db();
+        let dropped = |g: &Stretch| g.own() < top - drop && g.rel() < -15.0;
+        let floored = |g: &Stretch| g.rel() < lead_floor;
+        let under = under_mix(
+            &mix,
+            t,
+            &sections,
+            &groups,
+            playing,
+            if is_lead { &floored } else { &dropped },
+        );
         let verdict = if want_aud && frac < inaudible_at {
             "inaudible"
         } else if want_aud && frac < buried_at {
@@ -1017,7 +1069,15 @@ pub fn build<'a>(
             } else {
                 "insert"
             },
-            role: e.channel.and_then(|c| roles.get(c).copied()),
+            // One lead per song: another part the Critic reads as a lead
+            // is a melody here.
+            role: e.channel.and_then(|c| roles.get(c).copied()).map(|r| {
+                if r == "lead" && !is_lead {
+                    "melody"
+                } else {
+                    r
+                }
+            }),
             lead: is_lead,
             insert: e.insert,
             share_of_energy_pct: pct(share),
@@ -1054,10 +1114,16 @@ pub fn build<'a>(
         if want_aud {
             out.audibility = Some(audibility_out(&mix, au, o));
         }
+        if o.has(Check::Levels) && groups.len() > 1 {
+            out.by_section = groups
+                .iter()
+                .map(|g| stretch_out(&mix, t, &sections, g))
+                .collect();
+        }
         // The stretches tell what the whole range's level hides.
         if let Some(u) = under
             .as_ref()
-            .filter(|_| !rel.is_some_and(|r| r < lead_floor))
+            .filter(|_| !(is_lead && rel.is_some_and(|r| r < lead_floor)))
         {
             out.buried_in = u.stretches.clone();
         }
@@ -1142,6 +1208,7 @@ pub fn build<'a>(
         r.history = Some(history(&mix, t, &blocks, &hops, &master_lims));
     }
     r.warnings = a.warnings.clone();
+    r.warnings.extend(res.note.clone());
     r.render.preroll_beats = r1(a.preroll);
     r.render.sample_rate = a.sr as f64;
     let ctx = Context {

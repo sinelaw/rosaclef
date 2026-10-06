@@ -693,6 +693,14 @@ fn every_planted_fault_is_found_and_the_fixes_converge() {
             r.findings
         );
     }
+    // The widener cancels in mono: the file is named, nothing in the mixer
+    // being to blame.
+    let ph = r
+        .findings
+        .iter()
+        .find(|f| f.rule == "phase-correlation")
+        .unwrap();
+    assert!(ph.detail.contains("samples/widener.wav"), "{}", ph.detail);
     // One lead (the part named so), one finding per problem.
     assert_eq!(
         r.findings
@@ -904,12 +912,13 @@ fn a_chorus_held_under_the_verse_is_found_and_put_back() {
     v["playlist"]["clips"].as_array_mut().unwrap().push(again);
     v["score"]["marks"] = json!([{"start": 0, "end": 16, "color": "#3f8f7a", "label": "Verse 1"},
                                  {"start": 16, "end": 32, "color": "#d4af37", "label": "Chorus"}]);
-    // As loud as the verse: the arrangement has to lift it.
+    // As loud as the verse, nothing in the mixer holding it: no fix (the
+    // kick, most of this mix, is named).
     let flat: Project = serde_json::from_value(v.clone()).unwrap();
     let r = check(&dir, &flat, json!({}));
     let f = finding(&r, "section-lift");
     assert!(
-        f.fix.is_empty() && f.detail.contains("arrangement"),
+        f.fix.is_empty() && (f.detail.contains("arrangement") || f.detail.contains("Kick is")),
         "{f:?}"
     );
     assert_eq!(f.from_bar, Some(5), "{f:?}");
@@ -964,4 +973,70 @@ fn a_bright_eq_boost_is_found_and_taken_back() {
     // Without spectrum: not judged.
     let r = check(&dir, &p, json!({"checks": "levels,audibility"}));
     assert!(r.findings.iter().all(|f| f.rule != "harsh-highs"));
+}
+
+#[test]
+fn a_part_held_down_in_a_passage_is_found_and_put_back() {
+    let dir = scratch("dropout");
+    let mut v: Value = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    // The pad held 28 dB down from bar 3 by a lane on its insert.
+    v["score"]["marks"] = json!([{"start": 0, "end": 8, "color": "#3f8f7a", "label": "A"},
+                                 {"start": 8, "end": 16, "color": "#d4af37", "label": "B"}]);
+    v["automation"] = json!([{"id": "pad-ride", "name": "Pad ride", "target": "insert/4/volume",
+        "points": [{"beat": 0, "value": 1.0}, {"beat": 8, "value": 1.0},
+                   {"beat": 8, "value": 0.04}, {"beat": 16, "value": 0.04}]}]);
+    let p: Project = serde_json::from_value(v).unwrap();
+    let r = check(&dir, &p, json!({"verify": true}));
+    let pad = element(&r, "channel:pad");
+    assert!(pad.by_section.len() >= 2, "{pad:?}");
+    assert!(
+        !pad.buried_in.is_empty() && pad.buried_in.iter().all(|u| u.from_bar >= 3),
+        "{:?}",
+        pad.buried_in
+    );
+    let f = finding(&r, "part-dropout");
+    assert!(f.detail.contains("\"Pad ride\""), "{}", f.detail);
+    assert!(
+        f.fix.iter().all(|o| o["path"]
+            .as_str()
+            .unwrap()
+            .starts_with("/automation/0/points/")),
+        "{:?}",
+        f.fix
+    );
+    let ver = f.verified.as_ref().unwrap();
+    assert_eq!(ver["resolved"], json!(true), "{ver}");
+}
+
+#[test]
+fn settings_at_fault_are_named_and_taken_back() {
+    let dir = scratch("settings");
+    let mut v: Value = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    // The bass pushed +9.5 dB, the pad's EQ +12 dB at 300 Hz, the limiter
+    // releasing in 5 ms.
+    v["channels"][1]["volume"] = json!(1.5);
+    v["mixer"]["inserts"][2]["volume"] = json!(2.0);
+    v["mixer"]["inserts"][4]["effects"] =
+        json!([{"type": "eq", "params": {"mid": 12, "midFreq": 300, "midQ": 0.7}}]);
+    v["mixer"]["inserts"][0]["effects"][1]["params"]["release"] = json!(5);
+    let p: Project = serde_json::from_value(v).unwrap();
+    let r = check(&dir, &p, json!({"maxFindings": 20}));
+    let f = finding(&r, "boxy-lowmids");
+    assert_eq!(
+        sets(f, "/mixer/inserts/4/effects/0/params/mid"),
+        Some(2.0),
+        "{f:?}"
+    );
+    let f = finding(&r, "fast-limiter-release");
+    assert_eq!(
+        sets(f, "/mixer/inserts/0/effects/1/params/release"),
+        Some(80.0),
+        "{f:?}"
+    );
+    let bass = element(&r, "channel:bass");
+    if bass.verdict == "dominant" {
+        let f = finding(&r, "dominant-part");
+        assert!(f.detail.contains("+9.5 dB over unity"), "{}", f.detail);
+        assert_eq!(sets(f, "/channels/1/volume"), Some(1.0), "{f:?}");
+    }
 }

@@ -12,6 +12,19 @@ pub struct Target {
     /// Broadcast: the loudness must be met within this many LU (streaming:
     /// none; louder is turned down).
     pub tolerance: Option<f64>,
+    /// A stricter true-peak limit for masters louder than `lufs` (Spotify
+    /// asks for -2 dBTP there: its encoder overshoots more).
+    pub loud_true_peak: Option<f64>,
+}
+
+impl Target {
+    /// The true-peak limit for a master of `integrated` LUFS.
+    pub fn true_peak_for(&self, integrated: Option<f64>) -> f64 {
+        match (self.loud_true_peak, integrated) {
+            (Some(tp), Some(i)) if i > self.lufs => tp,
+            _ => self.true_peak,
+        }
+    }
 }
 
 pub const TARGETS: &[Target] = &[
@@ -21,6 +34,7 @@ pub const TARGETS: &[Target] = &[
         lufs: -14.0,
         true_peak: -1.0,
         tolerance: None,
+        loud_true_peak: Some(-2.0),
     },
     Target {
         id: "apple",
@@ -28,6 +42,7 @@ pub const TARGETS: &[Target] = &[
         lufs: -16.0,
         true_peak: -1.0,
         tolerance: None,
+        loud_true_peak: None,
     },
     Target {
         id: "youtube",
@@ -35,6 +50,7 @@ pub const TARGETS: &[Target] = &[
         lufs: -14.0,
         true_peak: -1.0,
         tolerance: None,
+        loud_true_peak: None,
     },
     Target {
         id: "amazon",
@@ -42,6 +58,7 @@ pub const TARGETS: &[Target] = &[
         lufs: -14.0,
         true_peak: -2.0,
         tolerance: None,
+        loud_true_peak: None,
     },
     Target {
         id: "tidal",
@@ -49,6 +66,7 @@ pub const TARGETS: &[Target] = &[
         lufs: -14.0,
         true_peak: -1.0,
         tolerance: None,
+        loud_true_peak: None,
     },
     Target {
         id: "ebu-r128",
@@ -56,6 +74,7 @@ pub const TARGETS: &[Target] = &[
         lufs: -23.0,
         true_peak: -1.0,
         tolerance: Some(0.5),
+        loud_true_peak: None,
     },
     Target {
         id: "atsc-a85",
@@ -63,6 +82,7 @@ pub const TARGETS: &[Target] = &[
         lufs: -24.0,
         true_peak: -2.0,
         tolerance: Some(2.0),
+        loud_true_peak: None,
     },
 ];
 
@@ -99,12 +119,19 @@ pub fn judge(t: &Target, integrated: Option<f64>, true_peak: Option<f64>) -> Ver
         }
     };
     let gain = integrated.map(|i| super::dsp::r1(t.lufs - i));
+    let limit = t.true_peak_for(integrated);
     if let Some(tp) = true_peak {
-        if tp > t.true_peak + 0.05 {
+        if tp > limit + 0.05 {
             worse(&mut status, "fail");
             notes.push(format!(
-                "true peak {:.1} dBTP is over the {:.1} dBTP limit",
-                tp, t.true_peak
+                "true peak {:.1} dBTP is over the {:.1} dBTP limit{}",
+                tp,
+                limit,
+                if limit < t.true_peak {
+                    format!(" (for a master louder than {:.0} LUFS)", t.lufs)
+                } else {
+                    String::new()
+                }
             ));
         }
     }
@@ -136,7 +163,7 @@ pub fn judge(t: &Target, integrated: Option<f64>, true_peak: Option<f64>) -> Ver
         id: t.id,
         name: t.name,
         lufs: t.lufs,
-        true_peak_dbtp: t.true_peak,
+        true_peak_dbtp: limit,
         status,
         playback_gain_db: gain,
         notes,

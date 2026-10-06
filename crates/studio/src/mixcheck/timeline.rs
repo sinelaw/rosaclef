@@ -183,6 +183,8 @@ pub struct Resolved {
     pub from_beat: f64,
     pub to_beat: f64,
     pub section: Option<String>,
+    /// What was cut to fit the song ("range: the song ends at bar 40").
+    pub note: Option<String>,
 }
 
 fn parse_pair(s: &str, what: &str) -> Result<(f64, f64), String> {
@@ -220,6 +222,7 @@ pub fn resolve(
         return Err("give one of --range, --beats or --section".into());
     }
     let mut name = None;
+    let mut note = None;
     let ranges = if let Some(r) = bars {
         let (a, b) = parse_pair(r, "range")?;
         if a < 1.0 || b < a || a.fract() != 0.0 || b.fract() != 0.0 {
@@ -231,6 +234,11 @@ pub fn resolve(
         if a > last as f64 {
             return Err(format!("range: the song has {last} bars"));
         }
+        if b > last as f64 {
+            note = Some(format!(
+                "range: the song ends at bar {last}; measured {a}–{last}"
+            ));
+        }
         let b = b.min(last as f64) as u32;
         vec![(t.bar_start(a as u32), t.bar_start(b + 1).min(end))]
     } else if let Some(r) = beats {
@@ -240,6 +248,11 @@ pub fn resolve(
         }
         if a >= end {
             return Err(format!("beats: the song ends at beat {end}"));
+        }
+        if b > end {
+            note = Some(format!(
+                "beats: the song ends at beat {end}; measured {a}–{end}"
+            ));
         }
         vec![(a, b.min(end))]
     } else if let Some(s) = section {
@@ -281,5 +294,6 @@ pub fn resolve(
         to_beat,
         ranges,
         section: name,
+        note,
     })
 }
