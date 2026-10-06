@@ -173,7 +173,11 @@ async function boot() {
   }
   const url = new URL("rosaclef-local.wasm", self.location.href);
   // Revalidate, so the back end and the audio engine come from the same deploy.
-  const { instance } = await WebAssembly.instantiate(await (await fetch(url, { cache: "no-cache" })).arrayBuffer(), {});
+  const { instance } = await WebAssembly.instantiate(await (await fetch(url, { cache: "no-cache" })).arrayBuffer(), {
+    // How far an export or a mix check has come, as it goes (the worker is
+    // busy in the call; the pages hear it now).
+    env: { rc_progress: progress },
+  });
   wasm = instance.exports;
   const r = call({ op: "boot", entries }, null);
   for (const id of r.h.wanted || []) {
@@ -185,6 +189,14 @@ async function boot() {
 }
 
 // ------------------------------------------------------------------ pages
+
+const STAGES = ["samples", "instruments", "render", "tail", "measure"];
+
+function progress(id, active, what, stage, done, render, seconds, total) {
+  // A u32 crosses as a signed i32: read it back unsigned.
+  const job = { id: id >>> 0, active: active !== 0, what: what === 1 ? "export" : "mixcheck", stage: STAGES[stage] || "measure", done, render, seconds, total };
+  for (const p of ports.values()) p.postMessage({ t: "progress", job });
+}
 
 function deliver(out) {
   for (const o of out) {

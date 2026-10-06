@@ -69,6 +69,58 @@ fn header(input: &[u8]) -> (Value, &[u8]) {
     )
 }
 
+/// How far an export or a mix check has come, told to the worker as it goes
+/// (the worker is busy in the call, so a page cannot ask): it posts it on.
+#[cfg(target_arch = "wasm32")]
+mod progress {
+    use rosaclef_studio::jobs::{self, Job};
+
+    #[link(wasm_import_module = "env")]
+    extern "C" {
+        /// `id`: the page's job id; `what`: 0 mix check, 1 export; `stage`:
+        /// 0 samples, 1 instruments,
+        /// 2 render, 3 tail, 4 measure.
+        fn rc_progress(
+            id: u32,
+            active: u32,
+            what: u32,
+            stage: u32,
+            done: f64,
+            render: u32,
+            seconds: f64,
+            total: f64,
+        );
+    }
+
+    pub fn listen() {
+        jobs::set_listener(tell);
+    }
+
+    fn tell(j: &Job) {
+        let what = u32::from(j.what == "export");
+        let stage = match j.stage.as_str() {
+            "samples" => 0,
+            "instruments" => 1,
+            "render" => 2,
+            "tail" => 3,
+            _ => 4,
+        };
+        // SAFETY: the worker provides the import; plain numbers cross.
+        unsafe {
+            rc_progress(
+                j.id,
+                u32::from(j.active),
+                what,
+                stage,
+                j.done,
+                j.render,
+                j.seconds,
+                j.total,
+            )
+        }
+    }
+}
+
 /// Build an envelope.
 pub fn envelope(h: &Value, bytes: &[u8]) -> Vec<u8> {
     let j = h.to_string();
@@ -81,6 +133,8 @@ pub fn envelope(h: &Value, bytes: &[u8]) -> Vec<u8> {
 
 impl Backend {
     pub fn new() -> Backend {
+        #[cfg(target_arch = "wasm32")]
+        progress::listen();
         Backend {
             mem: Arc::new(MemFs::new()),
             host: None,

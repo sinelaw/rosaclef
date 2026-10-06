@@ -112,7 +112,8 @@ the limiter and every compressor's gain reduction, PLR, LRA, phase correlation,
 the loudness history, the spectrum against a level-matched reference track —
 and, beyond any meter, how audible each part is under the others (a masking
 model) and who masks it. Findings come with mixer fixes (faders, EQ, dynamics
-— never the notes) to **Try** (a what-if render) or **Apply** (one undo step).
+— never the notes) to hear **Before / after** from the playhead or **Apply** (one
+undo step).
 
 The agent gets the same numbers as JSON: `rosaclef mixcheck --range 52:59
 --focus rbass` (or `POST /api/mixcheck`). See [`docs/mixcheck.md`](docs/mixcheck.md).

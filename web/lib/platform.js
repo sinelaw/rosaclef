@@ -6,7 +6,7 @@
 import { Terminal } from "../vendor/xterm/xterm.mjs";
 import { FitAddon } from "../vendor/xterm/addon-fit.mjs";
 import { WebLinksAddon } from "../vendor/xterm/addon-web-links.mjs";
-import { backend, request, localSocket, resolveUrl } from "./backend.js";
+import { backend, request, localSocket, resolveUrl, isLocal } from "./backend.js";
 
 // ------------------------------------------------------------------ events
 
@@ -174,6 +174,32 @@ export async function uploadFile(url, file) {
   const r = await request("POST", url, file);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+/** Run a long request (`kind`: "mixcheck", "render") as a job of the back
+ * end: it answers at once with the job's id (POST /api/jobs/<kind>), and the
+ * page asks how far the job has come (GET /api/jobs/<id>) until it ends.
+ * `step` hears each answer, the first with just the id; resolves with the
+ * job's result. */
+export async function runJob(kind, body, step) {
+  const { job } = await sendJson(`/api/jobs/${kind}`, "POST", body);
+  step({ id: job, active: false, what: kind, stage: "", done: 0, render: 0, seconds: 0, total: 0, state: "running" });
+  let misses = 0;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 200));
+    let j;
+    try {
+      j = await getJson(`/api/jobs/${job}`);
+      misses = 0;
+    } catch (e) {
+      // A busy server can miss an answer; one gone fails the job.
+      if (++misses >= 5) throw e;
+      continue;
+    }
+    step(j);
+    if (j.state === "done") return j.result;
+    if (j.state === "failed") throw new Error(j.error || String(j.status));
+  }
 }
 
 /** "server" or "local" (the browser-only studio), once known. */

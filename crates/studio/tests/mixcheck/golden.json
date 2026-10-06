@@ -10,18 +10,18 @@
     "threshold": "normal"
   },
   "master": {
-    "integratedLufs": -6.9,
-    "shortTermLufsMax": -6.8,
-    "momentaryLufsMax": -6.3,
-    "truePeakDbtp": -0.5,
+    "integratedLufs": -7.4,
+    "shortTermLufsMax": -7.2,
+    "momentaryLufsMax": -6.8,
+    "truePeakDbtp": -1.0,
     "samplePeakDbfs": -1.0,
-    "rmsDbfs": -8.3,
+    "rmsDbfs": -8.7,
     "preLimiterPeakDbfs": 8.0,
     "preEffectsPeakDbfs": 2.3,
     "limiterGainReductionDb": {
-      "max": 8.1,
-      "mean": 1.2,
-      "pctTimeAbove3": 5.0
+      "max": 9.0,
+      "mean": 1.5,
+      "pctTimeAbove3": 13.0
     },
     "compressorGainReductionDb": {
       "max": 6.6,
@@ -29,7 +29,7 @@
       "pctTimeAbove3": 26.0
     },
     "plrDb": 6.4,
-    "crestFactorDb": 7.3,
+    "crestFactorDb": 7.7,
     "lra": 0.7,
     "correlation": {
       "mean": 0.93,
@@ -46,12 +46,12 @@
         "air6k+"
       ],
       "db": [
-        -16.5,
-        -12.0,
-        -13.8,
-        -16.8,
-        -32.9,
-        -43.0
+        -16.9,
+        -12.6,
+        -14.1,
+        -17.1,
+        -33.4,
+        -43.9
       ]
     }
   },
@@ -61,10 +61,10 @@
     "lufs": -14.0,
     "truePeakDbtp": -2.0,
     "status": "fail",
-    "playbackGainDb": -7.1,
+    "playbackGainDb": -6.6,
     "notes": [
-      "true peak -0.5 dBTP is over the -2.0 dBTP limit (for a master louder than -14 LUFS)",
-      "played 7.1 dB quieter (normalized to -14 LUFS): the extra loudness only costs dynamics"
+      "true peak -1.0 dBTP is over the -2.0 dBTP limit (for a master louder than -14 LUFS)",
+      "played 6.6 dB quieter (normalized to -14 LUFS): the extra loudness only costs dynamics"
     ]
   },
   "perBar": [
@@ -72,25 +72,25 @@
       "bar": 2,
       "fromBeat": 4.0,
       "toBeat": 8.0,
-      "lufs": -6.7,
-      "lufsMomentaryMax": -6.3,
-      "lufsShortTermMax": -7.1,
-      "rmsDbfs": -8.2,
+      "lufs": -7.2,
+      "lufsMomentaryMax": -6.8,
+      "lufsShortTermMax": -7.5,
+      "rmsDbfs": -8.7,
       "peakDbfs": -1.0,
-      "truePeakDbtp": -0.6,
+      "truePeakDbtp": -1.0,
       "preLimiterPeakDbfs": 7.9,
-      "limiterGrMaxDb": 8.1,
+      "limiterGrMaxDb": 8.9,
       "gainReductionDb": {
         "insert:2/Bass#0": 4.8
       },
-      "correlation": 0.94,
+      "correlation": 0.93,
       "spectrumDb": [
-        -16.9,
-        -12.2,
-        -13.7,
-        -15.9,
-        -33.1,
-        -41.9
+        -17.2,
+        -12.9,
+        -14.1,
+        -16.3,
+        -33.6,
+        -42.7
       ],
       "topContributors": [
         {
@@ -111,25 +111,25 @@
       "bar": 3,
       "fromBeat": 8.0,
       "toBeat": 12.0,
-      "lufs": -6.9,
-      "lufsMomentaryMax": -6.4,
-      "lufsShortTermMax": -6.8,
-      "rmsDbfs": -8.3,
+      "lufs": -7.4,
+      "lufsMomentaryMax": -6.9,
+      "lufsShortTermMax": -7.2,
+      "rmsDbfs": -8.8,
       "peakDbfs": -1.0,
-      "truePeakDbtp": -0.5,
+      "truePeakDbtp": -1.0,
       "preLimiterPeakDbfs": 8.0,
-      "limiterGrMaxDb": 8.0,
+      "limiterGrMaxDb": 9.0,
       "gainReductionDb": {
         "insert:2/Bass#0": 5.5
       },
       "correlation": 0.92,
       "spectrumDb": [
-        -16.2,
-        -11.7,
-        -13.9,
-        -17.9,
-        -32.8,
-        -44.6
+        -16.5,
+        -12.4,
+        -14.2,
+        -18.2,
+        -33.2,
+        -45.6
       ],
       "topContributors": [
         {
@@ -153,26 +153,23 @@
       "name": "Kick",
       "kind": "channel",
       "role": "drums",
+      "anchor": "kick",
+      "rangeDb": [
+        -9.0,
+        -6.0
+      ],
       "insert": 1,
-      "rmsDbfs": -14.8,
-      "peakDbfs": -1.6,
+      "rmsDbfs": -13.3,
+      "peakDbfs": -0.1,
       "lufs": -11.9,
       "relativeToMixDb": -1.8,
       "shareOfEnergyPct": 69.0,
       "activePct": 100.0,
       "correlation": 1.0,
+      "balanceDb": 0.0,
       "audibility": {
-        "audibleFractionPct": 86.0,
-        "maskedBy": [
-          {
-            "id": "channel:bass",
-            "bandHz": [
-              20.0,
-              200.0
-            ],
-            "maskingDb": 11.9
-          }
-        ],
+        "audibleFractionPct": 95.0,
+        "maskedBy": [],
         "dominantBandHz": [
           20.0,
           300.0
@@ -198,16 +195,23 @@
       "name": "Bass",
       "kind": "channel",
       "role": "bass",
+      "anchor": "bass",
+      "rangeDb": [
+        -13.0,
+        -10.0
+      ],
       "insert": 2,
-      "rmsDbfs": -22.8,
-      "peakDbfs": -10.6,
+      "rmsDbfs": -21.5,
+      "peakDbfs": -12.1,
       "lufs": -21.5,
       "relativeToMixDb": -11.4,
       "shareOfEnergyPct": 10.0,
       "activePct": 100.0,
       "correlation": 1.0,
+      "balanceDb": 0.0,
+      "insertEffectsDb": 1.3,
       "audibility": {
-        "audibleFractionPct": 72.0,
+        "audibleFractionPct": 74.0,
         "maskedBy": [
           {
             "id": "channel:kick",
@@ -245,13 +249,16 @@
       "role": "lead",
       "lead": true,
       "insert": 3,
-      "rmsDbfs": -23.8,
-      "peakDbfs": -9.9,
+      "rmsDbfs": -23.2,
+      "peakDbfs": -9.3,
       "lufs": -20.3,
       "relativeToMixDb": -10.2,
       "shareOfEnergyPct": 7.0,
       "activePct": 100.0,
-      "correlation": 1.0,
+      "correlation": 0.6,
+      "balanceDb": 3.7,
+      "insertEffectsDb": 0.7,
+      "wetPct": 30.0,
       "audibility": {
         "audibleFractionPct": 100.0,
         "maskedBy": [],
@@ -285,8 +292,8 @@
             },
             {
               "op": "add",
-              "path": "/channels/2/volume",
-              "value": 0.942
+              "path": "/mixer/inserts/3/volume",
+              "value": 1.884
             }
           ],
           "expectedRelativeToMixDb": -4.9,
@@ -300,13 +307,14 @@
       "kind": "channel",
       "role": "harmony",
       "insert": 4,
-      "rmsDbfs": -17.9,
-      "peakDbfs": -5.5,
+      "rmsDbfs": -19.8,
+      "peakDbfs": -7.5,
       "lufs": -17.7,
       "relativeToMixDb": -7.6,
       "shareOfEnergyPct": 15.0,
       "activePct": 100.0,
       "correlation": 1.0,
+      "balanceDb": 4.3,
       "audibility": {
         "audibleFractionPct": 97.0,
         "maskedBy": [],
@@ -344,9 +352,9 @@
       "id": "insert:0/Master",
       "effect": 1,
       "type": "limiter",
-      "max": 8.1,
-      "mean": 1.2,
-      "pctTimeAbove3": 5.0
+      "max": 9.0,
+      "mean": 1.5,
+      "pctTimeAbove3": 13.0
     },
     {
       "id": "insert:2/Bass",
@@ -358,67 +366,6 @@
     }
   ],
   "findings": [
-    {
-      "severity": "warn",
-      "rule": "master-overload",
-      "key": "master-overload|master",
-      "where": "bars 2–3",
-      "detail": "pre-limiter peaks +8.0 dBFS (its input gain alone adds +6.0 dB); the limiter reduces up to 8.1 dB, above 3 dB 5% of the time. Top contributors: Kick (insert 1, fader +1.6 dB) 68%, Pad (insert 4, fader -1.9 dB) 15%, Bass (insert 2, fader +0.0 dB) 10%.",
-      "fromBar": 2,
-      "toBar": 3,
-      "fromBeat": 4.0,
-      "fix": [
-        {
-          "op": "add",
-          "path": "/mixer/inserts/0/effects/1/params/gain",
-          "value": 0.0
-        }
-      ],
-      "fixLabel": "the limiter's input gain +6.0 → +0.0 dB"
-    },
-    {
-      "severity": "warn",
-      "rule": "true-peak",
-      "key": "true-peak|master",
-      "where": "master (highest in bar 3)",
-      "detail": "the output's true peak reaches -0.5 dBTP, over Spotify's -2.0 dBTP: peaks between the samples clip when the song is converted or encoded. The limiter holds sample peaks to -1.0 dB; the peaks between samples go over it.",
-      "element": "insert:0/Master",
-      "fromBar": 2,
-      "toBar": 3,
-      "fromBeat": 4.0,
-      "fix": [
-        {
-          "op": "add",
-          "path": "/mixer/inserts/0/effects/1/params/ceiling",
-          "value": -3.0
-        }
-      ],
-      "fixLabel": "the limiter's ceiling -1.0 → -3.0 dB"
-    },
-    {
-      "severity": "warn",
-      "rule": "limiter-pumping",
-      "key": "limiter-pumping|insert:0#0",
-      "where": "master compressor (effect 0)",
-      "detail": "its gain reduction swings 4.8 dB within a beat (median), above 3 dB 26% of the time (mean 2.3 dB): the mix breathes with the beat.",
-      "element": "insert:0/Master",
-      "fromBar": 2,
-      "toBar": 3,
-      "fromBeat": 4.0,
-      "fix": [
-        {
-          "op": "add",
-          "path": "/mixer/inserts/0/effects/0/params/release",
-          "value": 300.0
-        },
-        {
-          "op": "add",
-          "path": "/mixer/inserts/0/effects/0/params/threshold",
-          "value": -12.9
-        }
-      ],
-      "fixLabel": "the compressor's release 120 → 300 ms, threshold -14.0 → -12.9 dB"
-    },
     {
       "severity": "warn",
       "rule": "masked-lead",
@@ -437,11 +384,17 @@
         },
         {
           "op": "add",
-          "path": "/channels/2/volume",
-          "value": 0.942
+          "path": "/mixer/inserts/3/volume",
+          "value": 1.884
         }
       ],
-      "fixLabel": "Lead sits 10.2 dB under the mix: Kick's faders back to unity (1.6 dB down), and Lead up 5.5 dB brings it to -4.9 dB"
+      "fixLabel": "Lead sits 10.2 dB under the mix: Kick's faders back to unity (1.6 dB down), and Lead up 5.5 dB brings it to -4.9 dB — against the mix: Kick -1.8 dB",
+      "sideEffects": [
+        {
+          "id": "channel:kick",
+          "deltaDb": -1.8
+        }
+      ]
     },
     {
       "severity": "warn",
@@ -467,6 +420,114 @@
         }
       ],
       "fixLabel": "a new EQ on insert:4/Pad: a 3.0 dB bell cut at 350 Hz"
+    },
+    {
+      "severity": "warn",
+      "rule": "master-overload",
+      "key": "master-overload|master",
+      "where": "bars 2–3",
+      "detail": "pre-limiter peaks +8.0 dBFS (its input gain alone adds +6.0 dB); the limiter reduces up to 9.0 dB, above 3 dB 13% of the time. Top contributors: Kick (insert 1, fader +1.6 dB) 68%, Pad (insert 4, fader -1.9 dB) 15%, Bass (insert 2, fader +0.0 dB) 10%.",
+      "fromBar": 2,
+      "toBar": 3,
+      "fromBeat": 4.0,
+      "fix": [
+        {
+          "op": "add",
+          "path": "/mixer/inserts/0/effects/1/params/gain",
+          "value": 0.0
+        },
+        {
+          "op": "add",
+          "path": "/mixer/inserts/1/volume",
+          "value": 1.071
+        },
+        {
+          "op": "add",
+          "path": "/mixer/inserts/4/volume",
+          "value": 0.714
+        }
+      ],
+      "fixLabel": "the limiter's input gain +6.0 → +0.0 dB, and Kick and Pad down 1.0 dB — against the mix: Bass +0.8 dB, Lead +0.8 dB",
+      "sideEffects": [
+        {
+          "id": "channel:bass",
+          "deltaDb": 0.8
+        },
+        {
+          "id": "channel:lead",
+          "deltaDb": 0.8
+        }
+      ]
+    },
+    {
+      "severity": "warn",
+      "rule": "squashed-kick",
+      "key": "squashed-kick|channel:kick",
+      "where": "Kick in bars 2–3",
+      "detail": "the master limiter takes 6.7 dB off the kick's hits on average there (up to 9.0 dB; the peak going into it +8.0 dBFS): its transients are flattened and the drums lose their punch. The ceiling is not the cause: less goes in.",
+      "element": "channel:kick",
+      "fromBar": 2,
+      "toBar": 3,
+      "fromBeat": 4.0,
+      "fix": [
+        {
+          "op": "add",
+          "path": "/mixer/inserts/0/effects/1/params/gain",
+          "value": 0.0
+        }
+      ],
+      "fixLabel": "the limiter's input gain +6.0 → +0.0 dB: about 2 dB off the kick's hits (the master that much quieter: a loudness target evens it out)"
+    },
+    {
+      "severity": "warn",
+      "rule": "limiter-pumping",
+      "key": "limiter-pumping|insert:0#0",
+      "where": "master compressor (effect 0)",
+      "detail": "its gain reduction swings 4.8 dB within a beat (median), above 3 dB 26% of the time (mean 2.3 dB): the mix breathes with the beat.",
+      "element": "insert:0/Master",
+      "fromBar": 2,
+      "toBar": 3,
+      "fromBeat": 4.0,
+      "fix": [
+        {
+          "op": "add",
+          "path": "/mixer/inserts/0/effects/0/params/release",
+          "value": 500.0
+        },
+        {
+          "op": "add",
+          "path": "/mixer/inserts/0/effects/0/params/threshold",
+          "value": -12.9
+        }
+      ],
+      "fixLabel": "the compressor's release 120 → 500 ms, threshold -14.0 → -12.9 dB"
+    },
+    {
+      "severity": "warn",
+      "rule": "true-peak",
+      "key": "true-peak|master",
+      "where": "master (highest in bar 3)",
+      "detail": "the output's true peak reaches -1.0 dBTP, over Spotify's -2.0 dBTP: peaks between the samples clip when the song is converted or encoded. The limiter takes up to 9.0 dB: driven that hard it overshoots between samples.",
+      "element": "insert:0/Master",
+      "fromBar": 2,
+      "toBar": 3,
+      "fromBeat": 4.0,
+      "fix": [
+        {
+          "op": "add",
+          "path": "/mixer/inserts/0/effects/1/params/gain",
+          "value": 0.0
+        }
+      ],
+      "fixLabel": "the limiter's input gain +6.0 → +0.0 dB first (measure again before moving the ceiling)"
+    },
+    {
+      "severity": "info",
+      "rule": "lr-balance",
+      "key": "lr-balance|master",
+      "where": "master",
+      "detail": "the mix is 1.5 dB louder on the left (to that side: Lead +3.7 dB, Pad +4.3 dB).",
+      "fix": []
     }
   ],
   "history": {
@@ -494,92 +555,92 @@
       3.8
     ],
     "momentary": [
-      -8.5,
-      -6.4,
-      -6.3,
-      -6.4,
-      -6.7,
-      -6.5,
-      -6.4,
-      -6.5,
-      -6.5,
-      -6.6,
-      -6.6,
-      -6.4,
-      -6.7,
-      -6.6,
-      -6.5,
-      -6.6,
-      -6.4,
-      -6.6,
-      -6.6,
-      -6.9
+      -9.3,
+      -7.0,
+      -6.8,
+      -6.9,
+      -7.2,
+      -7.1,
+      -7.0,
+      -7.0,
+      -6.9,
+      -7.0,
+      -7.1,
+      -7.1,
+      -7.3,
+      -7.1,
+      -7.0,
+      -7.0,
+      -6.9,
+      -7.1,
+      -7.1,
+      -7.5
     ],
     "shortTerm": [
       null,
       null,
       null,
       null,
+      -7.9,
+      -8.0,
+      -7.9,
+      -7.9,
+      -7.8,
       -7.5,
       -7.6,
-      -7.4,
-      -7.4,
+      -7.5,
+      -7.6,
+      -7.5,
       -7.3,
-      -7.1,
-      -7.1,
-      -7.0,
-      -7.0,
-      -7.0,
-      -6.8,
-      -6.8,
-      -6.8,
-      -6.8,
-      -6.8,
-      -6.8
+      -7.2,
+      -7.2,
+      -7.3,
+      -7.3,
+      -7.3
     ],
     "truePeak": [
-      -0.9,
-      -1.0,
-      -0.7,
       -1.0,
       -1.0,
-      -0.7,
-      -1.0,
-      -0.6,
       -1.0,
       -1.0,
-      -0.8,
-      -1.0,
-      -0.5,
       -1.0,
       -1.0,
-      -0.8,
       -1.0,
-      -0.6,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
       -1.0,
       -1.0
     ],
     "limiterGr": [
-      7.6,
-      4.3,
-      6.7,
-      3.2,
-      1.1,
-      6.6,
-      2.8,
-      5.1,
-      4.3,
-      0.5,
-      8.1,
-      3.6,
-      6.2,
+      8.4,
+      4.8,
+      8.4,
       3.4,
-      0.9,
-      8.0,
-      2.1,
-      5.9,
-      3.5,
-      0.4
+      1.4,
+      7.4,
+      3.0,
+      6.6,
+      4.5,
+      0.7,
+      8.9,
+      4.1,
+      7.7,
+      3.8,
+      1.2,
+      9.0,
+      2.5,
+      7.5,
+      4.0,
+      0.6
     ],
     "bars": [
       {

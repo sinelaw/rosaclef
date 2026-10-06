@@ -16,14 +16,28 @@ fn verified(v: &Value) -> String {
         .and_then(|x| x.as_array())
         .map(|a| a.iter().filter_map(|k| k.as_str()).collect())
         .unwrap_or_default();
+    let worse: Vec<&str> = v
+        .get("worse")
+        .and_then(|x| x.as_array())
+        .map(|a| a.iter().filter_map(|k| k.as_str()).collect())
+        .unwrap_or_default();
     let summary = format!(
-        "{}{}",
+        "{}{}{}{}",
         v.get("summary").and_then(|x| x.as_str()).unwrap_or(""),
         if new.is_empty() {
             String::new()
         } else {
             format!(" (new: {})", new.join(", "))
-        }
+        },
+        if worse.is_empty() {
+            String::new()
+        } else {
+            format!(" (worse: {})", worse.join(", "))
+        },
+        v.get("levelMatchDb")
+            .and_then(|x| x.as_f64())
+            .map(|d| format!("; listen to it {d:+.1} dB to compare at the same loudness"))
+            .unwrap_or_default()
     );
     match v.get("resolved").and_then(|x| x.as_bool()) {
         Some(true) => format!("resolved — {summary}"),

@@ -99,10 +99,66 @@ pub fn sound_of(project: &rosaclef_core::Project) -> Value {
     v
 }
 
+/// What makes the instruments' sound: [`sound_of`] without the mixer, the
+/// channels' volume, pan, mute and routing, and the automation lanes of
+/// those — all of which act after the instrument (the mix check's fixes
+/// change only these, but for an instrument's filter).
+pub fn instruments_of(project: &rosaclef_core::Project) -> Value {
+    let mut v = sound_of(project);
+    if let Some(m) = v.as_object_mut() {
+        m.remove("mixer");
+        if let Some(chs) = m.get_mut("channels").and_then(|c| c.as_array_mut()) {
+            for c in chs.iter_mut().filter_map(|c| c.as_object_mut()) {
+                for k in ["volume", "pan", "mute", "mixer"] {
+                    c.remove(k);
+                }
+            }
+        }
+        if let Some(lanes) = m.get_mut("automation").and_then(|a| a.as_array_mut()) {
+            lanes.retain(|l| {
+                let t = l.get("target").and_then(|t| t.as_str()).unwrap_or("");
+                let parts: Vec<&str> = t.split('/').collect();
+                !(parts[0] == "insert"
+                    || parts[0] == "channel"
+                        && parts.len() == 3
+                        && matches!(parts[2], "volume" | "pan"))
+            });
+        }
+    }
+    v
+}
+
 /// The cache key of a render.
 pub fn key(
     folder: Option<&Folder>,
     project: &rosaclef_core::Project,
+    samples: &[String],
+    segments: &[Segment],
+    preroll: f64,
+    sr: f32,
+) -> String {
+    key_of(folder, &sound_of(project), samples, segments, preroll, sr)
+}
+
+/// The key of a render's instrument outputs ([`instruments_of`]).
+pub fn dry_key(
+    folder: Option<&Folder>,
+    project: &rosaclef_core::Project,
+    samples: &[String],
+    segments: &[Segment],
+    preroll: f64,
+    sr: f32,
+) -> String {
+    let mut v = instruments_of(project);
+    if let Some(m) = v.as_object_mut() {
+        m.insert("dry".into(), Value::Bool(true));
+    }
+    key_of(folder, &v, samples, segments, preroll, sr)
+}
+
+fn key_of(
+    folder: Option<&Folder>,
+    sound: &Value,
     samples: &[String],
     segments: &[Segment],
     preroll: f64,
@@ -113,7 +169,7 @@ pub fn key(
         "{FORMAT}|{}|{sr}|{preroll}",
         env!("CARGO_PKG_VERSION")
     ));
-    h.str(&serde_json::to_string(&sound_of(project)).unwrap_or_default());
+    h.str(&serde_json::to_string(sound).unwrap_or_default());
     for s in segments {
         h.str(&format!("{}:{}", s.from, s.to));
     }
@@ -149,6 +205,223 @@ pub fn remember(key: &str, a: Arc<Analysis>) {
     // The oldest go first; the newest stays even if it alone is over.
     while m.len() > 1 && m.iter().map(|(_, a)| bytes(a)).sum::<usize>() > MEMORY_BYTES {
         m.remove(0);
+    }
+}
+
+// ------------------------------------------------------- instrument outputs
+
+/// The instruments' outputs of a render, kept on disk only — never in
+/// memory: `.rosaclef/mixcheck/dry-<key>/`, a file per segment and channel,
+/// written as the render goes and read as a later render of the same notes
+/// plays (see [`instruments_of`]). A file is the output's chunks in order:
+/// a byte, 0 for a silent chunk or 1 for one whose frames follow (left, then
+/// right; f32, little-endian). A recording counts once its render has ended
+/// (its folder renamed into place); the newest two are kept.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod dry {
+    use crate::folder::Folder;
+    use rosaclef_engine::{DryRead, DryWrite, DRY_CHUNK};
+    use std::fs::File;
+    use std::io::{BufReader, BufWriter, Read, Write};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    /// Renders' outputs kept.
+    const KEEP: usize = 2;
+
+    /// A render's instrument outputs: played from the disk when kept, else
+    /// kept there as it goes.
+    pub struct DryFiles {
+        dir: PathBuf,
+        part: PathBuf,
+        replay: bool,
+        failed: Arc<AtomicBool>,
+    }
+
+    impl DryFiles {
+        /// The outputs under `key` in `folder` (none for a folder not on
+        /// disk).
+        pub fn open(folder: &Folder, key: &str) -> Option<DryFiles> {
+            let base = super::dir(folder);
+            let dir = base.join(format!("dry-{key}"));
+            let part = base.join(format!("dry-{key}.part"));
+            let replay = dir.is_dir();
+            if replay {
+                // In use: the newest.
+                let _ = std::fs::write(dir.join("used"), b"");
+            } else {
+                let _ = std::fs::remove_dir_all(&part);
+                std::fs::create_dir_all(&part).ok()?;
+                let ignore = base.join(".gitignore");
+                if !ignore.exists() {
+                    let _ = std::fs::write(&ignore, b"*\n");
+                }
+            }
+            Some(DryFiles {
+                dir,
+                part,
+                replay,
+                failed: Arc::new(AtomicBool::new(false)),
+            })
+        }
+
+        fn file(&self, at: &std::path::Path, seg: usize, ch: usize) -> PathBuf {
+            at.join(format!("s{seg}-c{ch}.bin"))
+        }
+
+        /// The recording's end: kept when every write went through, and the
+        /// oldest let go.
+        pub fn finish(self) {
+            if self.replay {
+                return;
+            }
+            if self.failed.load(Ordering::Relaxed)
+                || std::fs::rename(&self.part, &self.dir).is_err()
+            {
+                let _ = std::fs::remove_dir_all(&self.part);
+                return;
+            }
+            let _ = std::fs::write(self.dir.join("used"), b"");
+            let Some(base) = self.dir.parent() else {
+                return;
+            };
+            let Ok(entries) = std::fs::read_dir(base) else {
+                return;
+            };
+            let mut kept: Vec<(f64, PathBuf)> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.is_dir()
+                        && p.file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| n.starts_with("dry-") && !n.ends_with(".part"))
+                })
+                .map(|p| {
+                    let t = std::fs::metadata(p.join("used"))
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map_or(0.0, |d| d.as_secs_f64());
+                    (t, p)
+                })
+                .collect();
+            kept.sort_by(|a, b| b.0.total_cmp(&a.0));
+            for (_, p) in kept.iter().skip(KEEP) {
+                let _ = std::fs::remove_dir_all(p);
+            }
+        }
+    }
+
+    impl super::super::analyze::DryStore for DryFiles {
+        fn replay(&mut self, seg: usize, channels: usize) -> Option<Vec<Box<dyn DryRead>>> {
+            if !self.replay {
+                return None;
+            }
+            (0..channels)
+                .map(|c| {
+                    File::open(self.file(&self.dir, seg, c)).ok().map(|f| {
+                        Box::new(FileIn {
+                            r: Some(BufReader::with_capacity(1 << 16, f)),
+                            next: 0,
+                            bytes: vec![0; DRY_CHUNK * 8],
+                        }) as Box<dyn DryRead>
+                    })
+                })
+                .collect()
+        }
+
+        fn record(&mut self, seg: usize, channels: usize) -> Option<Vec<Box<dyn DryWrite>>> {
+            if self.replay {
+                return None;
+            }
+            let outs: Option<Vec<Box<dyn DryWrite>>> = (0..channels)
+                .map(|c| {
+                    File::create(self.file(&self.part, seg, c)).ok().map(|f| {
+                        Box::new(FileOut {
+                            w: Some(BufWriter::with_capacity(1 << 16, f)),
+                            bytes: Vec::with_capacity(DRY_CHUNK * 8 + 1),
+                            failed: self.failed.clone(),
+                        }) as Box<dyn DryWrite>
+                    })
+                })
+                .collect();
+            if outs.is_none() {
+                self.failed.store(true, Ordering::Relaxed);
+            }
+            outs
+        }
+    }
+
+    struct FileOut {
+        w: Option<BufWriter<File>>,
+        bytes: Vec<u8>,
+        failed: Arc<AtomicBool>,
+    }
+
+    impl DryWrite for FileOut {
+        fn chunk(&mut self, frames: Option<&[f32]>) {
+            let Some(w) = &mut self.w else { return };
+            self.bytes.clear();
+            match frames {
+                None => self.bytes.push(0),
+                Some(x) => {
+                    self.bytes.push(1);
+                    for v in x {
+                        self.bytes.extend_from_slice(&v.to_le_bytes());
+                    }
+                }
+            }
+            if w.write_all(&self.bytes).is_err() {
+                self.w = None;
+                self.failed.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+
+    impl Drop for FileOut {
+        fn drop(&mut self) {
+            if let Some(w) = &mut self.w {
+                if w.flush().is_err() {
+                    self.failed.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    }
+
+    struct FileIn {
+        r: Option<BufReader<File>>,
+        /// The next chunk in the file.
+        next: usize,
+        bytes: Vec<u8>,
+    }
+
+    impl DryRead for FileIn {
+        fn chunk(&mut self, i: usize, out: &mut [f32]) -> bool {
+            let Some(r) = &mut self.r else { return false };
+            while self.next <= i {
+                let mut flag = [0u8];
+                if r.read_exact(&mut flag).is_err()
+                    || flag[0] == 1 && r.read_exact(&mut self.bytes).is_err()
+                {
+                    self.r = None;
+                    return false;
+                }
+                let here = self.next;
+                self.next += 1;
+                if here == i {
+                    if flag[0] == 0 {
+                        return false;
+                    }
+                    for (k, b) in self.bytes.chunks_exact(4).enumerate() {
+                        out[k] = f32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+                    }
+                    return true;
+                }
+            }
+            false
+        }
     }
 }
 

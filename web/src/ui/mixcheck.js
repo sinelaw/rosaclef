@@ -12,12 +12,15 @@
 // (against a level-matched reference), then the mix's parts with their
 // audibility, and the findings ranked with their fixes.
 
-import { getJson, sendJson, fmt } from "#platform";
-import { state, commit, invalidate, fixSelection, selectChannel, selectInsert, hint } from "../store.js";
-import { encodeProject, decodeProject } from "../model.js";
+import { getJson, sendJson, fmt, audioPost, now } from "#platform";
+import { state, commit, invalidate, fixSelection, selectChannel, selectInsert, hint, hooks, engineJson, currentPattern } from "../store.js";
+import { encodeProject, decodeProject, meterMap } from "../model.js";
+import { startAudio, seek, livePosition } from "../audio.js";
 import { button, select, glyph } from "./widgets.js";
-import { openDock, setTop, setView, isCompact } from "./panes.js";
+import { openDock, setTop, setView, isCompact, layoutState } from "./panes.js";
 import { revealBeat } from "./playlist.js";
+import { revealScoreBeat } from "./score.js";
+import { followJob, jobLabel, jobFraction } from "./progress.js";
 import { toast } from "./toast.js";
 import { insertIx } from "#brands";
 import { t, tf, tk } from "../i18n.js";
@@ -51,19 +54,63 @@ const view = {
   /** A sample in the project to compare with ("" = none). */
   reference: "",
   busy: false,
+  /** The job id of the measuring under way (its progress). */
+  job: 0,
   error: "",
   /** The project version the report is about (-1: none yet). */
   edits: -1,
   report: emptyReport(),
+  /** The report before the last Measure (to compare with), and whether the
+   * panel shows it instead. */
+  previous: emptyReport(),
+  showPrevious: false,
   targets /*: MixTargetInfo[] */: [],
   catalogAsked: false,
   /** Sections folded away. */
   folded /*: String[] */: [],
   /** The element whose suggestions show. */
   open: "",
-  /** A what-if's outcome, by the patch it tried. */
-  tried /*: { patch: String, summary: String }[] */: [],
+  /** Fixes applied since the report (by finding key, with the settings they
+   * changed), and the project version after the last: the report's other
+   * fixes still apply while nothing else changed and they touch other
+   * settings. */
+  applied /*: { key: String, paths: String[] }[] */: [],
+  appliedEdits: -1,
+  /** Before / after: which fix plays (its key), the song with it for the
+   * engine, which half plays, over which beats; the patched songs, by patch. */
+  audition: { key: "", json: "", after: false, on: false, start: 0, end: 0, at: 0, seq: 0 },
+  patched /*: { patch: String, json: String }[] */: [],
+  /** Fixes left out of Quick fix (by finding key): all are in by default. */
+  excluded /*: String[] */: [],
+  /** Which project the panel is about: a measure under way when another
+   * one opens is dropped. */
+  song: 0,
 };
+
+/** Another project is open: nothing measured of the last one stays. */
+/** function resetMixcheck() => Undefined */
+function resetMixcheck() {
+  stopAudition();
+  view.song = view.song + 1;
+  view.busy = false;
+  view.job = 0;
+  view.error = "";
+  view.edits = -1;
+  view.report = emptyReport();
+  view.previous = emptyReport();
+  view.showPrevious = false;
+  view.scope = "song";
+  view.section = "";
+  view.reference = "";
+  view.open = "";
+  view.applied = [];
+  view.appliedEdits = -1;
+  view.patched = [];
+  view.excluded = [];
+  invalidate();
+}
+
+hooks.opened = resetMixcheck;
 
 /** function emptyGr() => MixGr */
 function emptyGr() {
@@ -244,6 +291,8 @@ function decodeReport(r) {
         kind: str(e.kind),
         role: str(e.role),
         lead: e.lead === true,
+        anchor: str(e.anchor),
+        range: nums(e.rangeDb),
         buriedIn: (e.buriedIn ?? []).map((u) => ({ from: int(u.fromBar), to: int(u.toBar), rel: num(u.relativeToMixDb) })),
         insert: int(e.insert),
         rms: num(e.rmsDbfs),
@@ -277,6 +326,7 @@ function decodeReport(r) {
       detail: str(f.detail),
       element: str(f.element),
       fromBar: int(f.fromBar),
+      toBar: int(f.toBar),
       fromBeat: num(f.fromBeat),
       patch: patchText(f.fix),
       label: str(f.fixLabel),
@@ -355,28 +405,43 @@ function loadCatalog() {
 export function runMixcheck() {
   if (view.busy) return undefined;
   const edits = state.edits;
+  const song = view.song;
   view.busy = true;
   view.error = "";
+  view.job = 0;
   invalidate();
   const q = request();
-  sendJson("/api/mixcheck", "POST", {
-    project: encodeProject(state.project),
-    range: q.range,
-    section: q.section,
-    target: q.target,
-    threshold: q.threshold,
-    reference: q.reference,
-    history: true,
-  })
+  followJob(
+    "mixcheck",
+    {
+      project: encodeProject(state.project),
+      range: q.range,
+      section: q.section,
+      target: q.target,
+      threshold: q.threshold,
+      reference: q.reference,
+      history: true,
+    },
+    (id) => {
+      view.job = id;
+    }
+  )
     .then((r) => {
+      if (view.song !== song) return false;
       view.busy = false;
       view.edits = edits;
+      if (view.report.ok) view.previous = view.report;
+      view.showPrevious = false;
       view.report = decodeReport(r);
-      view.tried = [];
+      view.applied = [];
+      view.appliedEdits = -1;
+      view.excluded = [];
+      view.patched = [];
       invalidate();
       return true;
     })
     .catch((e) => {
+      if (view.song !== song) return false;
       view.busy = false;
       view.error = errText(e);
       invalidate();
@@ -388,39 +453,87 @@ export function runMixcheck() {
  * notes and devices by their position, which an edit since may have moved. */
 /** function fresh() => Boolean */
 function fresh() {
-  if (view.edits === state.edits) return true;
+  if (view.edits === state.edits || view.appliedEdits === state.edits) return true;
   toast(t("mixcheck.stale.toast.title"), t("mixcheck.stale.toast.body"), "info");
   return false;
 }
 
-/** Measure a change without making it (a what-if: the project is not touched). */
-/** function tryPatch(patch: String) => Undefined */
-function tryPatch(patch) {
-  if (view.busy || !fresh()) return undefined;
-  view.busy = true;
-  invalidate();
-  const q = request();
-  sendJson("/api/mixcheck", "POST", { project: encodeProject(state.project), range: q.range, section: q.section, threshold: q.threshold, whatIf: patch })
-    .then((r) => {
-      view.busy = false;
-      const summary = r.whatIf === undefined || r.whatIf === null ? "" : String(r.whatIf.summary);
-      view.tried = view.tried.filter((x) => x.patch !== patch).concat([{ patch: patch, summary: summary }]);
-      invalidate();
-      return true;
-    })
-    .catch((e) => {
-      view.busy = false;
-      toast(t("mixcheck.try.failed.title"), errText(e), "error");
-      invalidate();
-      return false;
-    });
+/** The settings a patch writes (its JSON Pointers). */
+/** function pathsOf(patch: String) => String[] */
+function pathsOf(patch) {
+  /** const out: String[] */
+  const out = [];
+  for (const m of patch.matchAll(/"path":\s*"([^"]*)"/g)) out.push(m[1]);
+  return out;
+}
+
+/** An applied fix that already changed one of the settings `patch` writes. */
+/** function clash(patch: String) => String */
+function clash(patch) {
+  const ps = pathsOf(patch);
+  for (const a of view.applied) {
+    if (a.paths.some((x) => ps.includes(x))) return a.key;
+  }
+  return "";
+}
+
+/** Whether a finding's fix was applied since the report. */
+/** function isApplied(key: String) => Boolean */
+function isApplied(key) {
+  return view.applied.some((a) => a.key === key);
+}
+
+/** Every fix not applied yet, as one patch: in the findings' order, the
+ * first to set a setting keeps it. */
+/** function allFixes(r: MixReport) => { patch: String, n: Int } */
+function allFixes(r) {
+  /** const seen: String[] */
+  const seen = [];
+  /** const ops: String[] */
+  const ops = [];
+  let n = 0;
+  for (const f of r.findings) {
+    if (f.patch === "" || isApplied(f.key) || view.excluded.includes(f.key) || clash(f.patch) !== "") continue;
+    const list = JSON.parse(f.patch);
+    let used = false;
+    for (const op of list) {
+      const p = String(op.path);
+      if (seen.includes(p)) continue;
+      seen.push(p);
+      ops.push(JSON.stringify(op));
+      used = true;
+    }
+    if (used) n += 1;
+  }
+  return { patch: `[${ops.join(",")}]`, n: n };
+}
+
+/** The song beat where bar `bar` (from 1) starts. */
+/** function barBeat(bar: Int) => Number */
+function barBeat(bar) {
+  const map = meterMap(state.project.transport);
+  let s = map[0];
+  for (const m of map) if (m.bar <= bar - 1) s = m;
+  return s.beat + (bar - 1 - s.bar) * s.barBeats;
+}
+
+/** A finding about some bars of the report's range (not all of it). */
+/** function local(r: MixReport, f: MixFinding) => Boolean */
+function local(r, f) {
+  return f.fromBar > 0 && f.toBar >= f.fromBar && (f.fromBar > r.fromBar || f.toBar < r.toBar);
 }
 
 /** Apply a fix: the endpoint patches the project as it is and validates it;
  * one undo step. If the song changed meanwhile, nothing is applied. */
-/** function applyPatch(patch: String, what: String) => Undefined */
-function applyPatch(patch, what) {
+/** function applyPatch(patch: String, what: String, keys: String[]) => Undefined */
+function applyPatch(patch, what, keys) {
   if (!fresh()) return undefined;
+  const by = clash(patch);
+  if (by !== "") {
+    toast(t("mixcheck.clash.toast.title"), tf("mixcheck.clash.toast.body", [by.split("|")[0].replace(/-/g, " ")]), "info");
+    return undefined;
+  }
+  stopAudition();
   const edits = state.edits;
   sendJson("/api/mixcheck", "POST", { project: encodeProject(state.project), apply: patch })
     .then((r) => {
@@ -429,17 +542,151 @@ function applyPatch(patch, what) {
         return false;
       }
       const fixed = decodeProject(r.project);
+      const fresh_ = view.edits === state.edits || view.appliedEdits === state.edits;
       commit(() => {
         state.project = fixed;
       });
       fixSelection();
-      toast(what, t("mixcheck.apply.done.body"), "info");
+      // The report's other fixes still apply (they write other settings).
+      if (fresh_) {
+        const paths = pathsOf(patch);
+        for (const k of keys) view.applied.push({ key: k, paths: paths });
+        view.appliedEdits = state.edits;
+      }
+      toast(what, t("mixcheck.apply.doneMore.body"), "info");
       return true;
     })
     .catch((e) => {
       toast(t("mixcheck.apply.failed.title"), errText(e), "error");
       return false;
     });
+}
+
+// ------------------------------------------------------------------ before/after
+
+/** The song with `patch` applied, for the engine (asked once per patch). */
+/** function patchedJson(patch: String) => Promise<String> */
+function patchedJson(patch) {
+  const hit = view.patched.find((x) => x.patch === patch);
+  if (hit) return Promise.resolve(hit.json);
+  return sendJson("/api/mixcheck", "POST", { project: encodeProject(state.project), apply: patch }).then((r) => {
+    const json = JSON.stringify(r.project);
+    view.patched.push({ patch: patch, json: json });
+    return json;
+  });
+}
+
+/** How many bars "Before / after" plays of each. */
+const LISTEN_BARS = 4;
+
+/** Before / after: from the playhead (put it anywhere, as usual, or with
+ * Show), LISTEN_BARS bars as the song is, a click, the same bars with the
+ * fix, then stop. The project is not touched. */
+/** function listen(key: String, patch: String) => Promise<Boolean> */
+async function listen(key, patch) {
+  const was = view.audition.on && view.audition.key === key;
+  stopAudition();
+  if (was) return false;
+  if (state.output !== "browser") {
+    toast(t("mixcheck.listen.browserOnly.toast.title"), t("mixcheck.listen.browserOnly.toast.body"), "info");
+    return false;
+  }
+  await startAudio();
+  view.audition.seq = view.audition.seq + 1;
+  const seq = view.audition.seq;
+  let json = "";
+  try {
+    json = await patchedJson(patch);
+  } catch (e) {
+    toast(t("mixcheck.listen.failed.title"), errText(e), "error");
+    return false;
+  }
+  if (seq !== view.audition.seq) return false;
+  const start = Math.max(0, state.playing ? livePosition() : state.position);
+  const a = view.audition;
+  a.key = key;
+  a.json = json;
+  a.on = true;
+  a.after = false;
+  a.start = start;
+  a.end = start + LISTEN_BARS * state.project.transport.beatsPerBar;
+  a.at = now();
+  // An edit meanwhile ends it (and gives the engine the song back).
+  hooks.preview = stopAudition;
+  hooks.previewing = true;
+  audioPost({ t: "metronome", on: false });
+  audioPost({ t: "project", json: engineJson() });
+  audioPost({ t: "mode", pattern: "" });
+  seek(start);
+  audioPost({ t: "play" });
+  invalidate();
+  listenTick();
+  return true;
+}
+
+/** Before, then a click and after, then stop. */
+/** function listenTick() => Undefined */
+function listenTick() {
+  const a = view.audition;
+  if (!a.on) return undefined;
+  const late = now() - a.at > 1500;
+  if (late && !state.playing) {
+    stopAudition();
+    return undefined;
+  }
+  if (late && livePosition() >= a.end) {
+    if (a.after) {
+      stopAudition();
+      return undefined;
+    }
+    // The same bars with the fix, after one click of count-in.
+    audioPost({ t: "stop" });
+    audioPost({ t: "project", json: a.json });
+    seek(a.start);
+    audioPost({ t: "play", countIn: 1 });
+    a.after = true;
+    a.at = now();
+    invalidate();
+  }
+  setTimeout(() => listenTick(), 50);
+}
+
+/** Stop before / after and give the engine the song back (the playhead
+ * back where it was). */
+/** function stopAudition() => Undefined */
+function stopAudition() {
+  const a = view.audition;
+  if (!a.on) return undefined;
+  a.on = false;
+  a.seq = a.seq + 1;
+  hooks.previewing = false;
+  // A pause keeps the place (a stop goes back to the start).
+  audioPost({ t: "pause" });
+  audioPost({ t: "project", json: engineJson() });
+  audioPost({ t: "metronome", on: state.metronome });
+  const pat = currentPattern();
+  audioPost({ t: "mode", pattern: state.mode === "pattern" && pat ? pat.id : "" });
+  seek(a.start);
+  // The engine's last report of where it played may still be on its way.
+  setTimeout(() => {
+    if (!a.on && !state.playing) seek(a.start);
+  }, 250);
+  invalidate();
+}
+
+/** The Before / after button of a fix. */
+/** function listenButton(b: Builder, key: String, patch: String) => Undefined */
+function listenButton(b, key, patch) {
+  const a = view.audition;
+  const mine = a.on && a.key === key;
+  button(
+    b,
+    "listen",
+    mine ? "small on" : "small ghost",
+    mine ? (a.after ? t("mixcheck.listen.after.label") : t("mixcheck.listen.before.label")) : t("mixcheck.listen.label"),
+    tf("mixcheck.listen.title", [String(LISTEN_BARS)]),
+    () => listen(key, patch)
+  );
 }
 
 /** The number of warnings to show on the tab. */
@@ -488,9 +735,15 @@ function revealElement(id) {
 /** Show the bar in the playlist. */
 /** function revealBar(beat: Number) => Undefined */
 function revealBar(beat) {
-  setTop("playlist");
-  if (isCompact(window.innerWidth, window.innerHeight)) setView("playlist");
-  revealBeat(Math.max(0, beat));
+  const b = Math.max(0, beat);
+  if (layoutState.top === "score") revealScoreBeat(b);
+  else {
+    setTop("playlist");
+    if (isCompact(window.innerWidth, window.innerHeight)) setView("playlist");
+    revealBeat(b);
+  }
+  // The playhead there too: Play starts where the problem is.
+  if (!state.playing) seek(b);
   invalidate();
 }
 
@@ -765,13 +1018,15 @@ function paintSpectrum(g, w, h, r) {
 function verdictText(v) {
   return v === "inaudible"
     ? t("mixcheck.parts.verdict.inaudible")
-    : v === "buried"
-      ? t("mixcheck.parts.verdict.buried")
-      : v === "dominant"
-        ? t("mixcheck.parts.verdict.dominant")
-        : v === "overloading"
-          ? t("mixcheck.parts.verdict.overloading")
-          : t("mixcheck.parts.verdict.ok");
+    : v === "weak"
+      ? t("mixcheck.parts.verdict.weak")
+      : v === "buried"
+        ? t("mixcheck.parts.verdict.buried")
+        : v === "dominant"
+          ? t("mixcheck.parts.verdict.dominant")
+          : v === "overloading"
+            ? t("mixcheck.parts.verdict.overloading")
+            : t("mixcheck.parts.verdict.ok");
 }
 
 /** One part of the mix: its level against the mix, its audibility, who masks it, and what to do. */
@@ -790,6 +1045,11 @@ function elementRow(b, e) {
     b.open("span", "role", "mx-el-role lead");
     b.attr("title", t("mixcheck.parts.lead.title"));
     b.text(t("mixcheck.parts.lead.label"));
+    b.close();
+  } else if (e.anchor !== "" && e.range.length === 2) {
+    b.open("span", "role", "mx-el-role anchor");
+    b.attr("title", tf("mixcheck.parts.anchor.title", [e.name, fmt(e.range[0], 0), fmt(e.range[1], 0)]));
+    b.text(e.anchor === "kick" ? t("mixcheck.parts.anchor.kick.label") : t("mixcheck.parts.anchor.bass.label"));
     b.close();
   } else if (e.role !== "") b.leaf("span", "role", "mx-el-role", e.role);
   b.leaf("span", "sp", "spacer", "");
@@ -846,14 +1106,11 @@ function elementRow(b, e) {
       const exp = [];
       if (Number.isFinite(s.expAud)) exp.push(tf("mixcheck.parts.suggestion.expect.audible", [fmt(s.expAud, 0)]));
       if (Number.isFinite(s.expRel)) exp.push(tf("mixcheck.parts.suggestion.expect.rel", [signed(s.expRel)]));
-      const tried = view.tried.find((x) => x.patch === s.patch);
       b.open("div", "acts", "mx-acts");
       if (exp.length > 0) b.leaf("span", "e", "mx-expect", tf("mixcheck.parts.suggestion.expected", [exp.join(", ")]));
-      if (tried) b.leaf("span", "t", "mx-tried", tf("mixcheck.parts.suggestion.measured", [tried.summary]));
       b.leaf("span", "sp", "spacer", "");
-      button(b, "try", "small ghost", t("common.try"), t("mixcheck.parts.suggestion.try.title"), () => tryPatch(s.patch));
       button(b, "apply", "small gold", t("mixcheck.parts.suggestion.apply.label"), t("mixcheck.parts.suggestion.apply.title"), () =>
-        applyPatch(s.patch, `${e.name}: ${s.why}`)
+        applyPatch(s.patch, `${e.name}: ${s.why}`, [])
       );
       b.close();
       b.close();
@@ -873,8 +1130,10 @@ function elementRow(b, e) {
 /** function mixcheckPanel(b: Builder, ask: (String) => Undefined) => Undefined */
 export function mixcheckPanel(b, ask) {
   if (!view.catalogAsked && state.loaded) loadCatalog();
-  const r = view.report;
-  const stale = r.ok && view.edits !== state.edits;
+  const latest = view.report;
+  const old = view.showPrevious && view.previous.ok;
+  const r = old ? view.previous : latest;
+  const stale = latest.ok && view.edits !== state.edits;
   b.open("div", "mixcheck", view.busy ? "mixcheck busy" : "mixcheck");
 
   // What to measure.
@@ -929,7 +1188,7 @@ export function mixcheckPanel(b, ask) {
   b.attr("title", t("mixcheck.run.title"));
   b.on("click", (e) => runMixcheck());
   glyph(b, "meter");
-  b.leaf("span", "l", "", view.busy ? t("mixcheck.run.busy.label") : r.ok ? t("mixcheck.run.again.label") : t("mixcheck.run.label"));
+  b.leaf("span", "l", "", view.busy ? t("mixcheck.run.busy.label") : latest.ok ? t("mixcheck.run.again.label") : t("mixcheck.run.label"));
   b.close();
   b.close();
 
@@ -968,22 +1227,51 @@ export function mixcheckPanel(b, ask) {
     const facts = [where, `${fmt(r.seconds, 1)} s`];
     if (r.repeats) facts.push(t("mixcheck.status.everyPass"));
     facts.push(r.cached ? t("mixcheck.status.cached") : `${fmt(r.ms / 1000, 1)} s`);
-    if (stale) facts.push(t("mixcheck.status.stale"));
+    if (old) facts.push(t("mixcheck.compare.showing"));
+    else if (stale) facts.push(view.appliedEdits === state.edits ? t("mixcheck.status.fixesApplied") : t("mixcheck.status.stale"));
     b.leaf("span", "st", stale ? "mx-status stale" : "mx-status", facts.join(" · "));
   }
   b.close();
 
+  if (view.busy) {
+    const f = jobFraction(view.job);
+    b.open("div", "prog", "mx-progress");
+    b.attr("role", "progressbar");
+    b.attr("aria-valuemin", "0");
+    b.attr("aria-valuemax", "100");
+    b.attr("aria-valuenow", String(Math.round(f * 100)));
+    b.leaf("div", "fill", "mx-progress-fill", "");
+    b.style("width", `${Math.round(f * 1000) / 10}%`);
+    b.close();
+    b.leaf("div", "progl", "mx-progress-label", jobLabel(view.job));
+  }
+
   b.open("div", "scroll", "mx-scroll");
   if (view.error !== "") b.leaf("div", "err", "mx-error", view.error);
   if (!r.ok) {
+    if (!view.busy) {
+      // Where to start: an arrow up to the Measure button.
+      b.open("div", "hint", "mx-hint");
+      b.leaf("span", "t", "mx-hint-text", t("mixcheck.empty.hint"));
+      b.open("svg", "a", "mx-hint-arrow");
+      b.attr("viewBox", "0 0 80 60");
+      b.attr("aria-hidden", "true");
+      b.leaf("path", "p", "", "");
+      b.attr("d", "M6 54 C 30 54, 58 44, 66 10");
+      b.leaf("path", "h", "", "");
+      b.attr("d", "M56 18 L66 6 L74 20");
+      b.close();
+      b.close();
+    }
     b.open("div", "empty", "mx-empty");
     glyph(b, "meter");
     b.leaf("h3", "h", "", view.busy ? t("common.listening") : t("mixcheck.empty.label"));
     b.leaf("p", "p", "", t("mixcheck.empty.body"));
     b.close();
   } else {
+    if (view.previous.ok && !view.busy) compareView(b, view.previous, latest);
     masterView(b, r);
-    findingsView(b, r, ask);
+    findingsView(b, r, ask, !old);
     if (section(b, "history", t("mixcheck.history.label"), t("mixcheck.history.legend"))) {
       b.canvas("history", "mx-canvas mx-history", (g, w, h) => paintHistory(g, w, h, r));
       b.on("pointerdown", (e) => {
@@ -1016,7 +1304,7 @@ export function mixcheckPanel(b, ask) {
       b.leaf("span", "b", "", t("mixcheck.parts.legend.audible"));
       b.close();
       const order = r.elements.slice().sort((x, y) => {
-        const rank = (v) => (v === "inaudible" ? 0 : v === "buried" ? 1 : v === "overloading" ? 2 : v === "dominant" ? 3 : 4);
+        const rank = (v) => (v === "inaudible" ? 0 : v === "weak" ? 1 : v === "buried" ? 2 : v === "overloading" ? 3 : v === "dominant" ? 4 : 5);
         return rank(x.verdict) - rank(y.verdict) || y.share - x.share;
       });
       for (const e of order) elementRow(b, e);
@@ -1100,18 +1388,32 @@ function masterView(b, r) {
 }
 
 /** The findings, ranked, each with its fix. */
-/** function findingsView(b: Builder, r: MixReport, ask: (String) => Undefined) => Undefined */
-function findingsView(b, r, ask) {
+/** `live`: the latest report (the previous one, shown to compare, has no actions). */
+/** function findingsView(b: Builder, r: MixReport, ask: (String) => Undefined, live: Boolean) => Undefined */
+function findingsView(b, r, ask, live) {
   if (!section(b, "findings", t("mixcheck.findings.label"), r.findings.length === 0 ? t("mixcheck.findings.none") : `${r.findings.length}`)) return undefined;
   if (r.findings.length === 0) {
     b.leaf("p", "none", "mx-note", t("mixcheck.findings.empty"));
     return undefined;
   }
+  if (live) quickFix(b, r);
   for (const f of r.findings) {
-    b.open("div", f.key, `mx-find ${f.severity}`);
+    const done = isApplied(f.key);
+    const near = local(r, f);
+    b.open("div", f.key, `mx-find ${f.severity}${done ? " applied" : ""}`);
     b.leaf("span", "dot", "mx-dot", "");
     b.open("div", "body", "mx-find-body");
     b.open("div", "t", "mx-find-title");
+    if (live && f.patch !== "" && !done) {
+      b.leaf("input", "in", "mx-include", "");
+      b.attr("type", "checkbox");
+      b.attr("title", t("mixcheck.findings.include.title"));
+      b.prop("checked", view.excluded.includes(f.key) ? "" : "true");
+      b.on("change", (e) => {
+        view.excluded = view.excluded.includes(f.key) ? view.excluded.filter((k) => k !== f.key) : view.excluded.concat([f.key]);
+        invalidate();
+      });
+    }
     b.leaf("b", "r", "", f.rule.replace(/-/g, " "));
     b.open("button", "w", "mx-link");
     b.attr("title", t("common.showIt"));
@@ -1124,22 +1426,93 @@ function findingsView(b, r, ask) {
     b.close();
     b.leaf("div", "d", "mx-find-detail", f.detail);
     b.open("div", "acts", "mx-acts");
+    if (near) {
+      const span = f.fromBar === f.toBar ? tf("format.barLower", [String(f.fromBar)]) : tf("format.barRange", [String(f.fromBar), String(f.toBar)]);
+      const tip = layoutState.top === "score" ? tf("mixcheck.findings.show.score.title", [span]) : tf("mixcheck.findings.show.playlist.title", [span]);
+      button(b, "show", "small ghost", t("mixcheck.findings.show.label"), tip, () => revealBar(barBeat(f.fromBar)));
+    }
+    if (live && f.patch !== "" && !done) listenButton(b, f.key, f.patch);
     b.leaf("span", "sp", "spacer", "");
-    if (state.backend !== "local")
+    if (live && state.backend !== "local")
       button(b, "ask", "small ghost", t("agent.askMaestro"), t("agent.typeIntoPrompt"), () =>
         ask(`Mix check (${f.where}): ${f.detail} Please look into it (rosaclef mixcheck reports it as ${f.key}).`)
       );
-    if (f.patch !== "") {
-      const tried = view.tried.find((x) => x.patch === f.patch);
-      button(b, "try", "small ghost", t("common.try"), t("mixcheck.findings.try.title"), () => tryPatch(f.patch));
-      button(b, "fix", "small gold", t("mixcheck.findings.fix.label"), tf("fix.applyOneUndo", [f.label]), () => applyPatch(f.patch, f.label));
+    if (f.patch !== "" && done) {
+      b.leaf("span", "ok", "mx-applied", t("mixcheck.findings.applied"));
       b.close();
       if (f.label !== "") b.leaf("div", "fl", "mx-fixlabel", tf("mixcheck.findings.fix.text", [f.label]));
-      if (tried) b.leaf("div", "tried", "mx-tried", tf("mixcheck.findings.tried", [tried.summary]));
+    } else if (live && f.patch !== "") {
+      button(b, "fix", "small gold", t("mixcheck.findings.fix.label"), tf("fix.applyOneUndo", [f.label]), () => applyPatch(f.patch, f.label, [f.key]));
+      b.close();
+      if (f.label !== "") b.leaf("div", "fl", "mx-fixlabel", tf("mixcheck.findings.fix.text", [f.label]));
     } else b.close();
     b.close();
     b.close();
   }
+}
+
+/** The last Measure against the one before: the headline numbers, the
+ * findings gone and new; and a switch to show the previous report whole. */
+/** function compareView(b: Builder, before: MixReport, now: MixReport) => Undefined */
+function compareView(b, before, now) {
+  const a = before.master;
+  const z = now.master;
+  b.open("div", "cmp", "mx-compare");
+  b.open("div", "h", "mx-compare-head");
+  b.leaf("b", "t", "", t("mixcheck.compare.label"));
+  b.leaf("span", "sp", "spacer", "");
+  if (view.showPrevious)
+    button(b, "back", "small gold", t("mixcheck.compare.back.label"), t("mixcheck.compare.back.title"), () => {
+      view.showPrevious = false;
+      invalidate();
+    });
+  else
+    button(b, "prev", "small ghost", t("mixcheck.compare.show.label"), t("mixcheck.compare.show.title"), () => {
+      view.showPrevious = true;
+      invalidate();
+    });
+  b.close();
+  /** const facts: String[] */
+  const facts = [
+    tf("mixcheck.compare.integrated", [db(a.integrated, 1), db(z.integrated, 1)]),
+    tf("mixcheck.compare.truePeak", [db(a.truePeak, 1), db(z.truePeak, 1)]),
+    tf("mixcheck.compare.plr", [db(a.plr, 1), db(z.plr, 1)]),
+    tf("mixcheck.compare.findings", [String(before.findings.length), String(now.findings.length)]),
+  ];
+  b.leaf("div", "n", "mx-compare-line", facts.join(" · "));
+  const keys = (r) => r.findings.map((f) => f.key);
+  const gone = before.findings.filter((f) => !keys(now).includes(f.key)).map((f) => f.rule.replace(/-/g, " "));
+  const added = now.findings.filter((f) => !keys(before).includes(f.key)).map((f) => f.rule.replace(/-/g, " "));
+  if (gone.length > 0) b.leaf("div", "g", "mx-compare-line gone", tf("mixcheck.compare.gone", [gone.join(", ")]));
+  if (added.length > 0) b.leaf("div", "a", "mx-compare-line added", tf("mixcheck.compare.added", [added.join(", ")]));
+  b.close();
+}
+
+/** Every fix at once: hear them, apply them (one undo step). */
+/** function quickFix(b: Builder, r: MixReport) => Undefined */
+function quickFix(b, r) {
+  const all = allFixes(r);
+  if (!r.findings.some((f) => f.patch !== "" && !isApplied(f.key))) return undefined;
+  b.open("div", "quick", "mx-quick");
+  b.open("div", "t", "mx-quick-title");
+  b.leaf("b", "h", "", t("mixcheck.quick.label"));
+  /** const facts: String[] */
+  const facts = [all.n === 0 ? t("mixcheck.quick.none") : all.n === 1 ? t("mixcheck.quick.ticked.one") : tf("mixcheck.quick.ticked.other", [String(all.n)])];
+  if (view.applied.length > 0) facts.push(tf("mixcheck.quick.appliedAlready", [String(view.applied.length)]));
+  b.leaf("span", "n", "mx-quick-sub", facts.join(" · "));
+  b.close();
+  b.open("div", "acts", "mx-acts");
+  listenButton(b, "*all", all.patch);
+  b.leaf("span", "sp", "spacer", "");
+  button(b, "fix", "small gold", t("mixcheck.quick.applyAll.label"), t("mixcheck.quick.applyAll.title"), () =>
+    applyPatch(
+      all.patch,
+      all.n === 1 ? t("mixcheck.quick.applied.toast.one") : tf("mixcheck.quick.applied.toast.other", [String(all.n)]),
+      r.findings.filter((f) => f.patch !== "" && !isApplied(f.key) && !view.excluded.includes(f.key) && clash(f.patch) === "").map((f) => f.key)
+    )
+  );
+  b.close();
+  b.close();
 }
 
 /** Every row: a compact table, the loud and the hot rows marked. */

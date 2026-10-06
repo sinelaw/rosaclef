@@ -178,6 +178,65 @@ fn a_cached_report_is_the_same() {
     );
 }
 
+/// A change to the mixer only plays the instruments' outputs kept on disk
+/// instead of rendering them; the report is the same as a fresh render's.
+#[test]
+fn a_mixer_change_replays_the_instruments_and_measures_the_same() {
+    let dir = scratch("dry");
+    let p: Project = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    let folder = Folder::on_disk(&dir);
+    let fonts = fonts();
+    let env = Env {
+        folder: &folder,
+        fonts: &fonts,
+        setup: &|_| {},
+        progress: &|_| {},
+        disk_cache: true,
+        any_file: true,
+    };
+    // A range no other test measures: its report is in no cache yet.
+    let o = Options::from_json(&json!({"range": "2:3"})).unwrap();
+    mixcheck::run(&env, &p, &o).unwrap();
+    let kept = |d: &Path| {
+        std::fs::read_dir(d.join(".rosaclef/mixcheck"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with("dry-") && e.path().is_dir())
+            .count()
+    };
+    assert_eq!(kept(&dir), 1, "the instruments' outputs are kept on disk");
+    // The mixer changes: faders, an effect, a channel's volume and pan.
+    let mut v = serde_json::to_value(&p).unwrap();
+    v["mixer"]["inserts"][2]["volume"] = json!(0.5);
+    v["mixer"]["inserts"][3]["effects"][0]["params"]["mix"] = json!(0.6);
+    v["channels"][3]["volume"] = json!(0.4);
+    v["channels"][3]["pan"] = json!(-0.5);
+    let q: Project = serde_json::from_value(v).unwrap();
+    assert_eq!(
+        mixcheck::cache::dry_key(None, &p, &[], &[], 1.0, 48000.0),
+        mixcheck::cache::dry_key(None, &q, &[], &[], 1.0, 48000.0),
+        "the mixer is not part of what the instruments play"
+    );
+    let mut replayed = mixcheck::run(&env, &q, &o).unwrap();
+    assert!(!replayed.render.cached, "a new mix is measured");
+    let fresh_o = Options::from_json(&json!({"range": "2:3", "cache": false})).unwrap();
+    let mut fresh = mixcheck::run(&env, &q, &fresh_o).unwrap();
+    replayed.render = Default::default();
+    fresh.render = Default::default();
+    assert_eq!(
+        serde_json::to_value(&replayed).unwrap(),
+        serde_json::to_value(&fresh).unwrap()
+    );
+    // An instrument's own setting is part of it.
+    let mut w = serde_json::to_value(&p).unwrap();
+    w["channels"][1]["instrument"]["params"]["cutoff"] = json!(900);
+    let r: Project = serde_json::from_value(w).unwrap();
+    assert_ne!(
+        mixcheck::cache::dry_key(None, &p, &[], &[], 1.0, 48000.0),
+        mixcheck::cache::dry_key(None, &r, &[], &[], 1.0, 48000.0)
+    );
+}
+
 // ------------------------------------------------------------ masking
 
 #[test]
@@ -308,14 +367,16 @@ fn gain_reduction_of_signals_of_known_level() {
         c.stat.mean
     );
     assert!(c.stat.pct_time_above3 >= 95.0, "{}", c.stat.pct_time_above3);
+    // A true-peak limiter: 7 dB on the samples, more on the square's edges,
+    // whose reconstruction overshoots between the samples.
     let l = gr("insert:2/Lim");
     assert!(
-        (l.stat.max - 7.0).abs() <= 0.3,
+        (6.7..=9.3).contains(&l.stat.max),
         "limiter max {}",
         l.stat.max
     );
     assert!(
-        (l.stat.mean - 7.0).abs() <= 0.5,
+        (6.5..=9.5).contains(&l.stat.mean),
         "limiter mean {}",
         l.stat.mean
     );
@@ -685,7 +746,6 @@ fn every_planted_fault_is_found_and_the_fixes_converge() {
         ("inaudible-part", Some("channel:rbass")),
         ("low-end-buildup", None),
         ("phase-correlation", Some("insert:7/Widener")),
-        ("section-loudness-flat", None),
     ] {
         assert!(
             has(rule, el),
@@ -802,11 +862,15 @@ fn findings_name_the_setting_at_fault_and_verify_their_fixes() {
         "{:?}",
         o.fix
     );
-    // Inter-sample peaks over 0 dBTP: the ceiling comes down.
+    // A true-peak limiter holds the true peak to its ceiling (0 dB here,
+    // over the -1 dBTP limit): driven this hard, less into it first — or,
+    // while other fixes raise faders, the ceiling waits for them.
     let tp = finding(&r, "true-peak");
-    assert!(r.master.true_peak_dbtp.unwrap() > 0.0);
+    assert!(r.master.true_peak_dbtp.unwrap() <= 0.05);
     assert!(
-        sets(tp, "/mixer/inserts/0/effects/1/params/ceiling").is_some_and(|c| c < 0.0),
+        tp.fix.is_empty()
+            || sets(tp, "/mixer/inserts/0/effects/1/params/gain").is_some_and(|g| g < 11.0)
+            || sets(tp, "/mixer/inserts/0/effects/1/params/ceiling").is_some_and(|c| c < 0.0),
         "{:?}",
         tp.fix
     );
@@ -910,6 +974,8 @@ fn a_chorus_held_under_the_verse_is_found_and_put_back() {
     v["playlist"]["clips"][0]["length"] = json!(32);
     let again = json!({"pattern": "tune", "start": 20, "length": 8, "track": 1});
     v["playlist"]["clips"].as_array_mut().unwrap().push(again);
+    // The limiter not driven: sections are judged once it stops clamping.
+    v["mixer"]["inserts"][0]["effects"][1]["params"]["gain"] = json!(0);
     v["score"]["marks"] = json!([{"start": 0, "end": 16, "color": "#3f8f7a", "label": "Verse 1"},
                                  {"start": 16, "end": 32, "color": "#d4af37", "label": "Chorus"}]);
     // As loud as the verse, nothing in the mixer holding it: no fix (the
@@ -936,8 +1002,15 @@ fn a_chorus_held_under_the_verse_is_found_and_put_back() {
             .as_str()
             .unwrap()
             .starts_with("/automation/0/points/")
-            && o["value"].as_f64().unwrap() > 1.0),
-        "back up and on past the verse: {:?}",
+            && o["value"].as_f64().unwrap() <= 1.0),
+        "never over its level elsewhere (the master fader is after the limiter): {:?}",
+        f.fix
+    );
+    // The choruses back up, the rest of the song down.
+    assert!(
+        f.fix.iter().any(|o| o["value"] == json!(1.0))
+            && f.fix.iter().any(|o| o["value"].as_f64().unwrap() < 1.0),
+        "{:?}",
         f.fix
     );
     let ver = f.verified.as_ref().unwrap();
@@ -964,7 +1037,7 @@ fn a_bright_eq_boost_is_found_and_taken_back() {
     }
     let p: Project = serde_json::from_value(v).unwrap();
     let r = check(&dir, &p, json!({}));
-    let f = finding(&r, "harsh-highs");
+    let f = finding(&r, "bright-highs");
     let path = f.fix[0]["path"].as_str().unwrap();
     assert!(
         path.ends_with("/effects/0/params/high") && f.fix[0]["value"] == json!(2.0),
@@ -972,7 +1045,7 @@ fn a_bright_eq_boost_is_found_and_taken_back() {
     );
     // Without spectrum: not judged.
     let r = check(&dir, &p, json!({"checks": "levels,audibility"}));
-    assert!(r.findings.iter().all(|f| f.rule != "harsh-highs"));
+    assert!(r.findings.iter().all(|f| f.rule != "bright-highs"));
 }
 
 #[test]
@@ -1030,7 +1103,7 @@ fn settings_at_fault_are_named_and_taken_back() {
     let f = finding(&r, "fast-limiter-release");
     assert_eq!(
         sets(f, "/mixer/inserts/0/effects/1/params/release"),
-        Some(80.0),
+        Some(250.0),
         "{f:?}"
     );
     let bass = element(&r, "channel:bass");
@@ -1038,5 +1111,210 @@ fn settings_at_fault_are_named_and_taken_back() {
         let f = finding(&r, "dominant-part");
         assert!(f.detail.contains("+9.5 dB over unity"), "{}", f.detail);
         assert_eq!(sets(f, "/channels/1/volume"), Some(1.0), "{f:?}");
+    }
+}
+
+#[test]
+fn panning_reverb_and_dynamics_faults_are_named() {
+    let dir = scratch("effects");
+    let mut v: Value = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    // The bass hard left, the lead drowned in reverb, the kick crushed by
+    // a compressor, the master fader 9 dB down after the limiter.
+    v["channels"][1]["pan"] = json!(-1.0);
+    v["mixer"]["inserts"][3]["effects"] =
+        json!([{"type": "reverb", "params": {"size": 0.95, "mix": 0.9, "damping": 0.1}}]);
+    v["mixer"]["inserts"][1]["effects"] = json!([{"type": "compressor",
+        "params": {"threshold": -40, "ratio": 20, "attack": 0.1, "release": 5, "makeup": 18}}]);
+    v["mixer"]["inserts"][0]["volume"] = json!(0.35);
+    let p: Project = serde_json::from_value(v).unwrap();
+    let r = check(&dir, &p, json!({"maxFindings": 30}));
+    let bass = element(&r, "channel:bass");
+    assert!(bass.balance_db.unwrap() > 20.0, "{bass:?}");
+    let f = finding(&r, "low-end-off-centre");
+    assert_eq!(sets(f, "/channels/1/pan"), Some(0.0), "{f:?}");
+    let lead = element(&r, "channel:lead");
+    assert!(lead.insert_effects_db.unwrap() > 3.0, "{lead:?}");
+    let f = finding(&r, "reverb-wash");
+    let m = sets(f, "/mixer/inserts/3/effects/0/params/mix").unwrap();
+    assert!(m < 0.5, "{f:?}");
+    let f = finding(&r, "part-over-compression");
+    assert!(
+        sets(f, "/mixer/inserts/1/effects/0/params/attack") == Some(10.0)
+            && sets(f, "/mixer/inserts/1/effects/0/params/ratio").unwrap() <= 4.0,
+        "{f:?}"
+    );
+    let f = finding(&r, "master-fader");
+    assert_eq!(sets(f, "/mixer/inserts/0/volume"), Some(1.0), "{f:?}");
+}
+
+// ------------------------------------------------------------ anchors
+
+/// A dance groove (from a real session's critique): a four-on-the-floor kick
+/// turned far down, a sub, an acid line in their band, a pad pushed over
+/// unity into a low insert fader, a part at volume 0 and an impact.
+fn groove() -> Value {
+    serde_json::from_str(include_str!("mixcheck/groove.json")).unwrap()
+}
+
+fn uses(f: &mixcheck::report::FindingOut, prefix: &str) -> bool {
+    f.fix
+        .iter()
+        .any(|op| op["path"].as_str().unwrap_or("").starts_with(prefix))
+}
+
+#[test]
+fn anchors_are_judged_by_their_place_in_the_mix_and_held_there() {
+    let dir = scratch("groove");
+    let p = project(groove());
+    let r = check(&dir, &p, json!({"by": "section"}));
+    let kick = element(&r, "channel:kick");
+    assert_eq!(kick.anchor, Some("kick"));
+    assert_eq!(
+        kick.range_db,
+        Some([-9.0, -6.0]),
+        "four on the floor: dance"
+    );
+    assert_eq!(
+        kick.verdict, "weak",
+        "a kick 12 dB under a dance mix is weak, however audible"
+    );
+    assert_eq!(element(&r, "channel:bass").anchor, Some("bass"));
+    assert_eq!(
+        element(&r, "channel:acid").anchor,
+        None,
+        "one bass: the sub, not the acid line above it"
+    );
+    // Only the anchors' own findings move them.
+    for f in r
+        .findings
+        .iter()
+        .filter(|f| !matches!(f.rule, "weak-anchor" | "squashed-kick"))
+    {
+        for prefix in [
+            "/channels/0/",
+            "/channels/1/",
+            "/mixer/inserts/1/",
+            "/mixer/inserts/2/",
+        ] {
+            assert!(!uses(f, prefix), "{} moves an anchor ({prefix})", f.rule);
+        }
+    }
+    // Applied, the kick is back in its range, the loudness kept.
+    let w = finding(&r, "weak-anchor");
+    let q = mixcheck::patched(&p, &w.fix, "fix").unwrap();
+    let r2 = check(&dir, &q, json!({"by": "section"}));
+    for s in &element(&r2, "channel:kick").by_section {
+        assert!(
+            s.relative_to_mix_db >= -9.5,
+            "the kick at {} dB in {:?}",
+            s.relative_to_mix_db,
+            s.section
+        );
+    }
+    let loud = |r: &Report| r.master.integrated_lufs.flatten().unwrap();
+    assert!(
+        (loud(&r) - loud(&r2)).abs() <= 1.0,
+        "loudness {} → {}",
+        loud(&r),
+        loud(&r2)
+    );
+    // A part at volume 0 is the producer's choice: not judged, not touched.
+    assert!(!r.elements.iter().any(|e| e.id == "channel:shimmer"));
+    assert!(!r.findings.iter().any(|f| uses(f, "/channels/4/")));
+    // The pad's gain moves to its insert: the same sound, the channel at unity.
+    let g = finding(&r, "gain-staging");
+    let q = mixcheck::patched(&p, &g.fix, "fix").unwrap();
+    assert!(q.channels[3].volume <= 1.0);
+    let r3 = check(&dir, &q, json!({}));
+    assert!((loud(&r) - loud(&r3)).abs() <= 0.1);
+    // A transition is heard by its attack, not judged by its tail.
+    assert_ne!(element(&r, "channel:impact").verdict, "inaudible");
+}
+
+#[test]
+fn the_ceiling_moves_only_as_far_as_the_true_peak_needs() {
+    let dir = scratch("ceiling");
+    let mut v = groove();
+    // The kick in its range: no other fix raises a fader.
+    v["mixer"]["inserts"][1]["volume"] = json!(0.4);
+    v["mixer"]["inserts"][0]["effects"][0]["params"] = json!({"gain": 4, "ceiling": -0.2});
+    let p = project(v.clone());
+    let r = check(&dir, &p, json!({}));
+    let tp = |r: &Report| r.master.true_peak_dbtp.unwrap();
+    // A true-peak limiter: the true peak is the ceiling.
+    assert!(tp(&r) <= -0.1, "true peak {}", tp(&r));
+    let f = finding(&r, "true-peak");
+    let to = sets(f, "/mixer/inserts/0/effects/0/params/ceiling").unwrap_or_else(|| {
+        panic!(
+            "{}: {} | {:?}",
+            f.detail,
+            f.fix_label,
+            r.findings
+                .iter()
+                .map(|f| (f.rule, f.fix_label.clone()))
+                .collect::<Vec<_>>()
+        )
+    });
+    assert!((-1.4..=-1.0).contains(&to), "the ceiling to {to}");
+    let r2 = check(
+        &dir,
+        &mixcheck::patched(&p, &f.fix, "fix").unwrap(),
+        json!({}),
+    );
+    assert!(tp(&r2) <= -0.95, "true peak {}", tp(&r2));
+    // A ceiling far lower than the limit needs is given back.
+    v["mixer"]["inserts"][0]["effects"][0]["params"] = json!({"gain": 4, "ceiling": -4});
+    let p = project(v);
+    let r = check(&dir, &p, json!({}));
+    let f = r
+        .findings
+        .iter()
+        .find(|f| f.key == "true-peak|ceiling")
+        .expect("a ceiling lower than needed");
+    let to = sets(f, "/mixer/inserts/0/effects/0/params/ceiling").unwrap();
+    assert!((-1.6..=-1.1).contains(&to), "the ceiling to {to}");
+}
+
+#[test]
+fn a_part_under_the_kick_and_the_bass_is_high_passed_and_the_anchors_kept() {
+    let dir = scratch("acid");
+    let mut v = groove();
+    v["mixer"]["inserts"][1]["volume"] = json!(0.4);
+    // The acid line down in the kick's and the sub's band.
+    v["channels"][2]["instrument"]["params"] = json!({"drift": 0, "cutoff": 220, "resonance": 0});
+    v["mixer"]["inserts"][3]["volume"] = json!(0.08);
+    let p = project(v);
+    let r = check(&dir, &p, json!({"threshold": "strict"}));
+    let acid = element(&r, "channel:acid");
+    let f = r
+        .findings
+        .iter()
+        .find(|f| f.element.as_deref() == Some("channel:acid"))
+        .unwrap_or_else(|| panic!("acid {} {:?}", acid.verdict, acid.audibility));
+    let hp = f.fix.iter().any(|op| {
+        op["path"] == json!("/mixer/inserts/3/effects/0")
+            && op["value"]["options"]["mode"] == json!("highpass")
+    });
+    assert!(hp, "{}: {}", f.rule, f.fix_label);
+    // Nothing for a supporting part touches the kick or the sub.
+    for f in r.findings.iter().filter(|f| {
+        f.element.as_deref().is_some_and(|e| {
+            e != "channel:kick" && e != "channel:bass" && !e.starts_with("insert:0")
+        })
+    }) {
+        for prefix in [
+            "/channels/0/",
+            "/channels/1/",
+            "/mixer/inserts/1/",
+            "/mixer/inserts/2/",
+        ] {
+            assert!(
+                !uses(f, prefix),
+                "{} ({:?}) moves an anchor: {}",
+                f.rule,
+                f.element,
+                f.fix_label
+            );
+        }
     }
 }

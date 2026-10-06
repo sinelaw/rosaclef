@@ -167,7 +167,10 @@ right before editing it, and never rewrite the whole file from memory.
   range or only in some sections (`buriedIn` lists the bars; an automation lane holding it down there is
   named and put back). Every part has `bySection` (its level against the mix per section) and, where
   it drops out (10 dB under its own level), `buriedIn` and a `part-dropout` finding naming the lane
-  that holds it down. Also `--by bar|section|8-beats` (`--by section --text`: each part's level per
+  that holds it down. The kick and the bass are anchors (`"anchor": "kick"`, `rangeDb`): `weak` (and a
+  `weak-anchor` finding) when under their range against the mix however audible; the other fixes hold
+  them where they are, and each fix's `sideEffects` says what it does to them and the lead (`--verify`
+  measures it). Apply the fixes in the order given and measure again between rounds. Also `--by bar|section|8-beats` (`--by section --text`: each part's level per
   section), `--focus rbass,4,master`,
   `--checks levels,audibility,masking,dynamics,gainreduction,spectrum,stereo`,
   `--target spotify|apple|youtube|ebu-r128|…`, `--reference samples/ref.wav` (level-matched A/B),
@@ -192,7 +195,9 @@ right before editing it, and never rewrite the whole file from memory.
 
 HTTP API (while the studio runs, base URL in `$ROSACLEF_URL`): `POST /api/mixcheck` (the mixcheck
 flags as JSON: `{"range": "52:59", "focus": ["rbass"], "whatIf": [...]}`; same report; the producer's
-Mix check panel shows it), `GET /api/project`,
+Mix check panel shows it; or `POST /api/jobs/mixcheck` with the same body answers `{"job": ID}` at once,
+and `GET /api/jobs/ID` says how far it has come until its `state` is `"done"` with the `result` —
+`POST /api/jobs/render` too), `GET /api/project`,
 `PUT /api/project` (full document; validated), `GET /api/schema`, `GET /api/catalog`,
 `GET /api/projects` (the library), `GET /api/files` (this project's files).
 Editing the file is preferred. The producer can open another project from the studio; when

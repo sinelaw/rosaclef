@@ -15,7 +15,7 @@ use rosaclef_engine::render::{encode_wav, RenderScope};
 use rosaclef_fs::{Fs, MemFs, SharedFs};
 use rosaclef_studio::fonts::{FontFiles, Fonts};
 use rosaclef_studio::library::{self, rewrite_refs, unique_sample_path, Library};
-use rosaclef_studio::render::{levels_db, render_project, required_presets, required_samples};
+use rosaclef_studio::render::{levels_db, render_project_with, required_presets, required_samples};
 use rosaclef_studio::{archive, decode, folder, slug, Folder};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -209,6 +209,12 @@ pub fn parse_url(url: &str) -> (String, BTreeMap<String, String>) {
         .collect();
     // The path's own `+` is literal.
     (percent_decode(&path.replace('+', "%2B")), q)
+}
+
+/// `?job=ID`: the id the page gave a job of its `/api/jobs` (web/lib/backend.js),
+/// that its progress goes to (0: none).
+fn job_of(q: &BTreeMap<String, String>) -> u32 {
+    q.get("job").and_then(|j| j.parse().ok()).unwrap_or(0)
 }
 
 fn body_json(body: &[u8]) -> Result<Value> {
@@ -561,7 +567,9 @@ impl Host {
                 }
             }
             ("GET", "/api/mixcheck") => Response::json(rosaclef_studio::mixcheck::catalog()),
-            ("POST", "/api/mixcheck") => self.mixcheck(&String::from_utf8_lossy(body))?,
+            ("POST", "/api/mixcheck") => {
+                self.mixcheck(&String::from_utf8_lossy(body), job_of(q))?
+            }
             ("POST", "/api/render") => {
                 let v = body_json(body)?;
                 let r = self.render(
@@ -572,6 +580,7 @@ impl Host {
                         .and_then(|x| x.as_u64())
                         .unwrap_or(48000) as u32,
                     None,
+                    job_of(q),
                 )?;
                 Response::json(r)
             }
@@ -756,8 +765,10 @@ impl Host {
     fn run_mixcheck(
         &mut self,
         body: &str,
+        job: u32,
     ) -> Result<Result<(rosaclef_studio::mixcheck::Report, bool), String>> {
         use rosaclef_studio::mixcheck;
+        let _job = rosaclef_studio::jobs::start(job, "mixcheck");
         let project = match mixcheck::request_project(&self.doc.project, body) {
             Ok(p) => p,
             Err(e) => return Ok(Err(e.0)),
@@ -788,14 +799,14 @@ impl Host {
     }
 
     /// POST /api/mixcheck.
-    pub fn mixcheck(&mut self, body: &str) -> Result<Response> {
+    pub fn mixcheck(&mut self, body: &str, job: u32) -> Result<Response> {
         use rosaclef_studio::mixcheck::{self, text};
         match mixcheck::apply_request(&self.doc.project, body) {
             Ok(Some(p)) => return Ok(Response::json(json!({ "project": p }))),
             Ok(None) => {}
             Err(e) => return Ok(Response::text(422, e.0)),
         }
-        Ok(match self.run_mixcheck(body)? {
+        Ok(match self.run_mixcheck(body, job)? {
             Ok((r, want_text)) => {
                 let mut v = serde_json::to_value(&r)?;
                 if want_text {
@@ -811,7 +822,7 @@ impl Host {
     pub fn mixcheck_command(&mut self, args: &[String]) -> Result<String> {
         use rosaclef_studio::mixcheck::{options, text};
         let (req, want_text) = options::request_from_args(args).map_err(|e| anyhow::anyhow!(e))?;
-        match self.run_mixcheck(&req.to_string())? {
+        match self.run_mixcheck(&req.to_string(), 0)? {
             Ok((r, _)) if want_text => Ok(text::summary(&r)),
             Ok((r, _)) => Ok(serde_json::to_string_pretty(&r)?),
             Err(e) => bail!("{e}"),
@@ -826,6 +837,7 @@ impl Host {
         bits: u16,
         sample_rate: u32,
         out: Option<&str>,
+        job: u32,
     ) -> Result<Value> {
         let project = self.doc.project.clone();
         self.ensure_loaded(&required_samples(&project))?;
@@ -857,13 +869,15 @@ impl Host {
             Some(o) => o.to_string(),
             None => format!("{}/{name}-{stamp}.wav", folder::RENDERS_DIR),
         };
-        let (audio, warnings) = render_project(
+        let _job = rosaclef_studio::jobs::start(job, "export");
+        let (audio, warnings) = render_project_with(
             &self.folder,
             project,
             &scope,
             sample_rate.clamp(8000, 192000) as f32,
             &self.fonts,
             |_| {},
+            rosaclef_studio::jobs::exported,
         );
         // The browser holds this memory: keep only the soundfont indexes.
         self.fonts.clear();

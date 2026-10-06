@@ -1,0 +1,70 @@
+// How far a long job (an export, a mix check) has come — what the back end
+// says while it renders (crates/studio/src/jobs.rs). The request is answered
+// at once with the job's id, and the page asks about that job until it ends
+// (runJob in the platform layer), so several jobs at once each have their own.
+
+import { runJob } from "#platform";
+import { invalidate } from "../store.js";
+import { t, tf } from "../i18n.js";
+
+/** The jobs being followed, as last heard. */
+/** const heard: Job[] */
+const heard = [];
+
+/** Run job `kind` (a request of the back end's: "mixcheck", "render") and
+ * follow it, redrawing as it goes: `started` gets its id once known (for
+ * jobLabel and jobFraction); resolves with its answer. */
+/** function followJob<B, T>(kind: String, body: B, started: (Int) => Undefined) => Promise<T> */
+export function followJob(kind, body, started) {
+  return runJob(kind, body, (j) => {
+    const k = heard.findIndex((x) => x.id === j.id);
+    if (k < 0) started(j.id);
+    if (j.state !== "running") {
+      if (k >= 0) heard.splice(k, 1);
+    } else if (k >= 0) heard[k] = j;
+    else heard.push(j);
+    invalidate();
+  });
+}
+
+/** function jobOf(id: Int) => Job */
+function jobOf(id) {
+  return heard.find((j) => j.id === id) ?? { id: id, active: false, what: "", stage: "", done: 0, render: 0, seconds: 0, total: 0, state: "" };
+}
+
+/** m:ss */
+/** function clock(s: Number) => String */
+function clock(s) {
+  const m = Math.floor(s / 60);
+  const r = Math.floor(s - m * 60);
+  return `${m}:${r < 10 ? "0" : ""}${r}`;
+}
+
+/** What job `id` is doing, for people. */
+/** function jobLabel(id: Int) => String */
+export function jobLabel(id) {
+  const j = jobOf(id);
+  if (!j.active) return t("progress.preparing");
+  const pct = String(Math.round(j.done * 100));
+  if (j.stage === "samples") return tf("progress.samples", [pct]);
+  if (j.stage === "instruments") return tf("progress.instruments", [pct]);
+  if (j.stage === "tail") return t("progress.tail");
+  if (j.stage === "measure") return t("progress.measuring");
+  // A mix check that renders more than once (a reference, a what-if) says which.
+  const nth = String(j.render);
+  if (j.total > 0)
+    return j.render > 1
+      ? tf("progress.rendering.timeNth", [clock(j.seconds), clock(j.total), pct, nth])
+      : tf("progress.rendering.time", [clock(j.seconds), clock(j.total), pct]);
+  return j.render > 1 ? tf("progress.rendering.nth", [pct, nth]) : tf("progress.rendering.plain", [pct]);
+}
+
+/** How far job `id` has come (0–1), for a bar: the render is most of it. */
+/** function jobFraction(id: Int) => Number */
+export function jobFraction(id) {
+  const j = jobOf(id);
+  if (!j.active) return 0;
+  if (j.stage === "samples" || j.stage === "instruments") return 0.05 * j.done;
+  if (j.stage === "render") return 0.05 + 0.9 * j.done;
+  return 0.97;
+}

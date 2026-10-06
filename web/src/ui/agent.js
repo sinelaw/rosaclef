@@ -196,10 +196,49 @@ export function agentDot() {
   return agent.running ? "status-dot live" : agent.connected ? "status-dot warn" : "status-dot bad";
 }
 
-/** function agentPanel(b: Builder) => Undefined */
-export function agentPanel(b) {
+/** The chips of what the agent sees: the pattern, the channel and the view
+ * in front of you, the selected notes. */
+/** function agentContext(b: Builder) => Undefined */
+function agentContext(b) {
   const pat = currentPattern();
   const ch = currentChannel();
+  b.leaf("span", "lbl", "agent-context-label", t("agent.context.label"));
+  b.attr("title", t("agent.context.title"));
+  b.open("span", "c1", "chip");
+  b.text(t("term.pattern") + " ");
+  b.leaf("b", "v", "", pat ? pat.name : "—");
+  b.close();
+  b.open("span", "c2", "chip");
+  b.text(t("term.channel") + " ");
+  b.leaf("b", "v", "", ch ? ch.name : "—");
+  b.close();
+  b.open("span", "c3", "chip");
+  b.text(t("agent.context.view.label") + " ");
+  b.leaf(
+    "b",
+    "v",
+    "",
+    state.dock === "piano"
+      ? t("panel.pianoRoll")
+      : state.dock === "mixer"
+        ? tf("agent.context.view.mixer", [String(insertIndex(state.insert))])
+        : state.dock === "voice"
+          ? t("agent.context.view.voice")
+          : state.dock === "drums"
+            ? t("panel.drums")
+            : t("agent.context.view.rack")
+  );
+  b.close();
+  if (state.selection.length > 0) {
+    b.open("span", "c4", "chip");
+    b.leaf("b", "v", "", String(state.selection.length));
+    b.text(" " + t("agent.context.notesSelected"));
+    b.close();
+  }
+}
+
+/** function agentPanel(b: Builder) => Undefined */
+export function agentPanel(b) {
   b.open("aside", "agent", "agent");
   b.on("pointerdown", (e) => setFocus("agent"));
 
@@ -254,44 +293,17 @@ export function agentPanel(b) {
   }
   b.close();
 
-  // What the agent can see right now (also written to .rosaclef/context.json).
-  b.open("div", "ctx", "agent-context");
-  b.open("span", "c1", "chip");
-  b.text(t("term.pattern") + " ");
-  b.leaf("b", "v", "", pat ? pat.name : "—");
-  b.close();
-  b.open("span", "c2", "chip");
-  b.text(t("term.channel") + " ");
-  b.leaf("b", "v", "", ch ? ch.name : "—");
-  b.close();
-  b.open("span", "c3", "chip");
-  b.text(t("agent.context.view.label") + " ");
-  b.leaf(
-    "b",
-    "v",
-    "",
-    state.dock === "piano"
-      ? t("panel.pianoRoll")
-      : state.dock === "mixer"
-        ? tf("agent.context.view.mixer", [String(insertIndex(state.insert))])
-        : state.dock === "voice"
-          ? t("agent.context.view.voice")
-          : state.dock === "drums"
-            ? t("panel.drums")
-            : t("agent.context.view.rack")
-  );
-  b.close();
-  if (state.selection.length > 0) {
-    b.open("span", "c4", "chip");
-    b.leaf("b", "v", "", String(state.selection.length));
-    b.text(" " + t("agent.context.notesSelected"));
+  // What the agent can see right now (also written to .rosaclef/context.json):
+  // the agent's context, so on its tab only; a broken project.json on every tab.
+  if (tab === "terminal" || state.diskIssues.length > 0) {
+    b.open("div", "ctx", "agent-context");
+    if (tab === "terminal") agentContext(b);
+    if (state.diskIssues.length > 0) {
+      b.leaf("span", "c5", "chip warn", tf("agent.context.diskInvalid", [state.diskIssues[0].path]));
+      b.attr("title", state.diskIssues.map((i) => `${i.path}: ${i.message}`).join("\n"));
+    }
     b.close();
   }
-  if (state.diskIssues.length > 0) {
-    b.leaf("span", "c5", "chip warn", tf("agent.context.diskInvalid", [state.diskIssues[0].path]));
-    b.attr("title", state.diskIssues.map((i) => `${i.path}: ${i.message}`).join("\n"));
-  }
-  b.close();
 
   // A plugin covers the terminal rather than replacing it: the terminal keeps its size.
   b.open("div", "body", "maestro-body");

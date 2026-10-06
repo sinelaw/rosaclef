@@ -12,6 +12,7 @@ pub mod decode;
 pub mod folder;
 pub mod fonts;
 pub mod guide;
+pub mod jobs;
 pub mod library;
 pub mod mixcheck;
 pub mod render;

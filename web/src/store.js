@@ -95,6 +95,10 @@ export const hooks = {
   /** The tried-out instrument changed (audio.js tells the engine). */
   /** @type {() => Undefined} */
   audition: null,
+  /** Another project opened (net.js): the panels drop what they measured
+   * of the last one (the Mix check's report). */
+  /** @type {() => Undefined} */
+  opened: null,
 };
 
 // ------------------------------------------------------------------ editing

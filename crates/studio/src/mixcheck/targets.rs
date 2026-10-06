@@ -15,6 +15,19 @@ pub struct Target {
     /// A stricter true-peak limit for masters louder than `lufs` (Spotify
     /// asks for -2 dBTP there: its encoder overshoots more).
     pub loud_true_peak: Option<f64>,
+    /// How far a quiet master is turned up.
+    pub boost: Boost,
+}
+
+/// What a destination does with a master under its loudness.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Boost {
+    /// Nothing: it plays quieter than the rest.
+    None,
+    /// Up to where its true peak reaches this (dBTP).
+    PeakLimited(f64),
+    /// Broadcast: the loudness must be met (a tolerance), not turned up.
+    Delivered,
 }
 
 impl Target {
@@ -35,6 +48,7 @@ pub const TARGETS: &[Target] = &[
         true_peak: -1.0,
         tolerance: None,
         loud_true_peak: Some(-2.0),
+        boost: Boost::PeakLimited(-1.0),
     },
     Target {
         id: "apple",
@@ -43,6 +57,7 @@ pub const TARGETS: &[Target] = &[
         true_peak: -1.0,
         tolerance: None,
         loud_true_peak: None,
+        boost: Boost::PeakLimited(-1.0),
     },
     Target {
         id: "youtube",
@@ -51,6 +66,7 @@ pub const TARGETS: &[Target] = &[
         true_peak: -1.0,
         tolerance: None,
         loud_true_peak: None,
+        boost: Boost::None,
     },
     Target {
         id: "amazon",
@@ -59,6 +75,7 @@ pub const TARGETS: &[Target] = &[
         true_peak: -2.0,
         tolerance: None,
         loud_true_peak: None,
+        boost: Boost::None,
     },
     Target {
         id: "tidal",
@@ -67,6 +84,7 @@ pub const TARGETS: &[Target] = &[
         true_peak: -1.0,
         tolerance: None,
         loud_true_peak: None,
+        boost: Boost::None,
     },
     Target {
         id: "ebu-r128",
@@ -75,6 +93,7 @@ pub const TARGETS: &[Target] = &[
         true_peak: -1.0,
         tolerance: Some(0.5),
         loud_true_peak: None,
+        boost: Boost::Delivered,
     },
     Target {
         id: "atsc-a85",
@@ -83,6 +102,7 @@ pub const TARGETS: &[Target] = &[
         true_peak: -2.0,
         tolerance: Some(2.0),
         loud_true_peak: None,
+        boost: Boost::Delivered,
     },
 ];
 
@@ -135,6 +155,16 @@ pub fn judge(t: &Target, integrated: Option<f64>, true_peak: Option<f64>) -> Ver
             ));
         }
     }
+    // What the destination really applies: it turns loud masters down;
+    // quiet ones up only as far as it allows.
+    let applied = match (gain, t.boost) {
+        (Some(g), _) if g <= 0.0 => Some(g),
+        (Some(_), Boost::None) => Some(0.0),
+        (Some(g), Boost::PeakLimited(l)) => Some(super::dsp::r1(
+            g.min(true_peak.map(|tp| l - tp).unwrap_or(g)).max(0.0),
+        )),
+        (g, _) => g,
+    };
     if let (Some(i), Some(g)) = (integrated, gain) {
         match t.tolerance {
             Some(tol) if (i - t.lufs).abs() > tol => {
@@ -149,15 +179,42 @@ pub fn judge(t: &Target, integrated: Option<f64>, true_peak: Option<f64>) -> Ver
                 "played {:.1} dB quieter (normalized to {:.0} LUFS): the extra loudness only costs dynamics",
                 -g, t.lufs
             )),
-            None if g > 2.0 => {
-                worse(&mut status, "warn");
-                notes.push(format!(
-                    "{:.1} dB under the {:.0} LUFS target: it plays quieter than other tracks, or is turned up into a limiter",
-                    g, t.lufs
-                ));
+            None if g > 1.0 => {
+                let up = applied.unwrap_or(0.0);
+                let left = g - up;
+                let how = match t.boost {
+                    Boost::None => format!("{} does not turn quiet tracks up", t.name),
+                    _ => format!(
+                        "{} turns it up {up:.1} dB, as far as its {:.0} dBTP peak limit allows",
+                        t.name,
+                        match t.boost {
+                            Boost::PeakLimited(l) => l,
+                            _ => 0.0,
+                        }
+                    ),
+                };
+                if left > 1.0 {
+                    // A quiet, dynamic master (jazz, classical) is a choice:
+                    // a warning only when it ends up far under the rest.
+                    if left > 6.0 {
+                        worse(&mut status, "warn");
+                    }
+                    notes.push(format!(
+                        "{g:.1} dB under {:.0} LUFS: {how}, so it plays {left:.1} dB quieter than other tracks",
+                        t.lufs
+                    ));
+                } else {
+                    notes.push(format!("{g:.1} dB under {:.0} LUFS: {how}", t.lufs));
+                }
             }
             None => {}
         }
+    }
+    if t.id == "apple" {
+        notes.push(
+            "Apple's Sound Check measures loudness its own way: expect a dB or so of difference"
+                .into(),
+        );
     }
     Verdict {
         id: t.id,
@@ -165,7 +222,7 @@ pub fn judge(t: &Target, integrated: Option<f64>, true_peak: Option<f64>) -> Ver
         lufs: t.lufs,
         true_peak_dbtp: limit,
         status,
-        playback_gain_db: gain,
+        playback_gain_db: applied,
         notes,
     }
 }

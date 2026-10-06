@@ -20,7 +20,7 @@ use rosaclef_engine::Engine;
 use rosaclef_fs::Fs;
 use rosaclef_studio::fonts::{DirFonts, Fonts};
 use rosaclef_studio::library::{unique_sample_path, Library};
-use rosaclef_studio::render::{levels_db, render_project};
+use rosaclef_studio::render::{levels_db, render_project_with};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -107,7 +107,20 @@ pub struct App {
     >,
     /// Serializes project switches (and library operations on the open project).
     pub(crate) switching: Mutex<()>,
+    /// The page's long jobs (`/api/jobs`): the last id given, and how each
+    /// one ended.
+    next_job: AtomicU64,
+    jobs: Mutex<Vec<Ended>>,
 }
+
+/// How a job of `/api/jobs` stands: running, or its answer.
+struct Ended {
+    id: u32,
+    outcome: Option<Result<Value, (StatusCode, String)>>,
+}
+
+/// Finished jobs kept for their pages to collect.
+const KEEP_JOBS: usize = 16;
 
 pub(crate) type Shared = Arc<App>;
 
@@ -152,6 +165,8 @@ pub async fn run(cfg: Config) -> Result<()> {
         native: Mutex::new(None),
         watcher: Mutex::new(None),
         switching: Mutex::new(()),
+        next_job: AtomicU64::new(0),
+        jobs: Mutex::new(Vec::new()),
     });
     write_status(&app);
 
@@ -209,6 +224,14 @@ pub async fn run(cfg: Config) -> Result<()> {
                 .layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
         )
         .route("/api/render", post(render))
+        // The same as jobs: the answer at once is the job's id, and the job
+        // says how far it has come, then what it found.
+        .route(
+            "/api/jobs/mixcheck",
+            post(start_mixcheck).layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
+        )
+        .route("/api/jobs/render", post(start_render))
+        .route("/api/jobs/{id}", get(get_job))
         .route("/api/agents", get(get_agents))
         .route("/api/info", get(get_info))
         .nest("/files", Router::new().fallback(serve_file))
@@ -911,32 +934,35 @@ async fn critique(headers: HeaderMap, body: String) -> Response {
     }
 }
 
-/// Mix check (`rosaclef mixcheck` over HTTP): the request object in (the
-/// command line's flags as JSON), the report out. Without `project` it
-/// checks the open project.
 async fn mixcheck(State(app): State<Shared>, headers: HeaderMap, body: String) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
+    let res = tokio::task::spawn_blocking(move || run_mixcheck(&app, &body)).await;
+    answer(res.unwrap_or_else(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))))
+}
+
+/// A mix check of the open project; `body` is the request (`/api/mixcheck`).
+fn run_mixcheck(app: &App, body: &str) -> Result<Value, (StatusCode, String)> {
     let project = app.doc.lock().project.clone();
     let folder = app.folder();
-    let res = tokio::task::spawn_blocking(move || {
-        let fonts = fonts();
-        let env = rosaclef_studio::mixcheck::Env {
-            folder: &folder,
-            fonts: &fonts,
-            setup: &install_plugin_host,
-            progress: &|_| {},
-            disk_cache: true,
-            any_file: false,
-        };
-        rosaclef_studio::mixcheck::api(&env, &project, &body)
-    })
-    .await;
+    let fonts = fonts();
+    let env = rosaclef_studio::mixcheck::Env {
+        folder: &folder,
+        fonts: &fonts,
+        setup: &install_plugin_host,
+        progress: &|_| {},
+        disk_cache: true,
+        any_file: false,
+    };
+    rosaclef_studio::mixcheck::api(&env, &project, body)
+        .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e.0))
+}
+
+fn answer(res: Result<Value, (StatusCode, String)>) -> Response {
     match res {
-        Ok(Ok(v)) => Json(v).into_response(),
-        Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.0).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Ok(v) => Json(v).into_response(),
+        Err((code, e)) => (code, e).into_response(),
     }
 }
 
@@ -957,55 +983,134 @@ async fn render(
     if !same_origin(&headers) {
         return forbidden();
     }
+    let res = tokio::task::spawn_blocking(move || run_render(&app, req)).await;
+    answer(res.unwrap_or_else(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))))
+}
+
+/// Render the open project (or a pattern of it) into renders/.
+fn run_render(app: &App, req: RenderReq) -> Result<Value, (StatusCode, String)> {
     let project = app.doc.lock().project.clone();
     let folder = app.folder();
-    let res = tokio::task::spawn_blocking(move || -> Result<Value> {
-        let scope = match req.pattern.clone().filter(|p| !p.is_empty()) {
-            Some(id) => RenderScope::Pattern {
-                id,
-                loops: req.loops.unwrap_or(1),
-            },
-            None => RenderScope::Song,
-        };
-        let bits = req.bits.filter(|b| [16, 24, 32].contains(b)).unwrap_or(24);
-        let title = rosaclef_studio::slug(&project.meta.title);
-        let name = match &req.pattern {
-            Some(p) if !p.is_empty() => format!("{title}-{p}"),
-            _ => title,
-        };
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let rel = format!("{}/{name}-{stamp}.wav", folder::RENDERS_DIR);
-        let (audio, warnings) = render_project(
-            &folder,
-            project,
-            &scope,
-            req.sample_rate.unwrap_or(48000) as f32,
-            &fonts(),
-            install_plugin_host,
-        );
-        folder::write_atomic(
-            &folder.dir.join(&rel),
-            &rosaclef_engine::render::encode_wav(&audio, bits),
-        )?;
-        let (peak_db, rms_db) = levels_db(&audio);
-        Ok(json!({
-            "path": rel,
-            "url": format!("/files/{rel}"),
-            "duration": audio.duration(),
-            "peakDb": peak_db,
-            "rmsDb": rms_db,
-            "warnings": warnings,
-        }))
-    })
-    .await;
-    match res {
-        Ok(Ok(v)) => Json(v).into_response(),
-        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    let scope = match req.pattern.clone().filter(|p| !p.is_empty()) {
+        Some(id) => RenderScope::Pattern {
+            id,
+            loops: req.loops.unwrap_or(1),
+        },
+        None => RenderScope::Song,
+    };
+    let bits = req.bits.filter(|b| [16, 24, 32].contains(b)).unwrap_or(24);
+    let title = rosaclef_studio::slug(&project.meta.title);
+    let name = match &req.pattern {
+        Some(p) if !p.is_empty() => format!("{title}-{p}"),
+        _ => title,
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let rel = format!("{}/{name}-{stamp}.wav", folder::RENDERS_DIR);
+    let (audio, warnings) = render_project_with(
+        &folder,
+        project,
+        &scope,
+        req.sample_rate.unwrap_or(48000) as f32,
+        &fonts(),
+        install_plugin_host,
+        rosaclef_studio::jobs::exported,
+    );
+    folder::write_atomic(
+        &folder.dir.join(&rel),
+        &rosaclef_engine::render::encode_wav(&audio, bits),
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let (peak_db, rms_db) = levels_db(&audio);
+    Ok(json!({
+        "path": rel,
+        "url": format!("/files/{rel}"),
+        "duration": audio.duration(),
+        "peakDb": peak_db,
+        "rmsDb": rms_db,
+        "warnings": warnings,
+    }))
+}
+
+/// Start `work` as a job on its own thread; the answer is its id at once
+/// (`{"job": id}`), and `GET /api/jobs/{id}` says how far it has come and,
+/// once it ends, its result (or error).
+fn start_job(
+    app: Shared,
+    what: &'static str,
+    work: impl FnOnce(&App) -> Result<Value, (StatusCode, String)> + Send + 'static,
+) -> Response {
+    let id = (app.next_job.fetch_add(1, Ordering::Relaxed) % u32::MAX as u64) as u32 + 1;
+    app.jobs.lock().push(Ended { id, outcome: None });
+    tokio::task::spawn_blocking(move || {
+        let run = rosaclef_studio::jobs::start(id, what);
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(&app)))
+            .unwrap_or_else(|_| {
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("the {what} failed"),
+                ))
+            });
+        drop(run);
+        let mut jobs = app.jobs.lock();
+        if let Some(j) = jobs.iter_mut().find(|j| j.id == id) {
+            j.outcome = Some(outcome);
+        }
+        // Forget the oldest finished ones.
+        while jobs.iter().filter(|j| j.outcome.is_some()).count() > KEEP_JOBS {
+            if let Some(k) = jobs.iter().position(|j| j.outcome.is_some()) {
+                jobs.remove(k);
+            }
+        }
+    });
+    (StatusCode::ACCEPTED, Json(json!({ "job": id }))).into_response()
+}
+
+async fn start_mixcheck(State(app): State<Shared>, headers: HeaderMap, body: String) -> Response {
+    if !same_origin(&headers) {
+        return forbidden();
     }
+    start_job(app, "mixcheck", move |app| run_mixcheck(app, &body))
+}
+
+async fn start_render(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<RenderReq>,
+) -> Response {
+    if !same_origin(&headers) {
+        return forbidden();
+    }
+    start_job(app, "export", move |app| run_render(app, req))
+}
+
+/// A job: how far it has come (`state` "running"), then `state` "done" with
+/// its `result`, or "failed" with its `error` (and the HTTP `status` the
+/// request on its own would have answered).
+async fn get_job(
+    State(app): State<Shared>,
+    axum::extract::Path(id): axum::extract::Path<u32>,
+) -> Response {
+    let jobs = app.jobs.lock();
+    let Some(j) = jobs.iter().find(|j| j.id == id) else {
+        return (StatusCode::NOT_FOUND, format!("no job {id}")).into_response();
+    };
+    let mut v = serde_json::to_value(rosaclef_studio::jobs::get(id)).unwrap_or(json!({}));
+    match &j.outcome {
+        None => v["state"] = json!("running"),
+        Some(Ok(r)) => {
+            v["state"] = json!("done");
+            v["result"] = r.clone();
+        }
+        Some(Err((code, e))) => {
+            v["state"] = json!("failed");
+            v["status"] = json!(code.as_u16());
+            v["error"] = json!(e);
+        }
+    }
+    Json(v).into_response()
 }
 
 async fn get_agents() -> impl IntoResponse {

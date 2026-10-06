@@ -210,6 +210,13 @@ pub struct ElementOut {
     /// The song's lead (one per song): judged by its level in the mix too.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub lead: bool,
+    /// An anchor of the groove (kick | bass): judged by its level against
+    /// the mix too, held where it is by the other findings' fixes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<&'static str>,
+    /// Where the anchor belongs against the mix (dB: low, high), by style.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range_db: Option<[f64; 2]>,
     pub insert: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rms_dbfs: Option<f64>,
@@ -225,6 +232,19 @@ pub struct ElementOut {
     pub active_pct: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation: Option<Option<f64>>,
+    /// Its left against its right (dB; positive: left), where it plays.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub balance_db: Option<f64>,
+    /// How much its insert's effects change its level (dB): a channel alone
+    /// on an insert with effects, measured before and after them (its
+    /// fader aside). A reverb or delay adding a lot is a wash.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub insert_effects_db: Option<f64>,
+    /// The share of what is heard of it that its insert's time effects
+    /// (reverb, delay, chorus, phaser) add: what is left of the dry signal
+    /// through them, against all of it (an insert of time effects only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wet_pct: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audibility: Option<AudibilityOut>,
     /// Its own spectrum at the master where it plays: the six bands of
@@ -242,7 +262,7 @@ pub struct ElementOut {
     /// under the mix (a dropout).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub buried_in: Vec<UnderMix>,
-    /// inaudible | buried | ok | dominant | overloading
+    /// inaudible | buried | weak | ok | dominant | overloading
     pub verdict: &'static str,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub suggestions: Vec<Suggestion>,
@@ -294,9 +314,25 @@ pub struct FindingOut {
     pub fix: Vec<Value>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub fix_label: String,
+    /// What the fix does to the anchors and the lead against the mix (the
+    /// model's prediction, where it moves one 0.3 dB or more).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub side_effects: Vec<SideEffect>,
     /// `--verify`: the check again with `fix` applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verified: Option<Value>,
+    /// How bad it is, in its rule's own measure (for --verify: a finding
+    /// that grows under another's fix got worse).
+    #[serde(skip)]
+    pub score: f64,
+}
+
+/// A part a fix moves against the mix besides the one it is about.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SideEffect {
+    pub id: String,
+    pub delta_db: f64,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -384,6 +420,9 @@ pub fn master_numbers(
     let (mut ll, mut rr, mut lr) = (0.0, 0.0, 0.0);
     let mut six = [0f64; BANDS];
     let mut corr_min: Option<f64> = None;
+    // Hops with sound: silences (an intro's rests, a break) would inflate
+    // the crest factor.
+    let mut sounding = 0usize;
     let loudest = hops
         .iter()
         .map(|h| {
@@ -399,6 +438,9 @@ pub fn master_numbers(
         ll += x;
         rr += y;
         lr += z;
+        if x + y > loudest * 1e-6 {
+            sounding += 1;
+        }
         if x + y > loudest * 1e-3 {
             if let Some(c) = model::correlation(x, y, z) {
                 corr_min = Some(corr_min.map_or(c, |m: f64| m.min(c)));
@@ -409,7 +451,8 @@ pub fn master_numbers(
         }
     }
     let n = hops.len().max(1) as f64;
-    let rms = (ll + rr) / (2.0 * n);
+    // RMS where it sounds; a sine reads -3 dBFS (not AES17's 0).
+    let rms = (ll + rr) / (2.0 * sounding.max(1) as f64);
     let mut m = MasterOut::default();
     if o.has(Check::Levels) {
         m.integrated_lufs = Some(l.integrated.map(r1));
@@ -446,7 +489,8 @@ fn gr_stat(series: &[&GrSeries], hops: &[usize]) -> Option<GrStat> {
     }
     let (mut max, mut sum, mut above) = (0f64, 0f64, 0usize);
     for &h in hops {
-        let m: f64 = series.iter().map(|g| g.max[h] as f64).fold(0.0, f64::max);
+        // Devices in a chain add their reductions (dB): both summed.
+        let m: f64 = series.iter().map(|g| g.max[h] as f64).sum();
         let mean: f64 = series.iter().map(|g| g.mean[h] as f64).sum();
         max = max.max(m);
         sum += mean;
@@ -473,6 +517,12 @@ pub struct Context<'a> {
     pub include_master: bool,
     /// The inside hops of each row of `perBar`.
     pub rows_hops: Vec<Vec<usize>>,
+    /// Each channel's anchor, and whether the song is dance music.
+    pub anchors: Vec<Option<super::roles::Anchor>>,
+    pub dance: bool,
+    /// The blocks of each element's stretches (as `bySection`; one stretch
+    /// when it has no sections), in the order of `elements`.
+    pub stretch_blocks: Vec<Vec<Vec<usize>>>,
 }
 
 /// Elements named by `--focus` (all of them when it is empty) and whether
@@ -691,7 +741,23 @@ fn lead_of(mix: &Mix, roles: &[&'static str], hops: &[usize]) -> Option<String> 
     };
     let named = |e: &Element| {
         let n = format!("{} {}", e.id, e.name).to_ascii_lowercase();
+        // Not the parts around the lead: backing vocals, chops, a choir.
         ["lead", "vocal", "vox", "melody", "topline", "solo"]
+            .iter()
+            .any(|w| n.contains(w))
+            && ![
+                "backing",
+                "back ",
+                "bgv",
+                "bv ",
+                "chop",
+                "choir",
+                "harmony",
+                "harmonies",
+                "double",
+                "adlib",
+                "ad-lib",
+            ]
             .iter()
             .any(|w| n.contains(w))
     };
@@ -764,6 +830,8 @@ pub fn build<'a>(
     let mix = Mix::new(a, p);
     let sections = timeline::sections(p);
     let roles = rosaclef_core::critic::channel_roles(p);
+    let anchors = super::roles::anchors(p, &roles);
+    let dance = super::roles::dance(p, &anchors);
     let (elements, include_master) = focused(&mix, p, &o.focus)?;
     let hops = mix.inside.clone();
     let blocks = mix.inside_blocks.clone();
@@ -979,7 +1047,16 @@ pub fn build<'a>(
     let mut outs: Vec<(ElementOut, usize)> = vec![];
     let mut unders: Vec<Option<Under>> = vec![];
     let mut kept_aud = vec![];
+    let mut stretch_blocks = vec![];
     for (i, e) in elements.iter().enumerate() {
+        // Silenced on purpose (muted, or at volume 0): not judged.
+        let silenced = match e.channel {
+            Some(c) => super::roles::silenced(p, c),
+            None => super::roles::silenced_insert(p, e.insert),
+        };
+        if silenced {
+            continue;
+        }
         let levels: Vec<f64> = hops
             .iter()
             .map(|h| e.units.iter().map(|u| mix.unit_ms(*u, *h)).sum())
@@ -1031,7 +1108,21 @@ pub fn build<'a>(
             playing,
             if is_lead { &floored } else { &dropped },
         );
-        let verdict = if want_aud && frac < inaudible_at {
+        let anchor = e.channel.and_then(|c| anchors.get(c).copied().flatten());
+        let range = anchor.map(|a| super::roles::range(a, dance));
+        // An anchor under its range — over the range, in a quarter of its
+        // stretches, or a dB under it in any — is weak however audible it is.
+        let weak = range.is_some_and(|[lo, _]| {
+            let below = groups.iter().filter(|g| g.rel() < lo - 0.5).count();
+            rel.is_some_and(|r| r < lo - 0.5)
+                || (below > 0 && below * 4 >= groups.len())
+                || groups.iter().any(|g| g.rel() < lo - 1.0)
+        });
+        // An anchor under its range is weak first: its level is the fix,
+        // however masked it is.
+        let verdict = if weak {
+            "weak"
+        } else if want_aud && frac < inaudible_at {
             "inaudible"
         } else if want_aud && frac < buried_at {
             "buried"
@@ -1041,7 +1132,9 @@ pub fn build<'a>(
         {
             // Heard, but far under the mix: a lead the song leans on.
             "buried"
-        } else if own_peak > 1.0 || (overloaded && share >= 0.4) {
+        } else if overloaded && share >= 0.4 {
+            // A part's own peak over 0 dBFS clips nothing in the engine (it
+            // is floating point): only its share of a master that overloads.
             "overloading"
         } else if share >= 0.45 && rel.is_some_and(|r| r >= -3.0) {
             "dominant"
@@ -1079,6 +1172,8 @@ pub fn build<'a>(
                 }
             }),
             lead: is_lead,
+            anchor: anchor.map(|a| a.name()),
+            range_db: range,
             insert: e.insert,
             share_of_energy_pct: pct(share),
             active_pct: pct(active.len() as f64 / hops.len().max(1) as f64),
@@ -1098,6 +1193,35 @@ pub fn build<'a>(
         }
         if o.has(Check::Stereo) {
             out.correlation = Some(mix.correlation(e.stream, &active).map(r2));
+            out.balance_db = mix.balance(e.stream, &active).map(r1);
+        }
+        if let Some(d) = e.dry.filter(|_| ins.effects.iter().any(|x| x.enabled)) {
+            let dry_ms = active.iter().map(|h| mix.ms(d, *h)).sum::<f64>() / active.len() as f64;
+            let fader = (ins.volume * ins.volume).max(1e-8);
+            if dry_ms > 1e-12 && own_ms > 1e-12 {
+                out.insert_effects_db = Some(r1(dsp::db(own_ms / (dry_ms * fader))));
+                // What each time effect passes of the dry signal.
+                let on: Vec<&rosaclef_core::Device> =
+                    ins.effects.iter().filter(|x| x.enabled).collect();
+                let timed = on
+                    .iter()
+                    .all(|x| matches!(x.kind.as_str(), "reverb" | "delay" | "chorus" | "phaser"));
+                if timed {
+                    let g: f64 = on
+                        .iter()
+                        .map(|x| {
+                            let m = x.param("mix");
+                            match x.kind.as_str() {
+                                "delay" => 1.0,
+                                "chorus" => (1.0 - m / 2.0) * (1.0 + 0.2 * m),
+                                _ => 1.0 - m / 2.0,
+                            }
+                        })
+                        .product();
+                    let dry = g * g * dry_ms * fader;
+                    out.wet_pct = Some(pct((1.0 - dry / own_ms).clamp(0.0, 1.0)));
+                }
+            }
         }
         if o.has(Check::Spectrum) {
             let mut six = [0f64; BANDS];
@@ -1129,6 +1253,14 @@ pub fn build<'a>(
         }
         unders.push(under);
         kept_aud.push((e.id.clone(), au.clone()));
+        stretch_blocks.push(if groups.len() > 1 {
+            groups.iter().map(|g| g.blocks.clone()).collect()
+        } else {
+            vec![groups
+                .first()
+                .map(|g| g.blocks.clone())
+                .unwrap_or_else(|| blocks.clone())]
+        });
         outs.push((out, i));
     }
 
@@ -1140,6 +1272,18 @@ pub fn build<'a>(
         .map(|(k, _)| k)
         .collect();
     if want_aud && !flagged.is_empty() {
+        // An anchor over its range may come down for another part.
+        let over = |c: usize| {
+            outs.iter().any(|(o, _)| {
+                o.anchor.is_some()
+                    && o.id == model::channel_id(p, c)
+                    && o.range_db.is_some_and(|[_, hi]| {
+                        o.relative_to_mix_db.flatten().is_some_and(|r| r > hi + 0.5)
+                    })
+            })
+        };
+        let held = super::findings::held_units(&mix, &anchors, &over);
+        let anchor_units = super::findings::held_units(&mix, &anchors, &|_| false);
         let gains = [
             1.5, 3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 12.0, 15.0, 18.0, 21.0, 24.0, 30.0,
         ];
@@ -1157,7 +1301,10 @@ pub fn build<'a>(
                     masker: None,
                 })
                 .collect();
-            let cut = super::findings::masker_cut(&mix, au, &elements[ei]);
+            // Never an anchor cut for a supporting part; for the lead, an
+            // anchor over its range may give.
+            let keep = if outs[k].0.lead { &held } else { &anchor_units };
+            let cut = super::findings::masker_cut(&mix, au, &elements[ei], keep);
             if let Some((u, bands, _, _)) = &cut {
                 t.push(Change {
                     gain_db: 0.0,
@@ -1170,11 +1317,18 @@ pub fn build<'a>(
             let rel = outs[k].0.relative_to_mix_db.flatten();
             let bal = match (rel, &unders[k]) {
                 (Some(r), _) if outs[k].0.lead && r < lead_floor => {
-                    super::findings::balance(p, &mix, &blocks, &[], &elements[ei], au, r)
+                    super::findings::balance(p, &mix, &blocks, &[], &elements[ei], au, r, &held)
                 }
-                (_, Some(u)) if outs[k].0.lead && u.share >= 0.2 => {
-                    super::findings::balance(p, &mix, &u.blocks, &u.beats, &elements[ei], au, u.rel)
-                }
+                (_, Some(u)) if outs[k].0.lead && u.share >= 0.2 => super::findings::balance(
+                    p,
+                    &mix,
+                    &u.blocks,
+                    &u.beats,
+                    &elements[ei],
+                    au,
+                    u.rel,
+                    &held,
+                ),
                 _ => None,
             };
             if let Some(b) = &bal {
@@ -1198,6 +1352,7 @@ pub fn build<'a>(
                 cuts[n].as_ref(),
                 bals[n].as_ref(),
                 buried_at,
+                &anchor_units,
             );
         }
     }
@@ -1219,6 +1374,9 @@ pub fn build<'a>(
         audibility: kept_aud,
         include_master,
         rows_hops: rows.into_iter().map(|r| r.hops).collect(),
+        anchors,
+        dance,
+        stretch_blocks,
     };
     Ok((r, ctx))
 }

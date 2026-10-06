@@ -74,10 +74,18 @@
 .agent-context {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 5px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
   background: #0e0c11;
+}
+.agent-context-label {
+  color: var(--dim);
+  font: 10px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: help;
 }
 .chip {
   display: inline-flex;

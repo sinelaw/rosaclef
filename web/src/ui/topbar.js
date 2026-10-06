@@ -1,6 +1,6 @@
 // The top bar: brand, song title, transport, tempo, output and export.
 
-import { drag, fmt, sendJson, download } from "#platform";
+import { drag, fmt, download } from "#platform";
 import { state, begin, changed, commit, undo, redo, hint, invalidate } from "../store.js";
 import { barBeat, semitonesText } from "../model.js";
 import { togglePlay, stop, record, setMode, setOutput, toggleMetronome } from "../audio.js";
@@ -11,6 +11,7 @@ import { toast } from "./toast.js";
 import { projectsButton } from "./projects.js";
 import { keyboard, toggleKeyboard } from "./keyboard.js";
 import { meterLcd } from "./meter.js";
+import { followJob, jobLabel, jobFraction } from "./progress.js";
 
 /** function lcd(b: Builder, key: String, label: String, value: String, unit: String) => Undefined */
 function lcd(b, key, label, value, unit) {
@@ -105,18 +106,20 @@ function tempoLcd(b) {
 }
 
 let exporting = false;
+/** The export's job id (its progress). */
+let exportJob = 0;
 
 function exportSong() {
   if (exporting) return;
   exporting = true;
-  toast(
-    t("topbar.export.rendering.toast.title"),
-    state.backend === "local" ? t("topbar.export.rendering.toast.bodyLocal") : t("topbar.export.rendering.toast.bodyNative"),
-    "info"
-  );
-  sendJson("/api/render", "POST", { bits: 24 })
+  exportJob = 0;
+  invalidate();
+  followJob("render", { bits: 24 }, (id) => {
+    exportJob = id;
+  })
     .then((r) => {
       exporting = false;
+      invalidate();
       const path = String(r.path);
       toast(
         t("topbar.export.done.toast.title"),
@@ -128,6 +131,7 @@ function exportSong() {
     })
     .catch((e) => {
       exporting = false;
+      invalidate();
       toast(t("topbar.export.failed.toast.title"), String(e), "error");
       return false;
     });
@@ -294,13 +298,15 @@ export function topbar(b) {
   iconButton(b, "redo", "", "redo", t("topbar.redo.title"), () => {
     redo();
   });
-  b.open("button", "export", "btn gold");
-  b.attr("title", t("topbar.export.title"));
+  b.open("button", "export", exporting ? "btn gold export busy" : "btn gold export");
+  b.attr("title", exporting ? jobLabel(exportJob) : t("topbar.export.title"));
   b.on("pointerenter", (e) => hint(t("topbar.export.hint")));
   b.on("click", (e) => {
     exportSong();
   });
-  b.leaf("span", "t", "", t("topbar.export.label"));
+  // While it renders: how far into the song, as a fill behind the label.
+  b.style("--done", `${Math.round(jobFraction(exportJob) * 1000) / 10}%`);
+  b.leaf("span", "t", "", exporting ? tf("topbar.export.progress.label", [String(Math.round(jobFraction(exportJob) * 100))]) : t("topbar.export.label"));
   b.close();
   languageSwitch(b);
   b.close();

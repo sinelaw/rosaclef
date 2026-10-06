@@ -71,7 +71,12 @@ for (const code of codes) {
     .catch(() => {
       throw new Error(`${code}: the export button does not say ${want}`);
     });
-  if ((await page.textContent(".lang-switch .lang-code")).trim() !== code.split("-")[0].toUpperCase()) throw new Error(`${code}: the switcher's code`);
+  // Two languages can share the export button's word (es, pt-BR: "Exportar"): wait for the redraw by the switcher's code.
+  await page
+    .waitForFunction((c) => document.querySelector(".lang-switch .lang-code")?.textContent.trim() === c, code.split("-")[0].toUpperCase(), { timeout: 15000 })
+    .catch(() => {
+      throw new Error(`${code}: the switcher's code`);
+    });
   const title = await page.getAttribute(".topbar .btn.icon.play, .topbar .btn.icon.play.on", "title");
   if (title === "Play / pause (Space)") throw new Error(`${code}: the play button's tip is still English`);
   ok(`${code}: ${Object.keys(words).length} texts, the export button says “${want}”`);

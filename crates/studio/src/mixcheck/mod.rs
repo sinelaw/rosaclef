@@ -27,8 +27,10 @@ pub mod findings;
 pub mod model;
 pub mod options;
 pub mod patch;
+pub mod predict;
 pub mod reference;
 pub mod report;
+pub mod roles;
 pub mod targets;
 pub mod text;
 pub mod timeline;
@@ -162,7 +164,7 @@ pub fn measure(
     }
     let mut warnings = vec![];
     let mut decoded = vec![];
-    for path in samples {
+    for path in samples.iter().cloned() {
         match env
             .folder
             .resolve(&path)
@@ -180,6 +182,28 @@ pub fn measure(
         samples: decoded,
         warnings: vec![],
     };
+    // The instruments' outputs of a render of the same notes (the mixer
+    // changed since: a fix applied) are played again from the disk instead
+    // of the instruments; else this render's are kept there for the next.
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut dry = if o.cache && env.disk_cache {
+        let key = cache::dry_key(
+            Some(env.folder),
+            project,
+            &samples,
+            &segments,
+            pre,
+            o.sample_rate,
+        );
+        cache::dry::DryFiles::open(env.folder, &key)
+    } else {
+        None
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    let store = dry.as_mut().map(|d| d as &mut dyn analyze::DryStore);
+    #[cfg(target_arch = "wasm32")]
+    let store = None;
+    crate::jobs::next_render();
     let mut a = analyze::run(
         project,
         &t,
@@ -187,8 +211,17 @@ pub fn measure(
         pre,
         o.sample_rate,
         &mut f,
-        env.progress,
+        store,
+        |x| {
+            crate::jobs::rendered(x);
+            (env.progress)(x)
+        },
     );
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(d) = dry {
+        d.finish();
+    }
+    crate::jobs::measuring();
     a.warnings.extend(warnings);
     a.warnings.extend(f.warnings);
     let a = Arc::new(a);
@@ -352,9 +385,57 @@ fn verify(env: &Env, project: &Project, o: &Options, r: &mut Report) -> Result<(
                     "summary": d["summary"],
                     "new": d["findings"]["new"],
                 });
+                // What was there already and grew under this fix.
+                let worse: Vec<&str> = r2
+                    .findings
+                    .iter()
+                    .filter(|f| &f.key != key)
+                    .filter(|f| {
+                        r.findings.iter().any(|b| {
+                            b.key == f.key && f.score > b.score + (b.score.abs() * 0.1).max(0.5)
+                        })
+                    })
+                    .map(|f| f.key.as_str())
+                    .collect();
+                if !worse.is_empty() {
+                    v["worse"] = json!(worse);
+                }
+                // A quieter mix sounds worse at first: compare at the same
+                // loudness.
+                if let (Some(a), Some(b)) = (
+                    r.master.integrated_lufs.flatten(),
+                    r2.master.integrated_lufs.flatten(),
+                ) {
+                    if (b - a).abs() >= 1.0 {
+                        v["levelMatchDb"] = json!(dsp::r1(a - b));
+                    }
+                }
                 if let Some(f) = still {
                     // The same problem, smaller or elsewhere.
                     v["still"] = json!(format!("{}: {}", f.at, f.detail));
+                }
+                // What it did to every other part against the mix: the
+                // anchors and the lead always, the rest when 1 dB or more.
+                let about = r.findings[i].element.clone();
+                let moved: Vec<Value> = r
+                    .elements
+                    .iter()
+                    .filter(|e| about.as_deref() != Some(e.id.as_str()))
+                    .filter_map(|e| {
+                        let a = e.relative_to_mix_db.flatten()?;
+                        let b = r2
+                            .elements
+                            .iter()
+                            .find(|x| x.id == e.id)?
+                            .relative_to_mix_db
+                            .flatten()?;
+                        let watched = e.anchor.is_some() || e.lead;
+                        ((watched && (b - a).abs() >= 0.3) || (b - a).abs() >= 1.0)
+                            .then(|| json!({"id": e.id, "name": e.name, "deltaDb": dsp::r1(b - a)}))
+                    })
+                    .collect();
+                if !moved.is_empty() {
+                    v["sideEffects"] = json!(moved);
                 }
                 v
             }
