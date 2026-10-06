@@ -88,7 +88,12 @@ ok("the language chosen stays after a reload");
 // Back to English: everything English again.
 await page.selectOption(".lang-select", "en");
 await langIs(page, "en");
-if ((await exportText(page)).trim() !== "Export") throw new Error("English does not come back");
+// The page says its language before it draws in it: wait for the drawing.
+await page
+  .waitForFunction(() => document.querySelector(".topbar .btn.gold")?.textContent.trim() === "Export", null, { timeout: 15000 })
+  .catch(() => {
+    throw new Error("English does not come back");
+  });
 ok("back to English");
 await context.close();
 
