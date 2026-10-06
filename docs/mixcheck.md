@@ -134,7 +134,9 @@ what-if is a second render; `--verify`, one per finding fix and suggestion
   (`idiom`). A wrong note ranks high and says why (`outOfChord`): the other
   parts play a plain major or minor triad, the note is not in it but a
   semitone from one of its notes that two parts or more sound, lasts 1.5 beats
-  or more and resolves nowhere (extended and altered chords are left alone);
+  or more and resolves nowhere (extended and altered chords are left alone; a
+  wrong note in the bass is judged before chord colours, since it would read
+  as the root of a false chord);
   one finding per wrong note, however many parts it rubs against. Clashes are
   reported, never fixed: the notes are the song's, and a mix check's fixes
   touch the mixer only (faders, EQ, dynamics, the master's automation).
@@ -190,7 +192,9 @@ silent parts are left out.
   release tail) gets no audibility finding.
 - `suggestions` are JSON Patch against `project.json`, with what the model
   predicts (`expected…`). A lead under the mix gets its balance first (over
-  the stretches where it is under, when that is where): an EQ boost of 6 dB
+  the stretches where it is under, when that is where): an automation lane on
+  its volume holding it 6 dB or more down there (and up elsewhere) back up;
+  an EQ boost of 6 dB
   or more on a part covering it, in that range, back to +2 dB; the faders of
   the parts over it that sit above unity back to unity; the lead up (a cut
   insert fader restored first), 6 dB at most, and the parts over it down for

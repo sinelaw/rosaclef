@@ -387,7 +387,17 @@ pub fn find(
             if !semitone && sev > 0 {
                 sev -= 1;
             }
-            let colour = idiom(notes, from, m.pitch, n.pitch)
+            // A wrong note in the bass makes a false root for the chord
+            // (a "major seventh" over it): it is judged first.
+            let lowest = bass_at(notes, from).map(|b| b.pitch);
+            let bass_wrong = [(i, j), (j, i)]
+                .into_iter()
+                .filter(|(k, _)| Some(notes[*k].pitch) == lowest)
+                .find_map(|(k, o)| wrong_note(notes, k, o, from));
+            let colour = bass_wrong
+                .is_none()
+                .then(|| idiom(notes, from, m.pitch, n.pitch))
+                .flatten()
                 .or_else(|| {
                     (passing(notes, i) || passing(notes, j))
                         .then_some("a passing or approach note (by step, a beat or less)")
@@ -398,10 +408,14 @@ pub fn find(
                 });
             // A note foreign to the chord, held and going nowhere, against a
             // chord tone: a wrong note, whatever the levels say.
-            let wrong = colour
-                .is_none()
-                .then(|| wrong_note(notes, i, j, from).or_else(|| wrong_note(notes, j, i, from)))
-                .flatten();
+            let wrong = bass_wrong.or_else(|| {
+                colour
+                    .is_none()
+                    .then(|| {
+                        wrong_note(notes, i, j, from).or_else(|| wrong_note(notes, j, i, from))
+                    })
+                    .flatten()
+            });
             if colour.is_some() {
                 sev = 0;
             } else if wrong.is_some() {

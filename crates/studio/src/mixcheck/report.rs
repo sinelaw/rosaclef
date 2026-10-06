@@ -560,6 +560,8 @@ fn focused(mix: &Mix, p: &Project, focus: &[String]) -> Result<(Vec<Element>, bo
 /// Where a part sits under the mix stretch by stretch.
 struct Under {
     stretches: Vec<UnderMix>,
+    /// The same, in written beats.
+    beats: Vec<(f64, f64)>,
     /// The blocks of those stretches, and its level against the mix there.
     blocks: Vec<usize>,
     rel: f64,
@@ -659,7 +661,12 @@ fn under_mix(
     let (x, m) = under
         .iter()
         .fold((0.0, 0.0), |(x, m), g| (x + g.part, m + g.mix));
+    let beats = stretches
+        .iter()
+        .map(|s| (t.bar_start(s.from_bar), t.bar_start(s.to_bar + 1)))
+        .collect();
     Some(Under {
+        beats,
         stretches,
         share: blocks.len() as f64 / playing as f64,
         blocks,
@@ -1099,10 +1106,10 @@ pub fn build<'a>(
             let rel = outs[k].0.relative_to_mix_db.flatten();
             let bal = match (rel, &unders[k]) {
                 (Some(r), _) if outs[k].0.lead && r < lead_floor => {
-                    super::findings::balance(p, &mix, &blocks, &elements[ei], au, r)
+                    super::findings::balance(p, &mix, &blocks, &[], &elements[ei], au, r)
                 }
                 (_, Some(u)) if outs[k].0.lead && u.share >= 0.2 => {
-                    super::findings::balance(p, &mix, &u.blocks, &elements[ei], au, u.rel)
+                    super::findings::balance(p, &mix, &u.blocks, &u.beats, &elements[ei], au, u.rel)
                 }
                 _ => None,
             };

@@ -271,6 +271,7 @@ pub fn balance(
     p: &Project,
     mix: &Mix,
     blocks: &[usize],
+    stretches: &[(f64, f64)],
     e: &Element,
     au: &Audibility,
     rel: f64,
@@ -343,9 +344,14 @@ pub fn balance(
             .sum();
         rel + lift - dsp::db(after / total)
     };
+    // An automation lane holding the lead down in these stretches, and up
+    // elsewhere, is the cause: its points there back to its level elsewhere.
+    let ride = lane_dip(p, e, stretches);
+    let auto = ride.as_ref().map(|r| r.lift).unwrap_or(0.0);
     // The lead up 6 dB at most (more would push the master); the rest by
     // bringing the parts over it down (12 dB at most), in 0.5 dB steps.
     let most = max_gain_db(p, e.channel, e.insert).min(6.0);
+    let predicted = |lift: f64, under: f64| predicted(auto + lift, under);
     let mut lift = 0.0;
     while predicted(lift, 0.0) < LEAD_TARGET_DB && lift + 0.5 <= most + 1e-9 {
         lift += 0.5;
@@ -360,6 +366,10 @@ pub fn balance(
     }
     let mut ops = vec![];
     let mut said = vec![];
+    if let Some(r) = &ride {
+        ops.extend(r.ops.iter().cloned());
+        said.push(r.said.clone());
+    }
     if let Some((u, b)) = &eq {
         ops.push(set(
             format!(
@@ -437,7 +447,7 @@ pub fn balance(
             expected
         ),
         change: Change {
-            gain_db: lift,
+            gain_db: auto + lift,
             // The EQ's masker when there is one (the cause), with its fader
             // cut too; else the part brought down most.
             masker: match &eq {
@@ -456,6 +466,84 @@ pub fn balance(
             },
         },
         expected_rel: expected,
+    })
+}
+
+/// An automation lane on a part's volume holding it down in `stretches`.
+struct Dip {
+    ops: Vec<Value>,
+    said: String,
+    /// How much its level rises when the lane is put back (dB).
+    lift: f64,
+}
+
+/// A lane's value at `beat` (linear between its points; a step where two
+/// points share a beat takes the later).
+fn lane_at(points: &[rosaclef_core::AutomationPoint], beat: f64) -> Option<f64> {
+    let after = points.iter().position(|q| q.beat > beat)?;
+    if after == 0 {
+        return Some(points[0].value);
+    }
+    let (a, b) = (&points[after - 1], &points[after]);
+    let f = ((beat - a.beat) / (b.beat - a.beat).max(1e-9)).clamp(0.0, 1.0);
+    Some(a.value + (b.value - a.value) * f)
+}
+
+fn lane_dip(p: &Project, e: &Element, stretches: &[(f64, f64)]) -> Option<Dip> {
+    if stretches.is_empty() {
+        return None;
+    }
+    let targets: Vec<String> = std::iter::once(format!("insert/{}/volume", e.insert))
+        .chain(
+            e.channel
+                .map(|c| format!("channel/{}/volume", p.channels[c].id)),
+        )
+        .collect();
+    let inside = |b: f64| {
+        stretches
+            .iter()
+            .any(|(s0, s1)| b >= *s0 - 1e-6 && b <= *s1 + 1e-6)
+    };
+    p.automation.iter().enumerate().find_map(|(i, l)| {
+        if l.mute || !targets.contains(&l.target) || l.points.is_empty() {
+            return None;
+        }
+        let mut pts = l.points.clone();
+        pts.sort_by(|a, b| a.beat.total_cmp(&b.beat));
+        // Its level in the stretches (their middles) and elsewhere (the
+        // most it reaches outside them).
+        let low = stretches
+            .iter()
+            .filter_map(|(s0, s1)| lane_at(&pts, (s0 + s1) / 2.0))
+            .fold(f64::INFINITY, f64::min);
+        let high = pts
+            .iter()
+            .filter(|q| !inside(q.beat))
+            .map(|q| q.value)
+            .fold(f64::NEG_INFINITY, f64::max);
+        if !(low.is_finite() && high.is_finite() && low > 0.0) {
+            return None;
+        }
+        let lift = dsp::amp_db(high / low);
+        if lift < 6.0 {
+            return None;
+        }
+        let ops: Vec<Value> = l
+            .points
+            .iter()
+            .enumerate()
+            .filter(|(_, q)| inside(q.beat) && q.value < high)
+            .map(|(j, _)| set(format!("/automation/{i}/points/{j}/value"), json!(round3(high))))
+            .collect();
+        (!ops.is_empty()).then(|| Dip {
+            ops,
+            said: format!(
+                "the automation lane \"{}\" back up to {high:.2} there (it holds {} {lift:.1} dB down)",
+                if l.name.is_empty() { &l.id } else { &l.name },
+                e.name
+            ),
+            lift,
+        })
     })
 }
 
@@ -1341,8 +1429,16 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     -r, e.level.fader_db
                 ),
                 Some(r) => format!(
-                    "the lead drops under the mix{where_}, though it sits {:.1} dB under it over bars {}–{} (its insert fader at {:+.1} dB); audible {frac:.0}% of the time it plays{masked}",
-                    -r, report.range.from_bar, report.range.to_bar, e.level.fader_db
+                    "the lead drops under the mix{where_}, though it sits {:.1} dB under it over bars {}–{} (its insert fader at {:+.1} dB{}); audible {frac:.0}% of the time it plays{masked}",
+                    -r,
+                    report.range.from_bar,
+                    report.range.to_bar,
+                    e.level.fader_db,
+                    if e.level.automated.is_empty() {
+                        String::new()
+                    } else {
+                        format!(", its volume automated by {}", e.level.automated.join(", "))
+                    }
                 ),
                 None => format!("the lead is audible only {frac:.0}% of the time it plays{masked}"),
             };
