@@ -18,7 +18,18 @@ import { toast } from "./toast.js";
 import { insertIx, noteIx, clipIx } from "#brands";
 import { t, tf, tk } from "../i18n.js";
 
-const CATEGORIES = [tk("Harmony"), tk("Melody"), tk("Rhythm"), tk("Arrangement"), tk("Low end"), tk("Mix"), tk("Stereo"), tk("Effects"), tk("Master"), tk("Project")];
+const CATEGORIES = [
+  tk("Harmony"),
+  tk("Melody"),
+  tk("Rhythm"),
+  tk("Arrangement"),
+  tk("Low end"),
+  tk("Mix"),
+  tk("Stereo"),
+  tk("Effects"),
+  tk("Master"),
+  tk("Project"),
+];
 
 const view = {
   /** "all", "suggest" (with a fix) or "issue" (without). */
@@ -271,7 +282,9 @@ function findingView(b, f, ask) {
   } else {
     if (f.fix !== "") button(b, "fix", "small gold", f.fix, tf("Apply: {0} (one undo step)", [f.fix]), () => applyFixes([f.key], f.fix));
     else if (state.backend !== "local")
-      button(b, "ask", "small ghost", t("Ask Maestro"), t("Type this issue into the agent's prompt (press Enter in the terminal to send)"), () => ask(askText(f)));
+      button(b, "ask", "small ghost", t("Ask Maestro"), t("Type this issue into the agent's prompt (press Enter in the terminal to send)"), () =>
+        ask(askText(f))
+      );
     iconButton(b, "sup", "small ghost", "close", t("Suppress this finding (saved in the project; the agent and `rosaclef critic` leave it out too)"), () =>
       setSuppressed(f.key, true)
     );

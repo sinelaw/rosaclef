@@ -36,7 +36,8 @@ await langIs(page, "en");
 if ((await exportText(page)).trim() !== "Export") throw new Error("the studio does not start in English");
 const box = await page.locator(".topbar .lang-switch").boundingBox();
 const bar = await page.locator(".topbar").boundingBox();
-if (!box || !bar || bar.x + bar.width - (box.x + box.width) > 40 || box.y > bar.y + bar.height) throw new Error("the language switcher is not at the top right");
+if (!box || !bar || bar.x + bar.width - (box.x + box.width) > 40 || box.y > bar.y + bar.height)
+  throw new Error("the language switcher is not at the top right");
 if ((await page.textContent(".lang-switch .lang-code")).trim() !== "EN") throw new Error("the switcher does not say EN");
 const codes = await page.$$eval(".lang-select option", (os) => os.map((o) => o.value));
 if (codes.length !== 10) throw new Error(`expected 10 languages, got ${codes.length}: ${codes.join(", ")}`);
@@ -49,9 +50,11 @@ for (const code of codes) {
   await page.selectOption(".lang-select", code);
   await langIs(page, code);
   const want = words["Export"];
-  await page.waitForFunction((w) => document.querySelector(".topbar .btn.gold")?.textContent.trim() === w, want, { timeout: 15000 }).catch(() => {
-    throw new Error(`${code}: the export button does not say ${want}`);
-  });
+  await page
+    .waitForFunction((w) => document.querySelector(".topbar .btn.gold")?.textContent.trim() === w, want, { timeout: 15000 })
+    .catch(() => {
+      throw new Error(`${code}: the export button does not say ${want}`);
+    });
   if ((await page.textContent(".lang-switch .lang-code")).trim() !== code.split("-")[0].toUpperCase()) throw new Error(`${code}: the switcher's code`);
   const title = await page.getAttribute(".topbar .btn.icon.play, .topbar .btn.icon.play.on", "title");
   if (title === "Play / pause (Space)") throw new Error(`${code}: the play button's tip is still English`);

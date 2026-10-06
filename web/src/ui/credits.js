@@ -162,9 +162,7 @@ export function sampleCredit(b, type, preset) {
   b.leaf("span", "l", "", "· " + tf("{0} license", [c.license]));
   b.close();
   const tip =
-    preset === ""
-      ? t("Who made these samples and the license they are shared under")
-      : tf("Who made “{0}” and the license they are shared under", [preset]);
+    preset === "" ? t("Who made these samples and the license they are shared under") : tf("Who made “{0}” and the license they are shared under", [preset]);
   button(b, "open", "small", t("Credits & license"), tip, () => showCredits(c.id, preset));
   b.close();
 }

@@ -111,7 +111,9 @@ function exportSong() {
   exporting = true;
   toast(
     t("Rendering mixdown…"),
-    state.backend === "local" ? t("The engine renders the song offline, in your browser.") : t("The native engine renders the song offline (plugins included)."),
+    state.backend === "local"
+      ? t("The engine renders the song offline, in your browser.")
+      : t("The native engine renders the song offline (plugins included)."),
     "info"
   );
   sendJson("/api/render", "POST", { bits: 24 })
@@ -256,7 +258,9 @@ export function topbar(b) {
   // The native engine exists only with a server that has an audio device.
   if (state.nativeAvailable) {
     b.open("div", "out", "seg");
-    button(b, "browser", state.output === "browser" ? "on" : "", t("Browser"), t("Play through the WebAssembly engine in this browser"), () => setOutput("browser"));
+    button(b, "browser", state.output === "browser" ? "on" : "", t("Browser"), t("Play through the WebAssembly engine in this browser"), () =>
+      setOutput("browser")
+    );
     button(
       b,
       "native",

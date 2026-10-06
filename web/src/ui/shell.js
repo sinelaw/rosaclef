@@ -55,7 +55,10 @@ function paneDown(e, name) {
 /** function tab(b: Builder, id: String, label: String, icon: String, key: String) => Undefined */
 function tab(b, id, label, icon, key) {
   b.open("button", id, state.dock === id ? "tab on" : "tab");
-  b.attr("title", workMode("dock") === "min" ? tf("{0} ({1}) — restores the dock", [label, key]) : tf("{0} ({1}) — double-click to maximize the dock", [label, key]));
+  b.attr(
+    "title",
+    workMode("dock") === "min" ? tf("{0} ({1}) — restores the dock", [label, key]) : tf("{0} ({1}) — double-click to maximize the dock", [label, key])
+  );
   b.on("click", (e) => openDock(id));
   b.on("dblclick", (e) => {
     e.stopPropagation();
@@ -85,7 +88,15 @@ function navItem(b, key, label, icon, on, dot, onClick) {
 function topTab(b, id, label, icon, mode) {
   const on = layoutState.top === id;
   b.open("button", `t-${id}`, on ? "tab on" : "tab");
-  b.attr("title", mode === "min" ? tf("{0} — click to restore", [label]) : on ? tf("{0} — double-click to maximize", [label]) : tf("Show the {0} here", [label.toLowerCase()])
+  b.attr(
+    "title",
+    mode === "min"
+      ? tf("{0} — click to restore", [label])
+      : on
+        ? tf("{0} — double-click to maximize", [label])
+        : id === "score"
+          ? t("Show the score here")
+          : t("Show the playlist here")
   );
   b.on("click", (e) => setTop(id));
   glyph(b, icon);

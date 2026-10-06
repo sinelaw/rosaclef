@@ -128,7 +128,9 @@ function mountTerm() {
   term.push(tm);
   tm.fit();
   tm.writeText(
-    "\x1b[38;2;227;196;122m  ✦ Rosaclef · Maestro\x1b[0m\r\n\x1b[38;2;163;151;128m  " + t("Your own coding agent, working on this project's files.") + "\x1b[0m\r\n\r\n"
+    "\x1b[38;2;227;196;122m  ✦ Rosaclef · Maestro\x1b[0m\r\n\x1b[38;2;163;151;128m  " +
+      t("Your own coding agent, working on this project's files.") +
+      "\x1b[0m\r\n\r\n"
   );
   connectTerm();
 }
@@ -317,7 +319,11 @@ export function agentPanel(b) {
       "p",
       "p",
       "",
-      agent.error !== "" ? agent.error : agent.exitCode >= 0 ? tf("The agent exited (code {0}). Start it again or pick another.", [String(agent.exitCode)]) : intro
+      agent.error !== ""
+        ? agent.error
+        : agent.exitCode >= 0
+          ? tf("The agent exited (code {0}). Start it again or pick another.", [String(agent.exitCode)])
+          : intro
     );
     b.open("div", "grid", "agent-grid");
     for (const a of state.agents) {
