@@ -56,6 +56,7 @@ import { browseInstrument } from "./browser.js";
 import { toast } from "./toast.js";
 import { filmView, newFilmView } from "./film.js";
 import { trackIx, trackIndex, noteIx, noteIndex, insertIndex } from "#brands";
+import { t, tf, tk } from "../i18n.js";
 
 // ------------------------------------------------------------------ state
 
@@ -428,18 +429,18 @@ function writeNote(v, sc, s) {
   const channel = channelFor(sc, row, g.step);
   const scope = scopeOf(v);
   const beat = g.tick / TPQ;
-  const t = targetAt(scope, beat, channel);
-  if (t === undefined) {
+  const tgt = targetAt(scope, beat, channel);
+  if (tgt === undefined) {
     toast(
-      scope.kind === "pattern" ? "Past the end of the pattern" : "No pattern plays here",
-      scope.kind === "pattern" ? "Lengthen the pattern to write there." : "Place a clip in the playlist first.",
+      scope.kind === "pattern" ? t("Past the end of the pattern") : t("No pattern plays here"),
+      scope.kind === "pattern" ? t("Lengthen the pattern to write there.") : t("Place a clip in the playlist first."),
       "warn"
     );
     return undefined;
   }
   const len = (v.dot ? v.value * 1.5 : v.value) / TPQ;
-  const pat = t.pattern;
-  const at = t.beat;
+  const pat = tgt.pattern;
+  const at = tgt.beat;
   commit(() => {
     pat.notes.push({
       channel: channel,
@@ -513,7 +514,7 @@ function grabNote(e, v, sc, s, hi, y0) {
         lastPitch = p;
         preview(pat.notes[n0.index].channel, p, 0.8);
       }
-      hint(`${spelledName(Math.round(p), sc.fifths)} — drag up or down by step, along the bar by the grid`);
+      hint(tf("{0} — drag up or down by step, along the bar by the grid", [spelledName(Math.round(p), sc.fifths)]));
       changed(true);
     },
     (u) => undefined
@@ -626,7 +627,7 @@ function endingRange(v, sc) {
   const z = ab[1];
   const r = state.project.repeats.find((x) => a > x.start + 1e-9 && a <= repeatEnd(x) + 1e-9);
   if (r === undefined) {
-    toast("No repeat here", "An ending goes at the end of a repeat, or right after it: repeat some bars first.", "warn");
+    toast(t("No repeat here"), t("An ending goes at the end of a repeat, or right after it: repeat some bars first."), "warn");
     return undefined;
   }
   const others = r.endings.filter((e) => e.end <= a + 1e-9 || e.start >= z - 1e-9);
@@ -637,7 +638,7 @@ function endingRange(v, sc) {
   let passes = inside ? free.filter((k) => k < r.times) : free.includes(r.times) ? [r.times] : free;
   if (passes.length === 0) passes = free.slice(0, 1);
   if (passes.length === 0) {
-    toast("No pass left", "Every pass of this repeat already has its ending.", "warn");
+    toast(t("No pass left"), t("Every pass of this repeat already has its ending."), "warn");
     return undefined;
   }
   const at = state.project.repeats.indexOf(r);
@@ -677,9 +678,9 @@ function closePartMenu(v) {
 /** Where a move applies, in words. */
 /** function scopeWords(sc: Scope) => String */
 function scopeWords(sc) {
-  if (sc.kind === "pattern") return `in the pattern ${scopeTitle(sc)}`;
-  if (sc.kind === "track") return `on the track ${scopeTitle(sc)}`;
-  return "throughout the song";
+  if (sc.kind === "pattern") return tf("in the pattern {0}", [scopeTitle(sc)]);
+  if (sc.kind === "track") return tf("on the track {0}", [scopeTitle(sc)]);
+  return t("throughout the song");
 }
 
 /** Give the notes of channels `parts` starting in beats [t0, t1) of what the view shows to channel
@@ -696,10 +697,10 @@ function movePart(v, parts, to, t0, t1, where) {
     const c = channelById(id);
     return c ? c.name : id;
   });
-  const what = names.length === 1 ? names[0] : `${names.length} parts`;
+  const what = names.length === 1 ? names[0] : tf("{0} parts", [String(names.length)]);
   // A dry run first: nothing to move makes no undo step.
   if (moveRole(cloneProject(state.project), scope, role).notes === 0) {
-    toast("Nothing to move", `${what} has no notes ${where}.`, "warn");
+    toast(t("Nothing to move"), tf("{0} has no notes {1}.", [what, where]), "warn");
     return undefined;
   }
   // A whole part going to a channel with no notes of its own takes its clef along.
@@ -718,18 +719,28 @@ function movePart(v, parts, to, t0, t1, where) {
   /** const how: String[] */
   const how = [];
   if (res.copies > 0)
-    how.push(res.copies === 1 ? `a pattern copied: where else it plays keeps ${what}` : `${res.copies} patterns copied: where else they play keeps ${what}`);
+    how.push(
+      res.copies === 1
+        ? tf("a pattern copied: where else it plays keeps {0}", [what])
+        : tf("{0} patterns copied: where else they play keeps {1}", [String(res.copies), what])
+    );
   if (res.unrolled > 0)
     how.push(
       res.unrolled === 1
-        ? "a clip that runs past the chosen bars got a pattern of its own"
-        : `${res.unrolled} clips that run past the chosen bars got patterns of their own`
+        ? t("a clip that runs past the chosen bars got a pattern of its own")
+        : tf("{0} clips that run past the chosen bars got patterns of their own", [String(res.unrolled)])
     );
-  toast(
-    `${what} → ${dest.name}`,
-    `${res.notes} note${res.notes === 1 ? "" : "s"} moved ${where}${how.length > 0 ? ` (${how.join("; ")})` : ""}. Ctrl+Z undoes.`,
-    "info"
-  );
+  const also = how.join("; ");
+  const one = res.notes === 1;
+  const body =
+    how.length > 0
+      ? one
+        ? tf("1 note moved {0} ({1}). Ctrl+Z undoes.", [where, also])
+        : tf("{0} notes moved {1} ({2}). Ctrl+Z undoes.", [String(res.notes), where, also])
+      : one
+        ? tf("1 note moved {0}. Ctrl+Z undoes.", [where])
+        : tf("{0} notes moved {1}. Ctrl+Z undoes.", [String(res.notes), where]);
+  toast(`${what} → ${dest.name}`, body, "info");
 }
 
 /** The pattern the piano roll opens for a part: the scope's, or where the part first plays. */
@@ -793,7 +804,12 @@ function partMenu(b, v, c) {
   b.style("--c", ch.color);
   b.leaf("span", "n", "", ch.name);
   b.close();
-  b.leaf("div", "s", "auto-menu-sub", `${instrumentLabel(ch.instrument)} · ${insertIndex(ch.mixer) === 0 ? "Master" : `Insert ${insertIndex(ch.mixer)}`}`);
+  b.leaf(
+    "div",
+    "s",
+    "auto-menu-sub",
+    `${instrumentLabel(ch.instrument)} · ${insertIndex(ch.mixer) === 0 ? t("Master") : tf("Insert {0}", [String(insertIndex(ch.mixer))])}`
+  );
   // A drum staff holds several channels: choose the one to act on.
   if (m.channels.length > 1) {
     b.open("div", "chs", "score-partmenu-chs");
@@ -801,7 +817,7 @@ function partMenu(b, v, c) {
       const cc = channelById(id);
       if (!cc) continue;
       b.open("button", id, id === m.channel ? "score-partmenu-ch on" : "score-partmenu-ch");
-      b.attr("title", `Act on ${cc.name}`);
+      b.attr("title", tf("Act on {0}", [cc.name]));
       b.on("click", (e) => {
         m.channel = id;
         selectChannel(id);
@@ -814,17 +830,25 @@ function partMenu(b, v, c) {
     b.close();
   }
   const id = ch.id;
-  menuItem(b, v, "rack", "rack", "Open in the channel rack", `Select ${ch.name} in the channel rack: its instrument, sound and settings`, () => {
+  menuItem(b, v, "rack", "rack", t("Open in the channel rack"), tf("Select {0} in the channel rack: its instrument, sound and settings", [ch.name]), () => {
     selectChannel(id);
     openDock("rack");
   });
-  menuItem(b, v, "sound", "swap", "Change its sound…", `Show sounds like ${ch.name}'s in the browser: ⇄ on any of them swaps it in, the notes stay`, () => {
-    selectChannel(id);
-    openDock("rack");
-    browseInstrument(ch.instrument.type);
-    hint(`In the browser, ⇄ on any instrument swaps it into ${ch.name} — or drag it onto the channel's row`);
-  });
-  menuItem(b, v, "roll", "piano", "Edit its notes in the piano roll", `Open ${ch.name}'s notes in the piano roll (F7)`, () => {
+  menuItem(
+    b,
+    v,
+    "sound",
+    "swap",
+    t("Change its sound…"),
+    tf("Show sounds like {0}'s in the browser: ⇄ on any of them swaps it in, the notes stay", [ch.name]),
+    () => {
+      selectChannel(id);
+      openDock("rack");
+      browseInstrument(ch.instrument.type);
+      hint(tf("In the browser, ⇄ on any instrument swaps it into {0} — or drag it onto the channel's row", [ch.name]));
+    }
+  );
+  menuItem(b, v, "roll", "piano", t("Edit its notes in the piano roll"), tf("Open {0}'s notes in the piano roll (F7)", [ch.name]), () => {
     const pat = partPattern(v, c.score, id);
     if (pat !== "" && state.pattern !== pat) {
       state.pattern = pat;
@@ -838,8 +862,8 @@ function partMenu(b, v, c) {
     v,
     "mix",
     "mixer",
-    insertIndex(ch.mixer) === 0 ? "Show in the mixer (Master)" : `Show in the mixer (Insert ${insertIndex(ch.mixer)})`,
-    "The mixer insert this channel plays through: its level, pan and effects (F9)",
+    insertIndex(ch.mixer) === 0 ? t("Show in the mixer (Master)") : tf("Show in the mixer (Insert {0})", [String(insertIndex(ch.mixer))]),
+    t("The mixer insert this channel plays through: its level, pan and effects (F9)"),
     () => {
       showInsert(ch.mixer);
     }
@@ -849,15 +873,15 @@ function partMenu(b, v, c) {
     v,
     "mute",
     ch.mute ? "speaker" : "mute",
-    ch.mute ? "Unmute" : "Mute",
-    ch.mute ? `Let ${ch.name} play again` : `Silence ${ch.name} (the score still shows it)`,
+    ch.mute ? t("Unmute") : t("Mute"),
+    ch.mute ? tf("Let {0} play again", [ch.name]) : tf("Silence {0} (the score still shows it)", [ch.name]),
     () => {
       commit(() => {
         ch.mute = !ch.mute;
       });
     }
   );
-  menuItem(b, v, "hide", "close", "Hide in the score", `Leave ${ch.name} out of the score (the sidebar's eye brings it back)`, () => {
+  menuItem(b, v, "hide", "close", t("Hide in the score"), tf("Leave {0} out of the score (the sidebar's eye brings it back)", [ch.name]), () => {
     commit(() => {
       if (!p.score.hidden.includes(id)) p.score.hidden.push(id);
     });
@@ -865,11 +889,11 @@ function partMenu(b, v, c) {
   // Give the part to another instrument.
   const others = p.channels.filter((x) => x.id !== id);
   if (others.length > 0) {
-    b.leaf("div", "mh", "score-partmenu-h", `Move ${ch.name}'s part to… ${scopeWords(scopeOf(v))}`);
+    b.leaf("div", "mh", "score-partmenu-h", tf("Move {0}'s part to… {1}", [ch.name, scopeWords(scopeOf(v))]));
     b.open("div", "to", "score-partmenu-to");
     for (const o of others) {
       b.open("button", o.id, "auto-menu-item score-partmenu-dest");
-      const tip = `Give every note of ${ch.name} ${scopeWords(scopeOf(v))} to ${o.name} (${instrumentLabel(o.instrument)}) — Ctrl+Z undoes`;
+      const tip = tf("Give every note of {0} {1} to {2} ({3}) — Ctrl+Z undoes", [ch.name, scopeWords(scopeOf(v)), o.name, instrumentLabel(o.instrument)]);
       b.attr("title", tip);
       b.on("pointerenter", (e) => hint(tip));
       b.on("click", (e) => {
@@ -1002,7 +1026,7 @@ function onPaperMove(e, v, c, geo) {
   }
   if (px < geo.left || px > geo.left + geo.paperW) {
     setHover(v, "desk", -1, -1, 0);
-    hint("Drag to move the page about");
+    hint(t("Drag to move the page about"));
   }
   if (si < 0) {
     if (g.sys >= 0) {
@@ -1021,7 +1045,12 @@ function onPaperMove(e, v, c, geo) {
     const st = c.score.staves[s.labels[ni].staff];
     const ch = channelById(st.channel);
     hint(
-      `${ch ? ch.name : st.name}${ch ? ` (${instrumentLabel(ch.instrument)})` : ""} — click: its instrument in the channel rack, the piano roll or the mixer, or move the part to another instrument`
+      ch
+        ? tf("{0} ({1}) — click: its instrument in the channel rack, the piano roll or the mixer, or move the part to another instrument", [
+            ch.name,
+            instrumentLabel(ch.instrument),
+          ])
+        : tf("{0} — click: its instrument in the channel rack, the piano roll or the mixer, or move the part to another instrument", [st.name])
     );
     if (g.sys >= 0) {
       v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
@@ -1043,16 +1072,21 @@ function onPaperMove(e, v, c, geo) {
       const n = c.score.notes[s.heads[hi].src];
       const ch = channelById(n.channel);
       hint(
-        `${spelledName(n.pitch, c.score.fifths)} · ${ch ? ch.name : n.channel} — click to select, drag to move, double-click for the piano roll, right-click to delete`
+        tf("{0} · {1} — click to select, drag to move, double-click for the piano roll, right-click to delete", [
+          spelledName(n.pitch, c.score.fifths),
+          ch ? ch.name : n.channel,
+        ])
       );
     } else if (x >= s.x0 - 0.5 && x <= s.x1 && canSeek(v)) {
       setHover(v, "paper", si, -1, seekTick(v, s, x));
       hint(
-        `Click to move the playhead to bar ${barOf(c.score, seekTick(v, s, x))} · drag across the music to choose a passage (color it, repeat it, move it to another instrument)`
+        tf("Click to move the playhead to bar {0} · drag across the music to choose a passage (color it, repeat it, move it to another instrument)", [
+          String(barOf(c.score, seekTick(v, s, x))),
+        ])
       );
     } else {
       setHover(v, "", -1, -1, 0);
-      hint("Drag across the music to choose a passage (color it, repeat it, move it to another instrument) · Write (Shift+P) adds notes");
+      hint(t("Drag across the music to choose a passage (color it, repeat it, move it to another instrument) · Write (Shift+P) adds notes"));
     }
     return undefined;
   }
@@ -1074,7 +1108,11 @@ function onPaperMove(e, v, c, geo) {
   if (g.sys !== si || g.row !== r || g.step !== step || g.tick !== tick) {
     v.ghost = { sys: si, row: r, step: step, tick: tick, x: tx };
     const pitch = pitchAt(c.score, row, step);
-    hint(`${row.drum ? "Drum" : spelledName(pitch, c.score.fifths)} at bar ${barOf(c.score, tick)} — click to write it`);
+    hint(
+      row.drum
+        ? tf("Drum at bar {0} — click to write it", [String(barOf(c.score, tick))])
+        : tf("{0} at bar {1} — click to write it", [spelledName(pitch, c.score.fifths), String(barOf(c.score, tick))])
+    );
     invalidate();
   }
 }
@@ -1175,7 +1213,7 @@ function paperView(b, v, c, geo, sc) {
   titleBlock(b, v, score, geo, sc);
   if (score.empty) {
     b.open("div", "empty", "score-empty");
-    b.leaf("div", "t", "", sc.kind === "pattern" ? "This pattern has no notes yet." : "Nothing to write down here yet.");
+    b.leaf("div", "t", "", sc.kind === "pattern" ? t("This pattern has no notes yet.") : t("Nothing to write down here yet."));
     b.leaf(
       "div",
       "s",
@@ -1183,8 +1221,8 @@ function paperView(b, v, c, geo, sc) {
       v.tool === "write"
         ? ""
         : state.project.score.hidden.length > 0
-          ? "Some parts are hidden — show them in the sidebar."
-          : "Draw notes in the piano roll, or switch to Write."
+          ? t("Some parts are hidden — show them in the sidebar.")
+          : t("Draw notes in the piano roll, or switch to Write.")
     );
     b.close();
   }
@@ -1226,8 +1264,15 @@ function pdfMenu(b, v) {
     b.leaf("span", "n", "score-pdfitem-n", note);
     b.close();
   }
-  item("vector", "Vector PDF", "Crisp at any size, small, ready to print", false);
-  item("shown", "As on screen", `The paper's texture and the ${v.ink} ink's effects — an image a page`, true);
+  item("vector", t("Vector PDF"), t("Crisp at any size, small, ready to print"), false);
+  item(
+    "shown",
+    t("As on screen"),
+    v.ink === "wet"
+      ? t("The paper's texture and the wet ink's effects — an image a page")
+      : t("The paper's texture and the dry ink's effects — an image a page"),
+    true
+  );
   b.close();
 }
 
@@ -1279,7 +1324,7 @@ function exportPdf(v, asShown) {
   const sc = scopeOf(v);
   const c = cached(v, sc, pageGeo(v, sc));
   if (c.score.empty) {
-    toast("Nothing to print", "This score has no notes to write down.", "warn");
+    toast(t("Nothing to print"), t("This score has no notes to write down."), "warn");
     return undefined;
   }
   const p = state.project;
@@ -1287,21 +1332,30 @@ function exportPdf(v, asShown) {
   const info = { title: title, subtitle: subtitle(c.score, sc), author: sc.kind === "song" ? p.meta.author : "", bpm: p.transport.bpm };
   const hide = v.condense && sc.kind !== "pattern";
   const name = `${fileName(title)}.pdf`;
-  const size = paperSize() === "letter" ? "US Letter" : "A4";
+  const size = paperSize() === "letter" ? t("US Letter") : "A4";
   if (asShown) {
     const lay = pdfLayout(c.ink, paperSize(), hide);
     const look = { wet: v.ink === "wet", gloss: v.gloss, shine: v.shine, filters: true };
     /** const svgs: String[] */
     const svgs = [];
     for (let i = 0; i < lay.pages.length; i++) svgs.push(pageSvg(lay, i, info, look, PRINT_SCALE));
-    toast("Drawing the pages", `${svgs.length} page${svgs.length === 1 ? "" : "s"} on paper, in ${v.ink} ink…`, "info");
+    const wet = v.ink === "wet";
+    const pages =
+      svgs.length === 1
+        ? wet
+          ? t("1 page on paper, in wet ink…")
+          : t("1 page on paper, in dry ink…")
+        : wet
+          ? tf("{0} pages on paper, in wet ink…", [String(svgs.length)])
+          : tf("{0} pages on paper, in dry ink…", [String(svgs.length)]);
+    toast(t("Drawing the pages"), pages, "info");
     downloadImagePdf(name, pdfInfo(title), svgs, lay.w, lay.h, PRINT_SCALE)
       .then((ok) => {
-        toast("Score exported", `${name} — as on screen, ${size}.`, "info");
+        toast(t("Score exported"), tf("{0} — as on screen, {1}.", [name, size]), "info");
         return true;
       })
       .catch((e) => {
-        toast("The PDF could not be written", String(e), "error");
+        toast(t("The PDF could not be written"), String(e), "error");
         return false;
       });
     return undefined;
@@ -1309,11 +1363,11 @@ function exportPdf(v, asShown) {
   const objs = scorePdf(c.ink, info, paperSize(), hide, textWidth);
   downloadPdf(name, objs)
     .then((ok) => {
-      toast("Score exported", `${name} — vector, ${size}.`, "info");
+      toast(t("Score exported"), tf("{0} — vector, {1}.", [name, size]), "info");
       return true;
     })
     .catch((e) => {
-      toast("The PDF could not be written", String(e), "error");
+      toast(t("The PDF could not be written"), String(e), "error");
       return false;
     });
 }
@@ -1610,7 +1664,7 @@ function eye(b, key, on, tip, onClick) {
 }
 
 const CLEF_IDS = ["auto", "treble", "treble8vb", "bass", "alto", "grand", "percussion"];
-const CLEF_NAMES = ["Auto", "Treble", "Treble 8vb", "Bass", "Alto", "Grand staff", "Drums"];
+const CLEF_NAMES = [tk("Auto"), tk("Treble"), tk("Treble 8vb"), tk("Bass"), tk("Alto"), tk("Grand staff"), tk("Drums")];
 
 /** function sideView(b: Builder, v: ScoreView, c: Cached, sc: Scope, geo: PageGeo) => Undefined */
 function sideView(b, v, c, sc, geo) {
@@ -1619,17 +1673,17 @@ function sideView(b, v, c, sc, geo) {
   b.open("aside", "side", "score-side");
 
   // Parts: every channel with notes here.
-  b.leaf("div", "h1", "score-side-h", "Parts");
+  b.leaf("div", "h1", "score-side-h", t("Parts"));
   /** const used: String[] */
   const used = [];
   for (const n of c.score.notes) if (!used.includes(n.channel)) used.push(n.channel);
   b.open("div", "parts", "score-list");
-  if (used.length === 0) b.leaf("div", "none", "score-none", "No notes here.");
+  if (used.length === 0) b.leaf("div", "none", "score-none", t("No notes here."));
   for (const ch of p.channels) {
     if (!used.includes(ch.id)) continue;
     const shown = !settings.hidden.includes(ch.id);
     b.open("div", `c-${ch.id}`, shown ? "score-part" : "score-part off");
-    eye(b, "eye", shown, shown ? `Hide ${ch.name} in the score` : `Show ${ch.name} in the score`, () => {
+    eye(b, "eye", shown, shown ? tf("Hide {0} in the score", [ch.name]) : tf("Show {0} in the score", [ch.name]), () => {
       commit(() => {
         if (shown) settings.hidden.push(ch.id);
         else settings.hidden = settings.hidden.filter((x) => x !== ch.id);
@@ -1638,7 +1692,10 @@ function sideView(b, v, c, sc, geo) {
     b.leaf("span", "dot", "score-dot", "");
     b.style("--c", ch.color);
     b.leaf("button", "name", "score-part-name hot", ch.name);
-    const tip = `${ch.name} (${instrumentLabel(ch.instrument)}) — its instrument in the channel rack, the piano roll or the mixer, or move the part to another instrument`;
+    const tip = tf("{0} ({1}) — its instrument in the channel rack, the piano roll or the mixer, or move the part to another instrument", [
+      ch.name,
+      instrumentLabel(ch.instrument),
+    ]);
     b.attr("title", tip);
     b.on("pointerenter", (e) => hint(tip));
     b.on("click", (e) => {
@@ -1647,26 +1704,35 @@ function sideView(b, v, c, sc, geo) {
       openPartMenu(v, [ch.id], keyed ? e.targetLeft : e.clientX + 4, keyed ? e.targetTop + e.targetHeight + 4 : e.clientY + 8);
     });
     const set = settings.clefs.find((x) => x.key === ch.id);
-    select(b, "clef", "score-clef", set ? set.value : "auto", CLEF_IDS, CLEF_NAMES, `Clef for ${ch.name}`, (val) => {
-      commit(() => {
-        settings.clefs = settings.clefs.filter((x) => x.key !== ch.id);
-        if (val !== "auto") settings.clefs.push({ key: ch.id, value: val });
-      });
-    });
+    select(
+      b,
+      "clef",
+      "score-clef",
+      set ? set.value : "auto",
+      CLEF_IDS,
+      CLEF_NAMES.map((x) => t(x)),
+      tf("Clef for {0}", [ch.name]),
+      (val) => {
+        commit(() => {
+          settings.clefs = settings.clefs.filter((x) => x.key !== ch.id);
+          if (val !== "auto") settings.clefs.push({ key: ch.id, value: val });
+        });
+      }
+    );
     b.close();
   }
   b.close();
   if (used.length > 1) {
     b.open("div", "bulk", "score-bulk");
-    b.leaf("button", "all", "btn small ghost", "Show all");
+    b.leaf("button", "all", "btn small ghost", t("Show all"));
     b.on("click", (e) => {
       if (settings.hidden.length > 0)
         commit(() => {
           settings.hidden = [];
         });
     });
-    b.leaf("button", "cond", v.condense ? "btn small ghost on-text" : "btn small ghost", v.condense ? "✓ Hide resting staves" : "Hide resting staves");
-    b.attr("title", "Leave out the staves that only rest in a system, as orchestral scores do");
+    b.leaf("button", "cond", v.condense ? "btn small ghost on-text" : "btn small ghost", v.condense ? t("✓ Hide resting staves") : t("Hide resting staves"));
+    b.attr("title", t("Leave out the staves that only rest in a system, as orchestral scores do"));
     b.on("click", (e) => {
       v.condense = !v.condense;
       invalidate();
@@ -1681,24 +1747,24 @@ function sideView(b, v, c, sc, geo) {
     for (const cl of p.playlist.clips) if (cl.pattern !== "" && !tracks.includes(trackIndex(cl.track))) tracks.push(trackIndex(cl.track));
     tracks.sort((a, b) => a - b);
     if (tracks.length > 1) {
-      b.leaf("div", "h2", "score-side-h", "Tracks");
+      b.leaf("div", "h2", "score-side-h", t("Tracks"));
       b.open("div", "tracks", "score-list");
       const hidden = settings.hiddenTracks.map(trackIndex);
-      for (const t of tracks) {
-        const tr = t < p.playlist.tracks.length ? p.playlist.tracks[t] : undefined;
-        const name = tr ? tr.name : `Track ${t + 1}`;
-        const shown = !hidden.includes(t);
-        b.open("div", `t${t}`, shown ? "score-part" : "score-part off");
-        eye(b, "eye", shown, shown ? `Leave ${name} out of the score` : `Bring ${name} back into the score`, () => {
+      for (const ti of tracks) {
+        const tr = ti < p.playlist.tracks.length ? p.playlist.tracks[ti] : undefined;
+        const name = tr ? tr.name : tf("Track {0}", [String(ti + 1)]);
+        const shown = !hidden.includes(ti);
+        b.open("div", `t${ti}`, shown ? "score-part" : "score-part off");
+        eye(b, "eye", shown, shown ? tf("Leave {0} out of the score", [name]) : tf("Bring {0} back into the score", [name]), () => {
           commit(() => {
-            if (shown) settings.hiddenTracks.push(trackIx(t));
-            else settings.hiddenTracks = settings.hiddenTracks.filter((x) => trackIndex(x) !== t);
+            if (shown) settings.hiddenTracks.push(trackIx(ti));
+            else settings.hiddenTracks = settings.hiddenTracks.filter((x) => trackIndex(x) !== ti);
           });
         });
         b.leaf("span", "name", "score-part-name", name);
-        b.leaf("button", "only", "btn small ghost score-only", "Only");
-        b.attr("title", `Show just ${name} (the track's own score)`);
-        b.on("click", (e) => setScope(v, `track:${t}`));
+        b.leaf("button", "only", "btn small ghost score-only", t("Only"));
+        b.attr("title", tf("Show just {0} (the track's own score)", [name]));
+        b.on("click", (e) => setScope(v, `track:${ti}`));
         b.close();
       }
       b.close();
@@ -1709,8 +1775,8 @@ function sideView(b, v, c, sc, geo) {
 
   // Colored passages.
   b.open("div", "h3", "score-side-h with-eye");
-  b.leaf("span", "t", "", "Colors");
-  eye(b, "eye", v.colors, v.colors ? "Hide the colors: write everything in plain ink" : "Show the colored passages", () => {
+  b.leaf("span", "t", "", t("Colors"));
+  eye(b, "eye", v.colors, v.colors ? t("Hide the colors: write everything in plain ink") : t("Show the colored passages"), () => {
     v.colors = !v.colors;
     savePrefs(v);
     invalidate();
@@ -1727,7 +1793,7 @@ function sideView(b, v, c, sc, geo) {
     b.open("div", `m${i}`, "score-mark");
     b.open("button", "sw", "score-swatch");
     b.style("--c", m.color);
-    b.attr("title", "Change the color");
+    b.attr("title", t("Change the color"));
     b.on("click", (e) => {
       const k = PALETTE.indexOf(m.color);
       commit(() => {
@@ -1735,7 +1801,7 @@ function sideView(b, v, c, sc, geo) {
       });
     });
     b.close();
-    textInput(b, "label", "score-mark-label", m.label, "Label…", (val) => {
+    textInput(b, "label", "score-mark-label", m.label, t("Label…"), (val) => {
       if (val !== m.label)
         commit(() => {
           m.label = val;
@@ -1744,8 +1810,8 @@ function sideView(b, v, c, sc, geo) {
     const first = spans[0];
     const bar0 = barOf(c.score, first.start * TPQ);
     const bar1 = barOf(c.score, first.end * TPQ - 1);
-    b.leaf("button", "go", "score-mark-where", bar0 === bar1 ? `bar ${bar0}` : `bars ${bar0}–${bar1}`);
-    b.attr("title", m.pattern !== "" ? `In pattern ${m.pattern}, wherever it plays — click to show` : "Click to show");
+    b.leaf("button", "go", "score-mark-where", barsText(bar0, bar1));
+    b.attr("title", m.pattern !== "" ? tf("In pattern {0}, wherever it plays — click to show", [m.pattern]) : t("Click to show"));
     b.on("click", (e) => {
       for (const s of c.page.systems) {
         if (first.start * TPQ >= s.start && first.start * TPQ < s.end) {
@@ -1754,16 +1820,22 @@ function sideView(b, v, c, sc, geo) {
         }
       }
     });
-    iconButton(b, "x", "small ghost", "close", "Remove this color", () => {
+    iconButton(b, "x", "small ghost", "close", t("Remove this color"), () => {
       commit(() => {
         state.project.score.marks = state.project.score.marks.filter((x) => x !== m);
       });
     });
     b.close();
   }
-  if (!any) b.leaf("div", "none", "score-none", "Drag across the music to color a passage.");
+  if (!any) b.leaf("div", "none", "score-none", t("Drag across the music to color a passage."));
   b.close();
   b.close();
+}
+
+/** "bar 5", or "bars 5–8". */
+/** function barsText(bar0: Int, bar1: Int) => String */
+function barsText(bar0, bar1) {
+  return bar0 === bar1 ? tf("bar {0}", [String(bar0)]) : tf("bars {0}–{1}", [String(bar0), String(bar1)]);
 }
 
 /** Scroll to the system that holds a beat. */
@@ -1781,20 +1853,20 @@ function showBeat(v, c, geo, beat) {
 /** function repeatsSide(b: Builder, v: ScoreView, c: Cached, geo: PageGeo) => Undefined */
 function repeatsSide(b, v, c, geo) {
   const reps = state.project.repeats;
-  b.leaf("div", "hr", "score-side-h", "Repeats");
+  b.leaf("div", "hr", "score-side-h", t("Repeats"));
   b.open("div", "repeats", "score-list");
-  if (reps.length === 0) b.leaf("div", "none", "score-none", "Drag across some bars, then Repeat.");
+  if (reps.length === 0) b.leaf("div", "none", "score-none", t("Drag across some bars, then Repeat."));
   for (let i = 0; i < reps.length; i++) {
     const r = reps[i];
     const bar0 = barOf(c.score, r.start * TPQ);
     const bar1 = barOf(c.score, r.end * TPQ - 1);
     b.open("div", `r${i}`, "score-mark score-rep");
     b.leaf("span", "sign", "score-rep-sign", "\u{e040}");
-    b.leaf("button", "go", "score-mark-where score-rep-where", bar0 === bar1 ? `bar ${bar0}` : `bars ${bar0}–${bar1}`);
-    b.attr("title", "Click to show");
+    b.leaf("button", "go", "score-mark-where score-rep-where", barsText(bar0, bar1));
+    b.attr("title", t("Click to show"));
     b.on("click", (e) => showBeat(v, c, geo, r.start));
     b.open("span", "times", "score-rep-times");
-    iconButton(b, "less", "small ghost", "minus", "Play it one time less", () => {
+    iconButton(b, "less", "small ghost", "minus", t("Play it one time less"), () => {
       if (r.times > 2)
         commit(() => {
           const rr = state.project.repeats[i];
@@ -1804,8 +1876,8 @@ function repeatsSide(b, v, c, geo) {
         });
     });
     b.leaf("span", "n", "score-rep-n", `×${r.times}`);
-    b.attr("title", `Plays ${r.times} times`);
-    iconButton(b, "more", "small ghost", "plus", "Play it one more time", () => {
+    b.attr("title", tf("Plays {0} times", [String(r.times)]));
+    iconButton(b, "more", "small ghost", "plus", t("Play it one more time"), () => {
       if (r.times < 99)
         commit(() => {
           const rr = state.project.repeats[i];
@@ -1815,7 +1887,7 @@ function repeatsSide(b, v, c, geo) {
         });
     });
     b.close();
-    iconButton(b, "x", "small ghost", "close", "Remove this repeat (and its endings)", () => {
+    iconButton(b, "x", "small ghost", "close", t("Remove this repeat (and its endings)"), () => {
       commit(() => {
         state.project.repeats = state.project.repeats.filter((x) => x !== r);
       });
@@ -1827,14 +1899,14 @@ function repeatsSide(b, v, c, geo) {
       const e1 = barOf(c.score, en.end * TPQ - 1);
       b.open("div", `r${i}e${j}`, "score-mark score-ending");
       b.leaf("span", "text", "score-ending-text", passesText(en.passes));
-      b.leaf("button", "go", "score-mark-where", e0 === e1 ? `bar ${e0}` : `bars ${e0}–${e1}`);
-      b.attr("title", "Click to show");
+      b.leaf("button", "go", "score-mark-where", barsText(e0, e1));
+      b.attr("title", t("Click to show"));
       b.on("click", (e) => showBeat(v, c, geo, en.start));
       b.open("span", "passes", "score-passes");
       for (let k = 1; k <= r.times; k++) {
         const on = en.passes.includes(k);
         b.leaf("button", `p${k}`, on ? "score-pass on" : "score-pass", `${k}`);
-        b.attr("title", on ? `Pass ${k} plays this ending — click to skip it` : `Play this ending on pass ${k}`);
+        b.attr("title", on ? tf("Pass {0} plays this ending — click to skip it", [String(k)]) : tf("Play this ending on pass {0}", [String(k)]));
         b.attr("aria-pressed", on ? "true" : "false");
         b.on("click", (e) => {
           if (on && en.passes.length === 1) return undefined;
@@ -1849,7 +1921,7 @@ function repeatsSide(b, v, c, geo) {
         });
       }
       b.close();
-      iconButton(b, "x", "small ghost", "close", "Remove this ending", () => {
+      iconButton(b, "x", "small ghost", "close", t("Remove this ending"), () => {
         commit(() => {
           const rr = state.project.repeats[i];
           rr.endings = rr.endings.filter((x) => x !== en);
@@ -1874,28 +1946,28 @@ function rangeBar(b, v, c) {
     "span",
     "what",
     "score-range-what",
-    `${bar0 === bar1 ? `Bar ${bar0}` : `Bars ${bar0}–${bar1}`} · ${staves === c.score.staves.length ? "all staves" : staves === 1 ? "1 staff" : `${staves} staves`}`
+    `${bar0 === bar1 ? tf("Bar {0}", [String(bar0)]) : tf("Bars {0}–{1}", [String(bar0), String(bar1)])} · ${staves === c.score.staves.length ? t("all staves") : staves === 1 ? t("1 staff") : tf("{0} staves", [String(staves)])}`
   );
   for (const col of PALETTE.slice(0, 8)) {
     b.open("button", col, "score-swatch big");
     b.style("--c", col);
-    b.attr("title", "Color this passage");
+    b.attr("title", t("Color this passage"));
     b.on("click", (e) => colorRange(v, c.score, col));
     b.close();
   }
-  b.leaf("button", "clear", "btn small ghost", "Clear colors");
-  b.attr("title", "Remove the colors that touch this passage");
+  b.leaf("button", "clear", "btn small ghost", t("Clear colors"));
+  b.attr("title", t("Remove the colors that touch this passage"));
   b.on("click", (e) => clearRange(v, c.score));
   moveRangeSelect(b, v, c);
   if (scopeOf(v).kind !== "pattern") {
-    b.leaf("button", "repeat", "btn small ghost", "Repeat");
-    b.attr("title", "Repeat these bars (play them twice; set how many times under Repeats)");
+    b.leaf("button", "repeat", "btn small ghost", t("Repeat"));
+    b.attr("title", t("Repeat these bars (play them twice; set how many times under Repeats)"));
     b.on("click", (e) => repeatRange(v, c.score));
-    b.leaf("button", "ending", "btn small ghost", "Ending");
-    b.attr("title", "Make these bars an ending: inside a repeat they play on the passes before the last; right after it, on the last");
+    b.leaf("button", "ending", "btn small ghost", t("Ending"));
+    b.attr("title", t("Make these bars an ending: inside a repeat they play on the passes before the last; right after it, on the last"));
     b.on("click", (e) => endingRange(v, c.score));
   }
-  iconButton(b, "x", "small ghost", "close", "Cancel (Escape)", () => {
+  iconButton(b, "x", "small ghost", "close", t("Cancel (Escape)"), () => {
     v.range.on = false;
     invalidate();
   });
@@ -1931,7 +2003,7 @@ function moveRangeSelect(b, v, c) {
   /** const ids: String[] */
   const ids = [""];
   /** const names: String[] */
-  const names = ["Move to…"];
+  const names = [t("Move to…")];
   for (const ch of state.project.channels) {
     if (parts.length === 1 && parts[0] === ch.id) continue;
     ids.push(ch.id);
@@ -1949,15 +2021,25 @@ function moveRangeSelect(b, v, c) {
     "",
     ids,
     names,
-    `Give these bars of ${who.join(", ")} to another instrument (the rest of the song keeps ${parts.length === 1 ? "it" : "them"}; Ctrl+Z undoes)`,
+    parts.length === 1
+      ? tf("Give these bars of {0} to another instrument (the rest of the song keeps it; Ctrl+Z undoes)", [who.join(", ")])
+      : tf("Give these bars of {0} to another instrument (the rest of the song keeps them; Ctrl+Z undoes)", [who.join(", ")]),
     (val) => {
       if (val === "") return undefined;
       const r = v.range;
       v.range.on = false;
       const bar0 = barOf(c.score, Math.min(r.t0, r.t1));
       const bar1 = barOf(c.score, Math.max(r.t0, r.t1) - 1);
-      const bars = bar0 === bar1 ? `in bar ${bar0}` : `in bars ${bar0}–${bar1}`;
-      movePart(v, parts, val, Math.min(r.t0, r.t1) / TPQ, Math.max(r.t0, r.t1) / TPQ, scopeOf(v).kind === "pattern" ? `${bars} of the pattern` : bars);
+      const inPattern = scopeOf(v).kind === "pattern";
+      const where =
+        bar0 === bar1
+          ? inPattern
+            ? tf("in bar {0} of the pattern", [String(bar0)])
+            : tf("in bar {0}", [String(bar0)])
+          : inPattern
+            ? tf("in bars {0}–{1} of the pattern", [String(bar0), String(bar1)])
+            : tf("in bars {0}–{1}", [String(bar0), String(bar1)]);
+      movePart(v, parts, val, Math.min(r.t0, r.t1) / TPQ, Math.max(r.t0, r.t1) / TPQ, where);
     }
   );
 }
@@ -2112,11 +2194,11 @@ export function scoreView(b, v) {
 }
 
 const VALUES = [
-  { v: 192, ch: "\u{e1d2}", name: "Whole note" },
-  { v: 96, ch: "\u{e1d3}", name: "Half note" },
-  { v: 48, ch: "\u{e1d5}", name: "Quarter note" },
-  { v: 24, ch: "\u{e1d7}", name: "Eighth note" },
-  { v: 12, ch: "\u{e1d9}", name: "Sixteenth note" },
+  { v: 192, ch: "\u{e1d2}", name: tk("Whole note") },
+  { v: 96, ch: "\u{e1d3}", name: tk("Half note") },
+  { v: 48, ch: "\u{e1d5}", name: tk("Quarter note") },
+  { v: 24, ch: "\u{e1d7}", name: tk("Eighth note") },
+  { v: 12, ch: "\u{e1d9}", name: tk("Sixteenth note") },
 ];
 
 /** The pane's toolbar for a score view: follow, and what to show. */
@@ -2127,29 +2209,29 @@ export function scoreTools(b, v) {
   /** const ids: String[] */
   const ids = ["song"];
   /** const names: String[] */
-  const names = ["Whole song"];
+  const names = [t("Whole song")];
   if (v.id === "dock") {
     ids.push("current");
-    names.push("Piano roll's pattern");
+    names.push(t("Piano roll's pattern"));
   }
   /** const tracks: Int[] */
   const tracks = [];
   for (const cl of p.playlist.clips) if (cl.pattern !== "" && !tracks.includes(trackIndex(cl.track))) tracks.push(trackIndex(cl.track));
   tracks.sort((a, b) => a - b);
-  for (const t of tracks) {
-    ids.push(`track:${t}`);
-    names.push(`Track · ${t < p.playlist.tracks.length ? p.playlist.tracks[t].name : String(t + 1)}`);
+  for (const ti of tracks) {
+    ids.push(`track:${ti}`);
+    names.push(tf("Track · {0}", [ti < p.playlist.tracks.length ? p.playlist.tracks[ti].name : String(ti + 1)]));
   }
   for (const pat of p.patterns) {
     ids.push(`pattern:${pat.id}`);
-    names.push(`Pattern · ${pat.name}`);
+    names.push(tf("Pattern · {0}", [pat.name]));
   }
   if (!ids.includes(v.scope)) {
     ids.push(v.scope);
     names.push("—");
   }
-  select(b, "scope", "score-scope", v.scope, ids, names, "What to show: the song, one playlist track or one pattern", (val) => setScope(v, val));
-  if (v.id === "dock" && v.scope === "current") iconButton(b, "roll", "small", "piano", "Back to the piano roll (F7)", () => revealDock("piano"));
+  select(b, "scope", "score-scope", v.scope, ids, names, t("What to show: the song, one playlist track or one pattern"), (val) => setScope(v, val));
+  if (v.id === "dock" && v.scope === "current") iconButton(b, "roll", "small", "piano", t("Back to the piano roll (F7)"), () => revealDock("piano"));
 }
 
 /** A small slider for one of the wet ink's knobs, 0..`max`; saved when let go. */
@@ -2188,14 +2270,14 @@ function ribbon(b, v) {
     "sel",
     v.tool === "select" ? "small on" : "small",
     "select",
-    "Select: click notes, drag them, drag across the music to color it (Shift+E)",
+    t("Select: click notes, drag them, drag across the music to color it (Shift+E)"),
     () => {
       v.tool = "select";
       v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
       invalidate();
     }
   );
-  iconButton(b, "write", v.tool === "write" ? "small on" : "small", "draw", "Write: click on a staff to add a note (Shift+P)", () => {
+  iconButton(b, "write", v.tool === "write" ? "small on" : "small", "draw", t("Write: click on a staff to add a note (Shift+P)"), () => {
     v.tool = "write";
     v.range.on = false;
     invalidate();
@@ -2205,7 +2287,7 @@ function ribbon(b, v) {
     "pan",
     v.tool === "pan" ? "small on" : "small",
     "hand",
-    "Hand: drag to move the page about (Shift+H; or drag with the middle button, or beside the page)",
+    t("Hand: drag to move the page about (Shift+H; or drag with the middle button, or beside the page)"),
     () => {
       v.tool = "pan";
       v.ghost = { sys: -1, row: -1, step: 0, tick: -1, x: 0 };
@@ -2216,14 +2298,14 @@ function ribbon(b, v) {
     b.open("div", "values", "score-values");
     for (const val of VALUES) {
       b.leaf("button", `v${val.v}`, v.value === val.v ? "score-value on" : "score-value", val.ch);
-      b.attr("title", val.name);
+      b.attr("title", t(val.name));
       b.on("click", (e) => {
         v.value = val.v;
         invalidate();
       });
     }
     b.leaf("button", "dot", v.dot ? "score-value dot on" : "score-value dot", "\u{e1e7}");
-    b.attr("title", "Dotted (half as long again)");
+    b.attr("title", t("Dotted (half as long again)"));
     b.on("click", (e) => {
       v.dot = !v.dot;
       invalidate();
@@ -2233,41 +2315,41 @@ function ribbon(b, v) {
   b.close();
   b.leaf("span", "sp", "score-spacer", "");
   b.open("div", "fmt", "score-group");
-  b.leaf("span", "kl", "label", "Key");
+  b.leaf("span", "kl", "label", t("Key"));
   /** const keyIds: String[] */
   const keyIds = ["auto"];
   /** const keyNames: String[] */
-  const keyNames = ["Auto"];
+  const keyNames = [t("Auto")];
   for (const k of KEYS) {
     keyIds.push(k.name);
     keyNames.push(keyLabel(k.name));
   }
-  select(b, "key", "", p.score.key === "" ? "auto" : p.score.key, keyIds, keyNames, "Key signature (Auto guesses it from the notes)", (val) => {
+  select(b, "key", "", p.score.key === "" ? "auto" : p.score.key, keyIds, keyNames, t("Key signature (Auto guesses it from the notes)"), (val) => {
     commit(() => {
       p.score.key = val === "auto" ? "" : val;
     });
   });
-  b.leaf("span", "gl", "label", "Grid");
-  select(b, "grid", "", String(v.grid), ["24", "12", "6"], ["1/8", "1/16", "1/32"], "Shortest value the notes are written in", (val) => {
+  b.leaf("span", "gl", "label", t("Grid"));
+  select(b, "grid", "", String(v.grid), ["24", "12", "6"], ["1/8", "1/16", "1/32"], t("Shortest value the notes are written in"), (val) => {
     v.grid = Math.round(Number(val));
     invalidate();
   });
-  b.leaf("span", "szl", "label", "Size");
+  b.leaf("span", "szl", "label", t("Size"));
   b.leaf("button", "sz-", "btn small score-size down", "A");
-  b.attr("title", "Smaller music: more bars on a line");
-  b.attr("aria-label", "Smaller music");
+  b.attr("title", t("Smaller music: more bars on a line"));
+  b.attr("aria-label", t("Smaller music"));
   b.on("click", (e) => setSize(v, v.size - 1));
   b.leaf("button", "sz+", "btn small score-size up", "A");
-  b.attr("title", "Larger music: fewer bars on a line");
-  b.attr("aria-label", "Larger music");
+  b.attr("title", t("Larger music: fewer bars on a line"));
+  b.attr("aria-label", t("Larger music"));
   b.on("click", (e) => setSize(v, v.size + 1));
-  iconButton(b, "zo", "small ghost", "zoomout", "Zoom out (Ctrl+wheel)", () => zoomAt(v, zoomStep(v, -1), v.width / 2, 0));
+  iconButton(b, "zo", "small ghost", "zoomout", t("Zoom out (Ctrl+wheel)"), () => zoomAt(v, zoomStep(v, -1), v.width / 2, 0));
   b.leaf("span", "z", "score-zoom", `${Math.round(v.zoom * 100)}%`);
-  b.attr("title", "Zoom — double-click for 100%");
+  b.attr("title", t("Zoom — double-click for 100%"));
   b.on("dblclick", (e) => zoomAt(v, 1, v.width / 2, 0));
-  iconButton(b, "zi", "small ghost", "zoomin", "Zoom in (Ctrl+wheel)", () => zoomAt(v, zoomStep(v, 1), v.width / 2, 0));
+  iconButton(b, "zi", "small ghost", "zoomin", t("Zoom in (Ctrl+wheel)"), () => zoomAt(v, zoomStep(v, 1), v.width / 2, 0));
   b.open("button", "night", v.night ? "btn small icon on" : "btn small icon");
-  b.attr("title", v.night ? "Paper: ink on ivory" : "Night: gold ink on black lacquer");
+  b.attr("title", v.night ? t("Paper: ink on ivory") : t("Night: gold ink on black lacquer"));
   b.on("click", (e) => {
     v.night = !v.night;
     savePrefs(v);
@@ -2280,7 +2362,7 @@ function ribbon(b, v) {
     "colors",
     v.colors ? "small on" : "small",
     "palette",
-    v.colors ? "Colors: shown — click to write everything in plain ink" : "Colors: hidden (plain ink) — click to show the colored passages",
+    v.colors ? t("Colors: shown — click to write everything in plain ink") : t("Colors: hidden (plain ink) — click to show the colored passages"),
     () => {
       v.colors = !v.colors;
       savePrefs(v);
@@ -2292,7 +2374,7 @@ function ribbon(b, v) {
     "ink",
     v.ink === "wet" ? "small on" : "small",
     "drop",
-    v.ink === "wet" ? "Ink: wet and glossy — click for dry, faded ink" : "Ink: dry and faded — click for wet, glossy ink",
+    v.ink === "wet" ? t("Ink: wet and glossy — click for dry, faded ink") : t("Ink: dry and faded — click for wet, glossy ink"),
     () => {
       v.ink = v.ink === "wet" ? "dry" : "wet";
       savePrefs(v);
@@ -2300,25 +2382,25 @@ function ribbon(b, v) {
     }
   );
   if (v.ink === "wet") {
-    inkSlider(b, v, "gloss", "Gloss", "Gloss: how bright the wet ink shines (double-click to reset)", v.gloss, GLOSS_MAX, GLOSS_DEFAULT, (x) => {
+    inkSlider(b, v, "gloss", t("Gloss"), t("Gloss: how bright the wet ink shines (double-click to reset)"), v.gloss, GLOSS_MAX, GLOSS_DEFAULT, (x) => {
       v.gloss = x;
     });
-    inkSlider(b, v, "shine", "Shine", "Shine: a small speck of light, or a broad dome (double-click to reset)", v.shine, 1, SHINE_DEFAULT, (x) => {
+    inkSlider(b, v, "shine", t("Shine"), t("Shine: a small speck of light, or a broad dome (double-click to reset)"), v.shine, 1, SHINE_DEFAULT, (x) => {
       v.shine = x;
     });
   }
-  iconButton(b, "film", "small", "film", "Film: the camera plays the song over the pages on a desk, zooming in on the parts that carry it", () => {
+  iconButton(b, "film", "small", "film", t("Film: the camera plays the song over the pages on a desk, zooming in on the parts that carry it"), () => {
     v.film = true;
     v.menu.on = false;
     v.range.on = false;
     savePrefs(v);
     invalidate();
   });
-  iconButton(b, "pdf", v.pdfMenu ? "small on" : "small", "export", "Download as PDF…", () => {
+  iconButton(b, "pdf", v.pdfMenu ? "small on" : "small", "export", t("Download as PDF…"), () => {
     v.pdfMenu = !v.pdfMenu;
     invalidate();
   });
-  iconButton(b, "side", v.side ? "small on" : "small", "sidebar", "Parts, tracks and colors", () => {
+  iconButton(b, "side", v.side ? "small on" : "small", "sidebar", t("Parts, tracks and colors"), () => {
     v.side = !v.side;
     savePrefs(v);
     invalidate();

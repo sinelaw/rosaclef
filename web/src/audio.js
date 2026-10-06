@@ -12,6 +12,7 @@ import { state, hooks, invalidate, commit, currentPattern, reportContext, engine
 import { send } from "./net.js";
 import { toast } from "./ui/toast.js";
 import { insertIx, trackIndex } from "#brands";
+import { t } from "./i18n.js";
 
 /** const loaded: String[] */
 const loaded = [];
@@ -35,7 +36,7 @@ function onEngineMessage(m) {
     for (const path of m.missing) loadSample(path);
     for (const p of m.presets) loadPreset(p);
   } else if (m.t === "loadError") {
-    toast("The audio engine rejected the project", m.message, "error");
+    toast(t("The audio engine rejected the project"), m.message, "error");
   }
 }
 
@@ -50,7 +51,7 @@ function loadSample(path) {
       return true;
     })
     .catch((e) => {
-      toast("Could not load sample", path, "error");
+      toast(t("Could not load sample"), path, "error");
       return false;
     });
 }
@@ -68,7 +69,7 @@ function loadPreset(p) {
   presets.push(key);
   audioLoadPreset(p.font, p.bank, p.program).catch((e) => {
     presets.splice(presets.indexOf(key), 1);
-    toast("Could not load an instrument", String(e), "error");
+    toast(t("Could not load an instrument"), String(e), "error");
     return false;
   });
 }
@@ -94,7 +95,7 @@ async function boot() {
     audioPost({ t: "project", json: engineJson() });
     invalidate();
   } catch (e) {
-    toast("Could not start browser audio", String(e), "error");
+    toast(t("Could not start browser audio"), String(e), "error");
     startup.length = 0;
     return false;
   }
@@ -332,7 +333,7 @@ export async function record() {
   await startAudio();
   const ok = await recStart().catch((e) => false);
   if (!ok) {
-    toast("Microphone unavailable", "Allow microphone access to record.", "error");
+    toast(t("Microphone unavailable"), t("Allow microphone access to record."), "error");
     return false;
   }
   state.mode = "song";
@@ -370,7 +371,7 @@ export function stopRecording() {
         mixer: insertIx(0),
       });
     });
-    toast("Recording placed on the playlist", path, "info");
+    toast(t("Recording placed on the playlist"), path, "info");
     return true;
   });
 }

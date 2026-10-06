@@ -7,6 +7,7 @@ import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
 import { decodeProject, encodeClipWire, barBeat } from "./model.js";
 import { selectedLane, selectedPoints, laneValueAt } from "./automation.js";
 import { projectSwitched } from "./ui/projects.js";
+import { t } from "./i18n.js";
 
 /** const sock: RawSock[] */
 const sock = [];
@@ -28,8 +29,8 @@ function issueText(issues) {
 /** function onMessage(text: String) => Undefined */
 function onMessage(text) {
   const m = JSON.parse(text);
-  const t = String(m.t);
-  if (t === "welcome" || t === "switched") {
+  const kind = String(m.t);
+  if (kind === "welcome" || kind === "switched") {
     state.folder = String(m.folder);
     state.samples = m.samples;
     state.rev = Number(m.rev);
@@ -37,44 +38,46 @@ function onMessage(text) {
     state.nativeEnabled = m.native.enabled === true;
     state.backend = m.backend === "local" ? "local" : "server";
     load(decodeProject(m.project));
-    if (t === "switched") projectSwitched();
+    if (kind === "switched") projectSwitched();
     else if (state.backend === "local" && loadPref("rosaclef.localIntro") === "") {
       savePref("rosaclef.localIntro", "shown");
       toast(
-        "Welcome to the browser studio",
-        "Your projects are saved in this browser. Back them up from Projects → Download (.zip); open the same zip in the native studio to use your own coding agent.",
+        t("Welcome to the browser studio"),
+        t(
+          "Your projects are saved in this browser. Back them up from Projects → Download (.zip); open the same zip in the native studio to use your own coding agent."
+        ),
         "info"
       );
     }
-  } else if (t === "project") {
+  } else if (kind === "project") {
     state.rev = Number(m.rev);
     state.diskIssues = [];
     applyRemote(decodeProject(m.project));
     const origin = String(m.origin);
-    if (origin === "disk") toast("The agent updated the project", "Undo with Ctrl+Z", "agent");
-    else if (origin === "api") toast("Project updated through the API", "", "agent");
-  } else if (t === "ack") {
+    if (origin === "disk") toast(t("The agent updated the project"), t("Undo with Ctrl+Z"), "agent");
+    else if (origin === "api") toast(t("Project updated through the API"), "", "agent");
+  } else if (kind === "ack") {
     state.rev = Number(m.rev);
-  } else if (t === "rejected") {
+  } else if (kind === "rejected") {
     /** const issues: Issue[] */
     const issues = m.issues;
-    toast("The server rejected an edit", issueText(issues), "error");
-  } else if (t === "invalid") {
+    toast(t("The server rejected an edit"), issueText(issues), "error");
+  } else if (kind === "invalid") {
     state.diskIssues = m.issues;
-    toast("project.json on disk is invalid", issueText(state.diskIssues), "error");
+    toast(t("project.json on disk is invalid"), issueText(state.diskIssues), "error");
     invalidate();
-  } else if (t === "samples") {
+  } else if (kind === "samples") {
     state.samples = m.samples;
     invalidate();
-  } else if (t === "native") {
+  } else if (kind === "native") {
     state.nativeEnabled = m.status.enabled === true;
     state.nativeDevice = String(m.status.device ?? "");
-    if (m.status.error) toast("Studio audio device unavailable", String(m.status.error), "error");
+    if (m.status.error) toast(t("Studio audio device unavailable"), String(m.status.error), "error");
     if (!state.nativeEnabled && state.output === "native") state.output = "browser";
     // A freshly started native engine has not heard of the tried-out instrument.
     if (state.nativeEnabled && state.audition.on && hooks.audition) hooks.audition();
     invalidate();
-  } else if (t === "native.meters") {
+  } else if (kind === "native.meters") {
     if (state.output === "native") {
       state.position = Number(m.position);
       state.positionAt = now();
@@ -93,11 +96,11 @@ function onMessage(text) {
       state.chMeters = m.channels;
       invalidate();
     }
-  } else if (t === "recorded") {
-    toast("Recording saved", String(m.path), "info");
-  } else if (t === "error") {
-    toast(state.backend === "local" ? "Studio error" : "Server error", String(m.message), "error");
-  } else if (t === "notice") {
+  } else if (kind === "recorded") {
+    toast(t("Recording saved"), String(m.path), "info");
+  } else if (kind === "error") {
+    toast(state.backend === "local" ? t("Studio error") : t("Server error"), String(m.message), "error");
+  } else if (kind === "notice") {
     toast(String(m.title), String(m.message), "error");
   }
 }
