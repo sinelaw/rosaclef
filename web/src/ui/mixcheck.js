@@ -60,6 +60,10 @@ const view = {
   /** The project version the report is about (-1: none yet). */
   edits: -1,
   report: emptyReport(),
+  /** The report before the last Measure (to compare with), and whether the
+   * panel shows it instead. */
+  previous: emptyReport(),
+  showPrevious: false,
   targets /*: MixTargetInfo[] */: [],
   catalogAsked: false,
   /** Sections folded away. */
@@ -394,6 +398,8 @@ export function runMixcheck() {
     .then((r) => {
       view.busy = false;
       view.edits = edits;
+      if (view.report.ok) view.previous = view.report;
+      view.showPrevious = false;
       view.report = decodeReport(r);
       view.applied = [];
       view.appliedEdits = -1;
@@ -1084,8 +1090,10 @@ function elementRow(b, e) {
 /** function mixcheckPanel(b: Builder, ask: (String) => Undefined) => Undefined */
 export function mixcheckPanel(b, ask) {
   if (!view.catalogAsked && state.loaded) loadCatalog();
-  const r = view.report;
-  const stale = r.ok && view.edits !== state.edits;
+  const latest = view.report;
+  const old = view.showPrevious && view.previous.ok;
+  const r = old ? view.previous : latest;
+  const stale = latest.ok && view.edits !== state.edits;
   b.open("div", "mixcheck", view.busy ? "mixcheck busy" : "mixcheck");
 
   // What to measure.
@@ -1140,7 +1148,7 @@ export function mixcheckPanel(b, ask) {
   b.attr("title", t("mixcheck.run.title"));
   b.on("click", (e) => runMixcheck());
   glyph(b, "meter");
-  b.leaf("span", "l", "", view.busy ? t("mixcheck.run.busy.label") : r.ok ? t("mixcheck.run.again.label") : t("mixcheck.run.label"));
+  b.leaf("span", "l", "", view.busy ? t("mixcheck.run.busy.label") : latest.ok ? t("mixcheck.run.again.label") : t("mixcheck.run.label"));
   b.close();
   b.close();
 
@@ -1179,7 +1187,8 @@ export function mixcheckPanel(b, ask) {
     const facts = [where, `${fmt(r.seconds, 1)} s`];
     if (r.repeats) facts.push(t("mixcheck.status.everyPass"));
     facts.push(r.cached ? t("mixcheck.status.cached") : `${fmt(r.ms / 1000, 1)} s`);
-    if (stale) facts.push(view.appliedEdits === state.edits ? t("mixcheck.status.fixesApplied") : t("mixcheck.status.stale"));
+    if (old) facts.push(t("mixcheck.compare.showing"));
+    else if (stale) facts.push(view.appliedEdits === state.edits ? t("mixcheck.status.fixesApplied") : t("mixcheck.status.stale"));
     b.leaf("span", "st", stale ? "mx-status stale" : "mx-status", facts.join(" · "));
   }
   b.close();
@@ -1220,8 +1229,9 @@ export function mixcheckPanel(b, ask) {
     b.leaf("p", "p", "", t("mixcheck.empty.body"));
     b.close();
   } else {
+    if (view.previous.ok && !view.busy) compareView(b, view.previous, latest);
     masterView(b, r);
-    findingsView(b, r, ask);
+    findingsView(b, r, ask, !old);
     if (section(b, "history", t("mixcheck.history.label"), t("mixcheck.history.legend"))) {
       b.canvas("history", "mx-canvas mx-history", (g, w, h) => paintHistory(g, w, h, r));
       b.on("pointerdown", (e) => {
@@ -1338,14 +1348,15 @@ function masterView(b, r) {
 }
 
 /** The findings, ranked, each with its fix. */
-/** function findingsView(b: Builder, r: MixReport, ask: (String) => Undefined) => Undefined */
-function findingsView(b, r, ask) {
+/** `live`: the latest report (the previous one, shown to compare, has no actions). */
+/** function findingsView(b: Builder, r: MixReport, ask: (String) => Undefined, live: Boolean) => Undefined */
+function findingsView(b, r, ask, live) {
   if (!section(b, "findings", t("mixcheck.findings.label"), r.findings.length === 0 ? t("mixcheck.findings.none") : `${r.findings.length}`)) return undefined;
   if (r.findings.length === 0) {
     b.leaf("p", "none", "mx-note", t("mixcheck.findings.empty"));
     return undefined;
   }
-  quickFix(b, r);
+  if (live) quickFix(b, r);
   for (const f of r.findings) {
     const done = isApplied(f.key);
     const near = local(r, f);
@@ -1353,7 +1364,7 @@ function findingsView(b, r, ask) {
     b.leaf("span", "dot", "mx-dot", "");
     b.open("div", "body", "mx-find-body");
     b.open("div", "t", "mx-find-title");
-    if (f.patch !== "" && !done) {
+    if (live && f.patch !== "" && !done) {
       b.leaf("input", "in", "mx-include", "");
       b.attr("type", "checkbox");
       b.attr("title", t("mixcheck.findings.include.title"));
@@ -1380,9 +1391,9 @@ function findingsView(b, r, ask) {
       const tip = layoutState.top === "score" ? tf("mixcheck.findings.show.score.title", [span]) : tf("mixcheck.findings.show.playlist.title", [span]);
       button(b, "show", "small ghost", t("mixcheck.findings.show.label"), tip, () => revealBar(barBeat(f.fromBar)));
     }
-    if (f.patch !== "" && !done) listenButton(b, f.key, f.patch);
+    if (live && f.patch !== "" && !done) listenButton(b, f.key, f.patch);
     b.leaf("span", "sp", "spacer", "");
-    if (state.backend !== "local")
+    if (live && state.backend !== "local")
       button(b, "ask", "small ghost", t("agent.askMaestro"), t("agent.typeIntoPrompt"), () =>
         ask(`Mix check (${f.where}): ${f.detail} Please look into it (rosaclef mixcheck reports it as ${f.key}).`)
       );
@@ -1390,7 +1401,7 @@ function findingsView(b, r, ask) {
       b.leaf("span", "ok", "mx-applied", t("mixcheck.findings.applied"));
       b.close();
       if (f.label !== "") b.leaf("div", "fl", "mx-fixlabel", tf("mixcheck.findings.fix.text", [f.label]));
-    } else if (f.patch !== "") {
+    } else if (live && f.patch !== "") {
       button(b, "fix", "small gold", t("mixcheck.findings.fix.label"), tf("fix.applyOneUndo", [f.label]), () => applyPatch(f.patch, f.label, [f.key]));
       b.close();
       if (f.label !== "") b.leaf("div", "fl", "mx-fixlabel", tf("mixcheck.findings.fix.text", [f.label]));
@@ -1398,6 +1409,43 @@ function findingsView(b, r, ask) {
     b.close();
     b.close();
   }
+}
+
+/** The last Measure against the one before: the headline numbers, the
+ * findings gone and new; and a switch to show the previous report whole. */
+/** function compareView(b: Builder, before: MixReport, now: MixReport) => Undefined */
+function compareView(b, before, now) {
+  const a = before.master;
+  const z = now.master;
+  b.open("div", "cmp", "mx-compare");
+  b.open("div", "h", "mx-compare-head");
+  b.leaf("b", "t", "", t("mixcheck.compare.label"));
+  b.leaf("span", "sp", "spacer", "");
+  if (view.showPrevious)
+    button(b, "back", "small gold", t("mixcheck.compare.back.label"), t("mixcheck.compare.back.title"), () => {
+      view.showPrevious = false;
+      invalidate();
+    });
+  else
+    button(b, "prev", "small ghost", t("mixcheck.compare.show.label"), t("mixcheck.compare.show.title"), () => {
+      view.showPrevious = true;
+      invalidate();
+    });
+  b.close();
+  /** const facts: String[] */
+  const facts = [
+    tf("mixcheck.compare.integrated", [db(a.integrated, 1), db(z.integrated, 1)]),
+    tf("mixcheck.compare.truePeak", [db(a.truePeak, 1), db(z.truePeak, 1)]),
+    tf("mixcheck.compare.plr", [db(a.plr, 1), db(z.plr, 1)]),
+    tf("mixcheck.compare.findings", [String(before.findings.length), String(now.findings.length)]),
+  ];
+  b.leaf("div", "n", "mx-compare-line", facts.join(" · "));
+  const keys = (r) => r.findings.map((f) => f.key);
+  const gone = before.findings.filter((f) => !keys(now).includes(f.key)).map((f) => f.rule.replace(/-/g, " "));
+  const added = now.findings.filter((f) => !keys(before).includes(f.key)).map((f) => f.rule.replace(/-/g, " "));
+  if (gone.length > 0) b.leaf("div", "g", "mx-compare-line gone", tf("mixcheck.compare.gone", [gone.join(", ")]));
+  if (added.length > 0) b.leaf("div", "a", "mx-compare-line added", tf("mixcheck.compare.added", [added.join(", ")]));
+  b.close();
 }
 
 /** Every fix at once: hear them, apply them (one undo step). */

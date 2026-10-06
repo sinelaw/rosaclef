@@ -345,7 +345,9 @@ Each finding with a fix has:
 (where two set the same thing, the higher-ranked wins): Before / after, Apply
 all. Before / after is how to judge a fix before making it — it plays, it does
 not render; the numbers come from **Measure again** once it is applied (Ctrl+Z
-takes it back). After a fix is applied, the report's other fixes still apply
+takes it back). After **Measure again**, a line compares it with the measure
+before (integrated loudness, true peak, PLR, the findings gone and new), and
+**Previous** shows that report whole until **Latest**. After a fix is applied, the report's other fixes still apply
 without measuring again — unless they set what an applied one set, or the song
 changed some other way (then they wait for **Measure again**: they point at
 notes and devices by position).
