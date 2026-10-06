@@ -310,7 +310,8 @@ export function topbar(b) {
 /** function languageSwitch(b: Builder) => Undefined */
 function languageSwitch(b) {
   const code = language();
-  const tip = code === "en" ? "Language" : `${t("topbar.language.title")} · Language`;
+  // In another language, the English word too, so that whoever cannot read it still finds the switch.
+  const tip = code === "en" ? t("topbar.language.title") : `${t("topbar.language.title")} · Language`;
   b.open("label", "lang", "lang-switch");
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));

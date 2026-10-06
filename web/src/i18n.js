@@ -35,18 +35,6 @@ export function t(key) {
   return message(key);
 }
 
-/** TEMPORARY (removed once no call site uses it). */
-/** function tx(context: String, text: String) => String */
-export function tx(context, text) {
-  return message(text);
-}
-
-/** TEMPORARY (removed once no call site uses it). */
-/** function tkx(context: String, text: String) => String */
-export function tkx(context, text) {
-  return text;
-}
-
 /** The text of a key with values in it: {0}, {1}… in the text stand for the values, in order. */
 /** function tf(key: String, values: String[]) => String */
 export function tf(key, values) {

@@ -633,7 +633,7 @@ function instrumentChooser(b, ch) {
   });
   button(b, "browse", "small", t("rack.inspector.sounds.label"), t("rack.inspector.sounds.title"), () => {
     browseInstrument(ch.instrument.type);
-    hint(tf("rack.inspector.sounds.hint", [ch.name]));
+    hint(tf("browser.swapInstrument.hint", [ch.name]));
   });
   b.close();
   b.close();

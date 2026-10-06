@@ -110,8 +110,8 @@ function navBar(b) {
   navItem(b, "playlist", t("panel.playlist"), "playlist", v === "playlist", "", () => setView("playlist"));
   navItem(b, "rack", t("shell.nav.rack.label"), "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
   navItem(b, "piano", t("shell.nav.piano.label"), "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
-  navItem(b, "voice", t("term.voice"), "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
-  navItem(b, "drums", t("term.drums"), "drum", v === "dock" && state.dock === "drums", "", () => openDock("drums"));
+  navItem(b, "voice", t("panel.voice"), "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
+  navItem(b, "drums", t("panel.drums"), "drum", v === "dock" && state.dock === "drums", "", () => openDock("drums"));
   navItem(b, "mixer", t("panel.mixer"), "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
   navItem(b, "score", t("panel.score"), "score", v === "dock" && state.dock === "score", "", () => openDock("score"));
   navItem(b, "agent", t("panel.maestro"), "spark", v === "agent", agentDot(), () => setView("agent"));
@@ -203,8 +203,8 @@ export function studio(b) {
   paneHeader(b, "dock");
   tab(b, "rack", t("shell.dock.rack.label"), "rack", "F6");
   tab(b, "piano", t("shell.dock.piano.label"), "piano", "F7");
-  tab(b, "voice", t("term.voice"), "mic", "F8");
-  tab(b, "drums", t("term.drums"), "drum", "F4");
+  tab(b, "voice", t("panel.voice"), "mic", "F8");
+  tab(b, "drums", t("panel.drums"), "drum", "F4");
   tab(b, "mixer", t("panel.mixer"), "mixer", "F9");
   tab(b, "score", t("panel.score"), "score", "F10");
   b.open("div", "tools", "tools");

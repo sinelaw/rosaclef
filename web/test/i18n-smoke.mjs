@@ -30,6 +30,19 @@ async function open(locale) {
 const exportText = (page) => page.textContent(".topbar .btn.gold");
 const langIs = (page, code) => page.waitForFunction((c) => document.documentElement.lang === c, code, { timeout: 15000 });
 
+// No key shows as it is: every text the page shows comes from en.json (or the language).
+const keyLike = (page) =>
+  page.evaluate(() => {
+    const re = /^[a-z][a-zA-Z0-9]*(\.[a-z0-9][a-zA-Z0-9]*)+$/;
+    const texts = [...document.querySelectorAll("#app *")].flatMap((e) => [
+      ...[...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()),
+      e.getAttribute("title") ?? "",
+      e.getAttribute("aria-label") ?? "",
+      e.getAttribute("placeholder") ?? "",
+    ]);
+    return texts.filter((s) => re.test(s) && /\.(label|title|hint|aria|placeholder|empty|body|option)\b|^(common|term|panel|format|drum)\./.test(s));
+  });
+
 // English by default, with the switcher at the right end of the top bar.
 const { context, page } = await open("en-US");
 await langIs(page, "en");
@@ -42,6 +55,9 @@ if ((await page.textContent(".lang-switch .lang-code")).trim() !== "EN") throw n
 const codes = await page.$$eval(".lang-select option", (os) => os.map((o) => o.value));
 if (codes.length !== 10) throw new Error(`expected 10 languages, got ${codes.length}: ${codes.join(", ")}`);
 ok(`English first, the switcher at the top right offers ${codes.join(", ")}`);
+const raw = await keyLike(page);
+if (raw.length > 0) throw new Error(`keys shown instead of texts: ${raw.slice(0, 5).join(", ")}`);
+ok("no key shows instead of its text");
 
 // Every language loads and shows its words.
 for (const code of codes) {
@@ -49,7 +65,7 @@ for (const code of codes) {
   const words = await page.evaluate(async (c) => (await fetch(`locales/${c}.json`)).json(), code);
   await page.selectOption(".lang-select", code);
   await langIs(page, code);
-  const want = words["Export"];
+  const want = words["topbar.export.label"];
   await page
     .waitForFunction((w) => document.querySelector(".topbar .btn.gold")?.textContent.trim() === w, want, { timeout: 15000 })
     .catch(() => {

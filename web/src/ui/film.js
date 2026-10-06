@@ -1478,7 +1478,7 @@ function filmPanel(b, fv, f) {
   }
   b.close();
   b.close();
-  b.leaf("div", "eh", "score-side-h", t("term.effects"));
+  b.leaf("div", "eh", "score-side-h", t("film.effects.label"));
   effectSliders(b, fv, a.effects, (type, x) => setEffect(anim().effects, type, x));
   drawingPanel(b, fv);
   b.leaf("div", "kh", "score-side-h", t("film.panel.keys.label"));
@@ -1750,7 +1750,7 @@ function shotPanel(b, fv, f, inp, s) {
     slider(b, fv, "glide", t("film.shot.glide.label"), t("film.shot.glide.title"), g, 0, 16, 0.25, k ? k.glide : f.bar, fmt(g, 2), (x) => (s.glide = x));
   }
 
-  b.leaf("div", "eh", "score-side-h", t("term.effects"));
+  b.leaf("div", "eh", "score-side-h", t("film.effects.label"));
   effectSliders(b, fv, s.effects.length > 0 ? s.effects : state.project.animation.effects, (type, x) => setEffect(s.effects, type, x));
 
   b.open("div", "acts", "film-acts");

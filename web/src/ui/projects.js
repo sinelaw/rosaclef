@@ -740,7 +740,12 @@ function filesView(b) {
   b.open("div", "tools", "pm-tools");
   b.open("div", "what", "pm-files-title");
   b.leaf("b", "t", "", state.project.meta.title);
-  b.leaf("span", "s", "", tf("projects.files.summary", [String(pm.files.length), bytes(total)]));
+  b.leaf(
+    "span",
+    "s",
+    "",
+    pm.files.length === 1 ? tf("projects.files.count.one", [bytes(total)]) : tf("projects.files.count.other", [String(pm.files.length), bytes(total)])
+  );
   b.close();
   b.leaf("div", "sp", "spacer", "");
   b.open("button", "audio", "btn gold");
@@ -787,8 +792,8 @@ function filesView(b) {
       inDir.length === 0
         ? t("common.empty")
         : inDir.length === 1
-          ? tf("projects.files.folder.size.one", [bytes(size)])
-          : tf("projects.files.folder.size.other", [String(inDir.length), bytes(size)]);
+          ? tf("projects.files.count.one", [bytes(size)])
+          : tf("projects.files.count.other", [String(inDir.length), bytes(size)]);
     b.leaf("span", "c", "", count);
     b.close();
     if (inDir.length === 0) {

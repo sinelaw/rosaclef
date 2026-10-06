@@ -829,7 +829,7 @@ function partMenu(b, v, c) {
     selectChannel(id);
     openDock("rack");
     browseInstrument(ch.instrument.type);
-    hint(tf("score.partMenu.sound.hint", [ch.name]));
+    hint(tf("browser.swapInstrument.hint", [ch.name]));
   });
   menuItem(b, v, "roll", "piano", t("score.partMenu.roll.label"), tf("score.partMenu.roll.title", [ch.name]), () => {
     const pat = partPattern(v, c.score, id);

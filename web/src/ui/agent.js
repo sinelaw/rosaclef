@@ -277,7 +277,7 @@ export function agentPanel(b) {
         : state.dock === "voice"
           ? t("agent.context.view.voice")
           : state.dock === "drums"
-            ? t("term.drums")
+            ? t("panel.drums")
             : t("agent.context.view.rack")
   );
   b.close();
