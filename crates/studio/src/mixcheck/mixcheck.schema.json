@@ -605,7 +605,7 @@
               "dominant",
               "overloading"
             ],
-            "description": "inaudible: audible under 25 % of the time it plays (strict 35, loose 15). buried: audible under 60 % of the time; for the lead, also more than 10 LU under the mix (strict 8, loose 13), over the range or in stretches (buriedIn). overloading: its own peak over 0 dBFS, or 40 % or more of a master that overloads (its limiter's input over 0 dBFS with 3 dB or more of reduction). dominant: 45 % or more of the mix's energy, within 3 dB of the mix's loudness. ok: none of these. weak: an anchor (kick, bass) under its range against the mix (rangeDb) over the range or in a quarter of its stretches, however audible."
+            "description": "inaudible: audible under 25 % of the time it plays (strict 35, loose 15). buried: audible under 60 % of the time; for the lead, also more than 10 LU under the mix (strict 8, loose 13), over the range or in stretches (buriedIn). overloading: its own peak over 0 dBFS, or 40 % or more of a master that overloads (its limiter's input over 0 dBFS with 3 dB or more of reduction). dominant: 45 % or more of the mix's energy, within 3 dB of the mix's loudness. ok: none of these. weak: an anchor (kick, bass) under its range against the mix (rangeDb) by half a dB over the range or in a quarter of its stretches, or by a dB in any, however audible."
           },
           "suggestions": {
             "type": "array",

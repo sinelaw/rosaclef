@@ -1110,11 +1110,13 @@ pub fn build<'a>(
         );
         let anchor = e.channel.and_then(|c| anchors.get(c).copied().flatten());
         let range = anchor.map(|a| super::roles::range(a, dance));
-        // An anchor under its range — over the range, or in a quarter of its
-        // stretches — is weak however audible it is.
+        // An anchor under its range — over the range, in a quarter of its
+        // stretches, or a dB under it in any — is weak however audible it is.
         let weak = range.is_some_and(|[lo, _]| {
             let below = groups.iter().filter(|g| g.rel() < lo - 0.5).count();
-            rel.is_some_and(|r| r < lo - 0.5) || (below > 0 && below * 4 >= groups.len())
+            rel.is_some_and(|r| r < lo - 0.5)
+                || (below > 0 && below * 4 >= groups.len())
+                || groups.iter().any(|g| g.rel() < lo - 1.0)
         });
         // An anchor under its range is weak first: its level is the fix,
         // however masked it is.

@@ -1735,6 +1735,7 @@ fn units_of(mix: &Mix, id: &str) -> Vec<usize> {
 fn weak_anchors(
     p: &Project,
     mix: &Mix,
+    t: &timeline::Timeline,
     report: &Report,
     pred: &super::predict::Predict,
 ) -> Vec<(FindingOut, f64)> {
@@ -1841,6 +1842,93 @@ fn weak_anchors(
             said.push(format!("{} up {:.1} dB", e.name, a[i]));
         }
     }
+    // Sections spread wider than the range, one fader cannot place: a lane
+    // on the anchor's insert holds each in it — its weak sections up, its
+    // hot ones down, by what the model says each needs.
+    let mut lanes_said = vec![];
+    let mut lane_after: Vec<Option<Vec<f64>>> = vec![None; weak.len()];
+    for (i, k) in weak.iter().enumerate() {
+        let e = &report.elements[*k];
+        let [lo, hi] = e.range_db.unwrap_or([-99.0, 0.0]);
+        let channel = channel_of(&e.id);
+        let target = format!("insert/{}/volume", e.insert);
+        let driven = p.automation.iter().any(|l| {
+            !l.mute
+                && (l.target == target
+                    || channel.is_some_and(|c| {
+                        l.target == format!("channel/{}/volume", p.channels[c].id)
+                    }))
+        });
+        if e.insert == 0 || !alone_on(p, channel, e.insert) || driven || e.by_section.is_empty() {
+            continue;
+        }
+        let rel = pred.rel(*k, &g);
+        if rel.len() != e.by_section.len() {
+            continue;
+        }
+        let d: Vec<f64> = rel
+            .iter()
+            .map(|(_, r)| {
+                let to = if *r < lo - 0.25 {
+                    lo + 0.25
+                } else if *r > hi + 0.25 {
+                    hi - 0.25
+                } else {
+                    return 0.0;
+                };
+                // Its own share of the mix moves with it.
+                let share = 10f64.powf(r / 10.0).min(0.7);
+                ((to - r) / (1.0 - share)).clamp(-9.0, 9.0)
+            })
+            .collect();
+        if d.iter().all(|x| x.abs() < 0.3) {
+            continue;
+        }
+        let base = p.mixer.inserts[e.insert].volume * gain(a[i]);
+        let mut pts: Vec<(f64, f64)> = vec![];
+        for (u, dx) in e.by_section.iter().zip(&d) {
+            if u.pass.is_some_and(|n| n > 1) {
+                continue;
+            }
+            let v = round3((base * gain(*dx)).min(2.0));
+            pts.push((t.bar_start(u.from_bar), v));
+            pts.push((t.bar_start(u.to_bar + 1), v));
+        }
+        pts.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let id = e.id.trim_start_matches("channel:").to_string();
+        fix.push(json!({"op": "add", "path": "/automation/-", "value": {
+            "id": format!("{id}-level"),
+            "name": format!("{} level per section (mix check)", e.name),
+            "target": target,
+            "points": pts.iter().map(|(b, v)| json!({"beat": b, "value": v})).collect::<Vec<_>>(),
+        }}));
+        let moved: Vec<String> = e
+            .by_section
+            .iter()
+            .zip(&d)
+            .filter(|(_, x)| x.abs() >= 0.3)
+            .map(|(u, x)| {
+                format!(
+                    "{} {x:+.1} dB",
+                    u.section
+                        .clone()
+                        .unwrap_or_else(|| format!("bars {}–{}", u.from_bar, u.to_bar))
+                )
+            })
+            .collect();
+        lanes_said.push(format!(
+            "a lane \"{}-level\" holding {} in its range section by section ({})",
+            id,
+            e.name,
+            moved.join(", ")
+        ));
+        lane_after[i] = Some(
+            rel.iter()
+                .zip(&d)
+                .map(|((_, r), x)| r + x * (1.0 - 10f64.powf(r / 10.0).min(0.7)))
+                .collect(),
+        );
+    }
     if y >= 0.1 {
         for e in report
             .elements
@@ -1866,13 +1954,20 @@ fn weak_anchors(
             None => said.push("the loudness rising with them (no limiter on the master)".into()),
         }
     }
+    said.extend(lanes_said);
     weak.iter()
         .enumerate()
         .map(|(i, k)| {
             let e = &report.elements[*k];
             let [lo, hi] = e.range_db.unwrap_or([-99.0, 0.0]);
             let (w0, b0) = pred.spread(*k, &zero).unwrap_or((lo, lo));
-            let (w1, b1) = pred.spread(*k, &g).unwrap_or((w0, b0));
+            let (w1, b1) = match &lane_after[i] {
+                Some(v) => (
+                    v.iter().copied().fold(f64::INFINITY, f64::min),
+                    v.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+                ),
+                None => pred.spread(*k, &g).unwrap_or((w0, b0)),
+            };
             let short = if a[i] >= caps[i] - 0.05 && !placed(i, &g) {
                 " (as far as its fader goes)"
             } else {
@@ -1917,7 +2012,7 @@ fn weak_anchors(
                 .unwrap_or_default();
             let wide = if b0 - w0 > hi - lo {
                 format!(
-                    " Its sections spread {:.1} dB, wider than the range: one fader centres them on it; a lane would hold each in it.",
+                    " Its sections spread {:.1} dB, wider than the range: a fader alone cannot place them all.",
                     b0 - w0
                 )
             } else {
@@ -2696,7 +2791,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
     // heard, and weak: the groove loses its weight.
     let pred = super::predict::Predict::new(report, ctx, &|e| e.anchor.is_some() || e.lead);
     if o.has(Check::Levels) {
-        out.extend(weak_anchors(p, mix, report, &pred));
+        out.extend(weak_anchors(p, mix, ctx.timeline, report, &pred));
     }
 
     // masked-lead, inaudible-part, phase (elements)
