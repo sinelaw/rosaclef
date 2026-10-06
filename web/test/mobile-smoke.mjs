@@ -44,7 +44,9 @@ async function open(opts) {
   });
   return page;
 }
-const clips = (page) => page.evaluate(() => document.querySelectorAll(".clip").length);
+// The song's clips (the playlist draws only those in view, so a scroll
+// changes how many are on the page).
+const clips = (page) => page.evaluate(() => window.__store.state.project.playlist.clips.length);
 const keysDown = (sel, n) => [(a) => document.querySelectorAll(a.sel).length === a.n, { sel: sel, n: n }];
 
 // ---- phone
@@ -97,9 +99,9 @@ const keysDown = (sel, n) => [(a) => document.querySelectorAll(a.sel).length ===
   // a tap on an empty cell paints a clip
   await touch("touchStart", [{ x: grid.x + grid.width * 0.5, y: grid.y + 30, id: 4 }]);
   await touch("touchEnd", []);
-  await until(page, (n) => document.querySelectorAll(".clip").length === n, n0 + 1, "a tap paints a clip");
+  await until(page, (n) => window.__store.state.project.playlist.clips.length === n, n0 + 1, "a tap paints a clip");
   await page.keyboard.press("Control+z");
-  await until(page, (n) => document.querySelectorAll(".clip").length === n, n0, "Ctrl+Z takes it back");
+  await until(page, (n) => window.__store.state.project.playlist.clips.length === n, n0, "Ctrl+Z takes it back");
 
   // nav: browser pattern double-click reveals the piano roll
   await page.click(".nav-item[aria-label=Browser]");
@@ -164,7 +166,7 @@ const keysDown = (sel, n) => [(a) => document.querySelectorAll(a.sel).length ===
   const grid = await page.locator(".pl .scroller").last().boundingBox();
   const n0 = await clips(page);
   await page.mouse.click(grid.x + 30, grid.y + 30);
-  await until(page, (n) => document.querySelectorAll(".clip").length === n, n0 + 1, "desktop: a click paints a clip");
+  await until(page, (n) => window.__store.state.project.playlist.clips.length === n, n0 + 1, "desktop: a click paints a clip");
   const k = await page.locator(".kb-white").nth(3).boundingBox();
   await page.mouse.move(k.x + k.width / 2, k.y + k.height * 0.8);
   await page.mouse.down();

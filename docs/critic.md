@@ -4,6 +4,8 @@ The Critic lints the song against the rules of thumb of composition,
 arrangement, sound design and mixing. The checks are mechanical: no AI and no
 audio analysis. They read `project.json` (notes, clips, channels, the mixer,
 automation) and nothing else, so the same song always gets the same findings.
+(The *Mix check* category is the exception: it is measured on a render — see
+[Audio checks](#audio-checks-mix-check).)
 
 - **Suggestions** come with a fix: a list of JSON Patch operations
   ([RFC 6902](https://www.rfc-editor.org/rfc/rfc6902) `add` and `remove`) on
@@ -76,6 +78,16 @@ Everything reaches the checks through one core:
 song as the fixes before it left it, since a fix can move the notes another
 points at. A fix that would leave the project invalid is refused.
 
+## Audio checks (Mix check)
+
+The checks above read the project only. The *Mix check* category is measured on
+a render: master overload, true peaks over 0 dBTP, limiter pumping, an
+over-compressed master, a masked
+or buried lead, inaudible parts, low-end build-up, phase,
+and sections without a build. `rosaclef critic --audio` runs them (one render
+of the song, cached) and lists, fixes and suppresses them like the others. They
+come from `rosaclef mixcheck`; see [`mixcheck.md`](mixcheck.md).
+
 ## Content this version doesn't know
 
 A project made with a newer Rosaclef may hold sections, fields, instruments,
@@ -137,7 +149,8 @@ panel in a browser.
 
 ## The checks
 
-77 checks. "Fix" is the one-click change. A dash means the check only reports.
+77 checks of the project (the 8 measured on a render are in
+[mixcheck.md](mixcheck.md#findings-and-the-critic)). "Fix" is the one-click change. A dash means the check only reports.
 *Off by default* marks the 7 checks a project has to turn on.
 
 ### Harmony
@@ -255,7 +268,7 @@ These run on lead parts: their top line, one note per onset.
 | Master fader above 0 dB | Master volume above unity | Set it to 0 dB |
 | No limiter on the master | No enabled limiter | Add a limiter with a −1 dB ceiling |
 | Limiter not last | An enabled device after the master limiter | Move the limiter to the end |
-| No true-peak headroom | A limiter ceiling above −1 dB | Set the ceiling to −1 dB |
+| No true-peak headroom | A limiter ceiling above −1.5 dB (true peaks run about half a dB over it) | Set the ceiling to −1.5 dB |
 | Over-limited master | Limiter input gain above 6 dB | Drive it 3 dB |
 | Heavy master chain | More than 4 enabled devices, or several limiters | — |
 

@@ -49,7 +49,7 @@ pub struct Where {
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Op {
     /// "add" (set an object member, append with `-`, or insert into an
-    /// array) or "remove".
+    /// array), "replace" or "remove".
     pub op: &'static str,
     /// A JSON pointer: `/patterns/2/notes/14/pitch`.
     pub path: String,
@@ -112,6 +112,7 @@ pub const CATEGORIES: &[&str] = &[
     "Effects",
     "Master",
     "Project",
+    "Mix check",
 ];
 
 const fn r(
@@ -224,7 +225,7 @@ pub static RULES: &[Rule] = &[
     r("master-hot", "Master", "Master fader above 0 dB", "Leave the master at unity or below: headroom for mastering, no clipping."),
     r("no-limiter", "Master", "No limiter on the master", "Nothing stops the render from clipping."),
     r("limiter-last", "Master", "Limiter not last", "The brickwall limiter goes last on the master, or what comes after it can clip."),
-    r("limiter-ceiling", "Master", "No true-peak headroom", "A ceiling of −1 dB keeps inter-sample peaks and lossy encoding from clipping."),
+    r("limiter-ceiling", "Master", "No true-peak headroom", "A ceiling of −1.5 dB keeps inter-sample peaks under −1 dBTP and lossy encoding from clipping."),
     r("limiter-drive", "Master", "Over-limited master", "Streaming normalizes loudness (about −14 LUFS): an over-limited master is turned down and only loses its punch."),
     r("master-chain", "Master", "Heavy master chain", "Many devices or several limiters on the master usually fix in mastering what belongs in the mix."),
     // Project
@@ -232,8 +233,31 @@ pub static RULES: &[Rule] = &[
     r("pattern-bars", "Project", "Patterns of odd lengths", "Patterns in whole bars, and phrases of 2, 4 or 8 bars, line up with the song's form."),
     r("unused-channel", "Project", "Unused channels", "Channels with no notes are clutter."),
     r("names", "Project", "Default names", "Names like \"Pattern 3\" say nothing when you come back to the project."),
+    // Mix check: measured on a render (`rosaclef mixcheck`; `rosaclef critic --audio`).
+    r("master-overload", "Mix check", "Master overload", "Peaks far over 0 dBFS at the limiter's input make it work hard all the time: it flattens the transients and pumps. Leave headroom before the master."),
+    r("true-peak", "Mix check", "True peak over 0 dBTP", "Peaks between the samples go over full scale and clip when the song is converted or encoded; streaming services ask for -1 dBTP."),
+    r("over-compression", "Mix check", "Over-compressed master", "A master compressor or limiter holding heavy gain reduction all the time flattens the song: no loud and soft, no punch. Let it catch the peaks only."),
+    r("limiter-pumping", "Mix check", "Limiter pumping", "Gain reduction swinging with every beat makes the whole mix breathe; a slower release or less drive keeps it steady."),
+    r("masked-lead", "Mix check", "Masked lead", "The lead carries the song: if other parts cover its frequencies it disappears, however loud its fader."),
+    r("inaudible-part", "Mix check", "Inaudible part", "A part buried under others costs CPU and clutter and adds nothing: bring it out or take it away."),
+    r("low-end-buildup", "Mix check", "Low-end build-up", "Too much energy under 250–500 Hz makes a mix muddy and boomy and eats the headroom."),
+    r("harsh-highs", "Mix check", "Harsh highs", "Above 6 kHz as loud as the presence range makes cymbals, hats and sibilants pierce; a balanced mix keeps the top octaves a few dB under."),
+    r("section-lift", "Mix check", "Chorus doesn't lift", "A chorus (or drop, hook, refrain) less than 1 LU louder than the verses does not lift; what in the mixer holds it back (a volume lane, the limiter, one part covering the rest) is named and put back."),
+    r("loud-master", "Mix check", "Louder than streaming plays it", "A master louder than about -10 LUFS is turned down by every streaming service: the loudness is lost, the squashed peaks stay."),
+    r("fast-limiter-release", "Mix check", "Limiter release too fast", "A master limiter releasing in under 20 ms rides the bass's waveform and distorts the low end."),
+    r("part-dropout", "Mix check", "Part drops out", "A part falling 10 dB under its own level and 15 dB under the mix in some sections; a volume lane holding it down there is put back up."),
+    r("dominant-part", "Mix check", "One part is most of the mix", "A part (not the lead) carrying most of the mix's energy covers the others and flattens the build; faders pushed over unity are brought back."),
+    r("boxy-lowmids", "Mix check", "Boxy low mids", "250–500 Hz about as loud as 500 Hz–2 kHz sounds boxy; an EQ boost there is taken back, else a gentle cut at 350 Hz."),
+    r("phase-correlation", "Mix check", "Phase and mono", "A negative correlation means the channels cancel: on a phone or a club's mono system parts disappear."),
+    r("section-loudness-flat", "Mix check", "No build between sections", "Sections at the same loudness give the song nowhere to go; the drop hits harder after a quieter build."),
     r("unknown-content", "Project", "Content this version doesn't know", "The song names sections, instruments, effects or settings this version of Rosaclef doesn't know (made with a newer one, or a typo): they are left out, or played on a stand-in, until it is updated."),
 ];
+
+/// Each channel's role in the song, as the checks read it (in channel
+/// order): drums, bass, harmony, lead, part, fx, gen, arp, sample or idle.
+pub fn channel_roles(p: &Project) -> Vec<&'static str> {
+    Ana::new(p).chans.iter().map(|c| c.role).collect()
+}
 
 /// The rule with this id.
 pub fn rule(id: &str) -> Option<&'static Rule> {
@@ -325,7 +349,8 @@ pub fn critique_with(p: &Project, off: &[String], fallbacks: &[String]) -> Criti
 
 /// Apply JSON Patch operations to a JSON document. `add` sets an object
 /// member (creating missing parent objects), appends to an array with `-`
-/// or inserts into it at an index; `remove` deletes a member or element.
+/// or inserts into it at an index; `replace` changes an existing member or
+/// element; `remove` deletes a member or element.
 pub fn apply_ops(doc: &mut Value, ops: &[Op]) -> Result<(), String> {
     for op in ops {
         let parts: Vec<String> = op
@@ -368,6 +393,21 @@ pub fn apply_ops(doc: &mut Value, ops: &[Op]) -> Result<(), String> {
                     }
                     a.insert(i, v);
                 }
+            }
+            ("replace", Value::Object(m)) => {
+                if !m.contains_key(last.as_str()) {
+                    return Err(format!("{}: no member {last:?}", op.path));
+                }
+                m.insert(last.clone(), op.value.clone().unwrap_or(Value::Null));
+            }
+            ("replace", Value::Array(a)) => {
+                let i: usize = last
+                    .parse()
+                    .map_err(|_| format!("{}: not an index", op.path))?;
+                let slot = a
+                    .get_mut(i)
+                    .ok_or_else(|| format!("{}: no element {i}", op.path))?;
+                *slot = op.value.clone().unwrap_or(Value::Null);
             }
             ("remove", Value::Object(m)) => {
                 m.remove(last.as_str());

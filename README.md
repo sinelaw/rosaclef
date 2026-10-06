@@ -77,6 +77,7 @@ there is no Studio audio output or CLAP plugins. See
 | `rosaclef summary [DIR]` | compact overview of a project |
 | `rosaclef critic [DIR] [--fix KEY\|RULE\|all] [--suppress KEY\|RULE] [--enable\|--disable RULE] [--json]` | lint the song against production rules of thumb; apply fixes, suppress findings, turn checks on or off (see [`docs/critic.md`](docs/critic.md)) |
 | `rosaclef render [DIR] [--pattern ID] [--out FILE] [--bits 16\|24\|32]` | offline mixdown to WAV (shows progress on a terminal) |
+| `rosaclef mixcheck [DIR] [--range BAR:BAR\|--section NAME] [--focus ID] [--what-if PATCH] [--text]` | mix diagnostics from one render: loudness, true peak, the limiter, masking and audibility, spectrum, phase — with fixes to the mixer (see [`docs/mixcheck.md`](docs/mixcheck.md)) |
 | `rosaclef note --channel ID --pitch 60 --out samples/x.wav` | synthesize a note into a sample |
 | `rosaclef import-lmms FILE.mmp[z] [--name N] [--library LIB]` | import an LMMS project as a new project (prints what was approximated) |
 | `rosaclef import-midi FILE.mid [--name N] [--library LIB] [--synth]` | import a Standard MIDI File as a new project: tempo and time signature changes, sustain pedal, program changes, volume/pan automation; played on the sampled General MIDI instruments (`--synth`: on Rosaclef's synthesizers) |
@@ -88,7 +89,7 @@ there is no Studio audio output or CLAP plugins. See
 
 The **Critic** tab in the Maestro panel lints the song: 77 mechanical checks
 (no AI) of harmony, melody, rhythm, arrangement, low end, mix, stereo, effects
-and the master. Each check rests on a rule of thumb of production: muddy low
+and the master (and 10 more measured on a render: see **Mix check** below). Each check rests on a rule of thumb of production: muddy low
 voicings, notes out of key or beyond a real instrument's range, robotic
 velocities, loopitis, a bass panned off center, a limiter that isn't last.
 
@@ -101,6 +102,20 @@ velocities, loopitis, a bass panned off center, a limiter that isn't last.
 
 The same checks run on the command line: `rosaclef critic`, with `--fix`,
 `--suppress` and `--json` for agents. See [`docs/critic.md`](docs/critic.md).
+
+## Mix check
+
+The **Mix check** tab in the Maestro panel measures the mix from one render,
+like a mastering meter: integrated, short-term and momentary loudness against a
+delivery target (Spotify, Apple Music, EBU R128, …), true peak, the peak before
+the limiter and every compressor's gain reduction, PLR, LRA, phase correlation,
+the loudness history, the spectrum against a level-matched reference track —
+and, beyond any meter, how audible each part is under the others (a masking
+model) and who masks it. Findings come with mixer fixes (faders, EQ, dynamics
+— never the notes) to **Try** (a what-if render) or **Apply** (one undo step).
+
+The agent gets the same numbers as JSON: `rosaclef mixcheck --range 52:59
+--focus rbass` (or `POST /api/mixcheck`). See [`docs/mixcheck.md`](docs/mixcheck.md).
 
 ## Voice to notes
 

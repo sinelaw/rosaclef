@@ -48,6 +48,12 @@ Sound
        [--seconds 2] --out samples/x.wav
                               synthesize one note into a sample
 
+Mix
+  mixcheck [--range BAR:BAR | --beats B:B | --section NAME] [--by bar|section|N-beats]
+           [--focus ID,…] [--checks LIST] [--what-if JSONPATCH] [--target spotify|…]
+           [--threshold strict|normal|loose] [--max-findings N] [--verify] [--history] [--text]
+                              mix diagnostics from one render (JSON; --text: a summary)
+
 Reference
   catalog                     every instrument and effect, with parameters
   presets [TYPE|NAME]         factory presets; a name prints its JSON
@@ -63,7 +69,8 @@ Files and projects
 
 const COMMANDS: &[&str] = &[
     "help", "summary", "validate", "get", "set", "del", "fmt", "context", "critic", "render",
-    "note", "catalog", "presets", "schema", "ls", "cat", "rm", "projects", "open", "clear", "exit",
+    "note", "mixcheck", "catalog", "presets", "schema", "ls", "cat", "rm", "projects", "open",
+    "clear", "exit",
 ];
 
 /// Line editing state of one terminal.
@@ -425,6 +432,9 @@ impl Host {
     }
 
     fn command(&mut self, cmd: &str, args: &[String]) -> Result<String> {
+        if cmd == "mixcheck" {
+            return self.mixcheck_command(args);
+        }
         let a = Args::parse(args)?;
         let arg = |i: usize| a.pos.get(i).cloned().unwrap_or_default();
         Ok(match cmd {

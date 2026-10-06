@@ -202,6 +202,12 @@ pub async fn run(cfg: Config) -> Result<()> {
                 .post(critique)
                 .layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
         )
+        .route(
+            "/api/mixcheck",
+            get(|| async { Json(rosaclef_studio::mixcheck::catalog()) })
+                .post(mixcheck)
+                .layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
+        )
         .route("/api/render", post(render))
         .route("/api/agents", get(get_agents))
         .route("/api/info", get(get_info))
@@ -901,6 +907,35 @@ async fn critique(headers: HeaderMap, body: String) -> Response {
     match tokio::task::spawn_blocking(move || rosaclef_core::critic::api(&body)).await {
         Ok(Ok(v)) => Json(v).into_response(),
         Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// Mix check (`rosaclef mixcheck` over HTTP): the request object in (the
+/// command line's flags as JSON), the report out. Without `project` it
+/// checks the open project.
+async fn mixcheck(State(app): State<Shared>, headers: HeaderMap, body: String) -> Response {
+    if !same_origin(&headers) {
+        return forbidden();
+    }
+    let project = app.doc.lock().project.clone();
+    let folder = app.folder();
+    let res = tokio::task::spawn_blocking(move || {
+        let fonts = fonts();
+        let env = rosaclef_studio::mixcheck::Env {
+            folder: &folder,
+            fonts: &fonts,
+            setup: &install_plugin_host,
+            progress: &|_| {},
+            disk_cache: true,
+            any_file: false,
+        };
+        rosaclef_studio::mixcheck::api(&env, &project, &body)
+    })
+    .await;
+    match res {
+        Ok(Ok(v)) => Json(v).into_response(),
+        Ok(Err(e)) => (StatusCode::UNPROCESSABLE_ENTITY, e.0).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

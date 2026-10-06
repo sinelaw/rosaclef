@@ -560,6 +560,8 @@ impl Host {
                     Err(e) => Response::text(422, e),
                 }
             }
+            ("GET", "/api/mixcheck") => Response::json(rosaclef_studio::mixcheck::catalog()),
+            ("POST", "/api/mixcheck") => self.mixcheck(&String::from_utf8_lossy(body))?,
             ("POST", "/api/render") => {
                 let v = body_json(body)?;
                 let r = self.render(
@@ -745,6 +747,74 @@ impl Host {
                 rosaclef_studio::transcribe::transcribe(&d, mode),
             )?)),
             Err(e) => Ok(Response::text(422, format!("{e:#}"))),
+        }
+    }
+
+    /// Mix check, on this thread: the samples and soundfont presets it
+    /// needs are loaded first (a missing one asks the page for it and the
+    /// request is retried).
+    fn run_mixcheck(
+        &mut self,
+        body: &str,
+    ) -> Result<Result<(rosaclef_studio::mixcheck::Report, bool), String>> {
+        use rosaclef_studio::mixcheck;
+        let project = match mixcheck::request_project(&self.doc.project, body) {
+            Ok(p) => p,
+            Err(e) => return Ok(Err(e.0)),
+        };
+        let mut files = required_samples(&project);
+        if let Some(r) = serde_json::from_str::<Value>(body).ok().and_then(|v| {
+            v.get("reference")
+                .and_then(|r| r.as_str())
+                .map(str::to_string)
+        }) {
+            files.push(r);
+        }
+        self.ensure_loaded(&files)?;
+        self.fonts.ensure(&required_presets(&project))?;
+        let env = mixcheck::Env {
+            folder: &self.folder,
+            fonts: &self.fonts,
+            setup: &|_| {},
+            progress: &|_| {},
+            disk_cache: false,
+            any_file: false,
+        };
+        let out = mixcheck::run_request(&env, &self.doc.project, body);
+        // The browser holds this memory: keep only the soundfont indexes.
+        self.fonts.clear();
+        self.font_files.forget_pieces();
+        Ok(out.map_err(|e| e.0))
+    }
+
+    /// POST /api/mixcheck.
+    pub fn mixcheck(&mut self, body: &str) -> Result<Response> {
+        use rosaclef_studio::mixcheck::{self, text};
+        match mixcheck::apply_request(&self.doc.project, body) {
+            Ok(Some(p)) => return Ok(Response::json(json!({ "project": p }))),
+            Ok(None) => {}
+            Err(e) => return Ok(Response::text(422, e.0)),
+        }
+        Ok(match self.run_mixcheck(body)? {
+            Ok((r, want_text)) => {
+                let mut v = serde_json::to_value(&r)?;
+                if want_text {
+                    v["text"] = json!(text::summary(&r));
+                }
+                Response::json(v)
+            }
+            Err(e) => Response::text(422, e),
+        })
+    }
+
+    /// The shell's `mixcheck`: the same request and report as the endpoint.
+    pub fn mixcheck_command(&mut self, args: &[String]) -> Result<String> {
+        use rosaclef_studio::mixcheck::{options, text};
+        let (req, want_text) = options::request_from_args(args).map_err(|e| anyhow::anyhow!(e))?;
+        match self.run_mixcheck(&req.to_string())? {
+            Ok((r, _)) if want_text => Ok(text::summary(&r)),
+            Ok((r, _)) => Ok(serde_json::to_string_pretty(&r)?),
+            Err(e) => bail!("{e}"),
         }
     }
 

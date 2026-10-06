@@ -63,6 +63,9 @@ impl SampleBank {
     pub fn insert(&mut self, path: &str, data: SampleData) {
         self.map.insert(path.to_string(), Arc::new(data));
     }
+    pub fn insert_shared(&mut self, path: &str, data: SampleRef) {
+        self.map.insert(path.to_string(), data);
+    }
     pub fn remove(&mut self, path: &str) {
         self.map.remove(path);
     }

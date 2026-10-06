@@ -358,6 +358,11 @@ pub struct Engine {
     parallel: bool,
     /// The threads doing it, while a render runs.
     crew: Option<Crew>,
+    /// Keep the master's signal before its effects and at its limiter's
+    /// input for analysis (see [`Engine::set_taps`]).
+    taps: bool,
+    tap_pre: [Vec<f32>; 2],
+    tap_limiter: [Vec<f32>; 2],
 }
 
 impl Engine {
@@ -403,6 +408,9 @@ impl Engine {
             dc: Default::default(),
             parallel: false,
             crew: None,
+            taps: false,
+            tap_pre: [vec![0.0; MAX_BLOCK], vec![0.0; MAX_BLOCK]],
+            tap_limiter: [vec![0.0; MAX_BLOCK], vec![0.0; MAX_BLOCK]],
         };
         e.set_project(project);
         e
@@ -420,7 +428,7 @@ impl Engine {
     }
 
     /// Start (or stop) the threads of a parallel engine, for a render.
-    pub(crate) fn set_crew(&mut self, on: bool) {
+    pub fn set_crew(&mut self, on: bool) {
         self.crew = None;
         if on && self.parallel {
             #[cfg(feature = "parallel")]
@@ -545,6 +553,7 @@ impl Engine {
                     }
                 };
                 f.fx.set_device(dev, &ctx);
+                f.fx.set_metering(self.taps);
                 f.enabled = dev.enabled;
                 f.dev = dev.clone();
                 f.tempo_synced = tempo_synced(&dev.kind);
@@ -761,6 +770,12 @@ impl Engine {
     /// Provide decoded audio for a project-relative path.
     pub fn set_sample(&mut self, path: &str, data: SampleData) {
         self.samples.insert(path, data);
+        self.relink_samples();
+    }
+
+    /// [`Engine::set_sample`] for audio shared with other engines (not copied).
+    pub fn set_sample_shared(&mut self, path: &str, data: Arc<SampleData>) {
+        self.samples.insert_shared(path, data);
         self.relink_samples();
     }
 
@@ -1059,7 +1074,14 @@ impl Engine {
             master.buf_l[i] = self.dc[0].process(master.buf_l[i] + self.master_l[i], r);
             master.buf_r[i] = self.dc[1].process(master.buf_r[i] + self.master_r[i], r);
         }
-        run_insert(master, n);
+        if self.taps {
+            self.tap_pre[0][..n].copy_from_slice(&master.buf_l[..n]);
+            self.tap_pre[1][..n].copy_from_slice(&master.buf_r[..n]);
+            let [tl, tr] = &mut self.tap_limiter;
+            run_insert_tapped(master, n, Some((&mut tl[..n], &mut tr[..n])));
+        } else {
+            run_insert(master, n);
+        }
         for i in 0..n {
             let (l, r) = (master.buf_l[i], master.buf_r[i]);
             out_l[i] = if l.is_finite() { l } else { 0.0 };
@@ -1288,6 +1310,138 @@ impl Engine {
     }
 }
 
+// ------------------------------------------------------------ analysis
+
+/// Signal taps and seeking for offline analysis (`rosaclef mixcheck`).
+///
+/// With taps on, every block leaves readable: each channel's signal after its
+/// fader, each insert's after its effects and fader, and the master's before
+/// its effects and at its limiter's input. Read them after a call to
+/// [`Engine::process`] of at most [`Engine::block_frames`] frames (one block).
+impl Engine {
+    pub fn set_taps(&mut self, on: bool) {
+        self.taps = on;
+        for ins in &mut self.inserts {
+            for f in &mut ins.fx {
+                f.fx.set_metering(on);
+            }
+        }
+    }
+
+    /// Frames in one block of [`Engine::process`].
+    pub fn block_frames(&self) -> usize {
+        if self.lanes.is_empty() {
+            MAX_BLOCK
+        } else {
+            AUTOMATION_BLOCK
+        }
+    }
+
+    /// A channel's last block (after its volume and pan), in project order.
+    pub fn tap_channel(&self, i: usize) -> (&[f32], &[f32]) {
+        let c = &self.channels[i];
+        (&c.buf_l, &c.buf_r)
+    }
+
+    /// An insert's last block (after its effects and fader).
+    pub fn tap_insert(&self, i: usize) -> (&[f32], &[f32]) {
+        let x = &self.inserts[i];
+        (&x.buf_l, &x.buf_r)
+    }
+
+    /// Whether an insert reaches the master (not silenced by another's solo).
+    pub fn insert_audible(&self, i: usize) -> bool {
+        self.inserts.get(i).is_some_and(|x| x.audible)
+    }
+
+    /// The master's last block before its effects (taps on).
+    pub fn tap_master_pre(&self) -> (&[f32], &[f32]) {
+        (&self.tap_pre[0], &self.tap_pre[1])
+    }
+
+    /// The master's last block at its limiter's input, after the limiter's
+    /// input gain (after all its effects without a limiter; taps on).
+    pub fn tap_master_limiter(&self) -> (&[f32], &[f32]) {
+        (&self.tap_limiter[0], &self.tap_limiter[1])
+    }
+
+    /// The gain reduction (largest, mean; dB) effect `fx` of insert `insert`
+    /// applied since the last call: `None` unless it is a compressor or limiter.
+    pub fn take_gain_reduction(&mut self, insert: usize, fx: usize) -> Option<(f32, f32)> {
+        self.inserts
+            .get_mut(insert)
+            .and_then(|i| i.fx.get_mut(fx))
+            .and_then(|f| f.fx.take_gain_reduction())
+    }
+
+    /// The order the song plays in (see [`form::performance`]).
+    pub fn form(&self) -> &[Span] {
+        &self.form
+    }
+
+    /// Where the song is: the span of the form playing, and the written beat.
+    pub fn form_position(&self) -> (usize, f64) {
+        (self.form_at, self.position)
+    }
+
+    /// Go to written beat `beat` in span `span` of the form (a passage that
+    /// repeats plays once per span), in song mode.
+    pub fn seek_span(&mut self, span: usize, beat: f64) {
+        self.seek(beat);
+        if span < self.form.len() {
+            self.form_at = span;
+        }
+    }
+
+    /// Start the notes of the song that are held at the current position
+    /// (they started before it), as if they had been playing: a render that
+    /// starts in the middle of the song hears its held notes. Song mode,
+    /// after [`Engine::play`].
+    pub fn chase_notes(&mut self) {
+        if self.mode != PlayMode::Song {
+            return;
+        }
+        let pos = self.position;
+        let shift = self.swing * (1.0 / 12.0);
+        for clip in &self.clips {
+            let Some(pi) = clip.pattern else { continue };
+            if clip.start >= pos || clip.end <= pos {
+                continue;
+            }
+            let p = &self.patterns[pi];
+            let base = clip.start - clip.offset;
+            let k1 = ((pos - base) / p.length).floor() as i64;
+            for k in 0.max(k1 - 64)..=k1 {
+                let origin = base + k as f64 * p.length;
+                for note in &p.notes {
+                    let start = note.start_at(shift);
+                    let t = origin + start;
+                    if start >= p.length || t < clip.start || t >= pos {
+                        continue;
+                    }
+                    let end = t + note.length.min(clip.end - t);
+                    if end <= pos + 1e-9 {
+                        continue;
+                    }
+                    let ch = &mut self.channels[note.channel];
+                    ch.events.push(NoteEvent {
+                        offset: 0,
+                        kind: NoteKind::On {
+                            key: note.key,
+                            velocity: note.velocity,
+                        },
+                    });
+                    self.pending.push(Pending {
+                        handle: ch.handle,
+                        key: note.key,
+                        end: self.clock + (end - pos),
+                    });
+                }
+            }
+        }
+    }
+}
+
 /// The metronome's voice: a short decaying tone.
 #[derive(Clone, Copy, Debug)]
 struct Click {
@@ -1420,9 +1574,35 @@ fn add_channel(ins: &mut InsertRt, ch: &ChannelRt, n: usize) {
 }
 
 fn run_insert(ins: &mut InsertRt, n: usize) {
+    run_insert_tapped(ins, n, None);
+}
+
+/// [`run_insert`], keeping in `limiter` the signal at the input of the last
+/// enabled limiter (as its detector sees it, after its input gain), or
+/// after all the effects when there is none.
+fn run_insert_tapped(ins: &mut InsertRt, n: usize, limiter: Option<(&mut [f32], &mut [f32])>) {
     let (bl, br) = (&mut ins.buf_l[..n], &mut ins.buf_r[..n]);
-    for f in ins.fx.iter_mut().filter(|f| f.enabled) {
+    let last = limiter.as_ref().and_then(|_| {
+        ins.fx
+            .iter()
+            .rposition(|f| f.enabled && f.dev.kind == "limiter")
+    });
+    let mut limiter = limiter;
+    for (k, f) in ins.fx.iter_mut().enumerate().filter(|(_, f)| f.enabled) {
+        if Some(k) == last {
+            if let Some((tl, tr)) = limiter.take() {
+                let g = dsp::db_to_gain(f.dev.param("gain") as f32);
+                for i in 0..n {
+                    tl[i] = bl[i] * g;
+                    tr[i] = br[i] * g;
+                }
+            }
+        }
         f.fx.process(bl, br);
+    }
+    if let Some((tl, tr)) = limiter {
+        tl.copy_from_slice(bl);
+        tr.copy_from_slice(br);
     }
     let (gl, il) = ins.gain_l.block(n);
     let (gr, ir) = ins.gain_r.block(n);
