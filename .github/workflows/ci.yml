@@ -78,9 +78,14 @@ jobs:
         working-directory: web
         run: npm test
 
+      # Every text the interface shows is in web/locales/en.json, and every
+      # language translates all of them (docs/i18n.md).
+      - name: Translations
+        run: node tools/i18n.mjs --check
+
       # The browser-only studio, rebuilt from source (WebAssembly included),
       # driven in Chromium: desktop, phone layout, touch, the on-screen piano,
-      # soundfont instruments and the score.
+      # soundfont instruments, the score and the languages.
       - run: tools/build-static.sh dist
       - name: Install Playwright
         working-directory: web
@@ -99,3 +104,4 @@ jobs:
           node web/test/critic-smoke.mjs http://localhost:8765/
           node web/test/instruments-smoke.mjs http://localhost:8765/
           node web/test/drums-smoke.mjs http://localhost:8765/
+          node web/test/i18n-smoke.mjs http://localhost:8765/

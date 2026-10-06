@@ -214,6 +214,14 @@ and hands them to the audio engine in small steps; natively the server loads
 them on a background thread. An instrument stays silent until its sounds
 arrive.
 
+## Languages
+
+The studio speaks English, Spanish, Portuguese (Brazil), French, German,
+Italian, Japanese, Korean, Chinese (Simplified) and Russian: pick one with the
+globe at the right end of the top bar (at first it follows the browser's
+language). The translations are JSON files in `web/locales/`; see
+[`docs/i18n.md`](docs/i18n.md) to add a text or a language.
+
 ## A project folder
 
 ```
@@ -251,6 +259,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 | `crates/server` | the `rosaclef` binary: server, file watching, PTY agent terminal, native audio, CLI |
 | `web/` | the studio UI (plain JS checked by [inty](https://sinelaw.github.io/inty/)) |
 | `web/soundfonts/` | the General MIDI soundfont, split for loading on demand |
+| `web/locales/` | the interface's translations, one JSON file a language |
 | `docs/` | architecture and notes |
 
 ## Development
