@@ -16,8 +16,23 @@ import { openDock, setTop, setView, isCompact, layoutState } from "./panes.js";
 import { revealBeat } from "./playlist.js";
 import { toast } from "./toast.js";
 import { insertIx, noteIx, clipIx } from "#brands";
+import { t, tf, tk } from "../i18n.js";
 
-const CATEGORIES = ["Harmony", "Melody", "Rhythm", "Arrangement", "Low end", "Mix", "Stereo", "Effects", "Master", "Project", "Mix check"];
+/** The categories, in the order shown: `value` is the server's category (data), `label` the key shown. */
+/** const CATEGORIES: { value: String, label: String }[] */
+const CATEGORIES = [
+  { value: "Harmony", label: tk("critic.category.harmony") },
+  { value: "Melody", label: tk("critic.category.melody") },
+  { value: "Rhythm", label: tk("critic.category.rhythm") },
+  { value: "Arrangement", label: tk("critic.category.arrangement") },
+  { value: "Low end", label: tk("critic.category.lowEnd") },
+  { value: "Mix", label: tk("critic.category.mix") },
+  { value: "Stereo", label: tk("critic.category.stereo") },
+  { value: "Effects", label: tk("critic.category.effects") },
+  { value: "Master", label: tk("critic.category.master") },
+  { value: "Project", label: tk("critic.category.project") },
+  { value: "Mix check", label: tk("critic.category.mixCheck") },
+];
 
 const view = {
   /** "all", "suggest" (with a fix) or "issue" (without). */
@@ -157,7 +172,7 @@ function applyFixes(keys, what) {
     .then((r) => {
       view.busy = false;
       if (state.edits !== edits) {
-        toast("The song changed meanwhile", "Nothing was applied; try again.", "info");
+        toast(t("fix.songChanged"), t("fix.nothingApplied"), "info");
         invalidate();
         return false;
       }
@@ -169,12 +184,12 @@ function applyFixes(keys, what) {
       fixSelection();
       view.edits = state.edits;
       took(r);
-      if (n > 0) toast(what, "Ctrl+Z undoes it.", "info");
+      if (n > 0) toast(what, t("critic.fix.applied.toast.body"), "info");
       return true;
     })
     .catch((e) => {
       view.busy = false;
-      toast("Could not apply the fix", errText(e), "error");
+      toast(t("critic.fix.failed.toast.title"), errText(e), "error");
       invalidate();
       return false;
     });
@@ -257,8 +272,8 @@ function findingView(b, f, ask) {
   b.open("div", "acts", "crit-acts");
   if (f.where.kind !== "project") {
     b.open("button", "where", "crit-where");
-    b.attr("title", "Show it");
-    b.on("pointerenter", (e) => hint(`Show ${f.where.label}`));
+    b.attr("title", t("common.showIt"));
+    b.on("pointerenter", (e) => hint(tf("critic.finding.where.hint", [f.where.label])));
     b.on("click", (e) => reveal(f.where));
     glyph(b, f.where.kind === "insert" ? "mixer" : f.where.kind === "pattern" ? "piano" : f.where.kind === "channel" ? "rack" : "playlist");
     b.leaf("span", "l", "", f.where.label);
@@ -266,14 +281,11 @@ function findingView(b, f, ask) {
   } else if (f.where.label !== "") b.leaf("span", "where", "crit-where static", f.where.label);
   b.leaf("span", "sp", "spacer", "");
   if (f.suppressed) {
-    button(b, "back", "small ghost", "Unsuppress", "Bring this finding back (saved in the project)", () => setSuppressed(f.key, false));
+    button(b, "back", "small ghost", t("critic.finding.unsuppress.label"), t("critic.finding.unsuppress.title"), () => setSuppressed(f.key, false));
   } else {
-    if (f.fix !== "") button(b, "fix", "small gold", f.fix, `Apply: ${f.fix} (one undo step)`, () => applyFixes([f.key], f.fix));
-    else if (state.backend !== "local")
-      button(b, "ask", "small ghost", "Ask Maestro", "Type this issue into the agent's prompt (press Enter in the terminal to send)", () => ask(askText(f)));
-    iconButton(b, "sup", "small ghost", "close", "Suppress this finding (saved in the project; the agent and `rosaclef critic` leave it out too)", () =>
-      setSuppressed(f.key, true)
-    );
+    if (f.fix !== "") button(b, "fix", "small gold", f.fix, tf("fix.applyOneUndo", [f.fix]), () => applyFixes([f.key], f.fix));
+    else if (state.backend !== "local") button(b, "ask", "small ghost", t("agent.askMaestro"), t("critic.finding.ask.title"), () => ask(askText(f)));
+    iconButton(b, "sup", "small ghost", "close", t("critic.finding.suppress.title"), () => setSuppressed(f.key, true));
   }
   b.close();
   b.close();
@@ -284,16 +296,11 @@ function findingView(b, f, ask) {
 /** function rulesView(b: Builder) => Undefined */
 function rulesView(b) {
   b.open("div", "rules", "crit-rules");
-  b.leaf(
-    "p",
-    "intro",
-    "crit-intro",
-    `${view.catalog.length} checks, all mechanical: they read the project — notes, clips, channels and the mixer — and nothing else, but for the Mix check ones, measured on a render in the Mix check tab (and \`rosaclef critic --audio\`). The checks of classical theory (keys, counterpoint, singable melodies) start off, since most modern tracks break them on purpose: turn them on if the song wants them. Your choices are saved in the project.`
-  );
+  b.leaf("p", "intro", "crit-intro", tf("critic.rules.intro", [String(view.catalog.length)]));
   for (const cat of CATEGORIES) {
-    b.leaf("h4", `h-${cat}`, "crit-cat", cat);
+    b.leaf("h4", `h-${cat.value}`, "crit-cat", t(cat.label));
     for (const r of view.catalog) {
-      if (r.category !== cat) continue;
+      if (r.category !== cat.value) continue;
       const on = ruleEnabled(r);
       b.open("label", r.id, on ? "crit-rule on" : "crit-rule");
       b.attr("title", r.why);
@@ -304,7 +311,7 @@ function rulesView(b) {
       b.open("span", "txt", "crit-rule-text");
       b.open("b", "n", "");
       b.text(r.name);
-      if (!r.defaultOn) b.leaf("span", "def", "crit-default", "off by default");
+      if (!r.defaultOn) b.leaf("span", "def", "crit-default", t("critic.rules.offByDefault"));
       b.close();
       b.leaf("span", "w", "", r.why);
       b.close();
@@ -327,9 +334,9 @@ export function criticPanel(b, ask) {
   b.open("div", "critic", view.busy ? "critic busy" : "critic");
   b.open("div", "bar", "crit-bar");
   for (const x of [
-    { id: "all", label: `All ${nSuggest + nIssue}`, tip: "Every finding" },
-    { id: "suggest", label: `Suggestions ${nSuggest}`, tip: "Findings with a fix you can apply" },
-    { id: "issue", label: `Issues ${nIssue}`, tip: "Findings to know about (no automatic fix)" },
+    { id: "all", label: tf("critic.filter.all.label", [String(nSuggest + nIssue)]), tip: t("critic.filter.all.title") },
+    { id: "suggest", label: tf("critic.filter.suggest.label", [String(nSuggest)]), tip: t("critic.filter.suggest.title") },
+    { id: "issue", label: tf("critic.filter.issue.label", [String(nIssue)]), tip: t("critic.filter.issue.title") },
   ]) {
     b.open("button", x.id, view.filter === x.id && !view.rules ? "crit-seg on" : "crit-seg");
     b.attr("title", x.tip);
@@ -344,18 +351,25 @@ export function criticPanel(b, ask) {
   b.leaf("span", "sp", "spacer", "");
   if (nSuppressed > 0) {
     b.open("button", "sup", view.showSuppressed ? "crit-seg on" : "crit-seg");
-    b.attr("title", view.showSuppressed ? "Hide the suppressed findings" : "Show the suppressed findings (and the checks turned off)");
+    b.attr("title", view.showSuppressed ? t("critic.filter.suppressed.hide.title") : t("critic.filter.suppressed.show.title"));
     b.on("click", (e) => {
       view.showSuppressed = !view.showSuppressed;
       invalidate();
     });
-    b.text(`Suppressed ${nSuppressed}`);
+    b.text(tf("critic.filter.suppressed.label", [String(nSuppressed)]));
     b.close();
   }
-  iconButton(b, "checks", view.rules ? "small gold" : "small ghost", "critic", view.rules ? "Back to the findings" : "Choose the checks", () => {
-    view.rules = !view.rules;
-    invalidate();
-  });
+  iconButton(
+    b,
+    "checks",
+    view.rules ? "small gold" : "small ghost",
+    "critic",
+    view.rules ? t("critic.checks.back.title") : t("critic.checks.choose.title"),
+    () => {
+      view.rules = !view.rules;
+      invalidate();
+    }
+  );
   b.close();
 
   b.open("div", "scroll", "crit-scroll");
@@ -364,23 +378,23 @@ export function criticPanel(b, ask) {
     b.open("div", "sum", "crit-summary");
     if (view.key !== "") {
       b.open("span", "key", "chip");
-      b.text("Key ");
+      b.text(t("term.key") + " ");
       b.leaf("b", "v", "", view.key);
       b.close();
     }
     const fixKeys = list.filter((f) => f.fix !== "" && !f.suppressed).map((f) => f.key);
     if (fixKeys.length > 1)
-      button(b, "all", "small", `Apply all ${fixKeys.length} suggestions`, "Apply every suggestion shown (one undo step)", () =>
-        applyFixes(fixKeys, `${fixKeys.length} suggestions applied`)
+      button(b, "all", "small", tf("critic.applyAll.label", [String(fixKeys.length)]), t("critic.applyAll.title"), () =>
+        applyFixes(fixKeys, tf("critic.applyAll.done.toast.title", [String(fixKeys.length)]))
       );
     b.close();
-    if (view.error !== "") b.leaf("div", "err", "crit-error", `The Critic could not read the song: ${view.error}`);
+    if (view.error !== "") b.leaf("div", "err", "crit-error", tf("critic.error.readFailed", [view.error]));
     if (view.showSuppressed && state.project.critic.off.length > 0) {
       b.open("div", "off", "crit-offlist");
-      b.leaf("span", "l", "", "Checks turned off:");
+      b.leaf("span", "l", "", t("critic.offList.label"));
       for (const id of state.project.critic.off) {
         b.open("button", id, "chip crit-offchip");
-        b.attr("title", `${ruleOf(id).why} — click to turn it back on`);
+        b.attr("title", tf("critic.offList.chip.title", [ruleOf(id).why]));
         b.on("click", (e) => setEnabled(id, true));
         b.text(ruleOf(id).name);
         b.leaf("span", "x", "", " ↺");
@@ -392,27 +406,27 @@ export function criticPanel(b, ask) {
       b.open("div", "empty", "crit-empty");
       glyph(b, "spark");
       const nothing = all.filter((f) => !f.suppressed).length === 0;
-      b.leaf("h3", "h", "", view.edits < 0 ? "Listening…" : nothing ? "Nothing to criticise" : "Nothing here");
+      b.leaf("h3", "h", "", view.edits < 0 ? t("common.listening") : nothing ? t("critic.empty.nothing.title") : t("critic.empty.filtered.title"));
       b.leaf(
         "p",
         "p",
         "",
         view.edits < 0
-          ? "The Critic is reading the song."
+          ? t("critic.empty.listening.body")
           : nothing
             ? state.project.patterns.length === 0
-              ? "Write some notes and the Critic will listen in."
-              : "The project passes every check the Critic knows."
-            : "Every finding of this kind is suppressed or filtered out."
+              ? t("critic.empty.noNotes.body")
+              : t("critic.empty.allPass.body")
+            : t("critic.empty.filtered.body")
       );
       b.close();
     }
     // Grouped by category, then by rule.
     for (const cat of CATEGORIES) {
-      const inCat = list.filter((f) => f.category === cat);
+      const inCat = list.filter((f) => f.category === cat.value);
       if (inCat.length === 0) continue;
-      b.open("section", cat, "crit-group");
-      b.leaf("h4", "h", "crit-cat", cat);
+      b.open("section", cat.value, "crit-group");
+      b.leaf("h4", "h", "crit-cat", t(cat.label));
       /** const ids: String[] */
       const ids = [];
       for (const f of inCat) if (!ids.includes(f.rule)) ids.push(f.rule);
@@ -435,22 +449,22 @@ export function criticPanel(b, ask) {
         const keys = fs.filter((f) => f.fix !== "" && !f.suppressed).map((f) => f.key);
         if (keys.length > 1) {
           b.open("span", "fixall", "crit-link");
-          b.attr("title", `Apply all ${keys.length} fixes of this check (one undo step)`);
+          b.attr("title", tf("critic.rule.fixAll.title", [String(keys.length)]));
           b.on("click", (e) => {
             e.stopPropagation();
-            applyFixes(keys, `${r.name}: ${keys.length} fixes applied`);
+            applyFixes(keys, tf("critic.rule.fixAll.done.toast.title", [r.name, String(keys.length)]));
           });
-          b.text(`Fix all ${keys.length}`);
+          b.text(tf("critic.rule.fixAll.label", [String(keys.length)]));
           b.close();
         }
         b.open("span", "off", "crit-link quiet");
-        b.attr("title", "Turn this check off for the project (saved in it; the checks button turns it back on)");
+        b.attr("title", t("critic.rule.turnOff.title"));
         b.on("click", (e) => {
           e.stopPropagation();
           setEnabled(id, false);
-          toast(`${r.name}: turned off`, "Saved in the project. Ctrl+Z, or the checks button, turns it back on.", "info");
+          toast(tf("critic.rule.turnOff.done.toast.title", [r.name]), t("critic.rule.turnOff.done.toast.body"), "info");
         });
-        b.text("Turn off");
+        b.text(t("critic.rule.turnOff.label"));
         b.close();
         b.close();
         if (!folded) {

@@ -36,6 +36,7 @@ import { button, iconButton, select, glyph, clamp01 } from "./widgets.js";
 import { pushChannel } from "./instruments.js";
 import { toast } from "./toast.js";
 import { insertIx, trackIx, trackIndex } from "#brands";
+import { t, tf, tk } from "../i18n.js";
 
 /** Longest take (s): the analysis stays quick. */
 const MAX_TAKE = 90;
@@ -172,13 +173,18 @@ function analyze(path) {
       voice.kinds = [];
       voice.status = "idle";
       const found = voice.take.mode === "drums" ? voice.take.hits.length : voice.take.notes.length;
-      if (found === 0) toast(mode === "drums" ? "No hits found" : "No notes found", "Try a louder take, closer to the microphone.", "info");
+      if (found === 0)
+        toast(
+          mode === "drums" ? t("voice.analyze.noHits.toast.title") : t("voice.analyze.noNotes.toast.title"),
+          t("voice.analyze.nothingFound.toast.body"),
+          "info"
+        );
       invalidate();
       return true;
     })
     .catch((e) => {
       if (voice.path === path) voice.status = "idle";
-      toast("Could not analyze the take", String(e), "error");
+      toast(t("voice.analyze.failed.toast.title"), String(e), "error");
       invalidate();
       return false;
     });
@@ -203,7 +209,7 @@ export async function startTake() {
   }
   if (voice.status === "analyzing") return false;
   if (state.recording) {
-    toast("Already recording", "Stop the playlist recording first.", "error");
+    toast(t("voice.record.alreadyRecording.toast.title"), t("voice.record.alreadyRecording.toast.body"), "error");
     return false;
   }
   stopPreview();
@@ -212,7 +218,7 @@ export async function startTake() {
   await startAudio();
   const ok = await recStart().catch((e) => false);
   if (!ok) {
-    toast("Microphone unavailable", "Allow microphone access to record.", "error");
+    toast(t("audio.micUnavailable.title"), t("audio.micUnavailable.body"), "error");
     return false;
   }
   const bpb = state.project.transport.beatsPerBar;
@@ -244,7 +250,7 @@ export function stopTake() {
     .then((path) => {
       if (path === "") {
         voice.status = "idle";
-        toast("Nothing was recorded", "The microphone sent no audio.", "error");
+        toast(t("voice.record.nothingRecorded.toast.title"), t("voice.record.nothingRecorded.toast.body"), "error");
         invalidate();
         return false;
       }
@@ -253,7 +259,7 @@ export function stopTake() {
     })
     .catch((e) => {
       voice.status = "idle";
-      toast("Could not save the take", String(e), "error");
+      toast(t("voice.record.saveFailed.toast.title"), String(e), "error");
       invalidate();
       return false;
     });
@@ -325,7 +331,7 @@ function openRecording() {
       })
       .catch((e) => {
         voice.status = "idle";
-        toast("Could not add the recording", String(e), "error");
+        toast(t("voice.open.failed.toast.title"), String(e), "error");
         invalidate();
         return false;
       });
@@ -403,6 +409,57 @@ function existingLaneChannel(lane) {
   return drumChannel(lane);
 }
 
+/** A drum's texts, as keys (t() translates them where shown): its name,
+ * the tip of its channel choice, and its hit count for one and for several. */
+/** type DrumText = { kind: String, name: String, tip: String, one: String, many: String } */
+
+/** const DRUM_TEXTS: DrumText[] */
+const DRUM_TEXTS = [
+  { kind: "kick", name: tk("drum.kick"), tip: tk("voice.target.kick.title"), one: tk("voice.summary.kick.one"), many: tk("voice.summary.kick.other") },
+  { kind: "tom", name: tk("voice.drum.tom.label"), tip: tk("voice.target.tom.title"), one: tk("voice.summary.tom.one"), many: tk("voice.summary.tom.other") },
+  { kind: "snare", name: tk("drum.snare"), tip: tk("voice.target.snare.title"), one: tk("voice.summary.snare.one"), many: tk("voice.summary.snare.other") },
+  { kind: "hat", name: tk("voice.drum.hat.label"), tip: tk("voice.target.hat.title"), one: tk("voice.summary.hat.one"), many: tk("voice.summary.hat.other") },
+  {
+    kind: "openhat",
+    name: tk("drum.openHat"),
+    tip: tk("voice.target.openHat.title"),
+    one: tk("voice.summary.openHat.one"),
+    many: tk("voice.summary.openHat.other"),
+  },
+];
+
+/** A drum's texts (kind "" for a drum without any). */
+/** function drumText(kind: String) => DrumText */
+function drumText(kind) {
+  for (const d of DRUM_TEXTS) {
+    if (d.kind === kind) return d;
+  }
+  return { kind: "", name: "", tip: "", one: "", many: "" };
+}
+
+/** A drum's name as shown (translated; an unknown drum's label as it is). */
+/** function drumTitle(kind: String) => String */
+function drumTitle(kind) {
+  const d = drumText(kind);
+  return d.kind !== "" ? t(d.name) : drumLabel(kind);
+}
+
+/** The tip of a drum's channel choice (translated). */
+/** function drumTip(kind: String) => String */
+function drumTip(kind) {
+  const d = drumText(kind);
+  return d.kind !== "" ? t(d.tip) : drumLabel(kind);
+}
+
+/** A drum's hit count in the summary ("3 snares"). */
+/** function drumCount(kind: String, n: Number) => String */
+function drumCount(kind, n) {
+  const d = drumText(kind);
+  if (d.kind === "") return drumLabel(kind);
+  return n === 1 ? t(d.one) : tf(d.many, [String(n)]);
+}
+
+/** A drum's name for a new channel (project data: not translated). */
 /** function drumName(kind: String) => String */
 function drumName(kind) {
   const l = drumLabel(kind);
@@ -539,7 +596,11 @@ export function addToSong() {
   stopResult();
   const r = voiceResult();
   if (r.notes.length === 0) {
-    toast("Nothing to add", voice.path === "" ? "Record a take first." : "No notes pass the current settings.", "error");
+    toast(
+      t("voice.addToSong.nothing.toast.title"),
+      voice.path === "" ? t("voice.addToSong.noTake.toast.body") : t("voice.addToSong.noNotes.toast.body"),
+      "error"
+    );
     return undefined;
   }
   const p = state.project;
@@ -579,11 +640,16 @@ export function addToSong() {
   });
   selectPattern(id);
   const bar = Math.floor(start / bpb) + 1;
-  toast(
-    `Added ${name}`,
-    `${r.notes.length} ${drums ? "hits" : "notes"} on the playlist at bar ${bar}${voice.repeat > 1 ? `, looped ×${voice.repeat}` : ""}. Ctrl+Z undoes it.`,
-    "info"
-  );
+  const count = String(r.notes.length);
+  const at = String(bar);
+  const times = String(voice.repeat);
+  let body = "";
+  if (drums) {
+    body = voice.repeat > 1 ? tf("voice.addToSong.done.toast.body.hitsLooped", [count, at, times]) : tf("voice.addToSong.done.toast.body.hits", [count, at]);
+  } else {
+    body = voice.repeat > 1 ? tf("voice.addToSong.done.toast.body.notesLooped", [count, at, times]) : tf("voice.addToSong.done.toast.body.notes", [count, at]);
+  }
+  toast(tf("voice.addToSong.done.toast.title", [name]), body, "info");
 }
 
 // ------------------------------------------------------------------ controls
@@ -649,7 +715,50 @@ function toggle(b, key, label, on, tip, onSet) {
 const MAX_SEPARATION = 0.25;
 
 const GRIDS = [0, 0.125, 0.25, 0.5, 1, 1 / 6, 1 / 3];
-const GRID_LABELS = ["Off", "1/32", "1/16", "1/8", "Beat", "1/16 T", "1/8 T"];
+/** The grids' labels as shown (GRIDS, in order; note values are not translated). */
+/** function gridLabels() => String[] */
+function gridLabels() {
+  return [t("common.off"), "1/32", "1/16", "1/8", t("term.beat"), "1/16 T", "1/8 T"];
+}
+
+/** The names of the Detail levels (DETAILS in ../voice.js, in order). */
+const DETAIL_NAMES = [
+  tk("voice.settings.detail.option.smooth"),
+  tk("voice.settings.detail.option.clean"),
+  tk("voice.settings.detail.option.balanced"),
+  tk("voice.settings.detail.option.detailed"),
+  tk("voice.settings.detail.option.everyNote"),
+];
+
+/** A scale's name as shown (SCALES in ../voice.js). */
+/** function scaleName(id: String) => String */
+function scaleName(id) {
+  if (id === "major") return t("voice.settings.scale.option.major");
+  if (id === "minor") return t("voice.settings.scale.option.minor");
+  if (id === "harmonic") return t("voice.settings.scale.option.harmonic");
+  if (id === "dorian") return t("voice.settings.scale.option.dorian");
+  if (id === "mixolydian") return t("voice.settings.scale.option.mixolydian");
+  if (id === "penta") return t("voice.settings.scale.option.penta");
+  if (id === "minpenta") return t("voice.settings.scale.option.minpenta");
+  if (id === "blues") return t("voice.settings.scale.option.blues");
+  if (id === "chromatic") return t("voice.settings.scale.option.chromatic");
+  return scaleLabel(id);
+}
+
+/** A key and scale in the summary ("C♯ major"). */
+/** function keyText(key: String, scale: String) => String */
+function keyText(key, scale) {
+  if (scale === "chromatic") return t("term.chromatic");
+  if (scale === "major") return tf("voice.summary.key.major", [key]);
+  if (scale === "minor") return tf("voice.summary.key.minor", [key]);
+  if (scale === "harmonic") return tf("voice.summary.key.harmonic", [key]);
+  if (scale === "dorian") return tf("voice.summary.key.dorian", [key]);
+  if (scale === "mixolydian") return tf("voice.summary.key.mixolydian", [key]);
+  if (scale === "penta") return tf("voice.summary.key.penta", [key]);
+  if (scale === "minpenta") return tf("voice.summary.key.minpenta", [key]);
+  if (scale === "blues") return tf("voice.summary.key.blues", [key]);
+  return `${key} ${scaleLabel(scale).toLowerCase()}`;
+}
 
 /** The settings of step 2, in three groups: what is detected, when the
  * notes fall, and (melody) which notes they are. */
@@ -660,40 +769,40 @@ function settingsView(b) {
   b.open("div", "set", "voice-settings");
 
   b.open("div", "detect", "voice-group");
-  b.leaf("div", "t", "voice-group-title", "Detection");
+  b.leaf("div", "t", "voice-group-title", t("voice.settings.detection.label"));
   b.open("div", "row", "voice-row");
   if (!drums) {
     const last = DETAILS.length - 1;
     dial(
       b,
       "detail",
-      "Detail",
-      s.detail >= 0 && s.detail <= last ? DETAILS[s.detail] : "",
+      t("voice.settings.detail.label"),
+      s.detail >= 0 && s.detail < DETAIL_NAMES.length ? t(DETAIL_NAMES[s.detail]) : "",
       s.detail / last,
-      "Smooth absorbs slides, scoops and ornaments into the notes around them; Every note keeps quick runs (and more blips)",
+      t("voice.settings.detail.title"),
       (v) => {
         s.detail = Math.round(v * last);
       }
     );
-    toggle(b, "dyn", "Dynamics", s.dynamics, "Velocities follow how loud each note was sung", (v) => {
+    toggle(b, "dyn", t("voice.settings.dynamics.label"), s.dynamics, t("voice.settings.dynamics.title"), (v) => {
       s.dynamics = v;
     });
   } else {
-    dial(b, "sens", "Sensitivity", `${Math.round(s.sensitivity * 100)}%`, s.sensitivity, "Higher keeps quieter hits (ghost notes)", (v) => {
+    dial(b, "sens", t("voice.settings.sensitivity.label"), `${Math.round(s.sensitivity * 100)}%`, s.sensitivity, t("voice.settings.sensitivity.title"), (v) => {
       s.sensitivity = Math.round(v * 50) / 50;
     });
     dial(
       b,
       "sep",
-      "Separation",
-      s.separation > 0 ? `${Math.round(s.separation * 1000)} ms` : "Off",
+      t("voice.settings.separation.label"),
+      s.separation > 0 ? `${Math.round(s.separation * 1000)} ms` : t("common.off"),
       s.separation / MAX_SEPARATION,
-      "Hits closer than this to the one before join it, on its time (a flam, or one sound heard as two, becomes one hit)",
+      t("voice.settings.separation.title"),
       (v) => {
         s.separation = Math.round(v * MAX_SEPARATION * 200) / 200;
       }
     );
-    toggle(b, "dyn", "Accents", s.dynamics, "Velocities follow how hard each hit was", (v) => {
+    toggle(b, "dyn", t("voice.settings.accents.label"), s.dynamics, t("voice.settings.accents.title"), (v) => {
       s.dynamics = v;
     });
   }
@@ -701,39 +810,39 @@ function settingsView(b) {
   b.close();
 
   b.open("div", "q", "voice-group");
-  b.leaf("div", "t", "voice-group-title", "Timing");
+  b.leaf("div", "t", "voice-group-title", t("voice.settings.timing.label"));
   b.open("div", "row", "voice-row");
   choice(
     b,
     "grid",
-    "Grid",
+    t("term.grid"),
     String(s.grid),
     GRIDS.map((g) => String(g)),
-    GRID_LABELS,
-    "Grid the notes snap to",
+    gridLabels(),
+    t("voice.settings.grid.title"),
     (v) => {
       s.grid = Number(v);
     }
   );
-  dial(b, "str", "Strength", `${Math.round(s.strength * 100)}%`, s.strength, "How far notes move onto the grid (0% keeps the feel of the take)", (v) => {
+  dial(b, "str", t("voice.settings.strength.label"), `${Math.round(s.strength * 100)}%`, s.strength, t("voice.settings.strength.title"), (v) => {
     s.strength = Math.round(v * 20) / 20;
   });
   if (!drums) {
-    toggle(b, "ends", "Ends", s.lengths, "Quantize where notes end too", (v) => {
+    toggle(b, "ends", t("voice.settings.ends.label"), s.lengths, t("voice.settings.ends.title"), (v) => {
       s.lengths = v;
     });
-    toggle(b, "legato", "Legato", s.legato, "Hold every note until the next one", (v) => {
+    toggle(b, "legato", t("voice.settings.legato.label"), s.legato, t("voice.settings.legato.title"), (v) => {
       s.legato = v;
     });
   }
   choice(
     b,
     "bars",
-    "Length",
+    t("term.length"),
     String(s.bars),
     ["0", "1", "2", "4", "8"],
-    ["Auto", "1 bar", "2 bars", "4 bars", "8 bars"],
-    "Pattern length (notes past it are left out)",
+    [t("common.auto"), t("format.barsOne"), tf("format.barsMany", ["2"]), tf("format.barsMany", ["4"]), tf("format.barsMany", ["8"])],
+    t("voice.settings.length.title"),
     (v) => {
       s.bars = Math.round(Number(v));
     }
@@ -745,34 +854,45 @@ function settingsView(b) {
     const cropped = shaped().take;
     const k = resolveKey(cropped, s);
     b.open("div", "tune", "voice-group");
-    b.leaf("div", "t", "voice-group-title", "Pitch");
+    b.leaf("div", "t", "voice-group-title", t("voice.settings.pitch.label"));
     b.open("div", "row", "voice-row");
     /** const keys: String[] */
     const keys = ["-1"];
     /** const keyLabels: String[] */
-    const keyLabels = [cropped.notes.length > 0 && s.key < 0 ? `Detect (${KEY_NAMES[k.key]})` : "Detect"];
+    const keyLabels = [
+      cropped.notes.length > 0 && s.key < 0 ? tf("voice.settings.key.option.detectFound", [KEY_NAMES[k.key]]) : t("voice.settings.key.option.detect"),
+    ];
     for (let i = 0; i < 12; i++) {
       keys.push(String(i));
       keyLabels.push(KEY_NAMES[i]);
     }
-    choice(b, "key", "Key", String(s.key), keys, keyLabels, "Key the notes are snapped to (Detect finds it from the take)", (v) => {
+    choice(b, "key", t("term.key"), String(s.key), keys, keyLabels, t("voice.settings.key.title"), (v) => {
       s.key = Math.round(Number(v));
     });
     choice(
       b,
       "scale",
-      "Scale",
+      t("voice.settings.scale.label"),
       s.scale,
       SCALES.map((x) => x.id),
-      SCALES.map((x) => x.label),
-      "Scale the notes are snapped to (auto-tune; Chromatic: the nearest semitone)",
+      SCALES.map((x) => scaleName(x.id)),
+      t("voice.settings.scale.title"),
       (v) => {
         s.scale = v;
       }
     );
-    choice(b, "oct", "Octave", String(s.octave), ["-2", "-1", "0", "1", "2"], ["−2", "−1", "0", "+1", "+2"], "Move the notes by octaves", (v) => {
-      s.octave = Math.round(Number(v));
-    });
+    choice(
+      b,
+      "oct",
+      t("voice.settings.octave.label"),
+      String(s.octave),
+      ["-2", "-1", "0", "1", "2"],
+      ["−2", "−1", "0", "+1", "+2"],
+      t("voice.settings.octave.title"),
+      (v) => {
+        s.octave = Math.round(Number(v));
+      }
+    );
     b.close();
     b.close();
   }
@@ -791,13 +911,16 @@ function targetView(b, r) {
     const ids = ["auto", "new"];
     const sel = melodicSelection();
     /** const names: String[] */
-    const names = [sel !== "" ? `Selected (${channelName(sel)})` : "Selected (new channel)", "New channel"];
+    const names = [
+      sel !== "" ? tf("voice.target.channel.option.selected", [channelName(sel)]) : t("voice.target.channel.option.selectedNew"),
+      t("voice.target.channel.option.new"),
+    ];
     for (const c of chs) {
       if (c.instrument.type === "drum") continue;
       ids.push(c.id);
       names.push(c.name);
     }
-    choice(b, "ch", "Channel", voice.melodyChannel, ids, names, "Channel that plays the notes", (v) => {
+    choice(b, "ch", t("term.channel"), voice.melodyChannel, ids, names, t("voice.target.channel.title"), (v) => {
       voice.melodyChannel = v;
     });
   } else {
@@ -807,17 +930,17 @@ function targetView(b, r) {
       /** const ids: String[] */
       const ids = [""];
       /** const names: String[] */
-      const names = [found !== "" ? `Auto (${channelName(found)})` : "Auto (new drum machine)"];
+      const names = [found !== "" ? tf("voice.target.drum.option.auto", [channelName(found)]) : t("voice.target.drum.option.autoNew")];
       for (const c of chs) {
         ids.push(c.id);
         names.push(c.name);
       }
-      choice(b, e.key, drumName(e.key), e.value, ids, names, `Channel that plays the ${drumLabel(e.key)} hits`, (v) => {
+      choice(b, e.key, drumTitle(e.key), e.value, ids, names, drumTip(e.key), (v) => {
         e.value = v;
       });
     }
   }
-  choice(b, "rep", "Loop", String(voice.repeat), ["1", "2", "4", "8"], ["×1", "×2", "×4", "×8"], "How many times the clip plays the pattern", (v) => {
+  choice(b, "rep", t("voice.target.loop.label"), String(voice.repeat), ["1", "2", "4", "8"], ["×1", "×2", "×4", "×8"], t("voice.target.loop.title"), (v) => {
     voice.repeat = Math.round(Math.max(1, Number(v)));
   });
   b.close();
@@ -975,7 +1098,7 @@ function paintDrums(g, w, h, r) {
   for (const kind of DRUMS) {
     g.fillStyle = drumColor(kind);
     g.globalAlpha = 0.8;
-    g.fillText(drumLabel(kind).toUpperCase(), 6, laneY(kind, h) - row / 2 + 11);
+    g.fillText(drumTitle(kind).toUpperCase(), 6, laneY(kind, h) - row / 2 + 11);
   }
   g.globalAlpha = 1;
   // Hits the sensitivity drops, where they were played (as drumHits places them).
@@ -1068,7 +1191,7 @@ function previewView(b, r) {
       }
     });
     b.on("pointerdown", (e) => clickHit(e));
-    if (voice.take.mode === "drums") b.on("pointerenter", (e) => hint("Click a hit to make it the next drum (kick → tom → snare → hat → open hat)"));
+    if (voice.take.mode === "drums") b.on("pointerenter", (e) => hint(t("voice.preview.hit.hint")));
   } else {
     b.open("div", "empty", "voice-empty");
     glyph(b, "mic");
@@ -1077,16 +1200,15 @@ function previewView(b, r) {
       "div",
       "t",
       "voice-empty-title",
-      voice.status === "recording" ? (drums ? "Beatbox away…" : "Sing away…") : drums ? "Beatbox a loop" : "Sing, hum or whistle a melody"
+      voice.status === "recording"
+        ? drums
+          ? t("voice.preview.empty.title.recordingDrums")
+          : t("voice.preview.empty.title.recordingMelody")
+        : drums
+          ? t("voice.preview.empty.title.drums")
+          : t("voice.preview.empty.title.melody")
     );
-    b.leaf(
-      "div",
-      "d",
-      "voice-empty-doc",
-      drums
-        ? "Kicks (a low “b” or “boom”), toms (a hummed “dum”), snares (“pf”, “k”), hats (“ts”, “t”) and open hats (a long “tsss”) become a drum loop on drum machine channels. Record a take, or open a recording."
-        : "The notes come out on the beat grid, snapped to a key and scale — a pattern for the piano roll. Record a take, or open a recording."
-    );
+    b.leaf("div", "d", "voice-empty-doc", drums ? t("voice.preview.empty.doc.drums") : t("voice.preview.empty.doc.melody"));
     b.close();
   }
   b.close();
@@ -1186,21 +1308,21 @@ function dragCrop(e) {
  * the result's time starts at the left handle. */
 /** function cropView(b: Builder) => Undefined */
 function cropView(b) {
-  const t = voice.take;
-  const has = t.mode !== "" && voice.status !== "recording" && t.duration > 0;
+  const take = voice.take;
+  const has = take.mode !== "" && voice.status !== "recording" && take.duration > 0;
   b.open("div", "crop", has ? "voice-crop" : "voice-crop off");
   b.open("div", "head", "voice-crop-head");
-  b.leaf("span", "l", "voice-label", "Crop");
+  b.leaf("span", "l", "voice-label", t("voice.crop.label"));
   const span = cropSpan();
   const cut = voice.cropStart >= 0 || voice.cropEnd >= 0;
   b.leaf(
     "span",
     "span",
     "voice-crop-span",
-    has ? (cut ? `${clock(span[0])} – ${clock(span[1])} of ${clock(t.duration)}` : `Whole take · ${clock(t.duration)}`) : ""
+    has ? (cut ? tf("voice.crop.span.cut", [clock(span[0]), clock(span[1]), clock(take.duration)]) : tf("voice.crop.span.whole", [clock(take.duration)])) : ""
   );
   if (has && cut) {
-    button(b, "reset", "small", "Whole take", "Keep the whole take again", () => {
+    button(b, "reset", "small", t("voice.crop.reset.label"), t("voice.crop.reset.title"), () => {
       voice.cropStart = -1;
       voice.cropEnd = -1;
       invalidate();
@@ -1211,7 +1333,7 @@ function cropView(b) {
   if (has) {
     b.canvas("c", "voice-canvas", (g, w, h) => paintCrop(g, w, h));
     b.on("pointerdown", (e) => dragCrop(e));
-    b.on("pointerenter", (e) => hint("Drag the left or right handle in to cut off the start or the end of the take; the result starts at the left handle"));
+    b.on("pointerenter", (e) => hint(t("voice.crop.strip.hint")));
   }
   b.close();
   b.close();
@@ -1221,24 +1343,24 @@ function cropView(b) {
 
 /** function summary(r: VoiceResult) => String */
 function summary(r) {
-  if (voice.status === "analyzing") return "Listening to the take…";
-  if (voice.take.mode === "") return "No take yet";
+  if (voice.status === "analyzing") return t("voice.summary.analyzing");
+  if (voice.take.mode === "") return t("voice.summary.noTake");
   const bars = r.length / state.project.transport.beatsPerBar;
-  const barText = `${fmt(bars, Math.abs(bars - Math.round(bars)) < 1e-9 ? 0 : 2)} bar${bars === 1 ? "" : "s"}`;
+  const barText = bars === 1 ? t("format.barsOne") : tf("format.barsMany", [fmt(bars, Math.abs(bars - Math.round(bars)) < 1e-9 ? 0 : 2)]);
   if (voice.take.mode === "drums") {
     /** const parts: String[] */
     const parts = [];
     for (const lane of DRUMS) {
       const n = r.notes.filter((x) => x.lane === lane).length;
-      if (n > 0) parts.push(`${n} ${drumLabel(lane)}${n === 1 ? "" : "s"}`);
+      if (n > 0) parts.push(drumCount(lane, n));
     }
-    if (parts.length === 0) parts.push("No hits");
+    if (parts.length === 0) parts.push(t("voice.summary.noHits"));
     parts.push(barText);
     return parts.join(" · ");
   }
   const k = resolveKey(shaped().take, voice.settings);
-  const scale = voice.settings.scale === "chromatic" ? "chromatic" : `${KEY_NAMES[k.key]} ${scaleLabel(k.scale).toLowerCase()}`;
-  return `${r.notes.length} notes · ${scale} · ${barText}`;
+  const scale = voice.settings.scale === "chromatic" ? t("term.chromatic") : keyText(KEY_NAMES[k.key], k.scale);
+  return tf("voice.summary.melody", [String(r.notes.length), scale, barText]);
 }
 
 /** A step's title bar: its number, name and purpose. Leaves the bar open
@@ -1258,13 +1380,11 @@ function stepHead(b, n, title, sub) {
 function takeStep(b) {
   const rec = voice.status === "recording";
   b.open("section", "take", "voice-step voice-take");
-  stepHead(b, "1", "Take", "Record, open or pick a recording");
+  stepHead(b, "1", t("term.take"), t("voice.step.take.subtitle"));
   b.close();
   b.open("div", "mode", "seg");
-  button(b, "melody", voice.mode === "melody" ? "small on" : "small", "Melody", "Sing, hum or whistle: notes for the piano roll", () => setVoiceMode("melody"));
-  button(b, "drums", voice.mode === "drums" ? "small on" : "small", "Beatbox", "Vocal percussion (or a drum recording): a drum loop", () =>
-    setVoiceMode("drums")
-  );
+  button(b, "melody", voice.mode === "melody" ? "small on" : "small", t("term.melody"), t("voice.mode.melody.title"), () => setVoiceMode("melody"));
+  button(b, "drums", voice.mode === "drums" ? "small on" : "small", t("voice.mode.drums.label"), t("voice.mode.drums.title"), () => setVoiceMode("drums"));
   b.close();
   b.open("div", "rec", "voice-rec");
   iconButton(
@@ -1272,7 +1392,7 @@ function takeStep(b) {
     "btn",
     rec ? "voice-recbtn armed" : "voice-recbtn",
     rec ? "stop" : "record",
-    rec ? "Stop and analyze the take" : "Record a take from the microphone",
+    rec ? t("voice.record.stop.title") : t("voice.record.start.title"),
     () => {
       if (rec) stopTake();
       else startTake();
@@ -1283,17 +1403,21 @@ function takeStep(b) {
     "div",
     "time",
     "voice-time",
-    rec ? `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, "0")}` : voice.status === "analyzing" ? "Analyzing…" : "Record"
+    rec
+      ? `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, "0")}`
+      : voice.status === "analyzing"
+        ? t("voice.record.analyzing.label")
+        : t("voice.record.start.label")
   );
   b.close();
   choice(
     b,
     "along",
-    "Play along",
+    t("voice.playAlong.label"),
     voice.playAlong,
     ["off", "pattern", "song"],
-    ["Silent", "Pattern", "Song"],
-    "Hear the pattern or the song while recording (the take keeps its place in time)",
+    [t("voice.playAlong.option.off"), t("term.pattern"), t("term.song")],
+    t("voice.playAlong.title"),
     (v) => {
       voice.playAlong = v;
     }
@@ -1301,18 +1425,20 @@ function takeStep(b) {
   /** const takes: String[] */
   const takes = [""];
   /** const takeLabels: String[] */
-  const takeLabels = ["Earlier take…"];
+  const takeLabels = [t("voice.take.option.earlier")];
   // The new take may not be in the samples list yet.
   const paths = state.samples.includes(voice.path) || voice.path === "" ? state.samples : state.samples.concat([voice.path]);
   for (const path of paths) {
     takes.push(path);
     takeLabels.push(path.split("/").pop() ?? path);
   }
-  choice(b, "take", "Take", voice.path, takes, takeLabels, "Analyze an earlier recording (any sample of the project)", (v) => pickTake(v));
+  choice(b, "take", t("term.take"), voice.path, takes, takeLabels, t("voice.take.title"), (v) => pickTake(v));
   b.open("div", "acts", "voice-actions");
-  button(b, "open", "small", "Open a recording…", "Analyze an audio file from this device (it is added to the project's samples)", () => openRecording());
+  button(b, "open", "small", t("voice.open.label"), t("voice.open.title"), () => openRecording());
   if (voice.path !== "") {
-    button(b, "listen", voice.playing ? "small on" : "small", voice.playing ? "Stop" : "Listen", "Play the recording", () => listenTake());
+    button(b, "listen", voice.playing ? "small on" : "small", voice.playing ? t("common.stop") : t("voice.listen.label"), t("voice.listen.title"), () =>
+      listenTake()
+    );
   }
   b.close();
   b.close();
@@ -1323,7 +1449,7 @@ function takeStep(b) {
 /** function shapeStep(b: Builder, r: VoiceResult, ready: Boolean) => Undefined */
 function shapeStep(b, r, ready) {
   b.open("section", "shape", ready ? "voice-step voice-shape" : "voice-step voice-shape waiting");
-  stepHead(b, "2", "Shape", ready ? "Adjust and listen until it sounds right — changes apply at once" : "Waiting for a take");
+  stepHead(b, "2", t("voice.step.shape.label"), ready ? t("voice.step.shape.subtitle.ready") : t("voice.step.shape.subtitle.waiting"));
   b.open("div", "acts", "voice-actions");
   if (ready) {
     iconButton(
@@ -1331,15 +1457,17 @@ function shapeStep(b, r, ready) {
       "play",
       voice.previewing ? "small on" : "small",
       voice.previewing ? "stop" : "play",
-      voice.previewing ? "Stop the result" : "Play the result, looping, on its channels (the song is not changed; settings apply as it plays)",
+      voice.previewing ? t("voice.shape.result.stop.title") : t("voice.shape.result.play.title"),
       () => {
         if (voice.previewing) stopResult();
         else playResult();
       }
     );
-    button(b, "take", voice.playing ? "small on" : "small", voice.playing ? "Stop" : "Take", "Listen to the recording, to compare", () => listenTake());
+    button(b, "take", voice.playing ? "small on" : "small", voice.playing ? t("common.stop") : t("voice.shape.take.label"), t("voice.shape.take.title"), () =>
+      listenTake()
+    );
   }
-  if (voice.path !== "") button(b, "again", "small", "Analyze again", "Run the analysis on this take again (in the current mode)", () => analyzeAgain());
+  if (voice.path !== "") button(b, "again", "small", t("voice.shape.again.label"), t("voice.shape.again.title"), () => analyzeAgain());
   b.close();
   b.close();
   previewView(b, r);
@@ -1352,18 +1480,11 @@ function shapeStep(b, r, ready) {
 /** function addStep(b: Builder, r: VoiceResult, ready: Boolean) => Undefined */
 function addStep(b, r, ready) {
   b.open("section", "add", ready ? "voice-step voice-add" : "voice-step voice-add waiting");
-  stepHead(b, "3", "Add to song", "A new pattern and a clip on the playlist");
+  stepHead(b, "3", t("voice.step.add.label"), t("voice.step.add.subtitle"));
   b.close();
   b.leaf("div", "sum", "voice-summary", summary(r));
   targetView(b, r);
-  button(
-    b,
-    "add",
-    r.notes.length > 0 ? "gold voice-addbtn" : "voice-addbtn",
-    "Add to song",
-    "A new pattern with these notes, placed on the playlist at the playhead (Ctrl+Z undoes it)",
-    () => addToSong()
-  );
+  button(b, "add", r.notes.length > 0 ? "gold voice-addbtn" : "voice-addbtn", t("voice.addToSong.label"), t("voice.addToSong.title"), () => addToSong());
   b.close();
 }
 
@@ -1385,5 +1506,5 @@ export function voicePanel(b) {
 /** Dock tab tools: nothing to add beyond the panel's own. */
 /** function voiceTools(b: Builder) => Undefined */
 export function voiceTools(b) {
-  b.leaf("span", "l", "label", voice.mode === "drums" ? "Beatbox → drum loop" : "Voice → notes");
+  b.leaf("span", "l", "label", voice.mode === "drums" ? t("voice.tools.drums.label") : t("voice.tools.melody.label"));
 }

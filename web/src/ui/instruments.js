@@ -11,6 +11,7 @@ import { newDevice, uniqueId, paletteColor, noArp, optionValue } from "../model.
 import { retargetLanes } from "../automation.js";
 import { insertIx } from "#brands";
 import { toast } from "./toast.js";
+import { t, tf } from "../i18n.js";
 
 /** Set by the piano (keyboard.js, which imports this module): show the
  * strip and play a short note of the instrument just picked. */
@@ -79,7 +80,7 @@ export function addPick(pick) {
     d.params = dev.params;
     d.options = dev.options;
   });
-  toast("Channel added", `${pick.name} is in the channel rack; the piano plays it.`, "info");
+  toast(t("instruments.add.toast.title"), tf("instruments.add.toast.body", [pick.name]), "info");
   return id;
 }
 
@@ -96,7 +97,7 @@ export function instrumentLabel(d) {
   }
   if (d.type === "plugin") {
     const pl = state.catalog.plugins.find((x) => x.id === optionValue(d, "id"));
-    return pl ? `${pl.name} (CLAP)` : "Plugin (CLAP)";
+    return pl ? tf("format.clapPlugin", [pl.name]) : t("instruments.label.plugin");
   }
   return label;
 }
@@ -113,7 +114,7 @@ export function tryPick(pick) {
   a.device = copyDevice(pick.device);
   if (hooks.audition) hooks.audition();
   if (pickHooks.tried) pickHooks.tried(a.device);
-  hint(`Trying ${pick.name} — play it on the keys (Z–/ and Q–[) or the piano below; + adds it as a channel`);
+  hint(tf("instruments.try.hint", [pick.name]));
   invalidate();
 }
 
@@ -176,14 +177,14 @@ export function replaceInstrument(ch, pick) {
     if (rename) ch.name = pick.name;
     if (old.type !== dev.type) {
       const prefix = `channel/${ch.id}/`;
-      retargetLanes((t) => {
-        if (!t.startsWith(prefix)) return t;
-        const key = t.slice(prefix.length);
-        if (key === "volume" || key === "pan") return t;
-        return spec && spec.params.some((ps) => ps.key === key) ? t : "";
+      retargetLanes((tg) => {
+        if (!tg.startsWith(prefix)) return tg;
+        const key = tg.slice(prefix.length);
+        if (key === "volume" || key === "pan") return tg;
+        return spec && spec.params.some((ps) => ps.key === key) ? tg : "";
       });
     }
   });
   selectChannel(ch.id);
-  toast("Instrument replaced", `${before} now plays ${instrumentLabel(dev)} — its notes stay. Ctrl+Z undoes.`, "info");
+  toast(t("instruments.replace.toast.title"), tf("instruments.replace.toast.body", [before, instrumentLabel(dev)]), "info");
 }

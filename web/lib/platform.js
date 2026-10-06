@@ -253,7 +253,53 @@ export function nowIso() {
 }
 
 export function fmtDate(ms) {
-  return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return new Date(ms).toLocaleString(uiLocale || undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+// ------------------------------------------------------------------ translations
+
+/** The interface's texts by key: the language shown, the English under it, and the locale ("" = the browser's). */
+let messages = new Map();
+let baseMessages = new Map();
+let uiLocale = "";
+
+async function fetchMessages(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status}`);
+  const o = await r.json();
+  const m = new Map();
+  for (const k of Object.keys(o)) {
+    if (typeof o[k] === "string" && o[k] !== "") m.set(k, o[k]);
+  }
+  return m;
+}
+
+export async function loadMessages(url) {
+  messages = await fetchMessages(url);
+  return messages.size;
+}
+
+export async function loadBaseMessages(url) {
+  baseMessages = await fetchMessages(url);
+  return baseMessages.size;
+}
+
+export function clearMessages() {
+  messages = new Map();
+}
+
+export function message(key) {
+  return messages.get(key) ?? baseMessages.get(key) ?? key;
+}
+
+export function setUiLocale(code) {
+  uiLocale = code;
+  document.documentElement.lang = code;
+}
+
+export function browserLanguages() {
+  const l = navigator.languages && navigator.languages.length > 0 ? navigator.languages : [navigator.language || "en"];
+  return l.map((x) => String(x));
 }
 
 export function download(url, name) {

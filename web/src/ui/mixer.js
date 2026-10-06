@@ -8,6 +8,7 @@ import { deviceControls } from "./rack.js";
 import { shownValue, remapEffects } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
 import { reveal } from "./panes.js";
+import { t, tf } from "../i18n.js";
 
 /** Fader travel: 0..1 maps to -inf..+6 dB with a musical curve. */
 /** function volToFader(v: Number) => Number */
@@ -36,12 +37,12 @@ function strip(b, ins, i) {
   b.on("pointerdown", (e) => {
     if (!sel) selectInsert(ix);
   });
-  b.on("pointerenter", (e) => hint(users.length > 0 ? `${ins.name} — fed by ${users.join(", ")}` : `${ins.name}`));
-  b.leaf("div", "num", "strip-num", i === 0 ? "MASTER" : `INSERT ${i}`);
+  b.on("pointerenter", (e) => hint(users.length > 0 ? tf("mixer.strip.fedBy.hint", [ins.name, users.join(", ")]) : `${ins.name}`));
+  b.leaf("div", "num", "strip-num", i === 0 ? t("mixer.strip.master.label") : tf("mixer.strip.insert.label", [String(i)]));
   b.leaf("div", "name", "strip-name", ins.name);
-  b.attr("title", "Double-click to rename");
+  b.attr("title", t("common.doubleClickToRename"));
   b.on("dblclick", (e) => {
-    const name = promptBox("Insert name", ins.name);
+    const name = promptBox(t("mixer.strip.rename.prompt"), ins.name);
     if (name !== "") {
       commit(() => {
         ins.name = name;
@@ -59,12 +60,12 @@ function strip(b, ins, i) {
       b.leaf("div", `f${k}`, "fx-slot", "");
     }
   }
-  if (ins.effects.length > 4) b.leaf("div", "more", "fx-slot", `+${ins.effects.length - 4} more`);
+  if (ins.effects.length > 4) b.leaf("div", "more", "fx-slot", tf("mixer.strip.moreEffects", [String(ins.effects.length - 4)]));
   b.close();
 
   const pan = shownValue(`insert/${i}/pan`, ins.pan);
   const vol = shownValue(`insert/${i}/volume`, ins.volume);
-  knobAt(b, "pan", "small", (pan + 1) / 2, "", `Balance ${panText(pan)}`, 0.5, `insert/${i}/pan`, (v) => {
+  knobAt(b, "pan", "small", (pan + 1) / 2, "", tf("mixer.strip.pan.title", [panText(pan)]), 0.5, `insert/${i}/pan`, (v) => {
     ins.pan = Math.round((v * 2 - 1) * 100) / 100;
   });
 
@@ -77,13 +78,13 @@ function strip(b, ins, i) {
   b.leaf("div", "db", "strip-db", dbText(vol));
 
   b.open("div", "btns", "strip-btns");
-  button(b, "m", ins.mute ? "small m on" : "small m", "M", "Mute", () => {
+  button(b, "m", ins.mute ? "small m on" : "small m", "M", t("common.mute"), () => {
     commit(() => {
       ins.mute = !ins.mute;
     });
   });
   if (i > 0) {
-    button(b, "s", ins.solo ? "small s on" : "small s", "S", "Solo", () => {
+    button(b, "s", ins.solo ? "small s on" : "small s", "S", t("mixer.strip.solo.title"), () => {
       commit(() => {
         ins.solo = !ins.solo;
       });
@@ -106,7 +107,7 @@ function fxPanel(b) {
   b.open("div", "head", "insp-head");
   b.open("div", "t", "");
   b.leaf("div", "title", "insp-title", ins.name);
-  b.leaf("div", "sub", "insp-sub", i === 0 ? "Master bus · effects" : `Insert ${i} · effects`);
+  b.leaf("div", "sub", "insp-sub", i === 0 ? t("mixer.fx.masterSubtitle") : tf("mixer.fx.insertSubtitle", [String(i)]));
   b.close();
   b.close();
 
@@ -116,12 +117,12 @@ function fxPanel(b) {
     b.open("div", `fx${k}`, fx.enabled ? "fx-card" : "fx-card off");
     b.open("div", "head", "fx-card-head");
     b.leaf("div", "title", "fx-card-title", spec ? spec.label : fx.type);
-    button(b, "on", fx.enabled ? "small on" : "small", fx.enabled ? "On" : "Off", "Bypass", () => {
+    button(b, "on", fx.enabled ? "small on" : "small", fx.enabled ? t("common.on") : t("common.off"), t("mixer.fx.bypass.title"), () => {
       commit(() => {
         fx.enabled = !fx.enabled;
       });
     });
-    iconButton(b, "up", "small ghost", "undo", "Move up", () => {
+    iconButton(b, "up", "small ghost", "undo", t("mixer.fx.moveUp.title"), () => {
       if (k === 0) return undefined;
       commit(() => {
         const a = ins.effects[k - 1];
@@ -130,7 +131,7 @@ function fxPanel(b) {
         remapEffects(i, (j) => (j === k ? k - 1 : j === k - 1 ? k : j));
       });
     });
-    iconButton(b, "del", "small ghost danger", "trash", "Remove effect", () => {
+    iconButton(b, "del", "small ghost danger", "trash", t("mixer.fx.remove.title"), () => {
       commit(() => {
         ins.effects.splice(k, 1);
         remapEffects(i, (j) => (j === k ? -1 : j > k ? j - 1 : j));
@@ -144,7 +145,7 @@ function fxPanel(b) {
   /** const types: String[] */
   const types = [""];
   /** const labels: String[] */
-  const labels = ["Add effect…"];
+  const labels = [t("mixer.fx.add.label")];
   for (const d of state.catalog.devices) {
     if (d.category === "effect" && d.type !== "plugin") {
       types.push(d.type);
@@ -154,10 +155,10 @@ function fxPanel(b) {
   for (const pl of state.catalog.plugins) {
     if (pl.effect) {
       types.push(`plugin:${pl.path}#${pl.id}`);
-      labels.push(`${pl.name} (CLAP)`);
+      labels.push(tf("format.clapPlugin", [pl.name]));
     }
   }
-  select(b, "add", "", "", types, labels, "Add an effect to this insert", (v) => {
+  select(b, "add", "", "", types, labels, t("mixer.fx.add.title"), (v) => {
     if (v === "") return undefined;
     commit(() => {
       if (v.startsWith("plugin:")) {
@@ -190,7 +191,7 @@ export function mixer(b) {
 
 /** function mixerTools(b: Builder) => Undefined */
 export function mixerTools(b) {
-  iconButton(b, "add", "small ghost", "plus", "Add a mixer insert", () => {
+  iconButton(b, "add", "small ghost", "plus", t("mixer.addInsert.title"), () => {
     commit(() => {
       const n = state.project.mixer.inserts.length;
       state.project.mixer.inserts.push({ name: `Insert ${n}`, volume: 1, pan: 0, mute: false, solo: false, effects: [] });

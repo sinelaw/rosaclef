@@ -19,6 +19,7 @@ import { loadPref, savePref } from "#platform";
 import { invalidate, hint, showDock, selectInsert } from "../store.js";
 import { insertIndex } from "#brands";
 import { glyph } from "./widgets.js";
+import { t, tf } from "../i18n.js";
 
 /** Width of a collapsed side panel (its rail). */
 export const RAIL = 36;
@@ -269,14 +270,6 @@ export function dockBasis() {
 
 // ------------------------------------------------------------------ views
 
-/** function label(id: String) => String */
-function label(id) {
-  if (id === "browser") return "browser";
-  if (id === "agent") return "agent panel";
-  if (id === "playlist") return "playlist";
-  return "dock";
-}
-
 /** function keyOf(id: String) => String */
 function keyOf(id) {
   if (id === "browser") return "Ctrl+Alt+B";
@@ -311,19 +304,35 @@ function winButton(b, key, icon, tip, onClick) {
 export function paneControls(b, id) {
   const side = id === "browser" || id === "agent";
   const mode = side ? sideMode(id) : workMode(id);
-  const name = label(id);
   const key = keyOf(id);
+  const br = id === "browser";
+  const pl = id === "playlist";
   b.open("div", "winctl", "winctl");
   if (side) {
-    winButton(b, "min", "minimize", `Minimize the ${name} to a rail (${key})`, () => setSide(id, "min"));
-    if (mode === "max") winButton(b, "max", "restore", `Restore the ${name} (double-click the header)`, () => setSide(id, "open"));
-    else winButton(b, "max", "maximize", `Maximize the ${name} (double-click the header)`, () => setSide(id, "max"));
+    const minTip = br ? tf("panes.browser.minimize.title", [key]) : tf("panes.agent.minimize.title", [key]);
+    winButton(b, "min", "minimize", minTip, () => setSide(id, "min"));
+    if (mode === "max") {
+      const tip = br ? t("panes.browser.restore.title") : t("panes.agent.restore.title");
+      winButton(b, "max", "restore", tip, () => setSide(id, "open"));
+    } else {
+      const tip = br ? t("panes.browser.maximize.title") : t("panes.agent.maximize.title");
+      winButton(b, "max", "maximize", tip, () => setSide(id, "max"));
+    }
   } else {
-    const other = id === "playlist" ? "dock" : "playlist";
-    if (mode === "min") winButton(b, "min", "restore", `Restore the ${name} — split the workspace with the ${other}`, () => setWork(id, "open"));
-    else winButton(b, "min", "minimize", `Minimize the ${name} to its tabs — the ${other} takes the space`, () => setWork(id, "min"));
-    if (mode === "max") winButton(b, "max", "restore", `Restore the ${name} — split the workspace with the ${other} (${key})`, () => setWork(id, "open"));
-    else winButton(b, "max", "maximize", `Maximize the ${name} (${key}, or double-click its tabs)`, () => setWork(id, "max"));
+    if (mode === "min") {
+      const tip = pl ? t("panes.playlist.restore.title") : t("panes.dock.restore.title");
+      winButton(b, "min", "restore", tip, () => setWork(id, "open"));
+    } else {
+      const tip = pl ? t("panes.playlist.minimize.title") : t("panes.dock.minimize.title");
+      winButton(b, "min", "minimize", tip, () => setWork(id, "min"));
+    }
+    if (mode === "max") {
+      const tip = pl ? tf("panes.playlist.restoreShortcut.title", [key]) : tf("panes.dock.restoreShortcut.title", [key]);
+      winButton(b, "max", "restore", tip, () => setWork(id, "open"));
+    } else {
+      const tip = pl ? tf("panes.playlist.maximize.title", [key]) : tf("panes.dock.maximize.title", [key]);
+      winButton(b, "max", "maximize", tip, () => setWork(id, "max"));
+    }
   }
   b.close();
 }
@@ -339,7 +348,7 @@ export function paneHeader(b, id) {
 /** The slim rail a minimized side panel collapses to; clicking it restores the panel. */
 /** function paneRail(b: Builder, id: String, title: String, icon: String, dot: String) => Undefined */
 export function paneRail(b, id, title, icon, dot) {
-  const tip = `Restore the ${label(id)} (${keyOf(id)})`;
+  const tip = id === "browser" ? tf("panes.browser.rail.title", [keyOf(id)]) : tf("panes.agent.rail.title", [keyOf(id)]);
   b.open("div", "rail", `rail rail-${id}`);
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));

@@ -36,6 +36,7 @@ import {
   setView,
   setTop,
 } from "./panes.js";
+import { t, tf } from "../i18n.js";
 
 /** function px(v: Number) => String */
 function px(v) {
@@ -54,7 +55,7 @@ function paneDown(e, name) {
 /** function tab(b: Builder, id: String, label: String, icon: String, key: String) => Undefined */
 function tab(b, id, label, icon, key) {
   b.open("button", id, state.dock === id ? "tab on" : "tab");
-  b.attr("title", workMode("dock") === "min" ? `${label} (${key}) — restores the dock` : `${label} (${key}) — double-click to maximize the dock`);
+  b.attr("title", workMode("dock") === "min" ? tf("shell.dock.tab.restore.title", [label, key]) : tf("shell.dock.tab.maximize.title", [label, key]));
   b.on("click", (e) => openDock(id));
   b.on("dblclick", (e) => {
     e.stopPropagation();
@@ -84,7 +85,16 @@ function navItem(b, key, label, icon, on, dot, onClick) {
 function topTab(b, id, label, icon, mode) {
   const on = layoutState.top === id;
   b.open("button", `t-${id}`, on ? "tab on" : "tab");
-  b.attr("title", mode === "min" ? `${label} — click to restore` : on ? `${label} — double-click to maximize` : `Show the ${label.toLowerCase()} here`);
+  b.attr(
+    "title",
+    mode === "min"
+      ? tf("shell.top.tab.restore.title", [label])
+      : on
+        ? tf("shell.top.tab.maximize.title", [label])
+        : id === "score"
+          ? t("shell.top.tab.score.title")
+          : t("shell.top.tab.playlist.title")
+  );
   b.on("click", (e) => setTop(id));
   glyph(b, icon);
   b.leaf("span", "l", "", label);
@@ -96,15 +106,15 @@ function topTab(b, id, label, icon, mode) {
 function navBar(b) {
   const v = layoutState.view;
   b.open("nav", "nav", "navbar");
-  navItem(b, "browser", "Browser", "folder", v === "browser", "", () => setView("browser"));
-  navItem(b, "playlist", "Playlist", "playlist", v === "playlist", "", () => setView("playlist"));
-  navItem(b, "rack", "Rack", "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
-  navItem(b, "piano", "Piano", "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
-  navItem(b, "voice", "Voice", "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
-  navItem(b, "drums", "Drums", "drum", v === "dock" && state.dock === "drums", "", () => openDock("drums"));
-  navItem(b, "mixer", "Mixer", "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
-  navItem(b, "score", "Score", "score", v === "dock" && state.dock === "score", "", () => openDock("score"));
-  navItem(b, "agent", "Maestro", "spark", v === "agent", agentDot(), () => setView("agent"));
+  navItem(b, "browser", t("panel.browser"), "folder", v === "browser", "", () => setView("browser"));
+  navItem(b, "playlist", t("panel.playlist"), "playlist", v === "playlist", "", () => setView("playlist"));
+  navItem(b, "rack", t("shell.nav.rack.label"), "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
+  navItem(b, "piano", t("shell.nav.piano.label"), "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
+  navItem(b, "voice", t("panel.voice"), "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
+  navItem(b, "drums", t("panel.drums"), "drum", v === "dock" && state.dock === "drums", "", () => openDock("drums"));
+  navItem(b, "mixer", t("panel.mixer"), "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
+  navItem(b, "score", t("panel.score"), "score", v === "dock" && state.dock === "score", "", () => openDock("score"));
+  navItem(b, "agent", t("panel.maestro"), "spark", v === "agent", agentDot(), () => setView("agent"));
   b.close();
 }
 
@@ -129,20 +139,20 @@ export function studio(b) {
   // Side panels sit in a clipping column; the rail shows when minimized.
   b.open("div", "browser-side", `side side-browser ${compact ? "open" : sideMode("browser")}`);
   browser(b);
-  paneRail(b, "browser", "Browser", "folder", "");
+  paneRail(b, "browser", t("panel.browser"), "folder", "");
   b.close();
 
   b.open("main", "work", "workspace");
   if (state.diskIssues.length > 0) {
     const first = state.diskIssues[0];
     b.open("div", "banner", "banner");
-    b.leaf("b", "t", "", "project.json on disk has errors — playing the last valid version:");
+    b.leaf("b", "t", "", t("shell.banner.diskErrors"));
     b.leaf("code", "c", "", `${first.path}: ${first.message}`);
     b.close();
   }
   if (!state.connected) {
     b.open("div", "offline", "banner");
-    b.leaf("b", "t", "", state.loaded ? "Reconnecting to the Rosaclef server…" : "Starting the studio…");
+    b.leaf("b", "t", "", state.loaded ? t("shell.banner.reconnecting") : t("shell.banner.starting"));
     b.close();
   }
 
@@ -152,8 +162,8 @@ export function studio(b) {
   b.on("pointerdown", (e) => paneDown(e, top === "score" ? "score" : "playlist"));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "playlist");
-  topTab(b, "playlist", "Playlist", "playlist", plMode);
-  topTab(b, "score", "Score", "score", plMode);
+  topTab(b, "playlist", t("panel.playlist"), "playlist", plMode);
+  topTab(b, "score", t("panel.score"), "score", plMode);
   b.open("div", "tools", "tools");
   if (top === "score") scoreTools(b, topScore);
   else playlistTools(b);
@@ -191,12 +201,12 @@ export function studio(b) {
   b.on("pointerdown", (e) => paneDown(e, dockName(state.dock)));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "dock");
-  tab(b, "rack", "Channel Rack", "rack", "F6");
-  tab(b, "piano", "Piano Roll", "piano", "F7");
-  tab(b, "voice", "Voice", "mic", "F8");
-  tab(b, "drums", "Drums", "drum", "F4");
-  tab(b, "mixer", "Mixer", "mixer", "F9");
-  tab(b, "score", "Score", "score", "F10");
+  tab(b, "rack", t("shell.dock.rack.label"), "rack", "F6");
+  tab(b, "piano", t("shell.dock.piano.label"), "piano", "F7");
+  tab(b, "voice", t("panel.voice"), "mic", "F8");
+  tab(b, "drums", t("panel.drums"), "drum", "F4");
+  tab(b, "mixer", t("panel.mixer"), "mixer", "F9");
+  tab(b, "score", t("panel.score"), "score", "F10");
   b.open("div", "tools", "tools");
   if (state.dock === "rack") rackTools(b);
   else if (state.dock === "piano") pianoTools(b);
@@ -221,9 +231,9 @@ export function studio(b) {
 
   b.open("div", "agent-side", `side side-agent ${compact ? "open" : sideMode("agent")}`);
   agentPanel(b);
-  paneRail(b, "agent", "Maestro", "spark", agentDot());
+  paneRail(b, "agent", t("panel.maestro"), "spark", agentDot());
   b.leaf("div", "resize", "agent-resize", "");
-  b.attr("title", "Drag to resize the agent panel");
+  b.attr("title", t("shell.agent.resize.title"));
   b.on("pointerdown", (e) => {
     e.preventDefault();
     const x0 = e.clientX;
@@ -264,28 +274,28 @@ export function studio(b) {
 /** function hintBar(b: Builder) => Undefined */
 function hintBar(b) {
   b.open("footer", "hint", "hintbar");
-  b.leaf(
-    "span",
-    "h",
-    "hint",
-    state.hint !== ""
-      ? state.hint
-      : "Space plays · Z–/ and Q–[ play notes · Shift+L pattern/song · Shift+R records · F6 rack · F7 piano roll · F8 voice · F9 mixer · F10 score · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
-  );
+  b.leaf("span", "h", "hint", state.hint !== "" ? state.hint : t("shell.hintbar.default"));
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");
-  b.leaf("span", "t", "", !state.connected ? "Offline" : state.backend === "local" ? "Saved in this browser" : "Synced");
+  b.leaf(
+    "span",
+    "t",
+    "",
+    !state.connected ? t("shell.status.offline") : state.backend === "local" ? t("shell.status.savedInBrowser") : t("shell.status.synced")
+  );
   b.close();
   b.leaf(
     "span",
     "m2",
     "meta",
     state.output === "native"
-      ? `Studio engine${state.nativeDevice !== "" ? " · " + state.nativeDevice : ""}`
+      ? state.nativeDevice !== ""
+        ? tf("shell.engine.nativeDevice", [state.nativeDevice])
+        : t("shell.engine.native")
       : state.audioReady
-        ? "Browser engine · WebAssembly"
-        : "Click anywhere to start audio"
+        ? t("shell.engine.browser")
+        : t("shell.engine.clickToStart")
   );
-  b.leaf("span", "m3", "meta", `rev ${state.rev}`);
+  b.leaf("span", "m3", "meta", tf("shell.revision", [String(state.rev)]));
   b.close();
 }
