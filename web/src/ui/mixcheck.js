@@ -270,8 +270,6 @@ function decodeReport(r) {
       severity: str(c.severity),
       idiom: str(c.idiom),
       also: (c.alsoInBars ?? []).map((x) => int(x)),
-      patch: patchText(c.fix),
-      label: str(c.fixLabel),
     })),
     findings: (r.findings ?? []).map((f) => ({
       severity: str(f.severity),
@@ -882,7 +880,6 @@ function clashRow(b, c, i) {
   b.text(`${c.interval} · ${fmt(c.overlap, 2)} beats${c.idiom !== "" ? " · colour" : ""}`);
   b.close();
   b.leaf("span", "sp", "spacer", "");
-  if (c.patch !== "") button(b, "fix", "small ghost", "Fix", c.label, () => applyPatch(c.patch, c.label));
   b.close();
 }
 
@@ -1002,7 +999,7 @@ export function mixcheckPanel(b, ask) {
       "p",
       "p",
       "",
-      "One render of the song (or a range): loudness and true peak against a delivery target, the limiter's work, phase, the spectrum, how audible each part is under the others, harmonic clashes — with fixes. The agent gets the same numbers from `rosaclef mixcheck`."
+      "One render of the song (or a range): loudness and true peak against a delivery target, the limiter's work, phase, the spectrum, how audible each part is under the others, harmonic clashes (reported; the fixes touch the mixer only). The agent gets the same numbers from `rosaclef mixcheck`."
     );
     b.close();
   } else {

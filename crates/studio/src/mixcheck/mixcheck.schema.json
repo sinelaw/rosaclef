@@ -726,40 +726,6 @@
               "type": "integer"
             }
           },
-          "fix": {
-            "type": "array",
-            "description": "JSON Patch (RFC 6902) operations on project.json.",
-            "items": {
-              "type": "object",
-              "properties": {
-                "op": {
-                  "enum": [
-                    "add",
-                    "remove",
-                    "replace",
-                    "move",
-                    "copy",
-                    "test"
-                  ]
-                },
-                "path": {
-                  "type": "string"
-                },
-                "from": {
-                  "type": "string"
-                },
-                "value": {}
-              },
-              "additionalProperties": false,
-              "required": [
-                "op",
-                "path"
-              ]
-            }
-          },
-          "fixLabel": {
-            "type": "string"
-          },
           "beat": {
             "type": "number",
             "description": "The written beat where the notes start to overlap."

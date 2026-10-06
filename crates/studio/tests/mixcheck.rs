@@ -449,7 +449,7 @@ fn what_if_never_touches_the_project_and_reports_the_change() {
 }
 
 #[test]
-fn a_clash_names_the_notes_and_its_fix_resolves_it() {
+fn a_clash_names_the_notes_and_leaves_them_alone() {
     let dir = scratch("clash");
     let p: Project = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
     // Lead C#5 (pattern tune, note 1) over the pad's C4 in bar 2.
@@ -462,20 +462,25 @@ fn a_clash_names_the_notes_and_its_fix_resolves_it() {
     assert_eq!(c.bar, 2);
     assert_eq!(c.a.pitch, "C#5");
     assert_eq!(c.interval, "m9");
-    let fix = c.fix.clone().unwrap();
-    let r2 = check(
-        &dir,
-        &p,
-        json!({"range": "2:4", "threshold": "strict", "whatIf": fix}),
-    );
-    assert!(!r2
-        .clashes
-        .unwrap()
+    // The notes are the song's: a mix check reports them, and its fixes
+    // touch the mixer only.
+    let f = r
+        .findings
         .iter()
-        .any(|x| x.a.pattern == c.a.pattern
-            && x.a.note_index == c.a.note_index
-            && x.b.note_index == c.b.note_index
-            && x.interval == "m9"));
+        .find(|f| f.rule == "harmonic-clash")
+        .unwrap();
+    assert!(f.fix.is_empty() && f.fix_label.is_empty(), "{f:?}");
+    assert!(f.detail.contains("pattern tune, note 1"), "{}", f.detail);
+    for f in &r.findings {
+        for op in &f.fix {
+            let path = op["path"].as_str().unwrap();
+            assert!(
+                !path.starts_with("/patterns"),
+                "{} touches notes: {op}",
+                f.key
+            );
+        }
+    }
 }
 
 /// A small JSON Schema checker for what mixcheck.schema.json uses: type,

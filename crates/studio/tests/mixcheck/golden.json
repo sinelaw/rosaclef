@@ -348,15 +348,7 @@
       },
       "interval": "m9",
       "overlapBeats": 2.0,
-      "severity": "high",
-      "fix": [
-        {
-          "op": "replace",
-          "path": "/patterns/1/notes/1/pitch",
-          "value": 72
-        }
-      ],
-      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
+      "severity": "high"
     },
     {
       "bar": 2,
@@ -380,15 +372,7 @@
       },
       "interval": "TT",
       "overlapBeats": 2.0,
-      "severity": "medium",
-      "fix": [
-        {
-          "op": "replace",
-          "path": "/patterns/1/notes/1/pitch",
-          "value": 72
-        }
-      ],
-      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
+      "severity": "medium"
     }
   ],
   "findings": [
@@ -468,14 +452,7 @@
       "fromBar": 2,
       "toBar": 2,
       "fromBeat": 4.0,
-      "fix": [
-        {
-          "op": "replace",
-          "path": "/patterns/1/notes/1/pitch",
-          "value": 72
-        }
-      ],
-      "fixLabel": "move lead C#5 → C5 (pattern tune, note 1; everywhere the pattern plays)"
+      "fix": []
     }
   ],
   "history": {

@@ -45,7 +45,7 @@ pub struct Clash {
 }
 
 /// The lowest note sounding at `at` (performance beats).
-pub fn bass_at(notes: &[Played], at: f64) -> Option<&Played> {
+fn bass_at(notes: &[Played], at: f64) -> Option<&Played> {
     notes
         .iter()
         .filter(|n| n.from <= at + 1e-6 && n.to > at + 1e-6)

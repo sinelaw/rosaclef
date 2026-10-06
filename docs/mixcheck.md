@@ -127,7 +127,9 @@ what-if is a second render; `--verify`, one per finding fix and suggestion
   colour, not a mistake: the tensions of a dominant seventh (♭9, ♯9, ♯11, ♭13,
   13), a major seventh chord's seventh and ♯11, a lydian ♯11 over a major
   chord, a diminished chord's tritone — and a passing or approach note (by
-  step, a beat or less). Those rank low, say why (`idiom`) and offer no fix.
+  step, a beat or less). Those rank low and say why (`idiom`). Clashes are
+  reported, never fixed: the notes are the song's, and a mix check's fixes
+  touch the mixer only (faders, EQ, dynamics, the master's automation).
 
 ## The report
 
@@ -159,7 +161,7 @@ silent parts are left out.
   "gainReduction": [ { "id": "insert:0/Master", "effect": 1, "type": "limiter", "max": 6.3, "mean": 2.1, "pctTimeAbove3": 41 } ],
   "clashes": [ { "bar": 65, "beatInBar": 0.25, "a": { "channel": "counter", "pattern": "counter-b", "noteIndex": 81, "pitch": "C#5" },
                  "b": { "channel": "pad", "pattern": "pad-C", "noteIndex": 4, "pitch": "C4" }, "interval": "m9", "overlapBeats": 3.7,
-                 "severity": "high", "fix": [ … ] } ],
+                 "severity": "high" } ],
   "findings": [ { "severity": "warn", "rule": "master-overload", "key": "master-overload|master", "where": "bars 52–59",
                   "detail": "pre-limiter peaks +5.2 dBFS (its input gain alone adds +6.0 dB); …", "fix": [ … ],
                   "fixLabel": "the limiter's input gain +6.0 → +0.8 dB",
@@ -206,10 +208,11 @@ Findings are ranked, de-duplicated and at most `--max-findings` (10), and no
 rule takes more than a third of the list. One problem is one finding, with one
 fix: an overload or a low-end build-up lists every stretch it happens in
 ("bars 1–7, 9–12 (pass 2), 13–18"; more than four read "bars 2–140 (112 bars,
-in 20 stretches)"). Fixes go to the setting at fault when there is one — a
-limiter's drive, an EQ's boost, a fader pushed above unity — rather than
-turning everything else down. Each is a rule of the Critic (category *Mix
-check*), with a JSON Patch `fix`:
+in 20 stretches)"). Every fix is a change to the mixer — faders, EQ, dynamics,
+the master's automation — never to the notes. Fixes go to the setting at fault
+when there is one — a limiter's drive, an EQ's boost, a fader pushed above
+unity — rather than turning everything else down. Each is a rule of the Critic
+(category *Mix check*), with a JSON Patch `fix` where the mixer can fix it:
 
 | rule | when | fix |
 |---|---|---|
@@ -219,7 +222,7 @@ check*), with a JSON Patch `fix`:
 | `over-compression` | a master compressor or limiter takes 6 dB or more on average (strict 4, loose 9), over 3 dB at least half the time: the mix is squashed flat | down to about 3 dB of gain reduction: a compressor's threshold up and its makeup down by as much (the loudness kept), a limiter's drive down |
 | `masked-lead` | the lead is buried or inaudible, or more than 10 LU under the mix (strict 8, loose 13). The lead is the part named like one (lead, vocal, melody, topline, solo), else the loudest the Critic reads as a lead: one per song | its balance (boosted faders over it back to unity, the lead up), else an EQ cut on its masker where it covers it, or more level |
 | `inaudible-part` | a part is inaudible (strict: buried too) | the level the model says it needs — only when the model says it helps and the faders can reach it (else the finding says so) |
-| `harmonic-clash` | a clash of high severity (strict: medium too). Minor seconds and ninths rank highest; a major seventh and a tritone one step lower; notes more than two octaves apart are not clashes; a colour of the chord or a passing note ranks low | the quieter note (never the bass: the note over it) moved to the nearest pitch that clashes with nothing |
+| `harmonic-clash` | a clash of high severity (strict: medium too). Minor seconds and ninths rank highest; a major seventh and a tritone one step lower; notes more than two octaves apart are not clashes; a colour of the chord or a passing note ranks low | — (the notes are the song's: the finding names both, by `pattern` and `noteIndex`) |
 | `low-end-buildup` | a part carrying a quarter of the lows boosts them 6 dB or more with an EQ (strict 4, loose 9) in a mix whose lows lean 3 dB over (strict 2, loose 5); else for 2 bars or more, under 250 Hz is 14 dB over 500 Hz–6 kHz, or 250–500 Hz 6 dB over a balanced tilt (drum breaks aside) | that EQ's boost down to +3 dB or less; else a low-shelf cut on the part boosting its lows, or (not the bass or drums) carrying the most low end |
 | `phase-correlation` | the mix's correlation is negative or it loses 6 dB in mono; a part's correlation under −0.3 (however quiet: it vanishes in mono) | — |
 | `section-loudness-flat` | three or more sections all within 1.5 LU (strict 2.5, loose 1.0) | a master volume lane: the sparse sections 1.5–3 dB down |
@@ -282,8 +285,8 @@ Tests:
   (checked against `mixcheck.schema.json`), a quiet pluck masked by a loud sub,
   gain reduction of signals of known level, bars through a meter change and a
   repeat, a range measured like the same bars of the whole song (a repeat's
-  second pass too), the cache in memory and on disk, what-if, clashes and their
-  fixes, and bad requests (ranges, a reference outside the folder, a fix to a
+  second pass too), the cache in memory and on disk, what-if, clashes reported
+  with their notes and no fix touching them, and bad requests (ranges, a reference outside the folder, a fix to a
   song read only in part) refused by name.
 - Unit tests: the FFT, K-weighting, true peak, loudness and loudness range of
   signals of known loudness (after EBU Tech 3341 / 3342), JSON Patch.

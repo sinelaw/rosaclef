@@ -275,11 +275,6 @@ pub struct ClashOut {
     pub idiom: Option<&'static str>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub also_in_bars: Vec<u32>,
-    /// Moves the quieter note to the nearest pitch that does not clash.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fix: Option<Vec<Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fix_label: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
@@ -1032,7 +1027,7 @@ pub fn build<'a>(
                     o.threshold == Threshold::Strict || c.severity != "low" || found.len() <= cap
                 })
                 .take(cap)
-                .map(|c| clash_out(p, t, c, &notes))
+                .map(|c| clash_out(p, t, c))
                 .collect(),
         );
     }
@@ -1112,7 +1107,7 @@ pub fn band_span(w: &[f64; BARKS], share: f64) -> (usize, usize) {
     )
 }
 
-fn clash_out(p: &Project, t: &Timeline, c: &clashes::Clash, notes: &[clashes::Played]) -> ClashOut {
+fn clash_out(p: &Project, t: &Timeline, c: &clashes::Clash) -> ClashOut {
     let r = |n: &clashes::Played, db: f64| NoteRef {
         channel: p.channels[n.channel].id.clone(),
         pattern: p.patterns[n.pattern].id.clone(),
@@ -1128,12 +1123,6 @@ fn clash_out(p: &Project, t: &Timeline, c: &clashes::Clash, notes: &[clashes::Pl
     also.dedup();
     let bar = t.bar_of(beat);
     also.retain(|b| *b != bar);
-    // A colour of the chord is not a mistake: nothing to fix.
-    let fix = c
-        .idiom
-        .is_none()
-        .then(|| super::findings::clash_fix(p, c, notes))
-        .flatten();
     ClashOut {
         bar,
         beat: (beat * 1000.0).round() / 1000.0,
@@ -1146,8 +1135,6 @@ fn clash_out(p: &Project, t: &Timeline, c: &clashes::Clash, notes: &[clashes::Pl
         severity: c.severity,
         idiom: c.idiom,
         also_in_bars: also,
-        fix: fix.as_ref().map(|f| f.0.clone()),
-        fix_label: fix.map(|f| f.1),
     }
 }
 

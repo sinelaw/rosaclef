@@ -3,7 +3,6 @@
 //! audio rules (`rosaclef critic --audio`); a project's `critic.off` and
 //! `critic.suppress` leave them out here too.
 
-use super::clashes::{note_name, Clash, Played};
 use super::dsp::{self, r1, BARKS};
 use super::model::{self, Audibility, Change, Element, Mix};
 use super::options::{Check, Options, Threshold};
@@ -28,10 +27,6 @@ pub const RULES: [&str; 10] = [
 
 fn set(path: String, value: Value) -> Value {
     json!({"op": "add", "path": path, "value": value})
-}
-
-fn replace(path: String, value: Value) -> Value {
-    json!({"op": "replace", "path": path, "value": value})
 }
 
 fn round3(x: f64) -> f64 {
@@ -492,65 +487,6 @@ pub fn suggestions(
         }
     }
     s
-}
-
-/// Move the quieter note of a clash to the nearest pitch that clashes with
-/// nothing sounding with it.
-pub fn clash_fix(p: &Project, c: &Clash, notes: &[Played]) -> Option<(Vec<Value>, String)> {
-    let (q, o) = if c.a_db <= c.b_db {
-        (&c.a, &c.b)
-    } else {
-        (&c.b, &c.a)
-    };
-    // The quieter note first, then the other — but never the bass, which
-    // holds the harmony up.
-    let bass = super::clashes::bass_at(notes, c.from).map(|n| n.pitch);
-    [(q, o), (o, q)]
-        .into_iter()
-        .filter(|(m, other)| !(bass == Some(m.pitch) && other.pitch > m.pitch))
-        .find_map(|(m, other)| move_note(p, m, other, notes))
-}
-
-/// The nearest pitch (a semitone, then a tone, down first) for `q` that
-/// sounds well with `o` and clashes with nothing else sounding with it.
-fn move_note(
-    p: &Project,
-    q: &Played,
-    o: &Played,
-    notes: &[Played],
-) -> Option<(Vec<Value>, String)> {
-    let others: Vec<i32> = notes
-        .iter()
-        .filter(|n| n.from < q.to && n.to > q.from && n.channel != q.channel)
-        .map(|n| n.pitch)
-        .collect();
-    let bad = |np: i32, x: i32| matches!((np - x).abs() % 12, 1 | 6 | 11);
-    for d in [-1, 1, -2, 2] {
-        let np = q.pitch + d;
-        let iv = (np - o.pitch).abs() % 12;
-        if !matches!(iv, 0 | 3 | 4 | 5 | 7 | 8 | 9) || others.iter().any(|x| bad(np, *x)) {
-            continue;
-        }
-        let written = p.patterns[q.pattern].notes[q.note].pitch + d;
-        if !(0..=127).contains(&written) {
-            continue;
-        }
-        return Some((
-            vec![replace(
-                format!("/patterns/{}/notes/{}/pitch", q.pattern, q.note),
-                json!(written),
-            )],
-            format!(
-                "move {} {} → {} (pattern {}, note {}; everywhere the pattern plays)",
-                p.channels[q.channel].id,
-                note_name(q.pitch),
-                note_name(np),
-                p.patterns[q.pattern].id,
-                q.note
-            ),
-        ));
-    }
-    None
 }
 
 // ------------------------------------------------------------------ rules
@@ -1360,8 +1296,6 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     element: Some(format!("channel:{}", quieter.channel)),
                     from_bar: Some(c.bar),
                     to_bar: Some(c.bar),
-                    fix: c.fix.clone().unwrap_or_default(),
-                    fix_label: c.fix_label.clone().unwrap_or_default(),
                     ..finding(
                         "harmonic-clash",
                         &format!(

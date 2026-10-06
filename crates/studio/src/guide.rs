@@ -175,7 +175,8 @@ right before editing it, and never rewrite the whole file from memory.
     → `master.preLimiterPeakDbfs` (> 0: the limiter is fighting), `limiterGainReductionDb`, `plrDb`,
     `perBar[].topContributors`, and the `master-overload` / `limiter-pumping` findings with their fixes.
   - *Find the clashing note in bar N:* `rosaclef mixcheck --range N:N --checks clashes --threshold strict`
-    → `clashes[]` with both notes (`pattern`, `noteIndex`, pitch, level) and a `fix` that moves the quieter one.
+    → `clashes[]` with both notes (`pattern`, `noteIndex`, pitch, level). Mixcheck reports clashes and leaves
+    the notes alone: its fixes only ever touch the mixer.
   - Every finding is also a Critic rule: `rosaclef critic --audio` lists them; `--fix KEY` applies one.
 - `rosaclef note --channel ID --pitch 60 --seconds 2 --out samples/x.wav` — synthesize one note
   of a channel's instrument (or `--instrument '{"type":"drum","options":{"kind":"clap"}}'`) into a sample.
