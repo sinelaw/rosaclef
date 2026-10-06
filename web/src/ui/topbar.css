@@ -228,6 +228,7 @@
 
 /* The language's code over a native menu that covers it (topbar.js). */
 .lang-switch {
+  flex: none;
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -262,4 +263,17 @@
 .lang-select option {
   background: var(--ob-2);
   color: var(--text);
+}
+
+/* Narrower desktops: tighter gaps, and the switcher shows only its globe. */
+@media (max-width: 1600px) {
+  .topbar {
+    gap: 12px;
+  }
+  .topbar .lang-switch {
+    padding: 0 7px;
+  }
+  .topbar .lang-code {
+    display: none;
+  }
 }
