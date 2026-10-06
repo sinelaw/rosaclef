@@ -269,7 +269,7 @@
 /** A change the mix check suggests: `patch` is JSON Patch text; `verified` a summary once re-measured. */
 /** type MixSuggestion = { why: String, patch: String, expRel: Number, expAud: Number, verified: String } */
 /** type MixElement = { id: String, name: String, kind: String, role: String, lead: Boolean, buriedIn: { from: Int, to: Int, rel: Number }[], insert: Int, rms: Number, peak: Number, lufs: Number, rel: Number, share: Number, active: Number, corr: Number, audible: Number, maskers: MixMasker[], domLo: Number, domHi: Number, fader: Number, verdict: String, suggestions: MixSuggestion[] } */
-/** type MixFinding = { severity: String, rule: String, key: String, where: String, detail: String, element: String, fromBar: Int, fromBeat: Number, patch: String, label: String } */
+/** type MixFinding = { severity: String, rule: String, key: String, where: String, detail: String, element: String, fromBar: Int, toBar: Int, fromBeat: Number, patch: String, label: String } */
 /** type MixMaster = { integrated: Number, shortMax: Number, momentaryMax: Number, truePeak: Number, samplePeak: Number, rms: Number, preLimiter: Number, preEffects: Number, limGr: MixGr, compGr: MixGr, plr: Number, crest: Number, lra: Number, corrMean: Number, corrMin: Number, monoLoss: Number, spectrum: Number[] } */
 /** A delivery target's verdict: `status` pass, warn or fail; `gain` what the platform applies (dB). */
 /** type MixTarget = { id: String, name: String, lufs: Number, truePeak: Number, status: String, gain: Number, notes: String[] } */

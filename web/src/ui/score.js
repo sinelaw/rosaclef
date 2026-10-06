@@ -1804,6 +1804,17 @@ function barsText(bar0, bar1) {
   return bar0 === bar1 ? tf("format.barLower", [String(bar0)]) : tf("format.barRange", [String(bar0), String(bar1)]);
 }
 
+/** A beat another panel asked the score to show (-1: none): the next score
+ * drawn scrolls to it. */
+const pendingBeat = { beat: -1 };
+
+/** Show a song beat in the score (the Mix check's "Show"). */
+/** function revealScoreBeat(beat: Number) => Undefined */
+export function revealScoreBeat(beat) {
+  pendingBeat.beat = beat;
+  invalidate();
+}
+
 /** Scroll to the system that holds a beat. */
 /** function showBeat(v: ScoreView, c: Cached, geo: PageGeo, beat: Number) => Undefined */
 function showBeat(v, c, geo, beat) {
@@ -2138,6 +2149,10 @@ export function scoreView(b, v) {
   b.on("pointerdown", (e) => setFocus("score"));
   const geo = pageGeo(v, sc);
   const c = cached(v, sc, geo);
+  if (pendingBeat.beat >= 0) {
+    showBeat(v, c, geo, pendingBeat.beat);
+    pendingBeat.beat = -1;
+  }
   // Every child here is always described, in the same order: when the children of a node change,
   // the tree attaches them all again, and a scrolled view attached again is back at its top. So
   // what comes and goes (the sidebar, the passage's bar, the menus) lives in containers that stay.

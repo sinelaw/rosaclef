@@ -56,6 +56,58 @@
 .mx-status.stale {
   color: var(--warn);
 }
+.mx-progress {
+  height: 3px;
+  margin: 0 10px;
+  border-radius: 2px;
+  background: rgba(212, 175, 55, 0.12);
+  overflow: hidden;
+}
+.mx-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-hi));
+  transition: width 0.15s linear;
+}
+.mx-progress-label {
+  padding: 4px 10px 0;
+  color: var(--dim);
+  font: 10px var(--mono);
+}
+.mx-hint {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 0 34px 0 0;
+  margin-bottom: -26px;
+  color: var(--gold);
+  pointer-events: none;
+}
+.mx-hint-text {
+  font: italic 14px var(--serif);
+  margin-bottom: 2px;
+}
+.mx-hint-arrow {
+  width: 64px;
+  height: 48px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: mx-nudge 1.6s ease-in-out infinite;
+}
+@keyframes mx-nudge {
+  50% {
+    transform: translate(3px, -4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mx-hint-arrow {
+    animation: none;
+  }
+}
 .mx-scroll {
   flex: 1;
   min-height: 0;
@@ -687,4 +739,45 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- quick fix */
+
+.mx-quick {
+  margin: 6px 0 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.08), rgba(212, 175, 55, 0.02));
+}
+.mx-quick-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.mx-quick-title b {
+  font: italic 600 17px var(--serif);
+  color: var(--gold-hi);
+}
+.mx-quick-sub {
+  color: var(--dim);
+  font: 10.5px var(--mono);
+}
+.mx-find.applied {
+  opacity: 0.6;
+}
+.mx-applied {
+  color: var(--emerald);
+  font: 11px var(--mono);
+}
+.mixcheck .btn.on {
+  border-color: var(--gold);
+  color: var(--gold-hi);
+  background: rgba(212, 175, 55, 0.14);
+}
+.mx-include {
+  margin: 0 6px 0 0;
+  accent-color: var(--gold);
+  vertical-align: -2px;
+  cursor: pointer;
 }

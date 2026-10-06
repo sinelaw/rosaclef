@@ -321,10 +321,26 @@ The **Mix check** tab of the Maestro panel reads like a mastering meter:
   audibility; open one for its maskers and suggestions;
 - every row.
 
-**Try** runs a what-if (the song is not touched) and shows what changed;
-**Apply** makes the change, one undo step. The report is marked stale when the
-song changes, and its Try and Apply wait for **Measure again** (its fixes point
-at notes and devices by position).
+A progress bar runs while it measures (its estimate learns this machine's
+render speed); with no report yet, an arrow points at **Measure**.
+
+Each finding with a fix has:
+
+- a box to include it in **Quick fix**, ticked by default;
+- **Show** (a finding about some bars): those bars in the score or the
+  playlist, whichever is open, with the playhead there;
+- **Before / after**: from the playhead, 4 bars as the song is, a click, then
+  the same 4 bars with the fix — nothing is changed;
+- **Try**: a what-if (the song is not touched), over the finding's bars and one
+  either side when it is about some bars, else over the range;
+- **Apply fix**: the change, one undo step.
+
+**Quick fix**, above the findings, does the same with every ticked fix at once
+(where two set the same thing, the higher-ranked wins): Before / after, Try
+all, Apply all. After a fix is applied, the report's other fixes still apply
+without measuring again — unless they set what an applied one set, or the song
+changed some other way (then they wait for **Measure again**: they point at
+notes and devices by position).
 
 ## Speed
 
