@@ -309,30 +309,30 @@ export function paneControls(b, id) {
   const pl = id === "playlist";
   b.open("div", "winctl", "winctl");
   if (side) {
-    const minTip = br ? tf("Minimize the browser to a rail ({0})", [key]) : tf("Minimize the agent panel to a rail ({0})", [key]);
+    const minTip = br ? tf("panes.browser.minimize.title", [key]) : tf("panes.agent.minimize.title", [key]);
     winButton(b, "min", "minimize", minTip, () => setSide(id, "min"));
     if (mode === "max") {
-      const tip = br ? t("Restore the browser (double-click the header)") : t("Restore the agent panel (double-click the header)");
+      const tip = br ? t("panes.browser.restore.title") : t("panes.agent.restore.title");
       winButton(b, "max", "restore", tip, () => setSide(id, "open"));
     } else {
-      const tip = br ? t("Maximize the browser (double-click the header)") : t("Maximize the agent panel (double-click the header)");
+      const tip = br ? t("panes.browser.maximize.title") : t("panes.agent.maximize.title");
       winButton(b, "max", "maximize", tip, () => setSide(id, "max"));
     }
   } else {
     if (mode === "min") {
-      const tip = pl ? t("Restore the playlist — split the workspace with the dock") : t("Restore the dock — split the workspace with the playlist");
+      const tip = pl ? t("panes.playlist.restore.title") : t("panes.dock.restore.title");
       winButton(b, "min", "restore", tip, () => setWork(id, "open"));
     } else {
-      const tip = pl ? t("Minimize the playlist to its tabs — the dock takes the space") : t("Minimize the dock to its tabs — the playlist takes the space");
+      const tip = pl ? t("panes.playlist.minimize.title") : t("panes.dock.minimize.title");
       winButton(b, "min", "minimize", tip, () => setWork(id, "min"));
     }
     if (mode === "max") {
       const tip = pl
-        ? tf("Restore the playlist — split the workspace with the dock ({0})", [key])
-        : tf("Restore the dock — split the workspace with the playlist ({0})", [key]);
+        ? tf("panes.playlist.restoreShortcut.title", [key])
+        : tf("panes.dock.restoreShortcut.title", [key]);
       winButton(b, "max", "restore", tip, () => setWork(id, "open"));
     } else {
-      const tip = pl ? tf("Maximize the playlist ({0}, or double-click its tabs)", [key]) : tf("Maximize the dock ({0}, or double-click its tabs)", [key]);
+      const tip = pl ? tf("panes.playlist.maximize.title", [key]) : tf("panes.dock.maximize.title", [key]);
       winButton(b, "max", "maximize", tip, () => setWork(id, "max"));
     }
   }
@@ -350,7 +350,7 @@ export function paneHeader(b, id) {
 /** The slim rail a minimized side panel collapses to; clicking it restores the panel. */
 /** function paneRail(b: Builder, id: String, title: String, icon: String, dot: String) => Undefined */
 export function paneRail(b, id, title, icon, dot) {
-  const tip = id === "browser" ? tf("Restore the browser ({0})", [keyOf(id)]) : tf("Restore the agent panel ({0})", [keyOf(id)]);
+  const tip = id === "browser" ? tf("panes.browser.rail.title", [keyOf(id)]) : tf("panes.agent.rail.title", [keyOf(id)]);
   b.open("div", "rail", `rail rail-${id}`);
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));

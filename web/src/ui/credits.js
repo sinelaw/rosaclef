@@ -66,7 +66,7 @@ function load() {
         return true;
       })
       .catch((e) => {
-        credits.text = tf("The license is in {0}.", [c.licenseFile]);
+        credits.text = tf("credits.license.loadFailed", [c.licenseFile]);
         invalidate();
         return false;
       });
@@ -157,13 +157,13 @@ export function sampleCredit(b, type, preset) {
   glyph(b, "info");
   // (Text and elements do not mix in one node: every piece is its own.)
   b.open("span", "t", "sample-credit-text");
-  b.leaf("span", "a", "", t("Samples:"));
+  b.leaf("span", "a", "", t("credits.sampleCredit.label"));
   b.leaf("b", "n", "", `${c.name} ${c.version.split(" ")[0]}`);
-  b.leaf("span", "l", "", "· " + tf("{0} license", [c.license]));
+  b.leaf("span", "l", "", "· " + tf("credits.licenseName", [c.license]));
   b.close();
   const tip =
-    preset === "" ? t("Who made these samples and the license they are shared under") : tf("Who made “{0}” and the license they are shared under", [preset]);
-  button(b, "open", "small", t("Credits & license"), tip, () => showCredits(c.id, preset));
+    preset === "" ? t("credits.sampleCredit.title") : tf("credits.sampleCredit.titleForPreset", [preset]);
+  button(b, "open", "small", t("credits.sampleCredit.open.label"), tip, () => showCredits(c.id, preset));
   b.close();
 }
 
@@ -186,7 +186,7 @@ export function creditsOverlay(b) {
   b.on("click", (e) => closeCredits());
   b.open("div", "dialog", "cr");
   b.attr("role", "dialog");
-  b.attr("aria-label", tf("{0}: credits and license", [c.name]));
+  b.attr("aria-label", tf("credits.dialog.aria", [c.name]));
 
   b.open("header", "head", "cr-head");
   b.open("div", "mark", "cr-mark");
@@ -194,49 +194,49 @@ export function creditsOverlay(b) {
   b.close();
   b.open("div", "title", "cr-title");
   b.leaf("h2", "h", "", c.name);
-  b.leaf("span", "v", "cr-version", tf("Version {0}", [c.version]));
+  b.leaf("span", "v", "cr-version", tf("credits.dialog.version", [c.version]));
   b.close();
-  b.leaf("span", "lic", "cr-license", tf("{0} license", [c.license]));
-  iconButton(b, "close", "ghost", "close", t("Close (Esc)"), closeCredits);
+  b.leaf("span", "lic", "cr-license", tf("credits.licenseName", [c.license]));
+  iconButton(b, "close", "ghost", "close", t("common.closeEsc"), closeCredits);
   b.close();
 
   b.open("div", "body", "cr-body");
   b.leaf("p", "sum", "cr-summary", c.summary);
   b.open("div", "by", "cr-by");
-  b.leaf("span", "l", "cr-label", t("Made by"));
+  b.leaf("span", "l", "cr-label", t("credits.dialog.madeBy.label"));
   b.leaf("span", "a", "", c.authors);
   b.close();
 
   if (credits.preset !== "") {
     const row = creditOf(c, credits.preset);
     b.open("section", "inst", "cr-inst");
-    b.leaf("div", "l", "cr-label", t("This instrument"));
+    b.leaf("div", "l", "cr-label", t("credits.dialog.instrument.label"));
     b.leaf("div", "n", "cr-inst-name", row && row.name !== credits.preset ? `${credits.preset} (${row.name})` : credits.preset);
     if (row) {
       if (row.details !== "") b.leaf("div", "d", "cr-inst-details", row.details);
-      b.leaf("div", "c", "cr-inst-credit", row.credit !== "" ? row.credit : t("Samples from FluidR3Mono (Frank Wen, Michael Cowgill)."));
+      b.leaf("div", "c", "cr-inst-credit", row.credit !== "" ? row.credit : t("credits.dialog.instrument.defaultCredit"));
       if (row.changes !== "") b.leaf("div", "x", "cr-inst-details", row.changes);
-    } else if (credits.rows.length === 0) b.leaf("div", "c", "cr-inst-details", t("Loading the sample sources…"));
+    } else if (credits.rows.length === 0) b.leaf("div", "c", "cr-inst-details", t("credits.dialog.instrument.loading"));
     b.close();
   }
 
   b.open("div", "links", "cr-links");
-  link(b, "src", t("Where it comes from"), c.source);
-  link(b, "readme", t("Readme"), c.readmeFile);
-  if (c.sourcesFile !== "") link(b, "sources", t("Sample sources (every instrument)"), c.sourcesFile);
-  link(b, "lic", t("License file"), c.licenseFile);
+  link(b, "src", t("credits.dialog.link.source"), c.source);
+  link(b, "readme", t("credits.dialog.link.readme"), c.readmeFile);
+  if (c.sourcesFile !== "") link(b, "sources", t("credits.dialog.link.sources"), c.sourcesFile);
+  link(b, "lic", t("credits.dialog.link.licenseFile"), c.licenseFile);
   b.close();
 
-  b.leaf("div", "lt", "cr-label", t("License and acknowledgements"));
-  b.leaf("pre", "text", "cr-text", credits.text === "" ? t("Loading…") : credits.text);
+  b.leaf("div", "lt", "cr-label", t("credits.dialog.licenseText.label"));
+  b.leaf("pre", "text", "cr-text", credits.text === "" ? t("credits.dialog.licenseText.loading") : credits.text);
 
-  b.leaf("div", "ot", "cr-label", t("Also in Rosaclef"));
+  b.leaf("div", "ot", "cr-label", t("credits.dialog.others.label"));
   b.open("ul", "others", "cr-others");
   for (const o of OTHERS) {
     b.open("li", o.name, "");
     b.leaf("b", "n", "", o.name);
-    b.leaf("span", "t", "", " " + tf("by {0} · {1}", [o.by, o.license]) + " · ");
-    link(b, "f", t("license"), o.file);
+    b.leaf("span", "t", "", " " + tf("credits.dialog.others.byLine", [o.by, o.license]) + " · ");
+    link(b, "f", t("credits.dialog.others.license"), o.file);
     b.close();
   }
   b.close();

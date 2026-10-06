@@ -404,7 +404,7 @@ function existingLaneChannel(lane) {
   return drumChannel(lane);
 }
 
-/** A drum's texts, in English (t() translates them where shown): its name,
+/** A drum's texts, as keys (t() translates them where shown): its name,
  * the tip of its channel choice, and its hit count for one and for several. */
 /** type DrumText = { kind: String, name: String, tip: String, one: String, many: String } */
 
@@ -422,14 +422,29 @@ function drumText(kind) {
   for (const d of DRUM_TEXTS) {
     if (d.kind === kind) return d;
   }
-  const l = drumLabel(kind);
-  return { kind: kind, name: l, tip: l, one: l, many: l };
+  return { kind: "", name: "", tip: "", one: "", many: "" };
 }
 
-/** A drum's name as shown (translated). */
+/** A drum's name as shown (translated; an unknown drum's label as it is). */
 /** function drumTitle(kind: String) => String */
 function drumTitle(kind) {
-  return t(drumText(kind).name);
+  const d = drumText(kind);
+  return d.kind !== "" ? t(d.name) : drumLabel(kind);
+}
+
+/** The tip of a drum's channel choice (translated). */
+/** function drumTip(kind: String) => String */
+function drumTip(kind) {
+  const d = drumText(kind);
+  return d.kind !== "" ? t(d.tip) : drumLabel(kind);
+}
+
+/** A drum's hit count in the summary ("3 snares"). */
+/** function drumCount(kind: String, n: Number) => String */
+function drumCount(kind, n) {
+  const d = drumText(kind);
+  if (d.kind === "") return drumLabel(kind);
+  return n === 1 ? t(d.one) : tf(d.many, [String(n)]);
 }
 
 /** A drum's name for a new channel (project data: not translated). */
@@ -690,7 +705,11 @@ function toggle(b, key, label, on, tip, onSet) {
 const MAX_SEPARATION = 0.25;
 
 const GRIDS = [0, 0.125, 0.25, 0.5, 1, 1 / 6, 1 / 3];
-const GRID_LABELS = [tk("common.off"), "1/32", "1/16", "1/8", tk("term.beat"), "1/16 T", "1/8 T"];
+/** The grids' labels as shown (GRIDS, in order; note values are not translated). */
+/** function gridLabels() => String[] */
+function gridLabels() {
+  return [t("common.off"), "1/32", "1/16", "1/8", t("term.beat"), "1/16 T", "1/8 T"];
+}
 
 /** The names of the Detail levels (DETAILS in ../voice.js, in order). */
 const DETAIL_NAMES = [tk("voice.settings.detail.option.smooth"), tk("voice.settings.detail.option.clean"), tk("voice.settings.detail.option.balanced"), tk("voice.settings.detail.option.detailed"), tk("voice.settings.detail.option.everyNote")];
@@ -783,7 +802,7 @@ function settingsView(b) {
     t("term.grid"),
     String(s.grid),
     GRIDS.map((g) => String(g)),
-    GRID_LABELS.map((l) => t(l)),
+    gridLabels(),
     t("voice.settings.grid.title"),
     (v) => {
       s.grid = Number(v);
@@ -886,7 +905,7 @@ function targetView(b, r) {
         ids.push(c.id);
         names.push(c.name);
       }
-      choice(b, e.key, drumTitle(e.key), e.value, ids, names, t(drumText(e.key).tip), (v) => {
+      choice(b, e.key, drumTitle(e.key), e.value, ids, names, drumTip(e.key), (v) => {
         e.value = v;
       });
     }
@@ -1306,9 +1325,7 @@ function summary(r) {
     const parts = [];
     for (const lane of DRUMS) {
       const n = r.notes.filter((x) => x.lane === lane).length;
-      const d = drumText(lane);
-      if (n === 1) parts.push(t(d.one));
-      else if (n > 0) parts.push(tf(d.many, [String(n)]));
+      if (n > 0) parts.push(drumCount(lane, n));
     }
     if (parts.length === 0) parts.push(t("voice.summary.noHits"));
     parts.push(barText);

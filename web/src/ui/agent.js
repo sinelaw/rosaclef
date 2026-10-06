@@ -31,19 +31,19 @@ const agent = {
 /** The panel's plugins: the terminal, the Critic and the Mix check. */
 /** const PLUGINS: { id: String, label: String, icon: String, tip: String }[] */
 const PLUGINS = [
-  { id: "terminal", label: tk("Terminal"), icon: "terminal", tip: tk("Your coding agent, in the project folder") },
+  { id: "terminal", label: tk("agent.tab.terminal.label"), icon: "terminal", tip: tk("agent.tab.terminal.title") },
   {
     id: "critic",
-    label: tk("Critic"),
+    label: tk("agent.tab.critic.label"),
     icon: "critic",
-    tip: tk("Mechanical checks of the project against production best practice, with one-click fixes"),
+    tip: tk("agent.tab.critic.title"),
   },
   {
     id: "mixcheck",
-    label: tk("Mix check"),
+    label: tk("panel.mixCheck"),
     icon: "meter",
     tip: tk(
-      "Measure the mix from one render: loudness and true peak against a delivery target, the limiter, phase, spectrum, masking — the same as `rosaclef mixcheck`"
+      "agent.tab.mixcheck.title"
     ),
   },
 ];
@@ -138,7 +138,7 @@ function mountTerm() {
   tm.fit();
   tm.writeText(
     "\x1b[38;2;227;196;122m  ✦ Rosaclef · Maestro\x1b[0m\r\n\x1b[38;2;163;151;128m  " +
-      t("Your own coding agent, working on this project's files.") +
+      t("agent.term.banner") +
       "\x1b[0m\r\n\r\n"
   );
   connectTerm();
@@ -216,23 +216,23 @@ export function agentPanel(b) {
   b.close();
   b.open("div", "title", "agent-title");
   b.leaf("b", "t", "", "Maestro");
-  b.leaf("span", "s", "", agent.running ? tf("{0} · live", [agent.name]) : agent.connected ? t("agent idle") : t("connecting…"));
+  b.leaf("span", "s", "", agent.running ? tf("agent.status.live", [agent.name]) : agent.connected ? t("agent.status.idle") : t("agent.status.connecting"));
   b.close();
   b.leaf("div", "sp", "spacer", "");
   b.leaf("div", "dot", agentDot(), "");
   const ids = state.agents.map((a) => a.id);
-  const names = state.agents.map((a) => (a.available ? a.name : tf("{0} (not installed)", [a.name])));
+  const names = state.agents.map((a) => (a.available ? a.name : tf("agent.picker.notInstalled", [a.name])));
   if (ids.length > 0) {
-    select(b, "pick", "", agent.id !== "" ? agent.id : preferred(), ids, names, t("Which agent runs in the terminal"), (v) => startAgent(v));
+    select(b, "pick", "", agent.id !== "" ? agent.id : preferred(), ids, names, t("agent.picker.title"), (v) => startAgent(v));
   }
-  iconButton(b, "restart", "small", "restart", agent.running ? t("Restart the agent") : t("Start the agent"), () => {
+  iconButton(b, "restart", "small", "restart", agent.running ? t("agent.restart.title") : t("agent.start.title"), () => {
     const id = agent.id !== "" ? agent.id : preferred();
     if (id === "") agent.choosing = true;
     else startAgent(id);
     invalidate();
   });
   if (agent.running) {
-    iconButton(b, "stop", "small ghost", "stop", t("Stop the agent"), () => {
+    iconButton(b, "stop", "small ghost", "stop", t("agent.stop.title"), () => {
       send({ t: "stop" });
     });
   }
@@ -263,38 +263,38 @@ export function agentPanel(b) {
   // What the agent can see right now (also written to .rosaclef/context.json).
   b.open("div", "ctx", "agent-context");
   b.open("span", "c1", "chip");
-  b.text(t("Pattern") + " ");
+  b.text(t("term.pattern") + " ");
   b.leaf("b", "v", "", pat ? pat.name : "—");
   b.close();
   b.open("span", "c2", "chip");
-  b.text(t("Channel") + " ");
+  b.text(t("term.channel") + " ");
   b.leaf("b", "v", "", ch ? ch.name : "—");
   b.close();
   b.open("span", "c3", "chip");
-  b.text(t("View") + " ");
+  b.text(t("agent.context.view.label") + " ");
   b.leaf(
     "b",
     "v",
     "",
     state.dock === "piano"
-      ? t("Piano roll")
+      ? t("panel.pianoRoll")
       : state.dock === "mixer"
-        ? tf("Mixer · {0}", [String(insertIndex(state.insert))])
+        ? tf("agent.context.view.mixer", [String(insertIndex(state.insert))])
         : state.dock === "voice"
-          ? t("Voice to notes")
+          ? t("agent.context.view.voice")
           : state.dock === "drums"
-            ? t("Drums")
-            : t("Channel rack")
+            ? t("term.drums")
+            : t("agent.context.view.rack")
   );
   b.close();
   if (state.selection.length > 0) {
     b.open("span", "c4", "chip");
     b.leaf("b", "v", "", String(state.selection.length));
-    b.text(" " + t("notes selected"));
+    b.text(" " + t("agent.context.notesSelected"));
     b.close();
   }
   if (state.diskIssues.length > 0) {
-    b.leaf("span", "c5", "chip warn", tf("project.json invalid: {0}", [state.diskIssues[0].path]));
+    b.leaf("span", "c5", "chip warn", tf("agent.context.diskInvalid", [state.diskIssues[0].path]));
     b.attr("title", state.diskIssues.map((i) => `${i.path}: ${i.message}`).join("\n"));
   }
   b.close();
@@ -327,13 +327,13 @@ export function agentPanel(b) {
   const showChooser = agent.connected && !agent.running && (agent.choosing || preferred() === "" || agent.exitCode >= 0 || agent.error !== "");
   if (showChooser) {
     b.open("div", "empty", "term-empty");
-    b.leaf("h2", "h", "", t("Your maestro awaits"));
+    b.leaf("h2", "h", "", t("agent.chooser.title"));
     const intro =
       state.backend === "local"
         ? t(
-            "In the browser studio this panel runs the Rosaclef shell — the studio's command line: inspect and edit the song, render, browse presets. To bring your own coding agent, download the project (Projects → .zip) and open it in the native studio."
+            "agent.chooser.intro.local"
           )
-        : t("Bring your own coding agent. It runs in this project's folder and edits the song live — you hear every change.");
+        : t("agent.chooser.intro.native");
     b.leaf(
       "p",
       "p",
@@ -341,18 +341,18 @@ export function agentPanel(b) {
       agent.error !== ""
         ? agent.error
         : agent.exitCode >= 0
-          ? tf("The agent exited (code {0}). Start it again or pick another.", [String(agent.exitCode)])
+          ? tf("agent.chooser.exited", [String(agent.exitCode)])
           : intro
     );
     b.open("div", "grid", "agent-grid");
     for (const a of state.agents) {
       b.open("button", a.id, a.available ? "agent-choice" : "agent-choice na");
-      b.attr("title", a.available ? a.command.join(" ") : tf("Install: {0}", [a.hint]));
+      b.attr("title", a.available ? a.command.join(" ") : tf("agent.chooser.install.title", [a.hint]));
       b.on("click", (e) => {
         startAgent(a.id);
       });
       b.leaf("b", "n", "", a.name);
-      b.leaf("span", "c", "", a.available ? a.command.join(" ") : t("not installed"));
+      b.leaf("span", "c", "", a.available ? a.command.join(" ") : t("agent.chooser.notInstalled"));
       b.close();
     }
     b.close();
@@ -363,12 +363,12 @@ export function agentPanel(b) {
   b.open("div", "suggest", "suggest");
   for (const s of suggestions()) {
     b.leaf("span", s, "chip", s);
-    b.attr("title", state.backend === "local" ? t("Type this into the shell") : t("Type this into the agent's prompt"));
+    b.attr("title", state.backend === "local" ? t("agent.suggest.shell.title") : t("agent.typeIntoPrompt"));
     b.on("pointerenter", (e) =>
       hint(
         state.backend === "local"
-          ? tf("Type “{0}” into the shell (press Enter to run it)", [s])
-          : tf("Suggest to the agent: “{0}” (press Enter in the terminal to send)", [s])
+          ? tf("agent.suggest.shell.hint", [s])
+          : tf("agent.suggest.agent.hint", [s])
       )
     );
     b.on("click", (e) => {

@@ -55,14 +55,14 @@ export function removeMeter(bar) {
 /** function meterLcd(b: Builder) => Undefined */
 export function meterLcd(b) {
   const now = meterOf(state.project.transport, 0);
-  const tip = t("Time signature the song starts in — right-click a bar in the playlist's ruler to change it from there");
+  const tip = t("meter.lcd.title");
   b.open("label", "meter", "lcd timesig");
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));
-  b.leaf("span", "label", "lcd-label", t("Time"));
+  b.leaf("span", "label", "lcd-label", t("meter.lcd.label"));
   b.open("span", "value", "lcd-value");
   b.open("select", "s", "lcd-select");
-  b.attr("aria-label", t("Time signature"));
+  b.attr("aria-label", t("term.timeSignature"));
   b.prop("value", now);
   b.on("change", (e) => setMeter(0, e.value));
   const choices = METERS.includes(now) ? METERS : [now].concat(METERS);
@@ -128,12 +128,12 @@ function meterMenuBody(b) {
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });
-  b.leaf("div", "t", "auto-menu-title", bar === 0 ? t("Time signature") : tf("Time signature from bar {0}", [String(bar + 1)]));
+  b.leaf("div", "t", "auto-menu-title", bar === 0 ? t("term.timeSignature") : tf("meter.menu.titleFromBar", [String(bar + 1)]));
   b.leaf(
     "div",
     "s",
     "auto-menu-sub",
-    bar === 0 ? tf("The song starts in {0}", [now]) : changes ? tf("Changes to {0} here", [now]) : tf("In {0} here (no change)", [now])
+    bar === 0 ? tf("meter.menu.startsIn", [now]) : changes ? tf("meter.menu.changesHere", [now]) : tf("meter.menu.noChangeHere", [now])
   );
   b.open("div", "grid", "meter-grid");
   for (const m of METERS) {
@@ -151,7 +151,7 @@ function meterMenuBody(b) {
       closeMeterMenu();
       removeMeter(bar);
     });
-    b.leaf("span", "l", "", tf("No change at bar {0}", [String(bar + 1)]));
+    b.leaf("span", "l", "", tf("meter.menu.removeChange", [String(bar + 1)]));
     b.close();
   }
   b.close();

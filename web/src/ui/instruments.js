@@ -80,7 +80,7 @@ export function addPick(pick) {
     d.params = dev.params;
     d.options = dev.options;
   });
-  toast(t("Channel added"), tf("{0} is in the channel rack; the piano plays it.", [pick.name]), "info");
+  toast(t("instruments.add.toast.title"), tf("instruments.add.toast.body", [pick.name]), "info");
   return id;
 }
 
@@ -97,7 +97,7 @@ export function instrumentLabel(d) {
   }
   if (d.type === "plugin") {
     const pl = state.catalog.plugins.find((x) => x.id === optionValue(d, "id"));
-    return pl ? tf("{0} (CLAP)", [pl.name]) : t("Plugin (CLAP)");
+    return pl ? tf("format.clapPlugin", [pl.name]) : t("instruments.label.plugin");
   }
   return label;
 }
@@ -114,7 +114,7 @@ export function tryPick(pick) {
   a.device = copyDevice(pick.device);
   if (hooks.audition) hooks.audition();
   if (pickHooks.tried) pickHooks.tried(a.device);
-  hint(tf("Trying {0} — play it on the keys (Z–/ and Q–[) or the piano below; + adds it as a channel", [pick.name]));
+  hint(tf("instruments.try.hint", [pick.name]));
   invalidate();
 }
 
@@ -186,5 +186,5 @@ export function replaceInstrument(ch, pick) {
     }
   });
   selectChannel(ch.id);
-  toast(t("Instrument replaced"), tf("{0} now plays {1} — its notes stay. Ctrl+Z undoes.", [before, instrumentLabel(dev)]), "info");
+  toast(t("instruments.replace.toast.title"), tf("instruments.replace.toast.body", [before, instrumentLabel(dev)]), "info");
 }
