@@ -81,7 +81,8 @@ points at. A fix that would leave the project invalid is refused.
 ## Audio checks (Mix check)
 
 The checks above read the project only. The *Mix check* category is measured on
-a render: master overload, true peaks over 0 dBTP, limiter pumping, a masked
+a render: master overload, true peaks over 0 dBTP, limiter pumping, an
+over-compressed master, a masked
 or buried lead, inaudible parts,
 harmonic clashes weighed by the parts' real levels, low-end build-up, phase,
 and sections without a build. `rosaclef critic --audio` runs them (one render

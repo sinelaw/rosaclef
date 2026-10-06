@@ -930,7 +930,9 @@ pub fn build<'a>(
         .map(|(k, _)| k)
         .collect();
     if want_aud && !flagged.is_empty() {
-        let gains = [1.5, 3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 12.0];
+        let gains = [
+            1.5, 3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 12.0, 15.0, 18.0, 21.0, 24.0, 30.0,
+        ];
         let mut trial_elems = vec![];
         let mut trials = vec![];
         let mut cuts = vec![];

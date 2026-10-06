@@ -13,10 +13,11 @@ use rosaclef_core::Project;
 use serde_json::{json, Value};
 
 /// The rules, in the order findings rank.
-pub const RULES: [&str; 9] = [
+pub const RULES: [&str; 10] = [
     "master-overload",
     "true-peak",
     "limiter-pumping",
+    "over-compression",
     "masked-lead",
     "inaudible-part",
     "harmonic-clash",
@@ -268,10 +269,10 @@ pub fn balance(
             cands.push(u);
         }
     }
-    let mut downs: Vec<(usize, f64, f64)> = cands
-        .into_iter()
-        .filter(|u| !e.units.contains(u))
-        .map(|u| {
+    let rest: Vec<usize> = cands.into_iter().filter(|u| !e.units.contains(u)).collect();
+    let mut downs: Vec<(usize, f64, f64)> = rest
+        .iter()
+        .map(|&u| {
             let (ins, ch) = fader_boost(p, mix, u);
             (u, ins, ch)
         })
@@ -279,7 +280,17 @@ pub fn balance(
         .collect();
     downs.sort_by(|a, b| (b.1 + b.2).total_cmp(&(a.1 + a.2)));
     downs.truncate(2);
-    let predicted = |lift: f64| {
+    // How far each other part comes down: its boost back to unity, and
+    // `under` more for the parts over the lead.
+    let cut = |u: usize, under: f64| {
+        let boost = downs
+            .iter()
+            .find(|d| d.0 == u)
+            .map(|d| d.1 + d.2)
+            .unwrap_or(0.0);
+        boost + if rest.contains(&u) { under } else { 0.0 }
+    };
+    let predicted = |lift: f64, under: f64| {
         let after: f64 = energy
             .iter()
             .enumerate()
@@ -287,24 +298,25 @@ pub fn balance(
                 let g = if e.units.contains(&u) {
                     lift
                 } else {
-                    downs
-                        .iter()
-                        .find(|d| d.0 == u)
-                        .map(|d| -(d.1 + d.2))
-                        .unwrap_or(0.0)
+                    -cut(u, under)
                 };
                 x * 10f64.powf(g / 10.0)
             })
             .sum();
         rel + lift - dsp::db(after / total)
     };
-    // The smallest lift (0.5 dB steps) that reaches the target.
-    let most = max_gain_db(p, e.channel, e.insert);
+    // The lead up 6 dB at most (more would push the master); the rest by
+    // bringing the parts over it down (12 dB at most), in 0.5 dB steps.
+    let most = max_gain_db(p, e.channel, e.insert).min(6.0);
     let mut lift = 0.0;
-    while predicted(lift) < LEAD_TARGET_DB && lift + 0.5 <= most + 1e-9 {
+    while predicted(lift, 0.0) < LEAD_TARGET_DB && lift + 0.5 <= most + 1e-9 {
         lift += 0.5;
     }
-    let expected = predicted(lift);
+    let mut under = 0.0;
+    while predicted(lift, under) < LEAD_TARGET_DB && under + 0.5 <= 12.0 + 1e-9 {
+        under += 0.5;
+    }
+    let expected = predicted(lift, under);
     if expected < rel + 1.5 {
         return None;
     }
@@ -312,14 +324,19 @@ pub fn balance(
     let mut said = vec![];
     for &(u, ins, ch) in &downs {
         let unit = &mix.units[u];
+        // Unity, and lower still with the others when they come down.
+        let to = round3(gain(-under));
         if ins > 0.0 {
             ops.push(set(
                 format!("/mixer/inserts/{}/volume", unit.insert),
-                json!(1.0),
+                json!(to),
             ));
         }
         if let (Some(c), true) = (unit.channel, ch > 0.0) {
-            ops.push(set(format!("/channels/{c}/volume"), json!(1.0)));
+            ops.push(set(
+                format!("/channels/{c}/volume"),
+                json!(if ins > 0.0 { 1.0 } else { to }),
+            ));
         }
         said.push(format!(
             "{}'s faders back to unity ({:.1} dB down)",
@@ -331,11 +348,32 @@ pub fn balance(
         ops.extend(level_ops(p, e.channel, e.insert, lift));
         said.push(format!("{} up {lift:.1} dB", e.name));
     }
+    if under > 0.0 {
+        let lowered: Vec<usize> = rest
+            .iter()
+            .copied()
+            .filter(|u| !downs.iter().any(|d| d.0 == *u))
+            .collect();
+        for &u in &lowered {
+            ops.extend(lower_unit(p, mix, u, under));
+        }
+        let names: Vec<String> = rest.iter().map(|u| short_name(p, mix, *u)).collect();
+        said.push(format!(
+            "{} down {under:.1} dB{}",
+            names.join(" and "),
+            if downs.is_empty() { "" } else { " more" }
+        ));
+    }
     let short = if expected < LEAD_TARGET_DB - 0.5 {
         " (as far as its faders go)"
     } else {
         ""
     };
+    let masker = rest
+        .iter()
+        .map(|&u| (u, cut(u, under)))
+        .filter(|x| x.1 > 0.0)
+        .max_by(|a, b| a.1.total_cmp(&b.1));
     Some(Balance {
         ops,
         why: format!(
@@ -347,9 +385,7 @@ pub fn balance(
         ),
         change: Change {
             gain_db: lift,
-            masker: downs
-                .first()
-                .map(|d| (d.0, [10f64.powf(-(d.1 + d.2) / 10.0); BARKS])),
+            masker: masker.map(|(u, d)| (u, [10f64.powf(-d / 10.0); BARKS])),
         },
         expected_rel: expected,
     })
@@ -408,8 +444,11 @@ pub fn suggestions(
             });
         }
     }
-    // Only as much gain as the faders can give (channel ≤ 1.5, insert ≤ 2).
-    let most = max_gain_db(p, e.channel, e.insert);
+    // Only as much gain as the faders can give (channel ≤ 1.5, insert ≤ 2),
+    // and 12 dB at most unless its own fader sits that far under the
+    // others' (then the fader is the cause; else what covers it is).
+    let gap = e.channel.map(|c| channel_gap(p, c).0).unwrap_or(0.0);
+    let most = max_gain_db(p, e.channel, e.insert).min(if gap >= 12.0 { 36.0 } else { 12.0 });
     let reachable = |g: &&f64| **g <= most + 0.05;
     let pick = gains
         .iter()
@@ -458,16 +497,28 @@ pub fn suggestions(
 /// Move the quieter note of a clash to the nearest pitch that clashes with
 /// nothing sounding with it.
 pub fn clash_fix(p: &Project, c: &Clash, notes: &[Played]) -> Option<(Vec<Value>, String)> {
-    let (mut q, mut o) = if c.a_db <= c.b_db {
+    let (q, o) = if c.a_db <= c.b_db {
         (&c.a, &c.b)
     } else {
         (&c.b, &c.a)
     };
-    // The bass holds the harmony up: the note over it moves instead.
+    // The quieter note first, then the other — but never the bass, which
+    // holds the harmony up.
     let bass = super::clashes::bass_at(notes, c.from).map(|n| n.pitch);
-    if bass == Some(q.pitch) && o.pitch > q.pitch {
-        std::mem::swap(&mut q, &mut o);
-    }
+    [(q, o), (o, q)]
+        .into_iter()
+        .filter(|(m, other)| !(bass == Some(m.pitch) && other.pitch > m.pitch))
+        .find_map(|(m, other)| move_note(p, m, other, notes))
+}
+
+/// The nearest pitch (a semitone, then a tone, down first) for `q` that
+/// sounds well with `o` and clashes with nothing else sounding with it.
+fn move_note(
+    p: &Project,
+    q: &Played,
+    o: &Played,
+    notes: &[Played],
+) -> Option<(Vec<Value>, String)> {
     let others: Vec<i32> = notes
         .iter()
         .filter(|n| n.from < q.to && n.to > q.from && n.channel != q.channel)
@@ -636,6 +687,57 @@ fn low_boost(p: &Project, insert: usize) -> Option<(usize, f64, f64)> {
         .filter(|(_, d)| d.enabled && d.kind == "eq" && d.param("low") >= 3.0)
         .map(|(j, d)| (j, d.param("lowFreq"), d.param("low")))
         .max_by(|a, b| a.2.total_cmp(&b.2))
+}
+
+/// How far channel `c`'s volume sits under the other channels' median
+/// (dB), and that median.
+fn channel_gap(p: &Project, c: usize) -> (f64, f64) {
+    let mut others: Vec<f64> = p
+        .channels
+        .iter()
+        .enumerate()
+        .filter(|(i, ch)| *i != c && !ch.mute)
+        .map(|(_, ch)| ch.volume)
+        .collect();
+    if others.is_empty() {
+        return (0.0, 0.0);
+    }
+    others.sort_by(|a, b| a.total_cmp(b));
+    let median = others[others.len() / 2];
+    (
+        dsp::amp_db(median.max(1e-4) / p.channels[c].volume.max(1e-4)),
+        median,
+    )
+}
+
+/// " Its channel volume is 0.05, 24.1 dB under the other channels' (0.80)."
+/// when a part's channel volume sits 12 dB or more under the others' median.
+fn fader_far_under(p: &Project, e: &ElementOut) -> String {
+    let Some(c) =
+        e.id.strip_prefix("channel:")
+            .and_then(|id| p.channels.iter().position(|c| c.id == id))
+    else {
+        return String::new();
+    };
+    let (under, median) = channel_gap(p, c);
+    if under < 12.0 {
+        return String::new();
+    }
+    format!(
+        " Its channel volume is {:.2}, {under:.1} dB under the other channels' ({median:.2}).",
+        p.channels[c].volume
+    )
+}
+
+/// The lowest value earlier findings' fixes set at `path` (infinity when
+/// none does): two fixes of one setting agree on the deeper move, so
+/// applying both leaves it there whatever their order.
+fn proposed(out: &[(FindingOut, f64)], path: &str) -> f64 {
+    out.iter()
+        .flat_map(|(f, _)| &f.fix)
+        .filter(|o| o["path"] == json!(path))
+        .filter_map(|o| o["value"].as_f64())
+        .fold(f64::INFINITY, f64::min)
 }
 
 /// A finding with no fix yet, keyed `rule|key`.
@@ -932,6 +1034,72 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
         }
     }
 
+    // over-compression: a master compressor or limiter holding heavy gain
+    // reduction all the time squashes the mix flat (pumping or not).
+    if ctx.include_master && o.has(Check::GainReduction) {
+        let hs = &mix.inside;
+        for g in mix.a.gr.iter().filter(|g| g.insert == 0) {
+            if hs.is_empty() {
+                continue;
+            }
+            let mean = hs.iter().map(|h| g.mean[*h] as f64).sum::<f64>() / hs.len() as f64;
+            let above = hs.iter().filter(|h| g.mean[**h] >= 3.0).count() as f64 / hs.len() as f64;
+            if mean < pick(6.0, 4.0, 9.0) || above < 0.5 {
+                continue;
+            }
+            let dev = &p.mixer.inserts[0].effects[g.fx];
+            let base = format!("/mixer/inserts/0/effects/{}/params", g.fx);
+            // Down to about 3 dB of gain reduction, the loudness kept.
+            let less = mean - 3.0;
+            let (fix, label) = if g.kind == "compressor" {
+                let (thr, ratio, makeup) = (
+                    dev.param("threshold"),
+                    dev.param("ratio").max(1.01),
+                    dev.param("makeup"),
+                );
+                let to = r1((thr + less / (1.0 - 1.0 / ratio)).min(0.0));
+                let up = r1((makeup - less).max(0.0));
+                (
+                    vec![
+                        set(format!("{base}/threshold"), json!(to)),
+                        set(format!("{base}/makeup"), json!(up)),
+                    ],
+                    format!("the compressor's threshold {thr:.1} → {to:.1} dB and makeup {makeup:.1} → {up:.1} dB"),
+                )
+            } else {
+                let drive = dev.param("gain");
+                let to = r1((drive - less).max(0.0)).min(proposed(&out, &format!("{base}/gain")));
+                (
+                    vec![set(format!("{base}/gain"), json!(to))],
+                    format!("the limiter's input gain {drive:+.1} → {to:+.1} dB"),
+                )
+            };
+            let dynamics = match (report.master.lra.flatten(), report.master.plr_db.flatten()) {
+                (Some(l), Some(pl)) => format!(" (LRA {l:.1} LU, PLR {pl:.1} dB)"),
+                _ => String::new(),
+            };
+            out.push((
+                FindingOut {
+                    element: Some(model::insert_id(p, 0)),
+                    from_bar: Some(report.range.from_bar),
+                    to_bar: Some(report.range.to_bar),
+                    fix,
+                    fix_label: label,
+                    ..finding(
+                        "over-compression",
+                        &format!("insert:0#{}", g.fx),
+                        format!("master {} (effect {})", g.kind, g.fx),
+                        format!(
+                            "it takes {mean:.1} dB off on average, over 3 dB {}% of the time: the mix is squashed flat{dynamics}.",
+                            pct(above)
+                        ),
+                    )
+                },
+                mean,
+            ));
+        }
+    }
+
     // limiter-pumping
     if ctx.include_master && o.has(Check::GainReduction) {
         let bpm = p.transport.bpm.max(1.0);
@@ -982,7 +1150,8 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             if g.kind == "limiter" && dev.param("gain") > 0.0 {
                 // Less drive, until it takes 3 dB at most.
                 let drive = dev.param("gain");
-                let to = r1((drive - (most - 3.0).max(mean)).max(0.0));
+                let to = r1((drive - (most - 3.0).max(mean)).max(0.0))
+                    .min(proposed(&out, &format!("{base}/gain")));
                 fix.push(set(format!("{base}/gain"), json!(to)));
                 said.push(format!("input gain {drive:+.1} → {to:+.1} dB"));
             } else if g.kind == "compressor" {
@@ -1080,8 +1249,10 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 ""
             };
             let detail = format!(
-                "{} is {}: audible {frac:.0}% of the time it plays{level}{masked}{stuck}",
-                e.name, e.verdict
+                "{} is {}: audible {frac:.0}% of the time it plays{level}{masked}{}{stuck}",
+                e.name,
+                e.verdict,
+                fader_far_under(p, e)
             );
             Some((
                 FindingOut {

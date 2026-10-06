@@ -89,7 +89,7 @@ there is no Studio audio output or CLAP plugins. See
 
 The **Critic** tab in the Maestro panel lints the song: 77 mechanical checks
 (no AI) of harmony, melody, rhythm, arrangement, low end, mix, stereo, effects
-and the master (and 9 more measured on a render: see **Mix check** below). Each check rests on a rule of thumb of production: muddy low
+and the master (and 10 more measured on a render: see **Mix check** below). Each check rests on a rule of thumb of production: muddy low
 voicings, notes out of key or beyond a real instrument's range, robotic
 velocities, loopitis, a bass panned off center, a limiter that isn't last.
 

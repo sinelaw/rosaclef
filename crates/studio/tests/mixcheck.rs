@@ -835,12 +835,17 @@ fn findings_name_the_setting_at_fault_and_verify_their_fixes() {
         "{:?}",
         low.fix
     );
-    // The lead under the mix: the kick's fader back to unity, the lead's cut
-    // insert restored before its channel is pushed.
+    // The lead under the mix: the kick's boosted fader back to unity (and
+    // further down, the lead going up 6 dB at most), the lead's cut insert
+    // restored before its channel is pushed.
     let lead = element(&r, "channel:lead");
     assert!(lead.lead && lead.verdict == "buried", "{lead:?}");
     let m = finding(&r, "masked-lead");
-    assert_eq!(sets(m, "/mixer/inserts/1/volume"), Some(1.0), "{:?}", m.fix);
+    assert!(
+        sets(m, "/mixer/inserts/1/volume").is_some_and(|v| v <= 1.0),
+        "{:?}",
+        m.fix
+    );
     assert!(
         sets(m, "/mixer/inserts/3/volume").is_some_and(|v| v > 0.4),
         "{:?}",

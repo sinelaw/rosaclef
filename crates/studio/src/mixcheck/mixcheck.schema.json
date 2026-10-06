@@ -794,6 +794,7 @@
               "master-overload",
               "true-peak",
               "limiter-pumping",
+              "over-compression",
               "masked-lead",
               "inaudible-part",
               "harmonic-clash",

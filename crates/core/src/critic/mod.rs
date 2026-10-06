@@ -236,6 +236,7 @@ pub static RULES: &[Rule] = &[
     // Mix check: measured on a render (`rosaclef mixcheck`; `rosaclef critic --audio`).
     r("master-overload", "Mix check", "Master overload", "Peaks far over 0 dBFS at the limiter's input make it work hard all the time: it flattens the transients and pumps. Leave headroom before the master."),
     r("true-peak", "Mix check", "True peak over 0 dBTP", "Peaks between the samples go over full scale and clip when the song is converted or encoded; streaming services ask for -1 dBTP."),
+    r("over-compression", "Mix check", "Over-compressed master", "A master compressor or limiter holding heavy gain reduction all the time flattens the song: no loud and soft, no punch. Let it catch the peaks only."),
     r("limiter-pumping", "Mix check", "Limiter pumping", "Gain reduction swinging with every beat makes the whole mix breathe; a slower release or less drive keeps it steady."),
     r("masked-lead", "Mix check", "Masked lead", "The lead carries the song: if other parts cover its frequencies it disappears, however loud its fader."),
     r("inaudible-part", "Mix check", "Inaudible part", "A part buried under others costs CPU and clutter and adds nothing: bring it out or take it away."),

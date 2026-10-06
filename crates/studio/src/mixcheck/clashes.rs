@@ -85,10 +85,22 @@ fn idiom(notes: &[Played], at: f64, a: i32, b: i32) -> Option<&'static str> {
 
 /// Note `k` passes by step between its neighbours in its part (a beat or
 /// less, a tone or less each side, in one direction), or leads a semitone
-/// into the next: a passing or an approach note.
+/// into the next: a passing or an approach note — when it is foreign to the
+/// chord the other notes sounding make (a chord tone stepping on is not).
 fn passing(notes: &[Played], k: usize) -> bool {
     let x = &notes[k];
     if x.length > 1.0 + 1e-9 {
+        return false;
+    }
+    let at = x.from + 1e-3;
+    let in_chord = notes.iter().enumerate().any(|(i, n)| {
+        i != k
+            && n.channel != x.channel
+            && n.from <= at
+            && n.to > at
+            && (n.pitch - x.pitch).rem_euclid(12) == 0
+    });
+    if in_chord {
         return false;
     }
     let prev = notes[..k]
