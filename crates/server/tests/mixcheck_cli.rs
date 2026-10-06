@@ -46,8 +46,20 @@ fn exit_status_and_errors() {
         .iter()
         .any(|f| f["rule"] == "master-overload"));
 
-    // Bar 1 alone, levels only: no warnings.
-    let (code, out, _) = mixcheck(&dir, &["--range", "1:1", "--checks", "levels", "--text"]);
+    // Bar 1 alone, levels only, loose (its true peak, -0.4 dBTP, under
+    // loose's 0): no warnings.
+    let (code, out, _) = mixcheck(
+        &dir,
+        &[
+            "--range",
+            "1:1",
+            "--checks",
+            "levels",
+            "--threshold",
+            "loose",
+            "--text",
+        ],
+    );
     assert_eq!(code, 0, "{out}");
     assert!(out.lines().count() <= 40);
 

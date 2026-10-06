@@ -12,7 +12,7 @@ use rosaclef_core::Project;
 use serde_json::{json, Value};
 
 /// The rules, in the order findings rank.
-pub const RULES: [&str; 9] = [
+pub const RULES: [&str; 11] = [
     "master-overload",
     "true-peak",
     "limiter-pumping",
@@ -20,7 +20,9 @@ pub const RULES: [&str; 9] = [
     "masked-lead",
     "inaudible-part",
     "low-end-buildup",
+    "harsh-highs",
     "phase-correlation",
+    "section-lift",
     "section-loudness-flat",
 ];
 
@@ -304,12 +306,18 @@ pub fn balance(
     // A masker's EQ boosting the range where it covers the lead is the
     // first cause: that band back to +2 dB. Its effect on the masker's
     // energy: the share of it in the boosted band, cut by as much.
+    // Only when it is masked, and near where the lead itself is loudest.
+    let (lo, hi) = band_span(&au.spectrum, 0.25);
+    let [own_lo, own_hi] = model::band_hz(lo, hi);
+    let near_lead = |f: f64| f >= own_lo / 2.0 && f <= own_hi * 2.0;
     let eq = au
         .maskers
         .iter()
         .take(3)
+        .filter(|_| au.fraction() < 0.95)
         .filter(|m| !e.units.contains(&m.unit))
         .filter_map(|m| eq_boost_over(p, mix, m.unit, &m.bands).map(|b| (m.unit, b)))
+        .filter(|(_, b)| near_lead(b.freq))
         .max_by(|a, b| a.1.boost.total_cmp(&b.1.boost));
     let eq_factor = |u: usize| match &eq {
         Some((v, b)) if *v == u => {
@@ -489,15 +497,26 @@ fn lane_at(points: &[rosaclef_core::AutomationPoint], beat: f64) -> Option<f64> 
 }
 
 fn lane_dip(p: &Project, e: &Element, stretches: &[(f64, f64)]) -> Option<Dip> {
-    if stretches.is_empty() {
-        return None;
-    }
     let targets: Vec<String> = std::iter::once(format!("insert/{}/volume", e.insert))
         .chain(
             e.channel
                 .map(|c| format!("channel/{}/volume", p.channels[c].id)),
         )
         .collect();
+    lane_dip_on(p, &targets, stretches, &e.name)
+}
+
+/// A lane driving one of `targets` that holds `who` 6 dB or more down in
+/// `stretches` (written beats) and up elsewhere.
+fn lane_dip_on(
+    p: &Project,
+    targets: &[String],
+    stretches: &[(f64, f64)],
+    who: &str,
+) -> Option<Dip> {
+    if stretches.is_empty() {
+        return None;
+    }
     let inside = |b: f64| {
         stretches
             .iter()
@@ -537,9 +556,8 @@ fn lane_dip(p: &Project, e: &Element, stretches: &[(f64, f64)]) -> Option<Dip> {
         (!ops.is_empty()).then(|| Dip {
             ops,
             said: format!(
-                "the automation lane \"{}\" back up to {high:.2} there (it holds {} {lift:.1} dB down)",
+                "the automation lane \"{}\" back up to {high:.2} there (it holds {who} {lift:.1} dB down)",
                 if l.name.is_empty() { &l.id } else { &l.name },
-                e.name
             ),
             lift,
         })
@@ -841,6 +859,26 @@ fn low_boost(p: &Project, insert: usize) -> Option<(usize, f64, f64)> {
         .max_by(|a, b| a.2.total_cmp(&b.2))
 }
 
+/// An EQ on an insert boosting its highs (a high shelf, or a bell at 3 kHz
+/// or more) by 6 dB or more: (effect index, band, frequency, boost).
+fn high_boost(p: &Project, insert: usize) -> Option<(usize, &'static str, f64, f64)> {
+    if insert == 0 {
+        return None;
+    }
+    p.mixer.inserts[insert]
+        .effects
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| d.enabled && d.kind == "eq")
+        .flat_map(|(j, d)| {
+            [("high", "highFreq"), ("mid", "midFreq")]
+                .into_iter()
+                .map(move |(band, fk)| (j, band, d.param(fk), d.param(band)))
+        })
+        .filter(|(_, band, f, g)| *g >= 6.0 && (*band == "high" || *f >= 3000.0))
+        .max_by(|a, b| a.3.total_cmp(&b.3))
+}
+
 /// How far channel `c`'s volume sits under the other channels' median
 /// (dB), and that median.
 fn channel_gap(p: &Project, c: usize) -> (f64, f64) {
@@ -1118,15 +1156,17 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
         }
     }
 
-    // true-peak
+    // true-peak: over the delivery target's limit (`--target`), else
+    // streaming's -1 dBTP (strict -2, loose 0).
+    let target = o.target.as_deref().and_then(super::targets::find);
+    let limit = target
+        .map(|t| t.true_peak)
+        .unwrap_or_else(|| pick(-1.0, -2.0, 0.0));
     if ctx.include_master && o.has(Check::Levels) {
-        if let Some(tp) = report
-            .master
-            .true_peak_dbtp
-            .filter(|tp| *tp > pick(0.0, -1.0, 0.5))
-        {
-            // Delivery asks for -1 dBTP.
-            let down = tp + 1.0;
+        if let Some(tp) = report.master.true_peak_dbtp.filter(|tp| *tp > limit) {
+            // Inter-sample peaks follow a sample-peak ceiling loosely: half a
+            // dB of margin under the limit.
+            let down = tp - limit + 0.5;
             let (fix, label, how) = match master_drive(p) {
                 Some((j, _)) => {
                     let c = p.mixer.inserts[0].effects[j].param("ceiling");
@@ -1177,7 +1217,8 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                         "master",
                         at,
                         format!(
-                            "the output's true peak reaches {tp:+.1} dBTP: peaks between the samples clip when the song is converted or encoded (streaming services ask for -1 dBTP).{how}"
+                            "the output's true peak reaches {tp:+.1} dBTP, over {}'s {limit:+.1} dBTP: peaks between the samples clip when the song is converted or encoded.{how}",
+                            target.map(|t| t.name).unwrap_or("streaming")
                         ),
                     )
                 },
@@ -1397,7 +1438,11 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             "{} in bars {}–{}",
             e.name, report.range.from_bar, report.range.to_bar
         );
-        let found = if lead && matches!(e.verdict, "inaudible" | "buried") {
+        // Judged only when its level or audibility was asked for.
+        let judged = o.has(Check::Audibility) || o.has(Check::Masking) || o.has(Check::Levels);
+        let found = if !judged {
+            None
+        } else if lead && matches!(e.verdict, "inaudible" | "buried") {
             // Under the mix only in stretches: there, with the whole range's
             // level for comparison.
             let stretches: Vec<(u32, u32, Option<u32>)> = e
@@ -1704,6 +1749,82 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
         }
     }
 
+    // harsh-highs: the top octaves (6 kHz up) about as loud as the presence
+    // range (2-6 kHz) — a balanced mix keeps them 4 dB or more under it.
+    if ctx.include_master && o.has(Check::Spectrum) {
+        if let Some(sp) = report.master.spectrum.as_ref() {
+            let over = sp.db[5] - sp.db[4];
+            if over > pick(-2.0, -3.0, 0.0) {
+                let air = mix.ranked(&mix.inside, &|u, h| mix.unit_six(u, h)[5]);
+                // The setting at fault: a high EQ boost on a part carrying
+                // a quarter of the top band.
+                let boosted =
+                    air.iter()
+                        .filter(|(_, share)| *share >= 0.25)
+                        .find_map(|(u, share)| {
+                            high_boost(p, mix.units[*u].insert).map(|b| (*u, *share, b))
+                        });
+                let names: Vec<String> = air
+                    .iter()
+                    .take(3)
+                    .filter(|x| x.1 >= 0.1)
+                    .map(|(u, share)| format!("{} {:.0}%", short_name(p, mix, *u), share * 100.0))
+                    .collect();
+                let (fix, label, cause) = match boosted {
+                    Some((u, _, (j, band, freq, boost))) => {
+                        let insert = mix.units[u].insert;
+                        (
+                            vec![set(
+                                format!("/mixer/inserts/{insert}/effects/{j}/params/{band}"),
+                                json!(EQ_KEEP),
+                            )],
+                            format!(
+                                "the {band} band of the EQ on {} ({freq:.0} Hz) from {boost:+.1} to {EQ_KEEP:+.1} dB",
+                                model::insert_id(p, insert)
+                            ),
+                            format!(
+                                " {}'s EQ boosts {boost:+.1} dB at {freq:.0} Hz.",
+                                short_name(p, mix, u)
+                            ),
+                        )
+                    }
+                    None => match air.first() {
+                        Some((u, _)) if mix.units[*u].insert > 0 => {
+                            let (ops, what) = eq_ops(
+                                p,
+                                mix.units[*u].insert,
+                                "high",
+                                -3.0,
+                                ("highFreq", 8000.0),
+                                &[],
+                            );
+                            (ops, what, String::new())
+                        }
+                        _ => (vec![], String::new(), String::new()),
+                    },
+                };
+                out.push((
+                    FindingOut {
+                        from_bar: Some(report.range.from_bar),
+                        to_bar: Some(report.range.to_bar),
+                        fix,
+                        fix_label: label,
+                        ..finding(
+                            "harsh-highs",
+                            "master",
+                            format!("bars {}–{}", report.range.from_bar, report.range.to_bar),
+                            format!(
+                                "above 6 kHz the mix is {over:+.1} dB against 2–6 kHz (a balanced mix keeps it 4 dB or more under): bright and piercing.{cause} Above 6 kHz: {}.",
+                                names.join(", ")
+                            ),
+                        )
+                    },
+                    over + 10.0,
+                ));
+            }
+        }
+    }
+
     // phase (master)
     if ctx.include_master && o.has(Check::Stereo) {
         if let Some(c) = &report.master.correlation {
@@ -1728,6 +1849,13 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                     -loss.unwrap_or(0.0),
                 ));
             }
+        }
+    }
+
+    // section-lift
+    if ctx.include_master && o.has(Check::Levels) {
+        if let Some(f) = section_lift(ctx, pick(1.0, 0.5, 2.0)) {
+            out.push(f);
         }
     }
 
@@ -1772,7 +1900,12 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
 }
 
 /// Sections whose loudness hardly changes: no build.
-fn flat_sections(report: &Report, ctx: &Context, spread_at: f64) -> Option<(FindingOut, f64)> {
+/// The sections' loudness at the output, each pass apart: ((section index,
+/// pass), LUFS), with the sections.
+/// ((section index, pass), LUFS).
+type SectionLoud = ((usize, u32), f64);
+
+fn section_louds(ctx: &Context) -> (Vec<timeline::Section>, Vec<SectionLoud>) {
     let p = ctx.project;
     let t = ctx.timeline;
     let a = ctx.mix.a;
@@ -1796,10 +1929,109 @@ fn flat_sections(report: &Report, ctx: &Context, spread_at: f64) -> Option<(Find
             None => groups.push((key, vec![w])),
         }
     }
-    let louds: Vec<((usize, u32), f64)> = groups
+    let louds: Vec<SectionLoud> = groups
         .iter()
         .filter_map(|(k, w)| model::integrated(w).map(|l| (*k, l)))
         .collect();
+    (secs, louds)
+}
+
+/// A section the song builds to (a chorus, a drop, a hook) or one it builds
+/// from (a verse), by its name.
+fn section_role(name: &str) -> Option<bool> {
+    let n = name.to_lowercase();
+    if ["chorus", "drop", "hook", "refrain"]
+        .iter()
+        .any(|w| n.contains(w))
+    {
+        Some(true)
+    } else if n.contains("verse") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// Choruses no louder than the verses (by `gap` LU): the song does not lift
+/// where it should.
+fn section_lift(ctx: &Context, gap: f64) -> Option<(FindingOut, f64)> {
+    let p = ctx.project;
+    let t = ctx.timeline;
+    let (secs, louds) = section_louds(ctx);
+    let verses: Vec<f64> = louds
+        .iter()
+        .filter(|((si, _), _)| section_role(&secs[*si].name) == Some(false))
+        .map(|x| x.1)
+        .collect();
+    if verses.is_empty() {
+        return None;
+    }
+    // The verses' energy average.
+    let verse = 10.0
+        * (verses.iter().map(|l| 10f64.powf(l / 10.0)).sum::<f64>() / verses.len() as f64).log10();
+    let low: Vec<&SectionLoud> = louds
+        .iter()
+        .filter(|((si, _), l)| section_role(&secs[*si].name) == Some(true) && *l < verse + gap)
+        .collect();
+    if low.is_empty() {
+        return None;
+    }
+    let worst = low.iter().map(|x| x.1).fold(f64::INFINITY, f64::min);
+    let mut stretches: Vec<(f64, f64)> = low
+        .iter()
+        .map(|((si, _), _)| (secs[*si].start, secs[*si].end))
+        .collect();
+    stretches.dedup();
+    let dip = lane_dip_on(p, &["insert/0/volume".into()], &stretches, "the mix");
+    let names: Vec<String> = low
+        .iter()
+        .map(|((si, pass), l)| {
+            if *pass > 1 {
+                format!("{} ({}) {:.1}", secs[*si].name, pass, l)
+            } else {
+                format!("{} {:.1}", secs[*si].name, l)
+            }
+        })
+        .collect();
+    let (s0, s1) = stretches[0];
+    let (fb, tb) = (t.bar_of(s0), t.bar_of((s1 - 1e-6).max(s0)));
+    let cause = match &dip {
+        Some(d) => format!(
+            " The master volume lane holds it down {:.1} dB there.",
+            d.lift
+        ),
+        None => " Nothing in the mixer holds it down: the arrangement (parts, voicing, \
+                 dynamics) has to lift it."
+            .into(),
+    };
+    let (fix, fix_label) = match dip {
+        Some(d) => (d.ops, d.said),
+        None => (vec![], String::new()),
+    };
+    Some((
+        FindingOut {
+            from_bar: Some(fb),
+            to_bar: Some(tb),
+            fix,
+            fix_label,
+            ..finding(
+                "section-lift",
+                "master",
+                format!("bars {fb}–{tb}"),
+                format!(
+                    "{} {} LUFS against the verses' {verse:.1}: the chorus should be {gap:.1} LU or more louder.{cause}",
+                    names.join(", "),
+                    if low.len() > 1 { "are at" } else { "is at" },
+                ),
+            )
+        },
+        verse + gap - worst,
+    ))
+}
+
+fn flat_sections(report: &Report, ctx: &Context, spread_at: f64) -> Option<(FindingOut, f64)> {
+    let p = ctx.project;
+    let (secs, louds) = section_louds(ctx);
     if louds.len() < 3 {
         return None;
     }

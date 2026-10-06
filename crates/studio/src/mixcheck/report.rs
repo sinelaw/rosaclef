@@ -38,6 +38,9 @@ pub struct Report {
     pub render: RenderOut,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    /// Asked with `--focus`: the summary lists its parts even when ok.
+    #[serde(skip)]
+    pub focused: bool,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -224,6 +227,10 @@ pub struct ElementOut {
     pub correlation: Option<Option<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audibility: Option<AudibilityOut>,
+    /// Its own spectrum at the master where it plays: the six bands of
+    /// `master.spectrum` (dB).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spectrum_db: Option<Vec<f64>>,
     pub level: LevelOut,
     /// The lead only: the stretches (sections, or 4 bars) where it sits
     /// under the floor, when the whole range's level hides them.
@@ -725,6 +732,7 @@ pub fn build<'a>(
     let blocks = mix.inside_blocks.clone();
     let mut r = Report {
         version: VERSION,
+        focused: !o.focus.is_empty(),
         ..Default::default()
     };
     let repeats = res.ranges.iter().any(|(x, y)| t.repeats_in(*x, *y));
@@ -831,10 +839,24 @@ pub fn build<'a>(
             row.pass = Some(key.1);
         }
         if o.has(Check::Levels) {
+            // Windows reach back (400 ms, 3 s): a row longer than one
+            // counts only those that start inside it, not the row before.
             let l = loudness_of(a, bs, &out_kms);
-            row.lufs = Some(l.integrated.map(r1));
-            row.lufs_momentary_max = Some(l.momentary_max.map(r1));
-            row.lufs_short_term_max = Some(l.short_max.map(r1));
+            let inside = |v: &[f64], n: usize| -> Vec<f64> {
+                if v.len() >= n {
+                    v[n - 1..].to_vec()
+                } else {
+                    v.to_vec()
+                }
+            };
+            let (mom, short) = (inside(&l.momentary, 4), inside(&l.short, 30));
+            let max = |v: &[f64]| {
+                let m = v.iter().copied().fold(0.0, f64::max);
+                (m > 0.0).then(|| r1(dsp::lufs(m)))
+            };
+            row.lufs = Some(model::integrated(&mom).map(r1));
+            row.lufs_momentary_max = Some(max(&mom));
+            row.lufs_short_term_max = Some(max(&short));
             let ms: f64 =
                 hs.iter().map(|h| mix.ms(mix.master_out, *h)).sum::<f64>() / hs.len().max(1) as f64;
             row.rms_dbfs = opt_db(ms).or(Some(-120.0));
@@ -904,10 +926,12 @@ pub fn build<'a>(
     } else {
         (vec![Audibility::default(); elements.len()], vec![])
     };
-    let overloaded = r
-        .per_bar
-        .iter()
-        .any(|x| x.pre_limiter_peak_dbfs.unwrap_or(-99.0) > 0.0);
+    // The master overloads where its limiter's input goes over 0 dBFS and
+    // the limiter works for it (3 dB or more), not where it catches a peak.
+    let overloaded = r.per_bar.iter().any(|x| {
+        x.pre_limiter_peak_dbfs.unwrap_or(-99.0) > 0.0
+            && x.limiter_gr_max_db.is_none_or(|g| g >= 3.0)
+    });
     let (inaudible_at, buried_at) = match o.threshold {
         Threshold::Strict => (0.35, 0.7),
         Threshold::Normal => (0.25, 0.6),
@@ -1014,6 +1038,18 @@ pub fn build<'a>(
         }
         if o.has(Check::Stereo) {
             out.correlation = Some(mix.correlation(e.stream, &active).map(r2));
+        }
+        if o.has(Check::Spectrum) {
+            let mut six = [0f64; BANDS];
+            for &h in &active {
+                for u in &e.units {
+                    for (a, b) in six.iter_mut().zip(mix.unit_six(*u, h)) {
+                        *a += b;
+                    }
+                }
+            }
+            let n = active.len().max(1) as f64;
+            out.spectrum_db = Some(six.iter().map(|v| r1(dsp::db(v / n))).collect());
         }
         if want_aud {
             out.audibility = Some(audibility_out(&mix, au, o));

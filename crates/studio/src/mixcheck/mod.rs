@@ -222,6 +222,42 @@ fn report_of(env: &Env, project: &Project, o: &Options) -> Result<Report, Error>
 
 /// Apply JSON Patch operations to a project, in memory; the result must be
 /// a valid project (errors name the JSON path).
+/// The ops of `ops` setting a value an automation lane drives: the lane
+/// overrides them while it plays.
+fn overridden(p: &Project, ops: &[Value]) -> Vec<String> {
+    let mut out = vec![];
+    for (n, op) in ops.iter().enumerate() {
+        let Some(path) = op.get("path").and_then(|x| x.as_str()) else {
+            continue;
+        };
+        let seg: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+        let target = match seg.as_slice() {
+            ["mixer", "inserts", i, k @ ("volume" | "pan")] => format!("insert/{i}/{k}"),
+            ["mixer", "inserts", i, "effects", k, "params", q] => {
+                format!("insert/{i}/effect/{k}/{q}")
+            }
+            ["channels", c, k @ ("volume" | "pan")] => {
+                match c.parse::<usize>().ok().and_then(|c| p.channels.get(c)) {
+                    Some(ch) => format!("channel/{}/{k}", ch.id),
+                    None => continue,
+                }
+            }
+            _ => continue,
+        };
+        if let Some(l) = p
+            .automation
+            .iter()
+            .find(|l| !l.mute && !l.points.is_empty() && l.target == target)
+        {
+            out.push(format!(
+                "whatIf[{n}] {path}: the automation lane \"{}\" ({target}) drives it, so it has no effect while the lane plays; change the lane's points",
+                if l.name.is_empty() { &l.id } else { &l.name }
+            ));
+        }
+    }
+    out
+}
+
 pub fn patched(project: &Project, ops: &[Value], what: &str) -> Result<Project, Error> {
     let mut doc = serde_json::to_value(project).map_err(|e| Error(e.to_string()))?;
     patch::apply(&mut doc, ops, what)?;
@@ -255,6 +291,10 @@ pub fn run(env: &Env, project: &Project, o: &Options) -> Result<Report, Error> {
         let mut d = diff::diff(&base, &r);
         if let Some(m) = d.as_object_mut() {
             m.insert("ops".into(), json!(o.what_if.len()));
+            let over = overridden(project, &o.what_if);
+            if !over.is_empty() {
+                m.insert("overridden".into(), json!(over));
+            }
             m.insert(
                 "note".into(),
                 json!("the report is of the project with the what-if applied: its fixes and suggestions are for that project"),
@@ -262,11 +302,12 @@ pub fn run(env: &Env, project: &Project, o: &Options) -> Result<Report, Error> {
         }
         r.what_if = Some(d);
         r.render.renders += base.render.renders;
-        r.render.cached &= base.render.cached;
     }
     if o.verify {
         verify(env, p_now, o, &mut r)?;
     }
+    // Cached only when nothing was rendered for it.
+    r.render.cached = r.render.renders == 0;
     r.render.ms = (env.folder.fs.now_ms() - t0).max(0.0) as u64;
     Ok(r)
 }
@@ -372,6 +413,7 @@ pub fn compare(
     }
     rb.compare = Some(d);
     rb.render.renders += ra.render.renders;
+    rb.render.cached = rb.render.renders == 0;
     Ok(rb)
 }
 

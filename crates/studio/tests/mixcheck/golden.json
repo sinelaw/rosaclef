@@ -72,7 +72,7 @@
       "bar": 2,
       "fromBeat": 4.0,
       "toBeat": 8.0,
-      "lufs": -6.9,
+      "lufs": -6.7,
       "lufsMomentaryMax": -6.3,
       "lufsShortTermMax": -7.1,
       "rmsDbfs": -8.2,
@@ -178,6 +178,14 @@
           300.0
         ]
       },
+      "spectrumDb": [
+        -22.8,
+        -14.4,
+        -23.5,
+        -31.3,
+        -51.5,
+        -43.4
+      ],
       "level": {
         "faderDb": 1.6,
         "channelVolume": 0.9,
@@ -215,6 +223,14 @@
           100.0
         ]
       },
+      "spectrumDb": [
+        -26.9,
+        -23.1,
+        -39.0,
+        -51.4,
+        -89.5,
+        -116.4
+      ],
       "level": {
         "faderDb": 0.0,
         "channelVolume": 0.8,
@@ -244,6 +260,14 @@
           770.0
         ]
       },
+      "spectrumDb": [
+        -64.7,
+        -75.0,
+        -49.1,
+        -23.4,
+        -36.9,
+        -58.5
+      ],
       "level": {
         "faderDb": 0.0,
         "channelVolume": 0.5,
@@ -291,6 +315,14 @@
           400.0
         ]
       },
+      "spectrumDb": [
+        -86.7,
+        -39.9,
+        -20.3,
+        -29.8,
+        -48.1,
+        -63.2
+      ],
       "level": {
         "faderDb": -1.9,
         "channelVolume": 0.6,
@@ -343,6 +375,25 @@
         }
       ],
       "fixLabel": "the limiter's input gain +6.0 → +0.0 dB"
+    },
+    {
+      "severity": "warn",
+      "rule": "true-peak",
+      "key": "true-peak|master",
+      "where": "master (highest in bar 3)",
+      "detail": "the output's true peak reaches -0.5 dBTP, over Spotify's -1.0 dBTP: peaks between the samples clip when the song is converted or encoded. The limiter holds sample peaks to -1.0 dB; the peaks between samples go over it.",
+      "element": "insert:0/Master",
+      "fromBar": 2,
+      "toBar": 3,
+      "fromBeat": 4.0,
+      "fix": [
+        {
+          "op": "add",
+          "path": "/mixer/inserts/0/effects/1/params/ceiling",
+          "value": -2.0
+        }
+      ],
+      "fixLabel": "the limiter's ceiling -1.0 → -2.0 dB"
     },
     {
       "severity": "warn",

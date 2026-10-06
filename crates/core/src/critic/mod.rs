@@ -241,6 +241,8 @@ pub static RULES: &[Rule] = &[
     r("masked-lead", "Mix check", "Masked lead", "The lead carries the song: if other parts cover its frequencies it disappears, however loud its fader."),
     r("inaudible-part", "Mix check", "Inaudible part", "A part buried under others costs CPU and clutter and adds nothing: bring it out or take it away."),
     r("low-end-buildup", "Mix check", "Low-end build-up", "Too much energy under 250–500 Hz makes a mix muddy and boomy and eats the headroom."),
+    r("harsh-highs", "Mix check", "Harsh highs", "Above 6 kHz as loud as the presence range makes cymbals, hats and sibilants pierce; a balanced mix keeps the top octaves a few dB under."),
+    r("section-lift", "Mix check", "Chorus under the verse", "A chorus (or drop, hook, refrain) no louder than the verses does not lift; a master volume lane holding it down is put back up."),
     r("phase-correlation", "Mix check", "Phase and mono", "A negative correlation means the channels cancel: on a phone or a club's mono system parts disappear."),
     r("section-loudness-flat", "Mix check", "No build between sections", "Sections at the same loudness give the song nowhere to go; the drop hits harder after a quieter build."),
     r("unknown-content", "Project", "Content this version doesn't know", "The song names sections, instruments, effects or settings this version of Rosaclef doesn't know (made with a newer one, or a typo): they are left out, or played on a stand-in, until it is updated."),

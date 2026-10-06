@@ -893,3 +893,80 @@ fn a_lead_buried_in_part_of_the_song_is_found_there() {
     );
     assert!(f.from_bar.unwrap() >= 5, "{f:?}");
 }
+
+#[test]
+fn a_chorus_held_under_the_verse_is_found_and_put_back() {
+    let dir = scratch("lift");
+    let mut v: Value = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    // The same bars twice: a verse, then a chorus.
+    v["playlist"]["clips"][0]["length"] = json!(32);
+    let again = json!({"pattern": "tune", "start": 20, "length": 8, "track": 1});
+    v["playlist"]["clips"].as_array_mut().unwrap().push(again);
+    v["score"]["marks"] = json!([{"start": 0, "end": 16, "color": "#3f8f7a", "label": "Verse 1"},
+                                 {"start": 16, "end": 32, "color": "#d4af37", "label": "Chorus"}]);
+    // As loud as the verse: the arrangement has to lift it.
+    let flat: Project = serde_json::from_value(v.clone()).unwrap();
+    let r = check(&dir, &flat, json!({}));
+    let f = finding(&r, "section-lift");
+    assert!(
+        f.fix.is_empty() && f.detail.contains("arrangement"),
+        "{f:?}"
+    );
+    assert_eq!(f.from_bar, Some(5), "{f:?}");
+
+    // A master lane holding the chorus down: put back up, and verified.
+    v["automation"] = json!([{"id": "duck", "name": "Duck", "target": "insert/0/volume",
+        "points": [{"beat": 0, "value": 1.0}, {"beat": 16, "value": 1.0},
+                   {"beat": 16.01, "value": 0.3}, {"beat": 32, "value": 0.3}]}]);
+    let p: Project = serde_json::from_value(v).unwrap();
+    let r = check(&dir, &p, json!({"verify": true}));
+    let f = finding(&r, "section-lift");
+    assert!(f.detail.contains("lane holds it down"), "{}", f.detail);
+    assert!(
+        f.fix.iter().all(|o| o["path"]
+            .as_str()
+            .unwrap()
+            .starts_with("/automation/0/points/")
+            && o["value"] == json!(1.0)),
+        "{:?}",
+        f.fix
+    );
+    let ver = f.verified.as_ref().unwrap();
+    assert_eq!(ver["new"], json!([]), "{ver}");
+    let r = check(&dir, &p, json!({"whatIf": f.fix}));
+    let still = r.findings.iter().find(|f| f.rule == "section-lift");
+    assert!(
+        still.is_none_or(|f| f.fix.is_empty()),
+        "the lane is put back: {still:?}"
+    );
+
+    // A what-if on the fader the lane drives does nothing, and says so.
+    let r = check(
+        &dir,
+        &p,
+        json!({"whatIf": [{"op": "replace", "path": "/mixer/inserts/0/volume", "value": 0.5}]}),
+    );
+    let over = &r.what_if.as_ref().unwrap()["overridden"];
+    assert!(over[0].as_str().unwrap().contains("\"Duck\""), "{over}");
+}
+
+#[test]
+fn a_bright_eq_boost_is_found_and_taken_back() {
+    let dir = scratch("harsh");
+    let mut v: Value = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    for i in 1..v["mixer"]["inserts"].as_array().unwrap().len() {
+        v["mixer"]["inserts"][i]["effects"] =
+            json!([{"type": "eq", "params": {"high": 15, "highFreq": 5000}}]);
+    }
+    let p: Project = serde_json::from_value(v).unwrap();
+    let r = check(&dir, &p, json!({}));
+    let f = finding(&r, "harsh-highs");
+    let path = f.fix[0]["path"].as_str().unwrap();
+    assert!(
+        path.ends_with("/effects/0/params/high") && f.fix[0]["value"] == json!(2.0),
+        "{f:?}"
+    );
+    // Without spectrum: not judged.
+    let r = check(&dir, &p, json!({"checks": "levels,audibility"}));
+    assert!(r.findings.iter().all(|f| f.rule != "harsh-highs"));
+}

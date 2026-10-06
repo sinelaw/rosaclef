@@ -121,6 +121,15 @@ pub fn summary(r: &Report) -> String {
             "what-if: {}",
             w.get("summary").and_then(|x| x.as_str()).unwrap_or("")
         ));
+        for o in w
+            .get("overridden")
+            .and_then(|x| x.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|x| x.as_str())
+        {
+            out.push(format!("  ! {o}"));
+        }
     }
     if let Some(c) = &r.compare {
         out.push(format!(
@@ -172,7 +181,7 @@ pub fn summary(r: &Report) -> String {
     let not_ok: Vec<Vec<String>> = r
         .elements
         .iter()
-        .filter(|e| e.verdict != "ok")
+        .filter(|e| e.verdict != "ok" || r.focused)
         .map(|e| {
             let rel = e
                 .relative_to_mix_db
@@ -214,7 +223,7 @@ pub fn summary(r: &Report) -> String {
         let n = not_ok.len();
         out.extend(not_ok.into_iter().take(6).flatten());
         if n > 6 {
-            out.push(format!("  … {} more not ok", n - 6));
+            out.push(format!("  … {} more", n - 6));
         }
     }
     let rows: Vec<(String, f64)> = r

@@ -478,6 +478,13 @@
               "audibleFractionPct"
             ]
           },
+          "spectrumDb": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Its own spectrum at the master where it plays: the six bands of master.spectrum (dB)."
+          },
           "level": {
             "type": "object",
             "properties": {
@@ -535,7 +542,8 @@
               "ok",
               "dominant",
               "overloading"
-            ]
+            ],
+            "description": "inaudible: audible under 25 % of the time it plays (strict 35, loose 15). buried: audible under 60 % of the time; for the lead, also more than 10 LU under the mix (strict 8, loose 13), over the range or in stretches (buriedIn). overloading: its own peak over 0 dBFS, or 40 % or more of a master that overloads (its limiter's input over 0 dBFS with 3 dB or more of reduction). dominant: 45 % or more of the mix's energy, within 3 dB of the mix's loudness. ok: none of these."
           },
           "suggestions": {
             "type": "array",
@@ -664,7 +672,9 @@
               "masked-lead",
               "inaudible-part",
               "low-end-buildup",
+              "harsh-highs",
               "phase-correlation",
+              "section-lift",
               "section-loudness-flat"
             ]
           },
@@ -776,6 +786,11 @@
       "properties": {
         "summary": {
           "type": "string"
+        },
+        "overridden": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What-if ops setting a value an automation lane drives (it overrides them while it plays)."
         },
         "master": {
           "type": "object"
