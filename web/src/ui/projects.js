@@ -89,11 +89,11 @@ function errText(e) {
 function ago(ms) {
   if (ms <= 0) return "";
   const s = (Date.now() - ms) / 1000;
-  if (s < 60) return t("just now");
-  if (s < 3600) return tf("{0} min ago", [String(Math.floor(s / 60))]);
-  if (s < 86400) return tf("{0} h ago", [String(Math.floor(s / 3600))]);
-  if (s < 86400 * 2) return t("yesterday");
-  if (s < 86400 * 7) return tf("{0} days ago", [String(Math.floor(s / 86400))]);
+  if (s < 60) return t("projects.ago.justNow");
+  if (s < 3600) return tf("projects.ago.minutes", [String(Math.floor(s / 60))]);
+  if (s < 86400) return tf("projects.ago.hours", [String(Math.floor(s / 3600))]);
+  if (s < 86400 * 2) return t("projects.ago.yesterday");
+  if (s < 86400 * 7) return tf("projects.ago.days", [String(Math.floor(s / 86400))]);
   return fmtDate(ms);
 }
 
@@ -107,7 +107,7 @@ function bytes(n) {
 
 /** function duration(p: ProjectInfo) => String */
 function duration(p) {
-  if (p.bpm <= 0 || p.lengthBeats <= 0) return t("empty");
+  if (p.bpm <= 0 || p.lengthBeats <= 0) return t("common.empty");
   const secs = Math.round((p.lengthBeats * 60) / p.bpm);
   const m = Math.floor(secs / 60);
   const s = secs - m * 60;
@@ -179,7 +179,7 @@ function refreshProjects() {
       return true;
     })
     .catch((e) => {
-      toast(t("Could not list the projects"), errText(e), "error");
+      toast(t("projects.list.failed.title"), errText(e), "error");
       return false;
     });
 }
@@ -194,7 +194,7 @@ function refreshFiles() {
       return true;
     })
     .catch((e) => {
-      toast(t("Could not list the files"), errText(e), "error");
+      toast(t("projects.files.list.failed.title"), errText(e), "error");
       return false;
     });
 }
@@ -219,7 +219,7 @@ function act(label, failed, p, done) {
 
 /** function openProject(name: String) => Undefined */
 function openProject(name) {
-  act(tf("Opening “{0}”…", [name]), tf("Opening “{0}” failed", [name]), sendJson("/api/projects/open", "POST", { name: name }), (r) => {
+  act(tf("projects.open.busy", [name]), tf("projects.open.failed", [name]), sendJson("/api/projects/open", "POST", { name: name }), (r) => {
     pm.imported = [];
     closeProjects();
   });
@@ -227,23 +227,23 @@ function openProject(name) {
 
 /** function createProject(name: String, demo: Boolean) => Undefined */
 function createProject(name, demo) {
-  act(tf("Creating “{0}”…", [name]), tf("Creating “{0}” failed", [name]), sendJson("/api/projects", "POST", { name: name, demo: demo }), (r) => {
+  act(tf("projects.create.busy", [name]), tf("projects.create.failed", [name]), sendJson("/api/projects", "POST", { name: name, demo: demo }), (r) => {
     openProject(String(r.name));
   });
 }
 
 /** function duplicateProject(name: String, to: String) => Undefined */
 function duplicateProject(name, to) {
-  act(tf("Duplicating “{0}”…", [name]), tf("Duplicating “{0}” failed", [name]), sendJson("/api/projects/duplicate", "POST", { name: name, to: to }), (r) => {
-    toast(t("Project duplicated"), `“${name}” → “${String(r.name)}”`, "info");
+  act(tf("projects.duplicate.busy", [name]), tf("projects.duplicate.failed", [name]), sendJson("/api/projects/duplicate", "POST", { name: name, to: to }), (r) => {
+    toast(t("projects.duplicate.done.title"), `“${name}” → “${String(r.name)}”`, "info");
     refreshProjects();
   });
 }
 
 /** function renameProject(name: String, to: String) => Undefined */
 function renameProject(name, to) {
-  act(tf("Renaming “{0}”…", [name]), tf("Renaming “{0}” failed", [name]), sendJson("/api/projects/rename", "POST", { name: name, to: to }), (r) => {
-    toast(t("Project renamed"), `“${name}” → “${String(r.name)}”`, "info");
+  act(tf("projects.rename.busy", [name]), tf("projects.rename.failed", [name]), sendJson("/api/projects/rename", "POST", { name: name, to: to }), (r) => {
+    toast(t("projects.rename.done.title"), `“${name}” → “${String(r.name)}”`, "info");
     refreshProjects();
   });
 }
@@ -251,10 +251,10 @@ function renameProject(name, to) {
 /** function deleteProject(p: ProjectInfo) => Undefined */
 function deleteProject(p) {
   const kept =
-    state.backend === "local" ? t("It stays in the trash until you empty it.") : tf("It is kept in {0}/.trash and can be restored from there.", [pm.library]);
-  if (!confirmBox(tf("Move “{0}” ({1}) to the library trash?\n\n{2}", [p.title, p.name, kept]))) return undefined;
-  act(tf("Deleting “{0}”…", [p.name]), tf("Deleting “{0}” failed", [p.name]), sendJson(`/api/projects/${encodeURIComponent(p.name)}`, "DELETE", {}), (r) => {
-    toast(t("Moved to the trash"), p.name, "info");
+    state.backend === "local" ? t("projects.delete.confirm.keptLocal") : tf("projects.delete.confirm.keptLibrary", [pm.library]);
+  if (!confirmBox(tf("projects.delete.confirm", [p.title, p.name, kept]))) return undefined;
+  act(tf("projects.delete.busy", [p.name]), tf("projects.delete.failed", [p.name]), sendJson(`/api/projects/${encodeURIComponent(p.name)}`, "DELETE", {}), (r) => {
+    toast(t("common.movedToTrash"), p.name, "info");
     refreshProjects();
   });
 }
@@ -274,8 +274,8 @@ function importProject() {
     const f = files[0];
     const kind = importKind(f.name);
     act(
-      tf("Importing {0}…", [f.name]),
-      tf("Importing {0} failed", [f.name]),
+      tf("projects.import.busy", [f.name]),
+      tf("projects.import.failed", [f.name]),
       uploadFile(`/api/projects/import-${kind}?filename=${encodeURIComponent(f.name)}`, f),
       (r) => {
         pm.imported = [{ name: String(r.name), source: f.name, warnings: r.warnings, into: false }];
@@ -291,9 +291,9 @@ function importMidiHere() {
   pickFiles(".mid,.midi,.kar,.rmi", (files) => {
     if (files.length === 0) return undefined;
     const f = files[0];
-    act(tf("Adding {0}…", [f.name]), tf("Adding {0} failed", [f.name]), uploadFile("/api/import-midi?into=current", f), (r) => {
+    act(tf("projects.addMidi.busy", [f.name]), tf("projects.addMidi.failed", [f.name]), uploadFile("/api/import-midi?into=current", f), (r) => {
       pm.imported = [{ name: "", source: f.name, warnings: r.warnings, into: true }];
-      toast(t("MIDI parts added"), tf("{0} new channel(s) from {1} — Ctrl+Z undoes it", [String(r.channels), f.name]), "info");
+      toast(t("projects.addMidi.done.title"), tf("projects.addMidi.done.body", [String(r.channels), f.name]), "info");
     });
   });
 }
@@ -302,8 +302,8 @@ function importMidiHere() {
 function importAudio() {
   pickFiles("audio/*", (files) => {
     for (const f of files) {
-      act(tf("Uploading {0}…", [f.name]), tf("Uploading {0} failed", [f.name]), uploadFile(`/api/samples?name=${encodeURIComponent(f.name)}`, f), (r) => {
-        toast(t("Sample added"), String(r.path), "info");
+      act(tf("projects.importAudio.busy", [f.name]), tf("projects.importAudio.failed", [f.name]), uploadFile(`/api/samples?name=${encodeURIComponent(f.name)}`, f), (r) => {
+        toast(t("browser.sampleAdded"), String(r.path), "info");
         refreshFiles();
       });
     }
@@ -321,22 +321,22 @@ function exportProject(p) {
 function emptyTrash(scope) {
   const question =
     scope === "library"
-      ? t("Delete the projects in the library's trash for good? This cannot be undone.")
-      : t("Delete the files in this project's trash for good? This cannot be undone.");
+      ? t("projects.emptyTrash.confirm.library")
+      : t("projects.emptyTrash.confirm.project");
   if (!confirmBox(question)) return undefined;
-  act(t("Emptying the trash…"), t("Emptying the trash failed"), sendJson("/api/trash/empty", "POST", { scope: scope }), (r) => {
+  act(t("projects.emptyTrash.busy"), t("projects.emptyTrash.failed"), sendJson("/api/trash/empty", "POST", { scope: scope }), (r) => {
     const n = Number(r.removed);
-    const body = n === 0 ? "" : n === 1 ? t("1 item deleted for good") : tf("{0} items deleted for good", [String(n)]);
-    toast(n === 0 ? t("The trash was already empty") : t("Trash emptied"), body, "info");
+    const body = n === 0 ? "" : n === 1 ? t("projects.emptyTrash.done.body.one") : tf("projects.emptyTrash.done.body.other", [String(n)]);
+    toast(n === 0 ? t("projects.emptyTrash.alreadyEmpty.title") : t("projects.emptyTrash.done.title"), body, "info");
     refreshStorage();
   });
 }
 
 /** function renameFile(path: String, to: String) => Undefined */
 function renameFile(path, to) {
-  act(tf("Renaming {0}…", [path]), tf("Renaming {0} failed", [path]), sendJson("/api/files/rename", "POST", { path: path, to: to }), (r) => {
+  act(tf("projects.file.rename.busy", [path]), tf("projects.file.rename.failed", [path]), sendJson("/api/files/rename", "POST", { path: path, to: to }), (r) => {
     const refs = Number(r.references);
-    toast(t("File renamed"), refs > 0 ? tf("{0} — {1} reference(s) in the song updated", [String(r.path), String(refs)]) : String(r.path), "info");
+    toast(t("projects.file.rename.done.title"), refs > 0 ? tf("projects.file.rename.done.body", [String(r.path), String(refs)]) : String(r.path), "info");
     refreshFiles();
   });
 }
@@ -344,12 +344,12 @@ function renameFile(path, to) {
 /** function deleteFile(f: FileInfo) => Undefined */
 function deleteFile(f) {
   const question = f.used
-    ? tf("Move {0} to the project's trash (.trash/)?\n\nThe song uses this file: those parts will fall silent.", [f.path])
-    : tf("Move {0} to the project's trash (.trash/)?", [f.path]);
+    ? tf("projects.file.delete.confirm.used", [f.path])
+    : tf("projects.file.delete.confirm", [f.path]);
   if (!confirmBox(question)) return undefined;
   if (pm.preview === f.path) stopPlaying();
-  act(tf("Deleting {0}…", [f.name]), tf("Deleting {0} failed", [f.name]), sendJson(`/api/files?path=${encodeURIComponent(f.path)}`, "DELETE", {}), (r) => {
-    toast(t("Moved to the trash"), String(r.trashed), "info");
+  act(tf("projects.file.delete.busy", [f.name]), tf("projects.file.delete.failed", [f.name]), sendJson(`/api/files?path=${encodeURIComponent(f.path)}`, "DELETE", {}), (r) => {
+    toast(t("common.movedToTrash"), String(r.trashed), "info");
     refreshFiles();
   });
 }
@@ -379,7 +379,7 @@ export function projectSwitched() {
     refreshProjects();
     if (pm.tab === "files") refreshFiles();
   }
-  toast(tf("Opened “{0}”", [state.project.meta.title]), state.folder, "info");
+  toast(tf("projects.open.done.title", [state.project.meta.title]), state.folder, "info");
 }
 
 /** function showTab(tab: String) => Undefined */
@@ -453,40 +453,40 @@ listenWindow("keydown", (e) => {
 /** function projectsButton(b: Builder) => Undefined */
 export function projectsButton(b) {
   b.open("button", "projects", pm.open ? "btn pm-open on" : "btn pm-open");
-  b.attr("title", t("Projects and files (Ctrl+O)"));
-  b.on("pointerenter", (e) => hint(t("Projects — open, create, duplicate or import (LMMS, MIDI) songs, and manage this project's files (Ctrl+O)")));
+  b.attr("title", t("projects.button.title"));
+  b.on("pointerenter", (e) => hint(t("projects.button.hint")));
   b.on("click", (e) => {
     if (pm.open) closeProjects();
     else openProjects();
   });
   glyph(b, "folder");
-  b.leaf("span", "t", "", t("Projects"));
+  b.leaf("span", "t", "", t("panel.projects"));
   b.close();
 }
 
 /** The name field shared by New / Duplicate / Rename. */
 /** function composer(b: Builder) => Undefined */
 function composer(b) {
-  let label = t("Name your new project");
-  let action = t("Create & open");
-  if (pm.mode === "demo") label = t("Name the new project (a copy of the demo song)");
+  let label = t("projects.compose.new.label");
+  let action = t("projects.compose.create.label");
+  if (pm.mode === "demo") label = t("projects.compose.demo.label");
   if (pm.mode === "duplicate") {
-    label = tf("Duplicate “{0}” as", [pm.target]);
-    action = t("Duplicate");
+    label = tf("projects.compose.duplicate.label", [pm.target]);
+    action = t("common.duplicate");
   }
   if (pm.mode === "rename") {
-    label = tf("Rename “{0}” to", [pm.target]);
-    action = t("Rename");
+    label = tf("projects.compose.rename.label", [pm.target]);
+    action = t("common.rename");
   }
   if (pm.mode === "file") {
-    label = tf("Rename {0} to", [pm.target]);
-    action = t("Rename");
+    label = tf("projects.compose.renameFile.label", [pm.target]);
+    action = t("common.rename");
   }
   b.open("div", "composer", "pm-composer");
   b.leaf("label", "l", "pm-composer-label", label);
   b.leaf("input", `in-${pm.mode}-${pm.target}`, "text-input pm-name", "");
   b.attr("spellcheck", "false");
-  b.attr("placeholder", pm.mode === "file" ? t("new file name") : t("project name"));
+  b.attr("placeholder", pm.mode === "file" ? t("projects.compose.file.placeholder") : t("projects.compose.name.placeholder"));
   b.prop("value", pm.draft);
   b.prop("focus", "true");
   b.on("input", (e) => {
@@ -498,10 +498,10 @@ function composer(b) {
       confirmCompose();
     }
   });
-  button(b, "ok", "gold", action, t("Confirm (Enter)"), () => {
+  button(b, "ok", "gold", action, t("projects.compose.confirm.title"), () => {
     confirmCompose();
   });
-  button(b, "cancel", "ghost", t("Cancel"), t("Cancel (Esc)"), () => {
+  button(b, "cancel", "ghost", t("projects.compose.cancel.label"), t("projects.compose.cancel.title"), () => {
     pm.mode = "";
     invalidate();
   });
@@ -517,13 +517,13 @@ function importNote(b, im) {
   glyph(b, "spark");
   b.close();
   b.open("div", "txt", "pm-imp-text");
-  b.leaf("b", "t", "", im.into ? tf("The parts of “{0}” were added to this song", [im.source]) : tf("“{0}” was imported as “{1}”", [im.source, im.name]));
+  b.leaf("b", "t", "", im.into ? tf("projects.imported.into.label", [im.source]) : tf("projects.imported.asNew.label", [im.source, im.name]));
   const summary =
     n === 0
-      ? t("Everything came across cleanly.")
+      ? t("projects.imported.clean")
       : n === 1
-        ? t("1 note on what was approximated or left out:")
-        : tf("{0} notes on what was approximated or left out:", [String(n)]);
+        ? t("projects.imported.notes.one")
+        : tf("projects.imported.notes.other", [String(n)]);
   b.leaf("span", "s", "", summary);
   if (n > 0) {
     b.open("ul", "w", "pm-warnings");
@@ -533,11 +533,11 @@ function importNote(b, im) {
   b.close();
   b.open("div", "act", "pm-imp-actions");
   if (!im.into) {
-    button(b, "open", "gold", t("Open it"), tf("Open “{0}”", [im.name]), () => {
+    button(b, "open", "gold", t("projects.imported.open.label"), tf("projects.imported.open.title", [im.name]), () => {
       openProject(im.name);
     });
   }
-  button(b, "dismiss", "ghost", t("Dismiss"), t("Hide this report"), () => {
+  button(b, "dismiss", "ghost", t("projects.imported.dismiss.label"), t("projects.imported.dismiss.title"), () => {
     pm.imported = [];
     invalidate();
   });
@@ -562,8 +562,8 @@ function cover(b, p) {
   }
   b.close();
   b.leaf("span", "mono", "pm-mono", p.title.length > 0 ? p.title.slice(0, 1).toUpperCase() : "·");
-  if (p.current) b.leaf("span", "badge", "pm-badge", t("Open now"));
-  else if (p.invalid) b.leaf("span", "badge", "pm-badge bad", t("Needs repair"));
+  if (p.current) b.leaf("span", "badge", "pm-badge", t("projects.card.badge.openNow"));
+  else if (p.invalid) b.leaf("span", "badge", "pm-badge bad", t("projects.card.badge.needsRepair"));
   b.close();
 }
 
@@ -571,7 +571,7 @@ function cover(b, p) {
 function card(b, p) {
   const busy = pm.busy !== "";
   b.open("div", `p-${p.name}`, p.current ? "pm-card current" : "pm-card");
-  b.attr("title", tf("{0}\nDouble-click to open", [p.folder]));
+  b.attr("title", tf("projects.card.title", [p.folder]));
   b.on("dblclick", (e) => {
     if (!p.current && !busy) openProject(p.name);
   });
@@ -582,24 +582,24 @@ function card(b, p) {
   b.open("div", "meta", "pm-card-meta");
   b.leaf("span", "bpm", "pm-chip", `${fmt(p.bpm, p.bpm === Math.round(p.bpm) ? 0 : 1)} BPM`);
   b.leaf("span", "len", "pm-chip", duration(p));
-  b.leaf("span", "ch", "pm-chip", tf("{0} ch · {1} pat", [String(p.channels), String(p.patterns)]));
+  b.leaf("span", "ch", "pm-chip", tf("projects.card.counts", [String(p.channels), String(p.patterns)]));
   b.close();
   b.close();
   b.open("div", "foot", "pm-card-foot");
   b.leaf("span", "ago", "pm-ago", ago(p.modified));
-  b.attr("title", tf("Last saved {0}", [fmtDate(p.modified)]));
+  b.attr("title", tf("projects.card.saved.title", [fmtDate(p.modified)]));
   b.leaf("span", "sp", "spacer", "");
   if (!p.current) {
-    button(b, "open", "small gold", t("Open"), tf("Open “{0}” in the studio", [p.title]), () => {
+    button(b, "open", "small gold", t("common.open"), tf("projects.card.open.title", [p.title]), () => {
       openProject(p.name);
     });
   }
-  iconButton(b, "zip", "small ghost", "export", tf("Download “{0}” as a .zip — a backup, or to open it in another studio", [p.name]), () => exportProject(p));
-  iconButton(b, "dup", "small ghost", "copy", tf("Duplicate “{0}”", [p.name]), () =>
+  iconButton(b, "zip", "small ghost", "export", tf("projects.card.zip.title", [p.name]), () => exportProject(p));
+  iconButton(b, "dup", "small ghost", "copy", tf("projects.card.duplicate.title", [p.name]), () =>
     compose("duplicate", p.name, uniqueName(`${nameFrom(p.title)} copy`, pm.projects))
   );
-  iconButton(b, "ren", "small ghost", "draw", tf("Rename “{0}”", [p.name]), () => compose("rename", p.name, p.name));
-  iconButton(b, "del", "small ghost danger", "trash", p.current ? t("The open project cannot be deleted") : tf("Move “{0}” to the trash", [p.name]), () =>
+  iconButton(b, "ren", "small ghost", "draw", tf("projects.card.rename.title", [p.name]), () => compose("rename", p.name, p.name));
+  iconButton(b, "del", "small ghost danger", "trash", p.current ? t("projects.card.delete.titleOpen") : tf("projects.card.delete.title", [p.name]), () =>
     deleteProject(p)
   );
   if (p.current) b.attr("disabled", "true");
@@ -611,23 +611,23 @@ function card(b, p) {
 function projectsView(b) {
   b.open("div", "tools", "pm-tools");
   b.open("button", "new", "btn gold");
-  b.attr("title", t("Create an empty project and open it"));
+  b.attr("title", t("projects.new.title"));
   b.on("click", (e) => compose("new", "", uniqueName("Untitled", pm.projects)));
   glyph(b, "plus");
-  b.leaf("span", "t", "", t("New project"));
+  b.leaf("span", "t", "", t("projects.new.label"));
   b.close();
-  button(b, "demo", "", t("New from demo"), t("Create a project from the bundled demo song"), () => compose("demo", "", uniqueName(pm.demoTitle, pm.projects)));
+  button(b, "demo", "", t("projects.demo.label"), t("projects.demo.title"), () => compose("demo", "", uniqueName(pm.demoTitle, pm.projects)));
   b.open("button", "import", "btn");
-  b.attr("title", t("Import an LMMS project (.mmp, .mmpz), a MIDI file (.mid) or a project .zip as a new project"));
+  b.attr("title", t("projects.import.title"));
   b.on("click", (e) => importProject());
   icon(b, ICON_IMPORT);
-  b.leaf("span", "t", "", t("Import…"));
+  b.leaf("span", "t", "", t("projects.import.label"));
   b.close();
   b.leaf("div", "sp", "spacer", "");
   b.open("label", "search", "pm-search");
   icon(b, ICON_SEARCH);
   b.leaf("input", "q", "", "");
-  b.attr("placeholder", t("Filter projects"));
+  b.attr("placeholder", t("projects.filter.placeholder"));
   b.attr("spellcheck", "false");
   b.prop("value", pm.filter);
   b.on("input", (e) => {
@@ -653,12 +653,12 @@ function projectsView(b) {
   b.close();
   if (pm.loaded && shown === 0) {
     b.open("div", "empty", "pm-empty");
-    b.leaf("h3", "h", "", q !== "" ? t("No project matches") : t("The library is empty"));
+    b.leaf("h3", "h", "", q !== "" ? t("projects.list.noMatch.label") : t("projects.list.empty.label"));
     b.leaf(
       "p",
       "p",
       "",
-      q !== "" ? tf("Nothing is called “{0}”.", [pm.filter]) : t("Create a project, start from the demo, or import an LMMS or MIDI file or a project .zip.")
+      q !== "" ? tf("projects.list.noMatch.body", [pm.filter]) : t("projects.list.empty.body")
     );
     b.close();
   }
@@ -670,7 +670,7 @@ function fileRow(b, f) {
   const url = `/files/${encodePath(f.path)}`;
   b.open("div", `f-${f.path}`, playing ? "pm-file playing" : "pm-file");
   if (f.kind === "audio") {
-    iconButton(b, "play", playing ? "small on" : "small", playing ? "stop" : "play", playing ? t("Stop the preview") : tf("Listen to {0}", [f.name]), () =>
+    iconButton(b, "play", playing ? "small on" : "small", playing ? "stop" : "play", playing ? t("projects.file.preview.stop.title") : tf("projects.file.preview.play.title", [f.name]), () =>
       togglePreview(f)
     );
   } else {
@@ -681,19 +681,19 @@ function fileRow(b, f) {
   b.open("div", "name", "pm-file-name");
   b.leaf("span", "t", "", f.name);
   b.attr("title", f.path);
-  if (f.used) b.leaf("span", "used", "pm-tag used", t("in the song"));
-  if (f.managed) b.leaf("span", "managed", "pm-tag", t("studio file"));
+  if (f.used) b.leaf("span", "used", "pm-tag used", t("projects.file.tag.used"));
+  if (f.managed) b.leaf("span", "managed", "pm-tag", t("projects.file.tag.managed"));
   b.close();
   b.leaf("span", "size", "pm-size", bytes(f.size));
   b.leaf("span", "mod", "pm-date", ago(f.modified));
   b.attr("title", fmtDate(f.modified));
   b.open("div", "act", "pm-file-actions");
-  iconButton(b, "dl", "small ghost", "export", tf("Download {0}", [f.name]), () => {
+  iconButton(b, "dl", "small ghost", "export", tf("projects.file.download.title", [f.name]), () => {
     download(url, f.name);
   });
-  iconButton(b, "ren", "small ghost", "draw", f.managed ? t("Managed by the studio") : tf("Rename {0}", [f.name]), () => compose("file", f.path, f.name));
+  iconButton(b, "ren", "small ghost", "draw", f.managed ? t("projects.file.managed.title") : tf("projects.file.rename.title", [f.name]), () => compose("file", f.path, f.name));
   if (f.managed) b.attr("disabled", "true");
-  iconButton(b, "del", "small ghost danger", "trash", f.managed ? t("Managed by the studio") : tf("Move {0} to the trash", [f.name]), () => deleteFile(f));
+  iconButton(b, "del", "small ghost danger", "trash", f.managed ? t("projects.file.managed.title") : tf("projects.file.delete.title", [f.name]), () => deleteFile(f));
   if (f.managed) b.attr("disabled", "true");
   b.close();
   b.close();
@@ -722,22 +722,22 @@ function filesView(b) {
   b.open("div", "tools", "pm-tools");
   b.open("div", "what", "pm-files-title");
   b.leaf("b", "t", "", state.project.meta.title);
-  b.leaf("span", "s", "", tf("{0} files · {1}", [String(pm.files.length), bytes(total)]));
+  b.leaf("span", "s", "", tf("projects.files.summary", [String(pm.files.length), bytes(total)]));
   b.close();
   b.leaf("div", "sp", "spacer", "");
   b.open("button", "audio", "btn gold");
-  b.attr("title", t("Copy audio files into samples/"));
+  b.attr("title", t("projects.files.importAudio.title"));
   b.on("click", (e) => importAudio());
   icon(b, ICON_IMPORT);
-  b.leaf("span", "t", "", t("Import audio…"));
+  b.leaf("span", "t", "", t("projects.files.importAudio.label"));
   b.close();
   b.open("button", "midi", "btn");
-  b.attr("title", t("Add the parts of a MIDI file to this song as new channels and patterns (Ctrl+Z undoes it)"));
+  b.attr("title", t("projects.files.addMidi.title"));
   b.on("click", (e) => importMidiHere());
   glyph(b, "piano");
-  b.leaf("span", "t", "", t("Add MIDI parts…"));
+  b.leaf("span", "t", "", t("projects.files.addMidi.label"));
   b.close();
-  iconButton(b, "refresh", "", "restart", t("Refresh the list"), () => {
+  iconButton(b, "refresh", "", "restart", t("projects.files.refresh.title"), () => {
     refreshFiles();
   });
   b.close();
@@ -764,9 +764,9 @@ function filesView(b) {
     b.open("span", "i", "pm-folder-icon");
     icon(b, ICON_OPEN);
     b.close();
-    b.leaf("b", "n", "", dir === "" ? t("Project folder") : `${dir}/`);
+    b.leaf("b", "n", "", dir === "" ? t("projects.files.folder.root.label") : `${dir}/`);
     const count =
-      inDir.length === 0 ? t("empty") : inDir.length === 1 ? tf("1 file · {0}", [bytes(size)]) : tf("{0} files · {1}", [String(inDir.length), bytes(size)]);
+      inDir.length === 0 ? t("common.empty") : inDir.length === 1 ? tf("projects.files.folder.size.one", [bytes(size)]) : tf("projects.files.folder.size.other", [String(inDir.length), bytes(size)]);
     b.leaf("span", "c", "", count);
     b.close();
     if (inDir.length === 0) {
@@ -774,13 +774,13 @@ function filesView(b) {
         "div",
         "none",
         "pm-none",
-        dir === "samples" ? t("No samples yet — import audio, or let the agent render some.") : t("Exports and mixdowns land here.")
+        dir === "samples" ? t("projects.files.folder.samples.empty") : t("projects.files.folder.renders.empty")
       );
     }
     for (const f of inDir) fileRow(b, f);
     b.close();
   }
-  if (!pm.filesLoaded) b.leaf("div", "loading", "pm-none", t("Reading the project folder…"));
+  if (!pm.filesLoaded) b.leaf("div", "loading", "pm-none", t("projects.files.loading"));
   b.close();
 }
 
@@ -799,14 +799,14 @@ export function projectsOverlay(b) {
   b.on("click", (e) => closeProjects());
   b.open("div", "dialog", "pm");
   b.attr("role", "dialog");
-  b.attr("aria-label", t("Projects"));
+  b.attr("aria-label", t("panel.projects"));
 
   b.open("header", "head", "pm-head");
   b.open("div", "mark", "pm-mark");
   glyph(b, "folder");
   b.close();
   b.open("div", "title", "pm-title");
-  b.leaf("h2", "h", "", pm.tab === "files" ? t("Files") : t("Projects"));
+  b.leaf("h2", "h", "", pm.tab === "files" ? t("projects.tab.files.label") : t("panel.projects"));
   b.leaf("span", "lib", "pm-lib", pm.tab === "files" ? state.folder : pm.library);
   b.close();
   b.leaf("div", "sp", "spacer", "");
@@ -817,12 +817,12 @@ export function projectsOverlay(b) {
     b.close();
   }
   b.open("div", "tabs", "seg pm-tabs");
-  button(b, "projects", pm.tab === "projects" ? "on" : "", tf("Projects · {0}", [String(pm.projects.length)]), t("The project library"), () =>
+  button(b, "projects", pm.tab === "projects" ? "on" : "", tf("projects.tab.projects.label", [String(pm.projects.length)]), t("projects.tab.projects.title"), () =>
     showTab("projects")
   );
-  button(b, "files", pm.tab === "files" ? "on" : "", t("Files"), t("Files of the open project"), () => showTab("files"));
+  button(b, "files", pm.tab === "files" ? "on" : "", t("projects.tab.files.label"), t("projects.tab.files.title"), () => showTab("files"));
   b.close();
-  iconButton(b, "close", "ghost", "close", t("Close (Esc)"), closeProjects);
+  iconButton(b, "close", "ghost", "close", t("common.closeEsc"), closeProjects);
   b.close();
 
   b.open("div", "body", pm.busy !== "" ? "pm-body busy" : "pm-body");
@@ -836,27 +836,27 @@ export function projectsOverlay(b) {
     "l",
     "",
     pm.tab === "files"
-      ? t("Deleted files go to .trash/ in the project · renaming a sample updates the song")
-      : t("Double-click a card to open it · deleted projects go to the library's .trash/")
+      ? t("projects.footer.files.label")
+      : t("projects.footer.projects.label")
   );
   button(
     b,
     "trash",
     "small ghost",
-    t("Empty trash"),
-    pm.tab === "files" ? t("Delete this project's deleted files for good") : t("Delete the projects in the library's trash for good"),
+    t("projects.emptyTrash.label"),
+    pm.tab === "files" ? t("projects.emptyTrash.project.title") : t("projects.emptyTrash.library.title"),
     () => emptyTrash(pm.tab === "files" ? "project" : "library")
   );
   if (state.backend === "local" && pm.storage.quota > 0) {
-    b.leaf("span", "store", "pm-store", tf("Browser storage · {0} of {1}", [bytes(pm.storage.usage), bytes(pm.storage.quota)]));
-    b.attr("title", t("Projects are saved in this browser. Download them as .zip files to back them up."));
+    b.leaf("span", "store", "pm-store", tf("projects.storage.label", [bytes(pm.storage.usage), bytes(pm.storage.quota)]));
+    b.attr("title", t("projects.storage.title"));
   }
   b.leaf("span", "sp", "spacer", "");
   b.open("span", "k", "pm-keys");
   b.leaf("kbd", "k1", "", "Ctrl+O");
-  b.leaf("span", "t1", "", t("toggle"));
+  b.leaf("span", "t1", "", t("projects.footer.keys.toggle"));
   b.leaf("kbd", "k2", "", "Esc");
-  b.leaf("span", "t2", "", t("close"));
+  b.leaf("span", "t2", "", t("projects.footer.keys.close"));
   b.close();
   b.close();
 

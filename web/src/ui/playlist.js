@@ -291,7 +291,7 @@ function dropSample(path, x, y, g) {
       return true;
     })
     .catch((e) => {
-      toast(t("Could not read sample"), path, "error");
+      toast(t("playlist.sample.readFailed.title"), path, "error");
       return false;
     });
 }
@@ -358,12 +358,12 @@ export function playlist(b) {
   b.open("div", "main", "editor-main pl");
 
   b.open("div", "corner", "corner");
-  b.text(t("Playlist"));
+  b.text(t("panel.playlist"));
   b.close();
 
   // Ruler.
   b.open("div", "ruler", "ruler");
-  b.attr("title", t("Click to play from a bar · right-click to change the time signature from it"));
+  b.attr("title", t("playlist.ruler.title"));
   b.on("pointerdown", (e) => {
     if (e.button === 2) return undefined;
     const beat = (e.clientX - e.targetLeft + view.scrollLeft) / g.zoom;
@@ -392,7 +392,10 @@ export function playlist(b) {
     b.open("div", `r${i}`, "ruler-repeat");
     b.style("left", `${r.start * g.zoom}px`);
     b.style("width", `${Math.max(2, (r.end - r.start) * g.zoom)}px`);
-    b.attr("title", r.endings.length > 0 ? tf("Repeat: plays {0} times, with endings", [String(r.times)]) : tf("Repeat: plays {0} times", [String(r.times)]));
+    b.attr(
+      "title",
+      r.endings.length > 0 ? tf("playlist.ruler.repeat.withEndings.title", [String(r.times)]) : tf("playlist.ruler.repeat.title", [String(r.times)])
+    );
     b.leaf("span", "t", "ruler-repeat-times", `×${r.times}`);
     b.close();
     for (let k = 0; k < r.endings.length; k++) {
@@ -400,7 +403,10 @@ export function playlist(b) {
       b.leaf("div", `r${i}e${k}`, "ruler-ending", passesText(e.passes));
       b.style("left", `${e.start * g.zoom}px`);
       b.style("width", `${Math.max(2, (e.end - e.start) * g.zoom)}px`);
-      b.attr("title", e.passes.length > 1 ? tf("Ending: plays on passes {0}", [e.passes.join(", ")]) : tf("Ending: plays on pass {0}", [e.passes.join(", ")]));
+      b.attr(
+        "title",
+        e.passes.length > 1 ? tf("playlist.ruler.ending.other.title", [e.passes.join(", ")]) : tf("playlist.ruler.ending.one.title", [e.passes.join(", ")])
+      );
     }
   }
   if (state.mode === "song") {
@@ -429,9 +435,9 @@ export function playlist(b) {
     });
     b.leaf("span", "num", "t-num", String(ti + 1));
     b.leaf("span", "name", "t-name", tr.name);
-    b.attr("title", t("Double-click to rename"));
+    b.attr("title", t("common.doubleClickToRename"));
     b.on("dblclick", (e) => {
-      const name = promptBox(t("Track name"), tr.name);
+      const name = promptBox(t("playlist.track.rename.prompt"), tr.name);
       if (name !== "") {
         commit(() => {
           tr.name = name;
@@ -439,7 +445,7 @@ export function playlist(b) {
       }
     });
     b.leaf("div", "mute", tr.mute ? "ch-mute off" : "ch-mute", "");
-    b.attr("title", tr.mute ? t("Unmute track") : t("Mute track"));
+    b.attr("title", tr.mute ? t("playlist.track.unmute.title") : t("playlist.track.mute.title"));
     b.on("click", (e) => {
       e.stopPropagation();
       commit(() => {
@@ -503,11 +509,7 @@ export function playlist(b) {
     const beat = (e.clientX - e.targetLeft + e.scrollLeft) / g.zoom;
     const bar = barAt(p.transport, beat).bar + 1;
     const pat = currentPattern();
-    hint(
-      pat
-        ? tf("Bar {0} — click to place “{1}”, drag clips to move, edge to resize, Alt-drag to copy, right-click to delete", [String(bar), pat.name])
-        : tf("Bar {0} — click to place “a pattern”, drag clips to move, edge to resize, Alt-drag to copy, right-click to delete", [String(bar)])
-    );
+    hint(pat ? tf("playlist.grid.withPattern.hint", [String(bar), pat.name]) : tf("playlist.grid.noPattern.hint", [String(bar)]));
   });
 
   b.open("div", "content", "canvas-grid");
@@ -614,24 +616,17 @@ function followPlayhead(g) {
 
 /** function followButton(b: Builder) => Undefined */
 export function followButton(b) {
-  iconButton(
-    b,
-    "follow",
-    state.follow ? "small on" : "small",
-    "follow",
-    state.follow ? t("Follow playback: on — the view scrolls with the playhead") : t("Follow playback: off"),
-    () => {
-      state.follow = !state.follow;
-      invalidate();
-    }
-  );
+  iconButton(b, "follow", state.follow ? "small on" : "small", "follow", state.follow ? t("playlist.follow.on.title") : t("playlist.follow.off.title"), () => {
+    state.follow = !state.follow;
+    invalidate();
+  });
 }
 
 /** function playlistTools(b: Builder) => Undefined */
 export function playlistTools(b) {
   const pat = currentPattern();
   followButton(b);
-  b.leaf("span", "l", "label", t("Paint"));
+  b.leaf("span", "l", "label", t("playlist.tools.paint.label"));
   const ids = state.project.patterns.map((x) => x.id);
   select(
     b,
@@ -640,7 +635,7 @@ export function playlistTools(b) {
     state.pattern,
     ids,
     state.project.patterns.map((x) => x.name),
-    t("Pattern placed by clicking an empty lane"),
+    t("playlist.tools.paint.title"),
     (v) => {
       selectPattern(v);
       followPattern();
@@ -650,7 +645,7 @@ export function playlistTools(b) {
     b.leaf("span", "sw", "swatch", "");
     b.style("--c", pat.color);
   }
-  iconButton(b, "addtrack", "small ghost", "plus", t("Add a playlist track"), () => {
+  iconButton(b, "addtrack", "small ghost", "plus", t("playlist.tools.addTrack.title"), () => {
     commit(() => {
       state.project.playlist.tracks.push({ name: `Track ${state.project.playlist.tracks.length + 1}`, mute: false });
     });

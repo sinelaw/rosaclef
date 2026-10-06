@@ -414,12 +414,7 @@ function gridView(b, g, pat, ch) {
     const y = e.clientY - e.targetTop + e.scrollTop;
     const pitch = 127 - Math.floor(y / g.rowH);
     const beat = (e.clientX - e.targetLeft + e.scrollLeft) / g.zoom;
-    hint(
-      tf("{0} · beat {1} — click to draw, drag to move, right-click to delete, Shift-drag to select, Ctrl+wheel to zoom", [
-        drumName(ch, pitch) || noteName(pitch),
-        fmt(beat, 2),
-      ])
-    );
+    hint(tf("pianoRoll.grid.hint", [drumName(ch, pitch) || noteName(pitch), fmt(beat, 2)]));
   });
   if (view.centered) b.prop("scrollTop", String(view.scrollTop));
   b.prop("scrollLeft", String(view.scrollLeft));
@@ -560,7 +555,7 @@ export function pianoRoll(b) {
   const ch = currentChannel();
   b.open("div", "pr", "editor");
   if (!pat || !ch) {
-    b.leaf("div", "none", "b-empty", t("Select a pattern and a channel."));
+    b.leaf("div", "none", "b-empty", t("pianoRoll.empty"));
     b.close();
     return undefined;
   }
@@ -597,7 +592,7 @@ export function pianoRoll(b) {
   rulerView(b, g, pat);
   keysView(b, g, ch);
   gridView(b, g, pat, ch);
-  b.leaf("div", "vl", "vel-label", t("Velocity"));
+  b.leaf("div", "vl", "vel-label", t("pianoRoll.velocity.label"));
   velocityView(b, g, pat, ch);
   b.close();
   b.close();
@@ -608,29 +603,29 @@ export function pianoTools(b) {
   const ids = state.project.channels.map((c) => c.id);
   const names = state.project.channels.map((c) => c.name);
   followButton(b);
-  b.leaf("span", "cl", "label", t("Channel"));
-  select(b, "ch", "", state.channel, ids, names, t("Channel to edit"), (v) => selectChannel(v));
-  iconButton(b, "draw", view.tool === "draw" ? "small on" : "small", "draw", t("Draw tool (Shift+P)"), () => {
+  b.leaf("span", "cl", "label", t("term.channel"));
+  select(b, "ch", "", state.channel, ids, names, t("pianoRoll.tools.channel.title"), (v) => selectChannel(v));
+  iconButton(b, "draw", view.tool === "draw" ? "small on" : "small", "draw", t("pianoRoll.tools.draw.title"), () => {
     view.tool = "draw";
     invalidate();
   });
-  iconButton(b, "select", view.tool === "select" ? "small on" : "small", "select", t("Select tool (Shift+E)"), () => {
+  iconButton(b, "select", view.tool === "select" ? "small on" : "small", "select", t("pianoRoll.tools.select.title"), () => {
     view.tool = "select";
     invalidate();
   });
-  iconButton(b, "asScore", "small", "score", t("Read this pattern as sheet music (F10)"), () => {
+  iconButton(b, "asScore", "small", "score", t("pianoRoll.tools.asScore.title"), () => {
     dockScore.scope = "current";
     openDock("score");
   });
-  b.leaf("span", "sl", "label", t("Snap"));
+  b.leaf("span", "sl", "label", t("pianoRoll.tools.snap.label"));
   select(
     b,
     "snap",
     "",
     String(state.snap),
     ["0", "0.125", "0.25", "0.5", "1", "4"],
-    [t("Off"), "1/32", "1/16", "1/8", t("Beat"), t("Bar")],
-    t("Grid snap"),
+    [t("common.off"), "1/32", "1/16", "1/8", t("term.beat"), t("pianoRoll.tools.snap.option.bar")],
+    t("pianoRoll.tools.snap.title"),
     (v) => {
       state.snap = Number(v);
       invalidate();

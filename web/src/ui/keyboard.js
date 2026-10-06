@@ -208,7 +208,7 @@ function typedLabel(pitch) {
 /** What the computer keys play, for hints. */
 function typedHint() {
   const base = keyboard.typed;
-  return tf("Z–/ play {0}–{1}, Q–[ play {2}–{3} · - and = change octave", [
+  return tf("keyboard.typed.hint", [
     noteName(base),
     noteName(base + 16),
     noteName(base + 12),
@@ -254,7 +254,7 @@ export function toggleRecordKeys() {
   // An instrument being tried becomes a channel to record onto.
   if (pat && state.audition.on) keepTried();
   if (!pat || !currentChannel()) {
-    toast(t("Nothing to record into"), t("Select a pattern and a channel first."), "error");
+    toast(t("keyboard.record.nothing.title"), t("keyboard.record.nothing.body"), "error");
     return undefined;
   }
   keyboard.armed = true;
@@ -272,7 +272,7 @@ export function toggleRecordKeys() {
   openDock("piano");
   revealTyped();
   hint(
-    tf("Recording notes into {0} after a bar of count-in — it grows as you play, snapped to the grid ({1}) · Shift+M metronome · Space pauses · Esc stops", [
+    tf("keyboard.record.started.hint", [
       pat.name,
       gridName(),
     ])
@@ -341,9 +341,9 @@ function grid() {
 /** function gridName() => String */
 function gridName() {
   const g = grid();
-  if (g <= 0) return t("snap off");
-  if (g >= 4) return t("a bar");
-  if (g >= 1) return t("a beat");
+  if (g <= 0) return t("keyboard.record.grid.off");
+  if (g >= 4) return t("keyboard.record.grid.bar");
+  if (g >= 1) return t("keyboard.record.grid.beat");
   return `1/${Math.round(4 / g)}`;
 }
 
@@ -499,9 +499,9 @@ export function keyboardStrip(b, compact) {
   octaveButton(b, "up", "right", 1);
   b.close();
   const recTip = keyboard.armed
-    ? t("Stop recording notes (Esc)")
+    ? t("keyboard.record.stop.title")
     : t(
-        "Record notes from the keys into the piano roll: after a bar of count-in, writes what you play in real time, snapped to the grid, for as many bars as you play"
+        "keyboard.record.start.title"
       );
   toolButton(b, "rec", keyboard.armed ? "kb-shift kb-rec armed" : "kb-shift kb-rec", "record", recTip, () => toggleRecordKeys());
   b.close();
@@ -517,8 +517,8 @@ export function keyboardStrip(b, compact) {
   b.on("pointerenter", (e) =>
     hint(
       ch
-        ? tf("Play {0} ({1}) — slide for a glissando; lower on a key is louder · {2}", [ch.name, ch.detail, typedHint()])
-        : t("Select a channel, or click an instrument in the browser, to play it")
+        ? tf("keyboard.keys.hint", [ch.name, ch.detail, typedHint()])
+        : t("keyboard.keys.noChannel.hint")
     )
   );
   b.on("contextmenu", (e) => {
@@ -548,7 +548,7 @@ export function keyboardStrip(b, compact) {
   });
   // On a phone, the name of what the keys play sits on them.
   if (compact && ch) {
-    b.leaf("div", `tag-${ch.id}`, ch.trying ? "kb-tag trying" : "kb-tag", ch.trying ? tf("Trying {0}", [ch.name]) : ch.name);
+    b.leaf("div", `tag-${ch.id}`, ch.trying ? "kb-tag trying" : "kb-tag", ch.trying ? tf("keyboard.keys.tryingTag.label", [ch.name]) : ch.name);
     b.style("--c", ch.color);
   }
   // The computer keys' letters, where there is room (not on a phone).
@@ -582,8 +582,8 @@ export function keyboardStrip(b, compact) {
 function targetView(b, ch) {
   if (!ch) {
     b.open("div", "ch-none", "kb-ch");
-    b.leaf("span", "l", "kb-label", t("Keys"));
-    b.leaf("b", "n", "", t("No channel"));
+    b.leaf("span", "l", "kb-label", t("keyboard.target.keys.label"));
+    b.leaf("b", "n", "", t("keyboard.target.noChannel.label"));
     b.close();
     return undefined;
   }
@@ -592,17 +592,17 @@ function targetView(b, ch) {
   b.attr(
     "title",
     ch.trying
-      ? tf("The keys play {0}, tried from the browser (not in the song yet)", [ch.detail])
-      : tf("The keys play the channel {0}: {1}", [ch.name, ch.detail])
+      ? tf("keyboard.target.trying.title", [ch.detail])
+      : tf("keyboard.target.channel.title", [ch.name, ch.detail])
   );
   b.open("div", "ch", "kb-ch");
-  b.leaf("span", "l", "kb-label", ch.trying ? t("Trying") : t("Keys"));
+  b.leaf("span", "l", "kb-label", ch.trying ? t("keyboard.target.trying.label") : t("keyboard.target.keys.label"));
   b.leaf("b", "n", "", ch.name);
   if (ch.trying) {
-    toolButton(b, "keep", "kb-mini", "plus", t("Add it to the channel rack"), () => {
+    toolButton(b, "keep", "kb-mini", "plus", t("keyboard.target.keep.title"), () => {
       keepTried();
     });
-    toolButton(b, "drop", "kb-mini", "close", t("Stop trying it: play the selected channel again"), () => stopTrying());
+    toolButton(b, "drop", "kb-mini", "close", t("keyboard.target.drop.title"), () => stopTrying());
   }
   b.close();
   b.leaf("div", "d", "kb-detail", ch.detail);
@@ -611,7 +611,7 @@ function targetView(b, ch) {
 
 /** function octaveButton(b: Builder, key: String, icon: String, by: Number) => Undefined */
 function octaveButton(b, key, icon, by) {
-  const tip = by < 0 ? t("Octave down") : t("Octave up");
+  const tip = by < 0 ? t("keyboard.octave.down.title") : t("keyboard.octave.up.title");
   b.open("button", key, "kb-shift");
   b.attr("title", tip);
   b.attr("aria-label", tip);

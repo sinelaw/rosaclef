@@ -65,7 +65,7 @@ function stepName(s) {
   const bar = Math.floor(beat / bpb) + 1;
   const sub = s % 4;
   const beatNo = String((beat % bpb) + 1);
-  return sub === 0 ? tf("bar {0}, beat {1}", [String(bar), beatNo]) : tf("bar {0}, beat {1} + {2}/16", [String(bar), beatNo, String(sub)]);
+  return sub === 0 ? tf("rack.step.position", [String(bar), beatNo]) : tf("rack.step.positionSub", [String(bar), beatNo, String(sub)]);
 }
 
 /** The count above the steps: bar numbers on their downbeats, beats between. */
@@ -73,13 +73,13 @@ function stepName(s) {
 function ruler(b, steps) {
   const bpb = Math.max(1, state.project.transport.beatsPerBar);
   b.open("div", "ruler", "rack-row rack-ruler");
-  b.leaf("div", "lead", "rr-lead", t("Channel"));
+  b.leaf("div", "lead", "rr-lead", t("term.channel"));
   b.open("div", "beats", "steps");
   const groups = Math.ceil(steps / 4);
   for (let g = 0; g < groups; g++) {
     const down = g % bpb === 0;
     b.leaf("div", `g${g}`, down ? "rr-beat bar" : "rr-beat", down ? String(g / bpb + 1) : `.${(g % bpb) + 1}`);
-    b.attr("title", down ? tf("Bar {0}", [String(g / bpb + 1)]) : tf("Beat {0}", [String((g % bpb) + 1)]));
+    b.attr("title", down ? tf("format.bar", [String(g / bpb + 1)]) : tf("rack.ruler.beat.title", [String((g % bpb) + 1)]));
   }
   b.close();
   b.close();
@@ -110,8 +110,8 @@ function miniRoll(b, pat, ch, width) {
     }
   });
   b.style("width", `${width}px`);
-  b.attr("title", tf("{0} plays a melody here, not single hits: click to edit its notes in the piano roll", [ch.name]));
-  b.on("pointerenter", (e) => hint(tf("{0}'s notes in this pattern (they do not fit the step grid) — click to open the piano roll", [ch.name])));
+  b.attr("title", tf("rack.row.melody.title", [ch.name]));
+  b.on("pointerenter", (e) => hint(tf("rack.row.melody.hint", [ch.name])));
   b.on("click", (e) => {
     selectChannel(ch.id);
     showDock("piano");
@@ -132,7 +132,7 @@ function rackRow(b, pat, ch, idx) {
     e.stopPropagation();
     if (dragPick.over !== ch.id) {
       dragPick.over = ch.id;
-      hint(tf("Drop to replace the instrument of {0} with {1} (its notes stay)", [ch.name, dragPick.pick.name]));
+      hint(tf("rack.row.drop.replace.hint", [ch.name, dragPick.pick.name]));
       invalidate();
     }
   });
@@ -147,7 +147,7 @@ function rackRow(b, pat, ch, idx) {
   });
 
   b.leaf("div", "mute", ch.mute ? "ch-mute off" : "ch-mute", "");
-  b.attr("title", ch.mute ? t("Unmute channel") : t("Mute channel"));
+  b.attr("title", ch.mute ? t("rack.row.mute.titleUnmute") : t("rack.row.mute.title"));
   b.on("click", (e) => {
     commit(() => {
       ch.mute = !ch.mute;
@@ -156,16 +156,16 @@ function rackRow(b, pat, ch, idx) {
 
   const pan = shownValue(`channel/${ch.id}/pan`, ch.pan);
   const vol = shownValue(`channel/${ch.id}/volume`, ch.volume);
-  knobAt(b, "pan", "small", (pan + 1) / 2, "", tf("Pan {0}", [String(Math.round(pan * 100))]), 0.5, `channel/${ch.id}/pan`, (v) => {
+  knobAt(b, "pan", "small", (pan + 1) / 2, "", tf("rack.row.pan.title", [String(Math.round(pan * 100))]), 0.5, `channel/${ch.id}/pan`, (v) => {
     ch.pan = Math.round((v * 2 - 1) * 100) / 100;
   });
-  knobAt(b, "vol", "small", vol / 1.25, "", tf("Volume {0}%", [String(Math.round(vol * 100))]), 0.64, `channel/${ch.id}/volume`, (v) => {
+  knobAt(b, "vol", "small", vol / 1.25, "", tf("rack.row.volume.title", [String(Math.round(vol * 100))]), 0.64, `channel/${ch.id}/volume`, (v) => {
     ch.volume = Math.round(v * 125) / 100;
   });
 
   b.leaf("div", "ins", "ch-ins", insertIndex(ch.mixer) === 0 ? "M" : String(insertIndex(ch.mixer)));
-  b.attr("title", t("Mixer insert — click to show it in the mixer, drag up/down to reroute"));
-  b.on("pointerenter", (e) => hint(t("Mixer insert this channel plays through — click to show it in the mixer, drag to change, M = master")));
+  b.attr("title", t("rack.row.mixer.title"));
+  b.on("pointerenter", (e) => hint(t("rack.row.mixer.hint")));
   b.on("pointerdown", (e) => {
     e.preventDefault();
     const y0 = e.clientY;
@@ -202,7 +202,7 @@ function rackRow(b, pat, ch, idx) {
   b.leaf("i", "sw", "swatch", "");
   b.style("--c", ch.color);
   b.leaf("span", "n", "", ch.layerOf !== "" ? `↳ ${ch.name}` : ch.name);
-  if (ch.layerOf !== "") b.attr("title", tf("Layer: also plays the notes of {0}", [channelLabel(ch.layerOf)]));
+  if (ch.layerOf !== "") b.attr("title", tf("rack.row.layer.title", [channelLabel(ch.layerOf)]));
   b.close();
   led(b, "led", level);
 
@@ -222,8 +222,8 @@ function rackRow(b, pat, ch, idx) {
         b.on("pointerenter", (e) =>
           hint(
             ni >= 0
-              ? tf("{0}, {1}: click to remove the hit · right-click removes · scroll sets the velocity", [ch.name, stepName(s)])
-              : tf("{0}, {1}: click to place a hit · right-click removes · scroll sets the velocity", [ch.name, stepName(s)])
+              ? tf("rack.step.remove.title", [ch.name, stepName(s)])
+              : tf("rack.step.place.title", [ch.name, stepName(s)])
           )
         );
         if (ni >= 0) b.style("--vel", String(pat.notes[ni].velocity));
@@ -360,7 +360,7 @@ export function deviceControls(b, dev, spec, target) {
   b.close();
   for (const g of groups) {
     b.open("div", `grp-Operator ${g.digit}`, "param-group");
-    b.leaf("div", "t", "param-group-title", tf("Operator {0}", [g.digit]));
+    b.leaf("div", "t", "param-group-title", tf("rack.params.operator.label", [g.digit]));
     b.open("div", "params", "params");
     for (const ps of g.params) {
       paramKnobAt(b, ps, getParam(dev, ps), target + ps.key, (v) => setParam(dev, ps.key, v));
@@ -376,10 +376,10 @@ function presetPicker(b, dev) {
   const presets = state.catalog.presets.filter((p) => p.type === dev.type);
   if (presets.length === 0) return undefined;
   const names = [""].concat(presets.map((p) => p.name));
-  const labels = [t("Factory presets…")].concat(presets.map((p) => `${p.name} — ${p.tags}`));
+  const labels = [t("rack.preset.factory.label")].concat(presets.map((p) => `${p.name} — ${p.tags}`));
   b.open("div", "preset", "field");
-  b.leaf("label", "l", "", t("Preset"));
-  select(b, "sel", "", "", names, labels, t("Load a factory preset into this channel"), (v) => {
+  b.leaf("label", "l", "", t("rack.preset.label"));
+  select(b, "sel", "", "", names, labels, t("rack.preset.title"), (v) => {
     const pr = presets.find((p) => p.name === v);
     if (!pr) return undefined;
     const fresh = presetDevice(pr);
@@ -397,25 +397,37 @@ function presetPicker(b, dev) {
 
 // Arpeggio rates (beats) as note values.
 const ARP_RATES = [1, 0.5, 1 / 3, 0.25, 1 / 6, 0.125, 1 / 12, 0.0625, 0.03125];
-const ARP_RATE_NAMES = ["1/4", "1/8", tk("1/8 triplet"), "1/16", tk("1/16 triplet"), "1/32", tk("1/32 triplet"), "1/64", "1/128"];
+/** Their names: a note value written as is ("1/4"), or a key to translate (key ≠ ""). */
+/** const ARP_RATE_NAMES: { text: String, key: String }[] */
+const ARP_RATE_NAMES = [
+  { text: "1/4", key: "" },
+  { text: "1/8", key: "" },
+  { text: "", key: tk("rack.arp.rate.option.eighthTriplet") },
+  { text: "1/16", key: "" },
+  { text: "", key: tk("rack.arp.rate.option.sixteenthTriplet") },
+  { text: "1/32", key: "" },
+  { text: "", key: tk("rack.arp.rate.option.thirtySecondTriplet") },
+  { text: "1/64", key: "" },
+  { text: "1/128", key: "" },
+];
 const ARP_DIRECTION_NAMES = [
-  ["up", tk("Up")],
-  ["down", tk("Down")],
-  ["updown", tk("Up & down")],
-  ["downup", tk("Down & up")],
-  ["random", tk("Random")],
+  ["up", tk("rack.arp.direction.option.up")],
+  ["down", tk("rack.arp.direction.option.down")],
+  ["updown", tk("rack.arp.direction.option.updown")],
+  ["downup", tk("rack.arp.direction.option.downup")],
+  ["random", tk("rack.arp.direction.option.random")],
 ];
 const ARP_GATES = [0.25, 0.5, 0.75, 1, 1.5];
 
-/** A select over numbers; a value that is none of them is offered as itself, written by `unit` ({0} = the number). */
-/** function numberSelect(b: Builder, key: String, label: String, value: Number, values: Number[], names: String[], unit: String, tip: String, onSet: (Number) => Undefined) => Undefined */
+/** A select over numbers; a value that is none of them is offered as itself, written by `unit` (given the number). */
+/** function numberSelect(b: Builder, key: String, label: String, value: Number, values: Number[], names: String[], unit: (String) => String, tip: String, onSet: (Number) => Undefined) => Undefined */
 function numberSelect(b, key, label, value, values, names, unit, tip, onSet) {
   const vs = values.slice();
   const ns = names.slice();
   let at = vs.findIndex((v) => Math.abs(v - value) < 1e-6);
   if (at < 0) {
     vs.push(value);
-    ns.push(tf(unit, [String(Math.round(value * 1000) / 1000)]));
+    ns.push(unit(String(Math.round(value * 1000) / 1000)));
     at = vs.length - 1;
   }
   b.open("div", key, "option");
@@ -432,13 +444,13 @@ function arpControls(b, ch) {
   const cat = state.catalog.arp;
   b.open("div", "arp", "param-group arp");
   b.open("div", "head", "arp-head");
-  b.leaf("div", "t", "param-group-title", t("Arpeggio"));
+  b.leaf("div", "t", "param-group-title", t("rack.arp.label"));
   button(
     b,
     "on",
     a.on ? "small gold" : "small",
-    a.on ? t("On") : t("Off"),
-    t("Play every note of this channel as a run of notes (the notes stay as written)"),
+    a.on ? t("common.on") : t("common.off"),
+    t("rack.arp.on.title"),
     () => {
       commit(() => {
         a.on = !a.on;
@@ -449,8 +461,8 @@ function arpControls(b, ch) {
   if (a.on) {
     b.open("div", "opts", "options");
     b.open("div", "chord", "option");
-    b.leaf("label", "l", "", t("Chord"));
-    select(b, "sel", "", a.chord, cat.chords, cat.chords, t("Notes the run cycles through above each held note (octave = the note itself)"), (v) => {
+    b.leaf("label", "l", "", t("rack.arp.chord.label"));
+    select(b, "sel", "", a.chord, cat.chords, cat.chords, t("rack.arp.chord.title"), (v) => {
       commit(() => {
         a.chord = v;
       });
@@ -462,12 +474,12 @@ function arpControls(b, ch) {
     numberSelect(
       b,
       "octaves",
-      t("Octaves"),
+      t("rack.arp.octaves.label"),
       Number(a.octaves),
       octaves,
       octaves.map((o) => String(o)),
-      "{0}",
-      t("Octaves the run spans"),
+      (n) => n,
+      t("rack.arp.octaves.title"),
       (v) => {
         commit(() => {
           a.octaves = Math.round(v);
@@ -477,12 +489,12 @@ function arpControls(b, ch) {
     numberSelect(
       b,
       "rate",
-      t("Rate"),
+      t("rack.arp.rate.label"),
       a.rate,
       ARP_RATES,
-      ARP_RATE_NAMES.map((n) => t(n)),
-      tk("{0} beats"),
-      t("Time from one note of the run to the next"),
+      ARP_RATE_NAMES.map((n) => (n.key === "" ? n.text : t(n.key))),
+      (n) => tf("format.beats", [n]),
+      t("rack.arp.rate.title"),
       (v) => {
         commit(() => {
           a.rate = v;
@@ -490,7 +502,7 @@ function arpControls(b, ch) {
       }
     );
     b.open("div", "dir", "option");
-    b.leaf("label", "l", "", t("Direction"));
+    b.leaf("label", "l", "", t("rack.arp.direction.label"));
     select(
       b,
       "sel",
@@ -498,7 +510,7 @@ function arpControls(b, ch) {
       a.direction,
       ARP_DIRECTION_NAMES.map((d) => d[0]),
       ARP_DIRECTION_NAMES.map((d) => t(d[1])),
-      t("Order of the notes in the run"),
+      t("rack.arp.direction.title"),
       (v) => {
         commit(() => {
           a.direction = v;
@@ -509,12 +521,12 @@ function arpControls(b, ch) {
     numberSelect(
       b,
       "gate",
-      t("Gate"),
+      t("rack.arp.gate.label"),
       a.gate,
       ARP_GATES,
       ["25%", "50%", "75%", "100%", "150%"],
-      "{0}×",
-      t("Length of each note as a share of the rate"),
+      (n) => `${n}×`,
+      t("rack.arp.gate.title"),
       (v) => {
         commit(() => {
           a.gate = v;
@@ -522,15 +534,15 @@ function arpControls(b, ch) {
       }
     );
     b.open("div", "mode", "option");
-    b.leaf("label", "l", "", t("Chords"));
+    b.leaf("label", "l", "", t("rack.arp.mode.label"));
     select(
       b,
       "sel",
       "",
       a.mode,
       ["free", "sort"],
-      [t("Each note"), t("Take turns")],
-      t("Notes struck together: each runs its own arpeggio, or they take turns as one"),
+      [t("rack.arp.mode.option.free"), t("rack.arp.mode.option.sort")],
+      t("rack.arp.mode.title"),
       (v) => {
         commit(() => {
           a.mode = v;
@@ -548,7 +560,7 @@ function inspector(b) {
   const ch = currentChannel();
   b.open("div", "insp", "inspector");
   if (!ch) {
-    b.leaf("div", "none", "b-empty", t("Select a channel"));
+    b.leaf("div", "none", "b-empty", t("rack.inspector.empty"));
     b.close();
     return undefined;
   }
@@ -562,11 +574,11 @@ function inspector(b) {
   b.close();
   b.close();
   instrumentChooser(b, ch);
-  if (spec && spec.bestFor !== "") b.leaf("div", "best", "insp-doc", tf("Best for: {0}", [spec.bestFor]));
+  if (spec && spec.bestFor !== "") b.leaf("div", "best", "insp-doc", tf("rack.inspector.bestFor", [spec.bestFor]));
   if (spec) b.leaf("div", "doc", "insp-doc", spec.doc);
 
   b.open("div", "name", "field");
-  b.leaf("label", "l", "", t("Channel name"));
+  b.leaf("label", "l", "", t("rack.inspector.name.label"));
   textInput(b, "in", "", ch.name, "", (v) => {
     commit(() => {
       ch.name = v;
@@ -593,23 +605,23 @@ function inspector(b) {
   layerControls(b, ch);
 
   b.open("div", "actions", "rack-add");
-  button(b, "roll", "small", t("Piano roll"), t("Edit this channel's notes (F7)"), () => {
+  button(b, "roll", "small", t("panel.pianoRoll"), t("rack.inspector.roll.title"), () => {
     showDock("piano");
   });
   button(
     b,
     "mix",
     "small",
-    insertIndex(ch.mixer) === 0 ? t("Mixer · Master") : tf("Mixer · Insert {0}", [String(insertIndex(ch.mixer))]),
-    t("Show the mixer insert this channel plays through: its level, pan and effects (F9)"),
+    insertIndex(ch.mixer) === 0 ? t("rack.inspector.mixer.labelMaster") : tf("rack.inspector.mixer.label", [String(insertIndex(ch.mixer))]),
+    t("rack.inspector.mixer.title"),
     () => {
       showInsert(ch.mixer);
     }
   );
-  button(b, "dup", "small", t("Duplicate"), t("Duplicate this channel"), () => {
+  button(b, "dup", "small", t("common.duplicate"), t("rack.inspector.duplicate.title"), () => {
     duplicateChannel(ch);
   });
-  button(b, "del", "small danger", t("Delete"), t("Delete this channel and its notes"), () => {
+  button(b, "del", "small danger", t("common.delete"), t("rack.inspector.delete.title"), () => {
     deleteChannel(ch);
   });
   b.close();
@@ -634,7 +646,7 @@ function instrumentChooser(b, ch) {
     labels.push(ch.instrument.type);
   }
   b.open("div", "swap", "field insp-swap");
-  b.leaf("label", "l", "", t("Instrument"));
+  b.leaf("label", "l", "", t("rack.inspector.instrument.label"));
   b.open("div", "row", "insp-swap-row");
   select(
     b,
@@ -643,16 +655,16 @@ function instrumentChooser(b, ch) {
     ch.instrument.type,
     kinds,
     labels,
-    t("Replace this channel's instrument (its notes, mixer route and volume stay; Ctrl+Z undoes)"),
+    t("rack.inspector.instrument.title"),
     (v) => {
       if (v === ch.instrument.type) return undefined;
       const spec = deviceSpec(v, "instrument");
       replaceInstrument(ch, { key: `dev-${v}`, name: spec ? spec.label : v, device: newDevice(v) });
     }
   );
-  button(b, "browse", "small", t("Sounds…"), t("Show this instrument's presets and sounds in the browser: ⇄ on any of them swaps it into this channel"), () => {
+  button(b, "browse", "small", t("rack.inspector.sounds.label"), t("rack.inspector.sounds.title"), () => {
     browseInstrument(ch.instrument.type);
-    hint(tf("In the browser, ⇄ on any instrument swaps it into {0} — or drag it onto the channel's row", [ch.name]));
+    hint(tf("rack.inspector.sounds.hint", [ch.name]));
   });
   b.close();
   b.close();
@@ -699,22 +711,22 @@ function channelLabel(id) {
 function layerControls(b, ch) {
   const p = state.project;
   b.open("div", "layer", "param-group layer");
-  b.leaf("div", "t", "param-group-title", t("Layer"));
+  b.leaf("div", "t", "param-group-title", t("rack.layer.label"));
   b.open("div", "opts", "options");
   // Which channel's notes this one also plays.
   const hosts = p.channels.filter((c) => c.id !== ch.id && c.layerOf === "");
   const layered = p.channels.some((c) => c.layerOf === ch.id);
   if (!layered) {
     b.open("div", "of", "option");
-    b.leaf("label", "l", "", t("Also plays"));
+    b.leaf("label", "l", "", t("rack.layer.alsoPlays.label"));
     select(
       b,
       "sel",
       "",
       ch.layerOf,
       [""].concat(hosts.map((c) => c.id)),
-      [t("Only its own notes")].concat(hosts.map((c) => tf("{0}'s notes", [c.name]))),
-      t("Make this channel a layer: it also plays every note written for the chosen channel"),
+      [t("rack.layer.alsoPlays.option.none")].concat(hosts.map((c) => tf("rack.layer.alsoPlays.option.channel", [c.name]))),
+      t("rack.layer.alsoPlays.title"),
       (v) => {
         commit(() => {
           ch.layerOf = v;
@@ -735,15 +747,15 @@ function layerControls(b, ch) {
       labels.push(d.label);
     }
     b.open("div", "add", "option");
-    b.leaf("label", "l", "", t("Add a layer"));
+    b.leaf("label", "l", "", t("rack.layer.add.label"));
     select(
       b,
       "sel",
       "",
       "",
       [""].concat(kinds),
-      [t("Choose an instrument…")].concat(labels),
-      t("Add a channel that plays this channel's notes with another instrument"),
+      [t("rack.layer.add.option.none")].concat(labels),
+      t("rack.layer.add.title"),
       (v) => {
         if (v !== "") addLayer(ch, v);
       }
@@ -804,7 +816,7 @@ export function rack(b) {
     e.preventDefault();
     if (dragPick.over !== "+") {
       dragPick.over = "+";
-      hint(tf("Drop to add {0} as a new channel (drop it on a channel to replace that one's instrument)", [dragPick.pick.name]));
+      hint(tf("rack.drop.add.hint", [dragPick.pick.name]));
       invalidate();
     }
   });
@@ -817,7 +829,7 @@ export function rack(b) {
     addPick(dragPick.pick);
   });
   if (!pat) {
-    b.leaf("div", "none", "b-empty", t("Create a pattern in the browser to start sequencing."));
+    b.leaf("div", "none", "b-empty", t("rack.empty.noPattern"));
   } else {
     b.open("div", "guide", "rack-guide");
     b.leaf("b", "t", "", `${pat.name}`);
@@ -826,7 +838,7 @@ export function rack(b) {
       "d",
       "",
       t(
-        "Each row is a channel (an instrument). Squares are 16th-note steps: click one to place a hit, right-click to remove it, scroll to set its velocity. A row with a melody shows its notes instead — click it for the piano roll. Drag an instrument from the browser onto a row to replace it."
+        "rack.guide.label"
       )
     );
     b.close();
@@ -836,7 +848,7 @@ export function rack(b) {
       rackRow(b, pat, ch, idx);
       idx = idx + 1;
     }
-    if (state.project.channels.length === 0) b.leaf("div", "empty", "b-empty", t("Add an instrument from the browser — or ask the agent on the right."));
+    if (state.project.channels.length === 0) b.leaf("div", "empty", "b-empty", t("rack.empty.noChannels"));
   }
   b.close();
   inspector(b);
@@ -847,7 +859,7 @@ export function rack(b) {
 export function rackTools(b) {
   const pat = currentPattern();
   if (!pat) return undefined;
-  b.leaf("span", "l", "label", t("Length"));
+  b.leaf("span", "l", "label", t("term.length"));
   const lengths = ["4", "8", "12", "16", "32", "64"];
   select(
     b,
@@ -855,8 +867,8 @@ export function rackTools(b) {
     "",
     String(pat.length),
     lengths,
-    lengths.map((x) => (x === "4" ? t("1 bar") : tf("{0} bars", [String(Number(x) / 4)]))),
-    t("Pattern length"),
+    lengths.map((x) => (x === "4" ? t("format.barsOne") : tf("format.barsMany", [String(Number(x) / 4)]))),
+    t("rack.length.title"),
     (v) => {
       commit(() => {
         pat.length = Number(v);

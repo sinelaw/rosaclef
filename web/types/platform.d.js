@@ -109,13 +109,16 @@ export const stopPreview;
 /** const fmtDate: (Number) => String */
 export const fmtDate;
 
-/** Load the interface's translations: a JSON object of English text → translated text. Resolves to how many it holds. */
+/** Load the texts of the language shown: a JSON object of key → text. Resolves to how many it holds. */
 /** const loadMessages: (String) => Promise<Int> */
 export const loadMessages;
-/** Forget the translations (the interface speaks English). */
+/** Load the English texts (key → text), shown for a key the language shown lacks. Resolves to how many it holds. */
+/** const loadBaseMessages: (String) => Promise<Int> */
+export const loadBaseMessages;
+/** Forget the language shown's texts (the interface speaks English). */
 /** const clearMessages: () => Undefined */
 export const clearMessages;
-/** A text in the interface's language: its translation, else the text as it is. */
+/** The text of a key: in the language shown, else in English, else the key itself. */
 /** const message: (String) => String */
 export const message;
 /** The interface's language (a BCP 47 tag): dates follow it, and the page says it is in it. */

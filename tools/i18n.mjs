@@ -1,17 +1,16 @@
 #!/usr/bin/env node
-// The studio's translations (docs/i18n.md): every text the interface shows is
-// written in English inside t("…"), tf("…", [values]) or tk("…") in web/src;
-// web/locales/en.json lists them all, and each other locale maps them to its
-// language. A text that means different things in different places is written
-// tx("context", "…"): its key is the context and the text joined by U+0004.
+// The studio's translations (docs/i18n.md). Every text the interface shows has
+// a semantic key ("score.ribbon.gloss.label") written as a literal in t("…"),
+// tf("…", [values]) or tk("…") in web/src; web/locales/en.json gives each key
+// its English, and every other locale its translation.
 //
-//   node tools/i18n.mjs            write web/locales/en.json from the code, and
-//                                  report what each locale is missing
-//   node tools/i18n.mjs --check    fail if en.json is not what the code says, or
-//                                  a locale misses a text, has one the code no
-//                                  longer uses, or loses a {0} placeholder
-//   node tools/i18n.mjs --prune    also drop, from every locale, the texts the
-//                                  code no longer uses
+//   node tools/i18n.mjs            report what is missing or left over
+//   node tools/i18n.mjs --check    fail if a key the code uses has no English, a
+//                                  key in en.json is not used, a locale misses a
+//                                  key or keeps one en.json lacks, or a
+//                                  translation's {0} placeholders differ
+//   node tools/i18n.mjs --prune    drop, from every locale and en.json, the keys
+//                                  the code no longer uses
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
@@ -20,6 +19,9 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const web = join(root, "web");
 const localesDir = join(web, "locales");
+
+/** A key: dot-separated lowerCamelCase segments, the first naming the module. */
+export const KEY = /^[a-z][a-zA-Z0-9]*(\.[a-z0-9][a-zA-Z0-9]*)+$/;
 
 /** Every .js file under a folder, sorted. */
 function jsFiles(dir) {
@@ -32,40 +34,25 @@ function jsFiles(dir) {
   return out;
 }
 
-// A literal string: "…", '…' or `…` without ${}.
+// A string literal: "…", '…' or `…` without ${}.
 const LIT = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\$]|\\.)*`/.source;
 // t("…"), tf("…", …) and tk("…") with a literal first argument (not a method: `x.t(`).
 const CALL = new RegExp(`(?<![\\w.$])(?:t|tf|tk)\\(\\s*(${LIT})`, "g");
-// tx("context", "…") and tkx("context", "…"): the key is the context and the text, joined by U+0004.
-const CTX_CALL = new RegExp(`(?<![\\w.$])(?:tx|tkx)\\(\\s*(${LIT})\\s*,\\s*(${LIT})`, "g");
-const CTX = "\u0004";
 
-/** The value of a string literal of the code. */
-function literal(src) {
-  return Function(`"use strict"; return (${src});`)();
-}
-
-/** The text a key shows in English: a key with a context shows the text after it. */
-export function english(key) {
-  const i = key.indexOf(CTX);
-  return i < 0 ? key : key.slice(i + 1);
-}
-
-/** The texts the code marks for translation, in order of first appearance. */
+/** The keys the code uses, with where each is first used; and the literals that are not keys. */
 export function extract() {
   const keys = new Map();
+  const bad = [];
   for (const file of jsFiles(join(web, "src"))) {
     const src = readFileSync(file, "utf8");
-    const found = [];
-    for (const m of src.matchAll(CALL)) found.push({ at: m.index, key: literal(m[1]) });
-    for (const m of src.matchAll(CTX_CALL)) found.push({ at: m.index, key: `${literal(m[1])}${CTX}${literal(m[2])}` });
-    found.sort((a, b) => a.at - b.at);
-    for (const f of found) {
-      if (f.key === "" || keys.has(f.key)) continue;
-      keys.set(f.key, relative(web, file));
+    for (const m of src.matchAll(CALL)) {
+      const key = Function(`"use strict"; return (${m[1]});`)();
+      const where = `${relative(root, file)}:${src.slice(0, m.index).split("\n").length}`;
+      if (!KEY.test(key)) bad.push(`${where}: not a key: ${JSON.stringify(key).slice(0, 80)}`);
+      else if (!keys.has(key)) keys.set(key, where);
     }
   }
-  return keys;
+  return { keys, bad };
 }
 
 /** The placeholders of a text ({0}, {1}…), sorted. */
@@ -73,61 +60,59 @@ function placeholders(s) {
   return [...s.matchAll(/\{\d+\}/g)].map((m) => m[0]).sort();
 }
 
-function readJson(p) {
-  return JSON.parse(readFileSync(p, "utf8"));
-}
-
-function writeJson(p, o) {
-  writeFileSync(p, JSON.stringify(o, null, 2) + "\n");
-}
+const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
+const writeJson = (p, o) => writeFileSync(p, JSON.stringify(o, null, 2) + "\n");
 
 const args = new Set(process.argv.slice(2));
 const check = args.has("--check");
 const prune = args.has("--prune");
 
-const keys = extract();
-const en = {};
-for (const k of keys.keys()) en[k] = english(k);
+const { keys, bad } = extract();
+const problems = [...bad];
+const report = (what, list) => {
+  if (list.length === 0) return;
+  problems.push(`${what}: ${list.length}`);
+  for (const k of list.slice(0, 15)) problems.push(`    ${k}`);
+  if (list.length > 15) problems.push(`    …`);
+};
 
-const problems = [];
 const enPath = join(localesDir, "en.json");
-const enJson = JSON.stringify(en, null, 2) + "\n";
-let enOnDisk = "";
-try {
-  enOnDisk = readFileSync(enPath, "utf8");
-} catch (_) {
-  /* not written yet */
-}
-if (check) {
-  if (enOnDisk !== enJson) problems.push("web/locales/en.json is not up to date with the code: run `node tools/i18n.mjs`");
+const en = readJson(enPath);
+report(
+  "en.json: keys the code uses without English",
+  [...keys].filter(([k]) => typeof en[k] !== "string" || en[k] === "").map(([k, w]) => `${k} (${w})`)
+);
+const unused = Object.keys(en).filter((k) => !keys.has(k));
+const sorted = Object.keys(en).some((k, i, a) => i > 0 && a[i - 1] > k);
+if (prune) {
+  const kept = {};
+  for (const k of Object.keys(en).sort()) if (keys.has(k)) kept[k] = en[k];
+  writeJson(enPath, kept);
 } else {
-  writeFileSync(enPath, enJson);
+  report("en.json: keys the code does not use (--prune drops them)", unused);
+  if (sorted) problems.push("en.json: keys are not sorted (--prune sorts them)");
 }
+const enKeys = Object.keys(en).filter((k) => !prune || keys.has(k));
 
 for (const name of readdirSync(localesDir).sort()) {
   if (!name.endsWith(".json") || name === "en.json") continue;
   const path = join(localesDir, name);
   const loc = readJson(path);
-  const missing = [...keys.keys()].filter((k) => typeof loc[k] !== "string" || loc[k].trim() === "");
-  const unused = Object.keys(loc).filter((k) => !keys.has(k));
-  const broken = [...keys.keys()].filter((k) => typeof loc[k] === "string" && loc[k] !== "" && placeholders(loc[k]).join() !== placeholders(k).join());
-  if (prune && unused.length > 0) {
+  const missing = enKeys.filter((k) => typeof loc[k] !== "string" || loc[k].trim() === "");
+  const extra = Object.keys(loc).filter((k) => !enKeys.includes(k));
+  const broken = enKeys.filter((k) => typeof loc[k] === "string" && loc[k] !== "" && placeholders(loc[k]).join() !== placeholders(en[k]).join());
+  if (prune) {
     const kept = {};
-    for (const k of keys.keys()) if (typeof loc[k] === "string") kept[k] = loc[k];
+    for (const k of enKeys.slice().sort()) if (typeof loc[k] === "string") kept[k] = loc[k];
     writeJson(path, kept);
+  } else {
+    report(`${name}: keys not translated`, missing);
+    report(`${name}: keys en.json does not have (--prune drops them)`, extra);
   }
-  const report = (what, list) => {
-    if (list.length === 0) return;
-    problems.push(`${name}: ${list.length} ${what}`);
-    for (const k of list.slice(0, 10)) problems.push(`    ${JSON.stringify(k)}`);
-    if (list.length > 10) problems.push(`    …`);
-  };
-  report("texts not translated", missing);
-  if (!prune) report("texts the code no longer uses (--prune drops them)", unused);
-  report("translations whose {placeholders} differ from the English", broken);
+  report(`${name}: translations whose {placeholders} differ from the English`, broken);
 }
 
-console.log(`${keys.size} texts to translate.`);
+console.log(`${keys.size} keys.`);
 if (problems.length > 0) {
   console.log(problems.join("\n"));
   if (check) process.exit(1);

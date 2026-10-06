@@ -74,7 +74,7 @@ import { decodeShot, musicJson, noMove } from "../model.js";
 import { TPQ } from "../notation.js";
 import { select, iconButton, glyph, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
-import { t, tf, tk, tx } from "../i18n.js";
+import { t, tf, tk } from "../i18n.js";
 
 // ------------------------------------------------------------------ state
 
@@ -135,18 +135,14 @@ export function newFilmView(id) {
  * everything.
  */
 const DRAWING = [
-  ["glow", tk("Note glow"), tk("The notes playing light up")],
-  ["spotlight", tk("Spotlight"), tk("The pool of light on the framed staves")],
-  ["vignette", tk("Vignette"), tk("The picture darkening toward its edges")],
-  ["finish", tk("Finish"), tk("The lamp's warmth, soft highlights and film grain over the picture")],
-  [
-    "ink",
-    tk("Ink look"),
-    tk("The ink as on the paper view: its soft edges and the wet ink's glints (off: crisp plain ink, drawn many times faster — in Firefox above all)"),
-  ],
-  ["paper", tk("Paper texture"), tk("The paper's tooth, formation, grain and toned edges (off: plain paper)")],
-  ["sharp", tk("Full resolution"), tk("As many pixels as the screen has (off: one a CSS pixel — a quarter of them on a high-density screen)")],
-  ["detail", tk("Sharp close-ups"), tk("Close up, the page as sharp as the screen shows it (off: half as sharp, a quarter of the drawing)")],
+  ["glow", tk("film.drawing.glow.label"), tk("film.drawing.glow.title")],
+  ["spotlight", tk("film.effect.spotlight.label"), tk("film.drawing.spotlight.title")],
+  ["vignette", tk("film.effect.vignette.label"), tk("film.drawing.vignette.title")],
+  ["finish", tk("film.drawing.finish.label"), tk("film.drawing.finish.title")],
+  ["ink", tk("film.drawing.ink.label"), tk("film.drawing.ink.title")],
+  ["paper", tk("film.drawing.paper.label"), tk("film.drawing.paper.title")],
+  ["sharp", tk("film.drawing.sharp.label"), tk("film.drawing.sharp.title")],
+  ["detail", tk("film.drawing.detail.label"), tk("film.drawing.detail.title")],
 ];
 /** Where what the screen leaves out is remembered: DRAWING keys, by commas ("none": nothing). */
 const DRAWING_PREF = "rosaclef.film.off";
@@ -211,11 +207,11 @@ function clampNum(x, lo, hi) {
 /** A desk's name (a SURFACES value), as shown. */
 /** function surfaceName(x: String) => String */
 function surfaceName(x) {
-  if (x === "walnut") return t("Walnut");
-  if (x === "oak") return t("Oak");
-  if (x === "slate") return t("Slate");
-  if (x === "felt") return t("Felt");
-  if (x === "marble") return t("Marble");
+  if (x === "walnut") return t("film.surface.option.walnut");
+  if (x === "oak") return t("film.surface.option.oak");
+  if (x === "slate") return t("film.surface.option.slate");
+  if (x === "felt") return t("film.surface.option.felt");
+  if (x === "marble") return t("film.surface.option.marble");
   return x.slice(0, 1).toUpperCase() + x.slice(1);
 }
 
@@ -741,7 +737,7 @@ function onStageDown(e, fv, f, beat) {
           fv.look.dx = lk0.dx - dx / fv.look.zoom;
           fv.look.dy = lk0.dy - dy / fv.look.zoom;
         }
-        hint(t("Looking about by hand — double-click to go back to the film's camera. Select a shot (Manual) to frame it."));
+        hint(t("film.picture.lookAbout.hint"));
         invalidate();
         return undefined;
       }
@@ -758,7 +754,7 @@ function onStageDown(e, fv, f, beat) {
             s.to.offset = [clampNum(Math.round((to0[0] - dx / z) * 1000) / 1000, -2, 2), clampNum(Math.round((to0[1] - dy / z) * 1000) / 1000, -2, 2)];
         }
       });
-      hint(orbit ? t("Turning and leaning the shot's camera") : t("Moving the shot's frame — Shift-drag turns and leans it, the wheel zooms"));
+      hint(orbit ? t("film.picture.turnShot.hint") : t("film.picture.moveShot.hint"));
     },
     (u) => endEdit(fv)
   );
@@ -825,7 +821,7 @@ function onStripDown(e, fv, f, inp, i, part) {
         }
       });
       const sel = selShot(fv);
-      if (sel.length > 0) hint(tf("Shot: bar {0} to {1} — Shift: by bars, Alt: free", [barBeat(sel[0].start, f.bar), barBeat(sel[0].end, f.bar)]));
+      if (sel.length > 0) hint(tf("film.timeline.dragShot.hint", [barBeat(sel[0].start, f.bar), barBeat(sel[0].end, f.bar)]));
     },
     (u) => {
       endEdit(fv);
@@ -1029,17 +1025,17 @@ function stage(b, fv, f, inp, cam, beat, scene) {
   // What is filmed.
   if (scene) {
     b.open("div", "hud", "film-hud");
-    b.leaf("span", "why", "film-why", scene.why !== "" ? scene.why : scene.src >= 0 ? tf("Shot {0}", [String(scene.src + 1)]) : "");
-    b.leaf("span", "what", "film-what", scene.src >= 0 ? tf("{0} · shot", [scene.frame]) : tf("{0} · auto", [scene.frame]));
+    b.leaf("span", "why", "film-why", scene.why !== "" ? scene.why : scene.src >= 0 ? tf("film.shot.name", [String(scene.src + 1)]) : "");
+    b.leaf("span", "what", "film-what", scene.src >= 0 ? tf("film.hud.frame.shot", [scene.frame]) : tf("film.hud.frame.auto", [scene.frame]));
     b.close();
   }
   const ready = fv.pages.filter((pg) => done(pg)).length;
-  if (fv.export >= 0) b.leaf("div", "loading", "film-loading", tf("Filming the video… {0}%", [String(Math.round(fv.export * 100))]));
+  if (fv.export >= 0) b.leaf("div", "loading", "film-loading", tf("film.picture.exporting.label", [String(Math.round(fv.export * 100))]));
   else if (ready < f.lay.pages.length)
-    b.leaf("div", "loading", "film-loading", tf("Laying out the pages… {0}/{1}", [String(ready), String(f.lay.pages.length)]));
-  if (f.sc.empty) b.leaf("div", "empty", "film-empty", t("Nothing to film yet: write some notes first."));
+    b.leaf("div", "loading", "film-loading", tf("film.picture.layingOut.label", [String(ready), String(f.lay.pages.length)]));
+  if (f.sc.empty) b.leaf("div", "empty", "film-empty", t("film.picture.empty"));
   if (fv.cinema) {
-    iconButton(b, "exit", "small film-exit", "close", t("Leave the cinema (back to the editor)"), () => {
+    iconButton(b, "exit", "small film-exit", "close", t("film.picture.exitCinema.title"), () => {
       fv.cinema = false;
       invalidate();
     });
@@ -1055,20 +1051,20 @@ function exportStill(fv, f, inp) {
   if (fv.export >= 0) return undefined;
   fv.export = 0;
   invalidate();
-  toast(t("Drawing the frame"), t("At 1920×1080."), "info");
+  toast(t("film.still.drawing.toast.title"), t("film.still.drawing.toast.body"), "info");
   filmStill(fv, f, inp)
     .then((url) => {
       fv.export = -1;
       const beat = inp.showing ? state.position : 0;
       const name = `${inp.info.title.replace(/[^A-Za-z0-9 _-]+/g, "").trim() || "film"} - bar ${Math.floor(beat / f.bar) + 1}.png`;
       download(url, name);
-      toast(t("Picture saved"), name, "info");
+      toast(t("film.still.saved.toast.title"), name, "info");
       invalidate();
       return true;
     })
     .catch((e) => {
       fv.export = -1;
-      toast(t("The picture could not be made"), String(e), "error");
+      toast(t("film.still.failed.toast.title"), String(e), "error");
       invalidate();
       return false;
     });
@@ -1145,24 +1141,24 @@ async function filmStill(fv, f, inp) {
 function exportVideo(fv, f, inp, clip) {
   if (fv.export >= 0) return undefined;
   if (f.sc.empty) {
-    toast(t("Nothing to film"), t("Write some notes first."), "warn");
+    toast(t("film.video.empty.toast.title"), t("film.video.empty.toast.body"), "warn");
     return undefined;
   }
   fv.export = 0;
   invalidate();
-  toast(t("Filming the song"), t("First the mixdown, then the pictures, frame by frame (it plays out faster or slower than the song)."), "info");
+  toast(t("film.video.filming.toast.title"), t("film.video.filming.toast.body"), "info");
   filmVideo(fv, f, inp, clip)
     .then((r) => {
       fv.export = -1;
       const name = `${inp.info.title.replace(/[^A-Za-z0-9 _-]+/g, "").trim() || "film"}${clip ? " (clip)" : ""}.mp4`;
       download(r.url, name);
-      toast(t("Film exported"), `${name} — ${VIDEO_W}×${VIDEO_H}, ${r.codecs}.`, "info");
+      toast(t("film.video.done.toast.title"), `${name} — ${VIDEO_W}×${VIDEO_H}, ${r.codecs}.`, "info");
       invalidate();
       return true;
     })
     .catch((e) => {
       fv.export = -1;
-      toast(t("The film could not be made"), String(e), "error");
+      toast(t("film.video.failed.toast.title"), String(e), "error");
       invalidate();
       return false;
     });
@@ -1194,7 +1190,7 @@ async function filmVideo(fv, f, inp, clip) {
     const r = await sendJson("/api/render", "POST", { bits: 16 });
     sound = await decodeAudioUrl(String(r.url));
   } catch (e) {
-    toast(t("No sound"), tf("The mixdown could not be rendered ({0}): the film is silent.", [String(e)]), "warn");
+    toast(t("film.video.noSound.toast.title"), tf("film.video.noSound.toast.body", [String(e)]), "warn");
   }
   const offset = (start * 60) / bpm;
   const seconds = clip ? 15 : Math.max((beats * 60) / bpm + 1.5, sound.duration);
@@ -1232,26 +1228,21 @@ function ribbon(b, fv, f, inp) {
   const a = state.project.animation;
   b.open("div", "ribbon", "score-ribbon film-ribbon");
   b.open("div", "g1", "score-group");
-  iconButton(b, "back", "small", "score", t("Back to the paper (the score as a page to read and edit)"), () => inp.back());
+  iconButton(b, "back", "small", "score", t("film.ribbon.back.title"), () => inp.back());
   iconButton(
     b,
     "play",
     state.playing ? "small on" : "small",
     state.playing ? "pause" : "play",
-    state.playing ? t("Pause (Space)") : t("Play the film (Space)"),
+    state.playing ? t("film.ribbon.pause.title") : t("film.ribbon.play.title"),
     () => togglePlay()
   );
-  b.leaf("span", "t", "film-title", t("Film"));
+  b.leaf("span", "t", "film-title", t("film.ribbon.heading.label"));
   b.close();
   b.open("div", "mode", "film-modes");
   for (const m of ["auto", "manual"]) {
-    b.leaf("button", m, a.mode === m ? "film-mode on" : "film-mode", m === "auto" ? t("Auto") : t("Manual"));
-    b.attr(
-      "title",
-      m === "auto"
-        ? t("Auto: the camera directs itself — mostly the full score, following a part for a while as it comes in or takes the lead")
-        : t("Manual: the camera films your shots (from the timeline, the panel or the agent), and directs itself between them")
-    );
+    b.leaf("button", m, a.mode === m ? "film-mode on" : "film-mode", m === "auto" ? t("film.mode.auto.label") : t("film.mode.manual.label"));
+    b.attr("title", m === "auto" ? t("film.mode.auto.title") : t("film.mode.manual.title"));
     b.on("click", (e) => {
       if (a.mode !== m) editFilm((x) => (x.mode = m));
     });
@@ -1260,8 +1251,8 @@ function ribbon(b, fv, f, inp) {
   b.leaf("span", "sp", "score-spacer", "");
   b.open("div", "g2", "score-group");
   b.open("label", "energy", "score-ink-knob");
-  b.attr("title", t("Energy: how much the camera moves on its own — calm, long shots, or restless and close"));
-  b.leaf("span", "l", "label", t("Energy"));
+  b.attr("title", t("film.ribbon.energy.title"));
+  b.leaf("span", "l", "label", t("film.ribbon.energy.label"));
   b.leaf("input", "in", "score-slider", "");
   b.attr("type", "range");
   b.attr("min", "0");
@@ -1278,7 +1269,7 @@ function ribbon(b, fv, f, inp) {
   });
   b.on("change", (e) => endEdit(fv));
   b.close();
-  b.leaf("span", "dl", "label", t("Desk"));
+  b.leaf("span", "dl", "label", t("film.ribbon.surface.label"));
   select(
     b,
     "surface",
@@ -1286,24 +1277,24 @@ function ribbon(b, fv, f, inp) {
     a.surface,
     SURFACES,
     SURFACES.map((x) => surfaceName(x)),
-    t("The desk the pages lie on"),
+    t("film.ribbon.surface.title"),
     (val) => editFilm((x) => (x.surface = val))
   );
-  iconButton(b, "add", "small", "plus", t("Add a shot here (two bars, framed as the director would)"), () => shotAt(fv, f, state.position));
+  iconButton(b, "add", "small", "plus", t("film.ribbon.add.title"), () => shotAt(fv, f, state.position));
   b.open("button", "mp4", fv.export >= 0 ? "btn small icon on" : "btn small icon");
-  b.attr("title", t("Export the film as an MP4 video (1920×1080, with the mixdown) — Shift: a 15-second clip from the playhead"));
-  b.attr("aria-label", t("Export the film as an MP4 video"));
-  b.on("pointerenter", (e) => hint(t("MP4: the whole film as a video with its sound · Shift-click: fifteen seconds from the playhead")));
+  b.attr("title", t("film.ribbon.mp4.title"));
+  b.attr("aria-label", t("film.ribbon.mp4.aria"));
+  b.on("pointerenter", (e) => hint(t("film.ribbon.mp4.hint")));
   b.on("click", (e) => exportVideo(fv, f, inp, e.shiftKey));
   glyph(b, "export");
   b.close();
-  iconButton(b, "still", "small", "camera", t("Save this frame as a picture (1920×1080 PNG)"), () => exportStill(fv, f, inp));
-  iconButton(b, "cinema", "small", "fullscreen", t("Cinema: just the picture, full screen"), () => {
+  iconButton(b, "still", "small", "camera", t("film.ribbon.still.title"), () => exportStill(fv, f, inp));
+  iconButton(b, "cinema", "small", "fullscreen", t("film.ribbon.cinema.title"), () => {
     fv.cinema = true;
     invalidate();
     toggleFullscreen(".film.cinema");
   });
-  iconButton(b, "side", fv.side ? "small on" : "small", "sidebar", t("Shots and effects"), () => {
+  iconButton(b, "side", fv.side ? "small on" : "small", "sidebar", t("film.ribbon.side.title"), () => {
     fv.side = !fv.side;
     invalidate();
   });
@@ -1344,14 +1335,14 @@ function timeline(b, fv, f, inp, beat, ti) {
     b.attr(
       "title",
       k.src < 0
-        ? tf("{0} — {1}, bars {2}–{3} · double-click to make it a shot", [
-            k.why !== "" ? k.why : t("auto"),
+        ? tf("film.timeline.scene.auto.title", [
+            k.why !== "" ? k.why : t("film.timeline.scene.auto.label"),
             k.frame,
             barBeat(k.start, f.bar),
             barBeat(k.end, f.bar),
           ])
-        : tf("{0} — {1}, bars {2}–{3} · drag to move, drag its edges to stretch", [
-            k.why !== "" ? k.why : tf("Shot {0}", [String(k.src + 1)]),
+        : tf("film.timeline.scene.shot.title", [
+            k.why !== "" ? k.why : tf("film.shot.name", [String(k.src + 1)]),
             k.frame,
             barBeat(k.start, f.bar),
             barBeat(k.end, f.bar),
@@ -1362,7 +1353,7 @@ function timeline(b, fv, f, inp, beat, ti) {
       e.stopPropagation();
       if (k.src < 0) addShot(fv, shotOf(f, i));
     });
-    b.leaf("span", "l", "film-scene-label", k.why !== "" ? k.why : k.src >= 0 ? tf("Shot {0}", [String(k.src + 1)]) : k.frame);
+    b.leaf("span", "l", "film-scene-label", k.why !== "" ? k.why : k.src >= 0 ? tf("film.shot.name", [String(k.src + 1)]) : k.frame);
     if (k.src >= 0) {
       for (const part of ["start", "end"]) {
         b.leaf("span", part, `film-edge ${part}`, "");
@@ -1384,7 +1375,7 @@ function timeline(b, fv, f, inp, beat, ti) {
 /** function slider(b: Builder, fv: FilmView, key: String, label: String, tip: String, value: Number, min: Number, max: Number, step: Number, dflt: Number, shown: String, onSet: (Number) => Undefined) => Undefined */
 function slider(b, fv, key, label, tip, value, min, max, step, dflt, shown, onSet) {
   b.open("label", key, "film-knob");
-  b.attr("title", tf("{0} (double-click: {1})", [tip, fmt(dflt, 2)]));
+  b.attr("title", tf("film.slider.title", [tip, fmt(dflt, 2)]));
   b.leaf("span", "l", "film-knob-l", label);
   b.leaf("input", "in", "score-slider", "");
   b.attr("type", "range");
@@ -1431,13 +1422,13 @@ function side(b, fv, f, inp, ti) {
 /** function autoPanel(b: Builder, fv: FilmView, f: Film, i: Int) => Undefined */
 function autoPanel(b, fv, f, i) {
   const k = f.scenes[i];
-  b.leaf("div", "ah", "score-side-h", t("Director's scene"));
+  b.leaf("div", "ah", "score-side-h", t("film.scenePanel.heading.label"));
   b.open("div", "auto", "film-card");
   b.leaf("div", "why", "film-card-t", k.why !== "" ? k.why : k.frame);
-  const names = k.staves.length === 0 ? t("every part") : channelsOf(f.sc, k.staves).join(", ");
-  b.leaf("div", "what", "film-card-s", tf("{0} on {1} · bars {2}–{3} · {4}", [k.frame, names, barBeat(k.start, f.bar), barBeat(k.end, f.bar), k.transition]));
-  b.leaf("button", "make", "btn small", t("Make it a shot"));
-  b.attr("title", t("Write this scene into the project as a shot (manual mode), to change it"));
+  const names = k.staves.length === 0 ? t("film.scenePanel.everyPart.label") : channelsOf(f.sc, k.staves).join(", ");
+  b.leaf("div", "what", "film-card-s", tf("film.scenePanel.what.label", [k.frame, names, barBeat(k.start, f.bar), barBeat(k.end, f.bar), k.transition]));
+  b.leaf("button", "make", "btn small", t("film.scenePanel.make.label"));
+  b.attr("title", t("film.scenePanel.make.title"));
   b.on("click", (e) => addShot(fv, shotOf(f, i)));
   b.close();
 }
@@ -1446,25 +1437,23 @@ function autoPanel(b, fv, f, i) {
 /** function filmPanel(b: Builder, fv: FilmView, f: Film) => Undefined */
 function filmPanel(b, fv, f) {
   const a = state.project.animation;
-  b.leaf("div", "h", "score-side-h", t("The film"));
+  b.leaf("div", "h", "score-side-h", t("film.panel.heading.label"));
   b.open("div", "how", "film-card");
   b.leaf(
     "div",
     "t",
     "film-card-s",
     a.mode === "auto"
-      ? t(
-          "Auto: the camera directs itself. It mostly shows the full score, and follows a part for a short while as it comes in, takes the lead or plays alone. More energy: more often, closer, and more movement."
-        )
+      ? t("film.panel.how.auto")
       : a.shots.length === 0
-        ? t("Manual: no shots yet — the camera directs itself until you add some. Double-click the timeline to add a shot; select one to frame it.")
+        ? t("film.panel.how.manual.none")
         : a.shots.length === 1
-          ? t("Manual: 1 shot, and the director between them. Double-click the timeline to add a shot; select one to frame it.")
-          : tf("Manual: {0} shots, and the director between them. Double-click the timeline to add a shot; select one to frame it.", [String(a.shots.length)])
+          ? t("film.panel.how.manual.one")
+          : tf("film.panel.how.manual.other", [String(a.shots.length)])
   );
   b.open("div", "acts", "film-acts");
-  b.leaf("button", "bake", "btn small", t("Write the director's shots"));
-  b.attr("title", t("Start a manual film from the director's: every scene becomes a shot in the project, to change as you like (or to hand to the agent)"));
+  b.leaf("button", "bake", "btn small", t("film.panel.bake.label"));
+  b.attr("title", t("film.panel.bake.title"));
   b.on("click", (e) => {
     const shots = bake(
       f.sc,
@@ -1478,8 +1467,8 @@ function filmPanel(b, fv, f) {
     fv.shot = -1;
   });
   if (a.shots.length > 0) {
-    b.leaf("button", "clear", "btn small ghost", t("Clear the shots"));
-    b.attr("title", t("Remove every shot (the director films it all again)"));
+    b.leaf("button", "clear", "btn small ghost", t("film.panel.clear.label"));
+    b.attr("title", t("film.panel.clear.title"));
     b.on("click", (e) => {
       commit(() => {
         anim().shots = [];
@@ -1489,29 +1478,18 @@ function filmPanel(b, fv, f) {
   }
   b.close();
   b.close();
-  b.leaf("div", "eh", "score-side-h", t("Effects"));
+  b.leaf("div", "eh", "score-side-h", t("term.effects"));
   effectSliders(b, fv, a.effects, (type, x) => setEffect(anim().effects, type, x));
   drawingPanel(b, fv);
-  b.leaf("div", "kh", "score-side-h", tx("film controls", "Keys"));
-  b.leaf(
-    "div",
-    "keys",
-    "film-card-s film-tip",
-    t(
-      "Drag the picture to look about (Shift: turn and lean), wheel to zoom, double-click to go back to the film's camera. With a shot selected (Manual, paused), they frame the shot."
-    )
-  );
+  b.leaf("div", "kh", "score-side-h", t("film.panel.keys.label"));
+  b.leaf("div", "keys", "film-card-s film-tip", t("film.panel.keys.tip"));
 }
 
 /** Sliders for the effects of a list. */
 /** function effectSliders(b: Builder, fv: FilmView, list: FilmEffect[], onSet: (String, Number) => Undefined) => Undefined */
 function effectSliders(b, fv, list, onSet) {
-  const names = [t("Vignette"), t("Spotlight"), t("Glow")];
-  const tips = [
-    t("Vignette: the picture darkens toward its edges"),
-    t("Spotlight: a pool of light on the framed staves, the rest of the desk dimmed"),
-    t("Glow: the notes playing light up, their ink glowing warm"),
-  ];
+  const names = [t("film.effect.vignette.label"), t("film.effect.spotlight.label"), t("film.effect.glow.label")];
+  const tips = [t("film.effect.vignette.title"), t("film.effect.spotlight.title"), t("film.effect.glow.title")];
   const fx = [0.5, 0, 1];
   for (let i = 0; i < EFFECTS.length; i++) {
     const e = list.find((x) => x.type === EFFECTS[i]);
@@ -1533,17 +1511,26 @@ function drawingPanel(b, fv) {
     invalidate();
   }
   const preset = fv.off.length === 0 ? "quality" : fv.off.length === DRAWING.length ? "performance" : "custom";
-  b.leaf("div", "dh", "score-side-h", t("On screen"));
+  b.leaf("div", "dh", "score-side-h", t("film.drawing.heading.label"));
   b.open("div", "dm", "film-modes film-presets");
   for (const p of ["quality", "performance", "custom"]) {
-    b.leaf("button", p, preset === p ? "film-mode on" : "film-mode", p === "quality" ? t("Quality") : p === "performance" ? t("Performance") : t("Custom"));
+    b.leaf(
+      "button",
+      p,
+      preset === p ? "film-mode on" : "film-mode",
+      p === "quality"
+        ? t("film.drawing.preset.quality.label")
+        : p === "performance"
+          ? t("film.drawing.preset.performance.label")
+          : t("film.drawing.preset.custom.label")
+    );
     b.attr(
       "title",
       p === "quality"
-        ? t("Draw everything on screen")
+        ? t("film.drawing.preset.quality.title")
         : p === "performance"
-          ? t("Leave out every effect and draw fewer pixels: smoother on slow machines (exports keep everything)")
-          : t("Some things left out: pick them below")
+          ? t("film.drawing.preset.performance.title")
+          : t("film.drawing.preset.custom.title")
     );
     if (p === "quality") b.on("click", (e) => set([]));
     else if (p === "performance") b.on("click", (e) => set(DRAWING.map((x) => x[0])));
@@ -1553,7 +1540,7 @@ function drawingPanel(b, fv) {
   for (const x of DRAWING) {
     const on = !fv.off.includes(x[0]);
     b.leaf("button", x[0], on ? "film-chip on" : "film-chip", `${on ? "✓ " : ""}${t(x[1])}`);
-    b.attr("title", on ? tf("{0} — on; click to leave it out", [t(x[2])]) : tf("{0} — left out; click to draw it", [t(x[2])]));
+    b.attr("title", on ? tf("film.drawing.chip.on.title", [t(x[2])]) : tf("film.drawing.chip.off.title", [t(x[2])]));
     b.on("click", (e) => set(on ? fv.off.concat([x[0]]) : fv.off.filter((k) => k !== x[0])));
   }
   b.close();
@@ -1564,13 +1551,13 @@ function drawingPanel(b, fv) {
 function shotPanel(b, fv, f, inp, s) {
   const idx = fv.shot;
   b.open("div", "sh", "score-side-h film-side-h");
-  b.leaf("span", "t", "", tf("Shot {0}", [String(idx + 1)]));
-  iconButton(b, "x", "small ghost", "close", t("Back to the film's settings"), () => {
+  b.leaf("span", "t", "", tf("film.shot.name", [String(idx + 1)]));
+  iconButton(b, "x", "small ghost", "close", t("film.shot.close.title"), () => {
     fv.shot = -1;
     invalidate();
   });
   b.close();
-  textInput(b, "label", "film-label", s.label, t("Label (shown on the timeline)…"), (val) => {
+  textInput(b, "label", "film-label", s.label, t("film.shot.label.placeholder"), (val) => {
     if (val !== s.label) commit(() => (s.label = val));
   });
   // When.
@@ -1581,16 +1568,16 @@ function shotPanel(b, fv, f, inp, s) {
     b.attr("title", tip);
     b.on("click", (e) => commit(fn));
   }
-  b.leaf("span", "a", "film-when-t", tf("bar {0}", [barBeat(s.start, f.bar)]));
-  nudge("a-", "−", t("Start a beat earlier"), () => (s.start = Math.max(0, s.start - 1)));
-  nudge("a+", "+", t("Start a beat later"), () => (s.start = Math.min(s.end - 0.25, s.start + 1)));
-  b.leaf("span", "z", "film-when-t", tf("to {0}", [barBeat(s.end, f.bar)]));
-  nudge("z-", "−", t("End a beat earlier"), () => (s.end = Math.max(s.start + 0.25, s.end - 1)));
-  nudge("z+", "+", t("End a beat later"), () => (s.end = s.end + 1));
+  b.leaf("span", "a", "film-when-t", tf("format.barLower", [barBeat(s.start, f.bar)]));
+  nudge("a-", "−", t("film.shot.start.earlier.title"), () => (s.start = Math.max(0, s.start - 1)));
+  nudge("a+", "+", t("film.shot.start.later.title"), () => (s.start = Math.min(s.end - 0.25, s.start + 1)));
+  b.leaf("span", "z", "film-when-t", tf("film.shot.end.label", [barBeat(s.end, f.bar)]));
+  nudge("z-", "−", t("film.shot.end.earlier.title"), () => (s.end = Math.max(s.start + 0.25, s.end - 1)));
+  nudge("z+", "+", t("film.shot.end.later.title"), () => (s.end = s.end + 1));
   b.close();
 
   // What: channels, or a role.
-  b.leaf("div", "fh", "score-side-h", t("Frames"));
+  b.leaf("div", "fh", "score-side-h", t("film.shot.focus.label"));
   /** const used: String[] */
   const used = [];
   for (const st of f.sc.staves) for (const c of st.channels) if (!used.includes(c)) used.push(c);
@@ -1599,7 +1586,7 @@ function shotPanel(b, fv, f, inp, s) {
     const ch = state.project.channels.find((c) => c.id === id);
     const on = s.focus.includes(id);
     b.open("button", id, on ? "film-chip on" : "film-chip");
-    b.attr("title", on ? tf("Leave {0} out of the frame", [ch ? ch.name : id]) : tf("Frame {0}", [ch ? ch.name : id]));
+    b.attr("title", on ? tf("film.shot.focus.on.title", [ch ? ch.name : id]) : tf("film.shot.focus.off.title", [ch ? ch.name : id]));
     b.on("click", (e) =>
       commit(() => {
         s.focus = on ? s.focus.filter((x) => x !== id) : s.focus.concat([id]);
@@ -1613,7 +1600,7 @@ function shotPanel(b, fv, f, inp, s) {
   }
   b.close();
   b.open("div", "rf", "film-row");
-  b.leaf("span", "rl", "label", t("Part"));
+  b.leaf("span", "rl", "label", t("film.shot.role.label"));
   select(
     b,
     "role",
@@ -1621,9 +1608,15 @@ function shotPanel(b, fv, f, inp, s) {
     s.focus.length > 0 ? "channels" : s.role === "" ? "all" : s.role,
     s.focus.length > 0 ? ["channels"].concat(ROLES) : ROLES,
     s.focus.length > 0
-      ? [t("Channels above"), t("Lead"), t("Rhythm"), t("Background"), t("Everyone")]
-      : [t("Lead"), t("Rhythm"), t("Background"), t("Everyone")],
-    t("The part of the band to frame (found by the camera), when no channel is picked"),
+      ? [
+          t("film.shot.role.option.channels"),
+          t("film.shot.role.option.lead"),
+          t("film.shot.role.option.rhythm"),
+          t("film.shot.role.option.background"),
+          t("film.shot.role.option.all"),
+        ]
+      : [t("film.shot.role.option.lead"), t("film.shot.role.option.rhythm"), t("film.shot.role.option.background"), t("film.shot.role.option.all")],
+    t("film.shot.role.title"),
     (val) =>
       commit(() => {
         if (val === "channels") return undefined;
@@ -1631,15 +1624,22 @@ function shotPanel(b, fv, f, inp, s) {
         s.role = val === "all" ? "" : val;
       })
   );
-  b.leaf("span", "fl", "label", t("Frame"));
+  b.leaf("span", "fl", "label", t("film.shot.frame.label"));
   select(
     b,
     "frame",
     "",
     s.frame === "" ? "close" : s.frame,
     FRAMES,
-    [t("Desk"), t("Page"), t("System"), t("Medium (2 bars)"), t("Close (1 bar)"), t("Detail (a beat)")],
-    t("How much the picture holds"),
+    [
+      t("film.shot.frame.option.desk"),
+      t("film.shot.frame.option.page"),
+      t("film.shot.frame.option.system"),
+      t("film.shot.frame.option.medium"),
+      t("film.shot.frame.option.close"),
+      t("film.shot.frame.option.detail"),
+    ],
+    t("film.shot.frame.title"),
     (val) => commit(() => (s.frame = val))
   );
   b.close();
@@ -1649,9 +1649,9 @@ function shotPanel(b, fv, f, inp, s) {
     "button",
     "follow",
     fixed ? "btn small ghost" : "btn small ghost on-text",
-    fixed ? tf("Looks at bar {0}", [barBeat(s.at, f.bar)]) : t("✓ Follows the music")
+    fixed ? tf("film.shot.at.fixed.label", [barBeat(s.at, f.bar)]) : t("film.shot.at.follow.label")
   );
-  b.attr("title", fixed ? t("Follow the playhead instead") : t("Look at the playhead's beat for the whole shot instead of following the music"));
+  b.attr("title", fixed ? t("film.shot.at.fixed.title") : t("film.shot.at.follow.title"));
   b.on("click", (e) => commit(() => (s.at = fixed ? NaN : Math.max(0, Math.round(state.position * 4) / 4))));
   b.close();
 
@@ -1660,13 +1660,13 @@ function shotPanel(b, fv, f, inp, s) {
   const zoom = Number.isFinite(s.zoom) ? s.zoom : 1;
   const tilt = Number.isFinite(s.tilt) ? s.tilt : defaultTilt(frame);
   const turn = Number.isFinite(s.turn) ? s.turn : 0;
-  b.leaf("div", "ch", "score-side-h", t("Camera"));
+  b.leaf("div", "ch", "score-side-h", t("film.shot.camera.label"));
   slider(
     b,
     fv,
     "zoom",
-    t("Zoom"),
-    t("Closer or farther than the frame"),
+    t("film.shot.zoom.label"),
+    t("film.shot.zoom.title"),
     Math.log2(zoom),
     -2,
     3,
@@ -1675,25 +1675,12 @@ function shotPanel(b, fv, f, inp, s) {
     `${fmt(zoom, 2)}×`,
     (x) => (s.zoom = Math.round(Math.pow(2, x) * 1000) / 1000)
   );
-  slider(
-    b,
-    fv,
-    "tilt",
-    t("Lean"),
-    t("Degrees the camera leans from looking straight down"),
-    tilt,
-    0,
-    75,
-    1,
-    defaultTilt(frame),
-    `${fmt(tilt, 0)}°`,
-    (x) => (s.tilt = x)
-  );
-  slider(b, fv, "turn", t("Turn"), t("Degrees the camera turns: the music runs diagonally"), turn, -90, 90, 1, 0, `${fmt(turn, 0)}°`, (x) => (s.turn = x));
+  slider(b, fv, "tilt", t("film.shot.tilt.label"), t("film.shot.tilt.title"), tilt, 0, 75, 1, defaultTilt(frame), `${fmt(tilt, 0)}°`, (x) => (s.tilt = x));
+  slider(b, fv, "turn", t("film.shot.turn.label"), t("film.shot.turn.title"), turn, -90, 90, 1, 0, `${fmt(turn, 0)}°`, (x) => (s.turn = x));
   const drifts = Number.isFinite(s.to.zoom) || Number.isFinite(s.to.turn) || Number.isFinite(s.to.tilt);
   b.open("div", "drift", "film-row");
-  b.leaf("button", "dr", drifts ? "btn small ghost on-text" : "btn small ghost", drifts ? t("✓ Drifts") : t("Drift"));
-  b.attr("title", drifts ? t("Stay put through the shot") : t("Move slowly through the shot: push in and turn a little by its end"));
+  b.leaf("button", "dr", drifts ? "btn small ghost on-text" : "btn small ghost", drifts ? t("film.shot.drift.on.label") : t("film.shot.drift.off.label"));
+  b.attr("title", drifts ? t("film.shot.drift.on.title") : t("film.shot.drift.off.title"));
   b.on("click", (e) =>
     commit(() => {
       s.to = drifts ? noMove() : { zoom: Math.round(zoom * 1.25 * 100) / 100, tilt: NaN, turn: turn + (turn >= 0 ? 8 : -8), offset: [] };
@@ -1708,8 +1695,8 @@ function shotPanel(b, fv, f, inp, s) {
       b,
       fv,
       "zoom1",
-      t("→ Zoom"),
-      t("Zoom at the end of the shot"),
+      t("film.shot.zoomEnd.label"),
+      t("film.shot.zoomEnd.title"),
       Math.log2(z1),
       -2,
       3,
@@ -1718,12 +1705,12 @@ function shotPanel(b, fv, f, inp, s) {
       `${fmt(z1, 2)}×`,
       (x) => (s.to.zoom = Math.round(Math.pow(2, x) * 1000) / 1000)
     );
-    slider(b, fv, "tilt1", t("→ Lean"), t("Lean at the end of the shot"), l1, 0, 75, 1, tilt, `${fmt(l1, 0)}°`, (x) => (s.to.tilt = x));
-    slider(b, fv, "turn1", t("→ Turn"), t("Turn at the end of the shot"), t1, -90, 90, 1, turn, `${fmt(t1, 0)}°`, (x) => (s.to.turn = x));
+    slider(b, fv, "tilt1", t("film.shot.tiltEnd.label"), t("film.shot.tiltEnd.title"), l1, 0, 75, 1, tilt, `${fmt(l1, 0)}°`, (x) => (s.to.tilt = x));
+    slider(b, fv, "turn1", t("film.shot.turnEnd.label"), t("film.shot.turnEnd.title"), t1, -90, 90, 1, turn, `${fmt(t1, 0)}°`, (x) => (s.to.turn = x));
   }
 
   // Coming in.
-  b.leaf("div", "th", "score-side-h", t("Coming in"));
+  b.leaf("div", "th", "score-side-h", t("film.shot.comingIn.label"));
   b.open("div", "tr", "film-row");
   select(
     b,
@@ -1731,8 +1718,13 @@ function shotPanel(b, fv, f, inp, s) {
     "",
     s.transition === "" ? "glide" : s.transition,
     TRANSITIONS,
-    [t("Glide"), t("Cut"), t("Swoop"), t("Whip")],
-    t("How the camera comes into the shot: a smooth move, a cut, a rise away from the desk and down again, a fast blurred whip"),
+    [
+      t("film.shot.transition.option.glide"),
+      t("film.shot.transition.option.cut"),
+      t("film.shot.transition.option.swoop"),
+      t("film.shot.transition.option.whip"),
+    ],
+    t("film.shot.transition.title"),
     (val) => commit(() => (s.transition = val === "glide" ? "" : val))
   );
   select(
@@ -1741,29 +1733,35 @@ function shotPanel(b, fv, f, inp, s) {
     "",
     s.ease === "" ? "smooth" : s.ease,
     EASES,
-    [tx("camera move", "Smooth"), t("Linear"), t("Ease in"), t("Ease out"), tx("camera move", "Snap")],
-    t("The curve of the move"),
+    [
+      t("film.shot.ease.option.smooth"),
+      t("film.shot.ease.option.linear"),
+      t("film.shot.ease.option.in"),
+      t("film.shot.ease.option.out"),
+      t("film.shot.ease.option.snap"),
+    ],
+    t("film.shot.ease.title"),
     (val) => commit(() => (s.ease = val === "smooth" ? "" : val))
   );
   b.close();
   if (s.transition !== "cut") {
     const k = f.scenes.find((t) => t.src === idx);
     const g = Number.isFinite(s.glide) ? s.glide : k ? k.glide : f.bar;
-    slider(b, fv, "glide", t("Beats"), t("Beats the move into the shot scenes"), g, 0, 16, 0.25, k ? k.glide : f.bar, fmt(g, 2), (x) => (s.glide = x));
+    slider(b, fv, "glide", t("film.shot.glide.label"), t("film.shot.glide.title"), g, 0, 16, 0.25, k ? k.glide : f.bar, fmt(g, 2), (x) => (s.glide = x));
   }
 
-  b.leaf("div", "eh", "score-side-h", t("Effects"));
+  b.leaf("div", "eh", "score-side-h", t("term.effects"));
   effectSliders(b, fv, s.effects.length > 0 ? s.effects : state.project.animation.effects, (type, x) => setEffect(s.effects, type, x));
 
   b.open("div", "acts", "film-acts");
-  b.leaf("button", "play", "btn small", t("Play it"));
-  b.attr("title", t("Play from the shot's start"));
+  b.leaf("button", "play", "btn small", t("film.shot.play.label"));
+  b.attr("title", t("film.shot.play.title"));
   b.on("click", (e) => {
     inp.seek(Math.max(0, s.start - 0.5));
     if (!state.playing) togglePlay();
   });
-  b.leaf("button", "dup", "btn small ghost", t("Duplicate"));
-  b.attr("title", t("Another shot like it, right after it"));
+  b.leaf("button", "dup", "btn small ghost", t("common.duplicate"));
+  b.attr("title", t("film.shot.duplicate.title"));
   b.on("click", (e) => {
     const c = decodeShot(JSON.parse(JSON.stringify(s)));
     c.to = { zoom: s.to.zoom, tilt: s.to.tilt, turn: s.to.turn, offset: s.to.offset.slice() };
@@ -1777,8 +1775,8 @@ function shotPanel(b, fv, f, inp, s) {
     c.end = s.end + len;
     addShot(fv, c);
   });
-  b.leaf("button", "del", "btn small ghost", t("Delete"));
-  b.attr("title", t("Remove this shot (the director films its time)"));
+  b.leaf("button", "del", "btn small ghost", t("common.delete"));
+  b.attr("title", t("film.shot.delete.title"));
   b.on("click", (e) => {
     commit(() => {
       anim().shots = state.project.animation.shots.filter((x) => x !== s);

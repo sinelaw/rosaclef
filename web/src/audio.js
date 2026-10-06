@@ -36,7 +36,7 @@ function onEngineMessage(m) {
     for (const path of m.missing) loadSample(path);
     for (const p of m.presets) loadPreset(p);
   } else if (m.t === "loadError") {
-    toast(t("The audio engine rejected the project"), m.message, "error");
+    toast(t("audio.engine.rejected.toast.title"), m.message, "error");
   }
 }
 
@@ -51,7 +51,7 @@ function loadSample(path) {
       return true;
     })
     .catch((e) => {
-      toast(t("Could not load sample"), path, "error");
+      toast(t("audio.sample.loadFailed.toast.title"), path, "error");
       return false;
     });
 }
@@ -69,7 +69,7 @@ function loadPreset(p) {
   presets.push(key);
   audioLoadPreset(p.font, p.bank, p.program).catch((e) => {
     presets.splice(presets.indexOf(key), 1);
-    toast(t("Could not load an instrument"), String(e), "error");
+    toast(t("audio.preset.loadFailed.toast.title"), String(e), "error");
     return false;
   });
 }
@@ -95,7 +95,7 @@ async function boot() {
     audioPost({ t: "project", json: engineJson() });
     invalidate();
   } catch (e) {
-    toast(t("Could not start browser audio"), String(e), "error");
+    toast(t("audio.start.failed.toast.title"), String(e), "error");
     startup.length = 0;
     return false;
   }
@@ -333,7 +333,7 @@ export async function record() {
   await startAudio();
   const ok = await recStart().catch((e) => false);
   if (!ok) {
-    toast(t("Microphone unavailable"), t("Allow microphone access to record."), "error");
+    toast(t("audio.micUnavailable.title"), t("audio.micUnavailable.body"), "error");
     return false;
   }
   state.mode = "song";
@@ -371,7 +371,7 @@ export function stopRecording() {
         mixer: insertIx(0),
       });
     });
-    toast(t("Recording placed on the playlist"), path, "info");
+    toast(t("audio.record.placed.toast.title"), path, "info");
     return true;
   });
 }

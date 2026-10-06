@@ -18,31 +18,39 @@ loadLayout();
 loadKeyboard();
 loadMetronome();
 loadScorePrefs();
-// English shows until the chosen language's texts are in.
-loadLanguage(() => invalidate());
-const ui = mount(domBackend("app"), studio);
-hooks.mark = ui.mark;
+// The studio shows once its texts are in (English, and the language chosen).
+const boot = { started: false };
+loadLanguage(() => {
+  if (boot.started) invalidate();
+  else start();
+});
 
-installSync();
-installEngine();
-installKeys();
-connect();
-loadAgents();
+function start() {
+  boot.started = true;
+  const ui = mount(domBackend("app"), studio);
+  hooks.mark = ui.mark;
 
-getJson("/api/catalog")
-  .then((c) => {
-    state.catalog = decodeCatalog(c);
+  installSync();
+  installEngine();
+  installKeys();
+  connect();
+  loadAgents();
+
+  getJson("/api/catalog")
+    .then((c) => {
+      state.catalog = decodeCatalog(c);
+      invalidate();
+      return true;
+    })
+    .catch((e) => false);
+
+  // Browsers only start audio after a user gesture.
+  listenWindow("pointerdown", (e) => {
+    if (!state.audioReady && state.output === "browser") startAudio();
+  });
+  listenWindow("resize", (e) => {
     invalidate();
-    return true;
-  })
-  .catch((e) => false);
+  });
 
-// Browsers only start audio after a user gesture.
-listenWindow("pointerdown", (e) => {
-  if (!state.audioReady && state.output === "browser") startAudio();
-});
-listenWindow("resize", (e) => {
-  invalidate();
-});
-
-ui.flush();
+  ui.flush();
+}

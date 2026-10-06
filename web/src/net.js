@@ -42,9 +42,9 @@ function onMessage(text) {
     else if (state.backend === "local" && loadPref("rosaclef.localIntro") === "") {
       savePref("rosaclef.localIntro", "shown");
       toast(
-        t("Welcome to the browser studio"),
+        t("net.localIntro.toast.title"),
         t(
-          "Your projects are saved in this browser. Back them up from Projects → Download (.zip); open the same zip in the native studio to use your own coding agent."
+          "net.localIntro.toast.body"
         ),
         "info"
       );
@@ -54,17 +54,17 @@ function onMessage(text) {
     state.diskIssues = [];
     applyRemote(decodeProject(m.project));
     const origin = String(m.origin);
-    if (origin === "disk") toast(t("The agent updated the project"), t("Undo with Ctrl+Z"), "agent");
-    else if (origin === "api") toast(t("Project updated through the API"), "", "agent");
+    if (origin === "disk") toast(t("net.project.agentUpdated.toast.title"), t("net.project.agentUpdated.toast.body"), "agent");
+    else if (origin === "api") toast(t("net.project.apiUpdated.toast.title"), "", "agent");
   } else if (kind === "ack") {
     state.rev = Number(m.rev);
   } else if (kind === "rejected") {
     /** const issues: Issue[] */
     const issues = m.issues;
-    toast(t("The server rejected an edit"), issueText(issues), "error");
+    toast(t("net.edit.rejected.toast.title"), issueText(issues), "error");
   } else if (kind === "invalid") {
     state.diskIssues = m.issues;
-    toast(t("project.json on disk is invalid"), issueText(state.diskIssues), "error");
+    toast(t("net.project.invalid.toast.title"), issueText(state.diskIssues), "error");
     invalidate();
   } else if (kind === "samples") {
     state.samples = m.samples;
@@ -72,7 +72,7 @@ function onMessage(text) {
   } else if (kind === "native") {
     state.nativeEnabled = m.status.enabled === true;
     state.nativeDevice = String(m.status.device ?? "");
-    if (m.status.error) toast(t("Studio audio device unavailable"), String(m.status.error), "error");
+    if (m.status.error) toast(t("net.native.deviceUnavailable.toast.title"), String(m.status.error), "error");
     if (!state.nativeEnabled && state.output === "native") state.output = "browser";
     // A freshly started native engine has not heard of the tried-out instrument.
     if (state.nativeEnabled && state.audition.on && hooks.audition) hooks.audition();
@@ -97,9 +97,9 @@ function onMessage(text) {
       invalidate();
     }
   } else if (kind === "recorded") {
-    toast(t("Recording saved"), String(m.path), "info");
+    toast(t("net.recorded.toast.title"), String(m.path), "info");
   } else if (kind === "error") {
-    toast(state.backend === "local" ? t("Studio error") : t("Server error"), String(m.message), "error");
+    toast(state.backend === "local" ? t("net.error.studio.toast.title") : t("net.error.server.toast.title"), String(m.message), "error");
   } else if (kind === "notice") {
     toast(String(m.title), String(m.message), "error");
   }

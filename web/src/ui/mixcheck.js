@@ -20,11 +20,25 @@ import { openDock, setTop, setView, isCompact } from "./panes.js";
 import { revealBeat } from "./playlist.js";
 import { toast } from "./toast.js";
 import { insertIx } from "#brands";
-import { t, tf, tk, tkx } from "../i18n.js";
+import { t, tf, tk } from "../i18n.js";
 
-/** The six bands' names and ranges: t() translates them where they show. */
-const BANDS = [tk("Sub"), tkx("spectrum band", "Bass"), tk("Low mid"), tk("Mid"), tk("High mid"), tk("Air")];
-const BAND_TIPS = [tk("under 60 Hz"), "60–250 Hz", "250–500 Hz", "500 Hz–2 kHz", "2–6 kHz", tk("over 6 kHz")];
+/** The six bands' names and ranges: t() translates them where they show. The
+ * inner ranges are plain numbers, not keys: bandTip() shows them as they are. */
+const BANDS = [
+  tk("mixcheck.spectrum.band.sub.label"),
+  tk("mixcheck.spectrum.band.bass.label"),
+  tk("mixcheck.spectrum.band.lowMid.label"),
+  tk("mixcheck.spectrum.band.mid.label"),
+  tk("mixcheck.spectrum.band.highMid.label"),
+  tk("mixcheck.spectrum.band.air.label"),
+];
+const BAND_TIPS = [tk("mixcheck.spectrum.band.sub.range"), "60–250 Hz", "250–500 Hz", "500 Hz–2 kHz", "2–6 kHz", tk("mixcheck.spectrum.band.air.range")];
+
+/** A band's range as shown: the first and the last are keys, the others numbers. */
+/** function bandTip(i: Int) => String */
+function bandTip(i) {
+  return i === 0 || i === BAND_TIPS.length - 1 ? t(BAND_TIPS[i]) : BAND_TIPS[i];
+}
 
 const view = {
   /** "song", "bars" or "section". */
@@ -375,7 +389,7 @@ export function runMixcheck() {
 /** function fresh() => Boolean */
 function fresh() {
   if (view.edits === state.edits) return true;
-  toast(t("The song changed since this report"), t("Measure again first: its fixes point at notes and devices by position."), "info");
+  toast(t("mixcheck.stale.toast.title"), t("mixcheck.stale.toast.body"), "info");
   return false;
 }
 
@@ -396,7 +410,7 @@ function tryPatch(patch) {
     })
     .catch((e) => {
       view.busy = false;
-      toast(t("Could not try it"), errText(e), "error");
+      toast(t("mixcheck.try.failed.title"), errText(e), "error");
       invalidate();
       return false;
     });
@@ -411,7 +425,7 @@ function applyPatch(patch, what) {
   sendJson("/api/mixcheck", "POST", { project: encodeProject(state.project), apply: patch })
     .then((r) => {
       if (state.edits !== edits) {
-        toast(t("The song changed meanwhile"), t("Nothing was applied; try again."), "info");
+        toast(t("fix.songChanged"), t("fix.nothingApplied"), "info");
         return false;
       }
       const fixed = decodeProject(r.project);
@@ -419,11 +433,11 @@ function applyPatch(patch, what) {
         state.project = fixed;
       });
       fixSelection();
-      toast(what, t("Ctrl+Z undoes it. Check the mix again to measure it."), "info");
+      toast(what, t("mixcheck.apply.done.body"), "info");
       return true;
     })
     .catch((e) => {
-      toast(t("Could not apply it"), errText(e), "error");
+      toast(t("mixcheck.apply.failed.title"), errText(e), "error");
       return false;
     });
 }
@@ -532,7 +546,7 @@ function loudnessScale(b, m, tg) {
   /** function at(x: Number) => String */
   const at = (x) => `${fmt(Math.max(0, Math.min(100, ((x - lo) / (hi - lo)) * 100)), 2)}%`;
   b.open("div", "scale", "mx-scale");
-  b.attr("title", t("Loudness scale (LUFS): the bracket is the target's ±1 LU; ▼ integrated, the bar the short-term range"));
+  b.attr("title", t("mixcheck.master.scale.title"));
   b.leaf("div", "track", "mx-scale-track", "");
   if (Number.isFinite(tg.lufs)) {
     b.leaf("div", "zone", "mx-scale-zone", "");
@@ -559,7 +573,7 @@ function loudnessScale(b, m, tg) {
 /** A gain-reduction meter: a bar hanging from the top, 0 … 12 dB, its mean and its peak. */
 /** function grMeter(b: Builder, key: String, label: String, g: MixGr) => Undefined */
 function grMeter(b, key, label, g) {
-  const tip = tf("{0}: gain reduction up to {1} dB, {2} dB on average, over 3 dB {3}% of the time", [label, db(g.max, 1), db(g.mean, 1), db(g.above3, 0)]);
+  const tip = tf("mixcheck.master.gr.title", [label, db(g.max, 1), db(g.mean, 1), db(g.above3, 0)]);
   b.open("div", key, "mx-gr");
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));
@@ -579,11 +593,7 @@ function grMeter(b, key, label, g) {
 function correlationMeter(b, m) {
   /** function at(x: Number) => String */
   const at = (x) => `${fmt(((Math.max(-1, Math.min(1, x)) + 1) / 2) * 100, 2)}%`;
-  const tip = tf("Phase correlation: {0} on average, {1} at its lowest (+1 mono, 0 wide, below 0 the sides cancel in mono); mono fold-down {2} dB", [
-    db(m.corrMean, 2),
-    db(m.corrMin, 2),
-    signed(m.monoLoss),
-  ]);
+  const tip = tf("mixcheck.master.correlation.title", [db(m.corrMean, 2), db(m.corrMin, 2), signed(m.monoLoss)]);
   b.open("div", "corr", "mx-corr");
   b.attr("title", tip);
   b.on("pointerenter", (e) => hint(tip));
@@ -754,14 +764,14 @@ function paintSpectrum(g, w, h, r) {
 /** function verdictText(v: String) => String */
 function verdictText(v) {
   return v === "inaudible"
-    ? t("inaudible")
+    ? t("mixcheck.parts.verdict.inaudible")
     : v === "buried"
-      ? t("buried")
+      ? t("mixcheck.parts.verdict.buried")
       : v === "dominant"
-        ? t("dominant")
+        ? t("mixcheck.parts.verdict.dominant")
         : v === "overloading"
-          ? t("overloading")
-          : t("ok");
+          ? t("mixcheck.parts.verdict.overloading")
+          : t("mixcheck.parts.verdict.ok");
 }
 
 /** One part of the mix: its level against the mix, its audibility, who masks it, and what to do. */
@@ -778,29 +788,24 @@ function elementRow(b, e) {
   b.leaf("b", "n", "mx-el-name", e.name);
   if (e.lead) {
     b.open("span", "role", "mx-el-role lead");
-    b.attr("title", t("The song's lead: also buried when it sits far under the mix"));
-    b.text(t("lead"));
+    b.attr("title", t("mixcheck.parts.lead.title"));
+    b.text(t("mixcheck.parts.lead.label"));
     b.close();
   } else if (e.role !== "") b.leaf("span", "role", "mx-el-role", e.role);
   b.leaf("span", "sp", "spacer", "");
   // Level against the mix: −30 … +6 dB.
-  const under = e.buriedIn.map((u) => tf("bars {0}–{1} ({2} dB)", [String(u.from), String(u.to), signed(u.rel)])).join(", ");
+  const under = e.buriedIn.map((u) => tf("mixcheck.parts.rel.buriedRange", [String(u.from), String(u.to), signed(u.rel)])).join(", ");
   const relTip =
     under !== ""
-      ? tf("{0}: {1} dB against the mix (its loudness where it plays), {2}% of the mix's energy; under the mix in {3}", [
-          e.name,
-          signed(e.rel),
-          db(e.share, 0),
-          under,
-        ])
-      : tf("{0}: {1} dB against the mix (its loudness where it plays), {2}% of the mix's energy", [e.name, signed(e.rel), db(e.share, 0)]);
+      ? tf("mixcheck.parts.rel.title.withBuried", [e.name, signed(e.rel), db(e.share, 0), under])
+      : tf("mixcheck.parts.rel.title.plain", [e.name, signed(e.rel), db(e.share, 0)]);
   b.open("span", "rel", "mx-el-rel");
   b.attr("title", relTip);
   b.leaf("span", "fill", "mx-el-relfill", "");
   b.style("width", `${fmt(Number.isFinite(e.rel) ? Math.max(2, Math.min(100, ((e.rel + 30) / 36) * 100)) : 0, 1)}%`);
   b.leaf("span", "t", "mx-el-reltext", `${signed(e.rel)} dB`);
   b.close();
-  const audTip = tf("Audible {0}% of the time it plays (partial loudness in the mix)", [db(e.audible, 0)]);
+  const audTip = tf("mixcheck.parts.audible.title", [db(e.audible, 0)]);
   b.open("span", "aud", "mx-el-aud");
   b.attr("title", audTip);
   b.leaf("span", "fill", e.audible < 25 ? "mx-el-audfill bad" : e.audible < 60 ? "mx-el-audfill warn" : "mx-el-audfill", "");
@@ -811,18 +816,18 @@ function elementRow(b, e) {
   if (open) {
     b.open("div", "more", "mx-el-more");
     const facts = [
-      tf("RMS {0} dBFS", [db(e.rms, 1)]),
-      tf("peak {0} dBFS", [db(e.peak, 1)]),
+      tf("mixcheck.parts.fact.rms", [db(e.rms, 1)]),
+      tf("mixcheck.parts.fact.peak", [db(e.peak, 1)]),
       `${db(e.lufs, 1)} LUFS`,
-      tf("fader {0} dB", [signed(e.fader)]),
-      tf("plays {0}% of the range", [db(e.active, 0)]),
+      tf("mixcheck.parts.fact.fader", [signed(e.fader)]),
+      tf("mixcheck.parts.fact.active", [db(e.active, 0)]),
     ];
-    if (Number.isFinite(e.corr)) facts.push(tf("correlation {0}", [fmt(e.corr, 2)]));
-    if (Number.isFinite(e.domLo)) facts.push(tf("mostly {0}–{1} Hz", [fmt(e.domLo, 0), fmt(e.domHi, 0)]));
+    if (Number.isFinite(e.corr)) facts.push(tf("mixcheck.parts.fact.correlation", [fmt(e.corr, 2)]));
+    if (Number.isFinite(e.domLo)) facts.push(tf("mixcheck.parts.fact.dominantRange", [fmt(e.domLo, 0), fmt(e.domHi, 0)]));
     b.leaf("div", "facts", "mx-facts", facts.join(" · "));
     for (const m of e.maskers) {
       // One sentence, the masker's name ({0}) a button in it.
-      const said = tf("masked by {0} at {1}–{2} Hz ({3} dB over it)", ["{0}", fmt(m.lo, 0), fmt(m.hi, 0), signed(m.db)]);
+      const said = tf("mixcheck.parts.masker.text", ["{0}", fmt(m.lo, 0), fmt(m.hi, 0), signed(m.db)]);
       const cut = said.indexOf("{0}") >= 0 ? said.indexOf("{0}") : said.length;
       b.open("div", `m-${m.id}`, "mx-masker");
       b.leaf("span", "l", "", said.slice(0, cut));
@@ -839,21 +844,23 @@ function elementRow(b, e) {
       b.leaf("div", "w", "mx-sugg-why", s.why);
       /** const exp: String[] */
       const exp = [];
-      if (Number.isFinite(s.expAud)) exp.push(tf("audible {0}%", [fmt(s.expAud, 0)]));
-      if (Number.isFinite(s.expRel)) exp.push(tf("{0} dB against the mix", [signed(s.expRel)]));
+      if (Number.isFinite(s.expAud)) exp.push(tf("mixcheck.parts.suggestion.expect.audible", [fmt(s.expAud, 0)]));
+      if (Number.isFinite(s.expRel)) exp.push(tf("mixcheck.parts.suggestion.expect.rel", [signed(s.expRel)]));
       const tried = view.tried.find((x) => x.patch === s.patch);
       b.open("div", "acts", "mx-acts");
-      if (exp.length > 0) b.leaf("span", "e", "mx-expect", tf("expected: {0}", [exp.join(", ")]));
-      if (tried) b.leaf("span", "t", "mx-tried", tf("measured: {0}", [tried.summary]));
+      if (exp.length > 0) b.leaf("span", "e", "mx-expect", tf("mixcheck.parts.suggestion.expected", [exp.join(", ")]));
+      if (tried) b.leaf("span", "t", "mx-tried", tf("mixcheck.parts.suggestion.measured", [tried.summary]));
       b.leaf("span", "sp", "spacer", "");
-      button(b, "try", "small ghost", t("Try"), t("Render with this change without making it (a what-if)"), () => tryPatch(s.patch));
-      button(b, "apply", "small gold", t("Apply"), t("Make this change (one undo step)"), () => applyPatch(s.patch, `${e.name}: ${s.why}`));
+      button(b, "try", "small ghost", t("common.try"), t("mixcheck.parts.suggestion.try.title"), () => tryPatch(s.patch));
+      button(b, "apply", "small gold", t("mixcheck.parts.suggestion.apply.label"), t("mixcheck.parts.suggestion.apply.title"), () =>
+        applyPatch(s.patch, `${e.name}: ${s.why}`)
+      );
       b.close();
       b.close();
     }
     b.open("div", "show", "mx-acts");
     b.leaf("span", "sp", "spacer", "");
-    button(b, "mixer", "small ghost", t("Show in the mixer"), t("Select its channel and insert"), () => revealElement(e.id));
+    button(b, "mixer", "small ghost", t("mixcheck.parts.showInMixer.label"), t("mixcheck.parts.showInMixer.title"), () => revealElement(e.id));
     b.close();
     b.close();
   }
@@ -879,8 +886,8 @@ export function mixcheckPanel(b, ask) {
     "mx-select",
     view.scope,
     sections.length > 0 ? ["song", "bars", "section"] : ["song", "bars"],
-    [t("Whole song"), t("Bars"), t("Section")],
-    t("What to measure"),
+    [t("term.wholeSong"), t("term.bars"), t("mixcheck.scope.option.section")],
+    t("mixcheck.scope.title"),
     (v) => {
       view.scope = v;
       invalidate();
@@ -888,8 +895,8 @@ export function mixcheckPanel(b, ask) {
   );
   if (view.scope === "bars") {
     for (const x of [
-      { k: "from", v: view.from, tip: t("First bar (as the playlist counts them)") },
-      { k: "to", v: view.to, tip: t("Last bar (included)") },
+      { k: "from", v: view.from, tip: t("mixcheck.scope.from.title") },
+      { k: "to", v: view.to, tip: t("mixcheck.scope.to.title") },
     ]) {
       b.leaf("input", x.k, "mx-num", "");
       b.attr("type", "number");
@@ -905,24 +912,24 @@ export function mixcheckPanel(b, ask) {
     }
   } else if (view.scope === "section") {
     const cur = sections.includes(view.section) ? view.section : sections.length > 0 ? sections[0] : "";
-    select(b, "section", "mx-select", cur, sections, sections, t("The section (labelled score marks, drum part sections)"), (v) => {
+    select(b, "section", "mx-select", cur, sections, sections, t("mixcheck.scope.section.title"), (v) => {
       view.section = v;
       invalidate();
     });
   }
   const ids = [""].concat(view.targets.map((x) => x.id));
-  const names = [t("No target")].concat(view.targets.map((x) => `${x.name} ${fmt(x.lufs, 0)} LUFS`));
-  select(b, `target${view.targets.length}`, "mx-select", view.target, ids, names, t("Delivery target: its loudness and true-peak limit"), (v) => {
+  const names = [t("mixcheck.target.option.none")].concat(view.targets.map((x) => `${x.name} ${fmt(x.lufs, 0)} LUFS`));
+  select(b, `target${view.targets.length}`, "mx-select", view.target, ids, names, t("mixcheck.target.title"), (v) => {
     view.target = v;
     localStorage.setItem("rosaclef.mixcheck.target", v);
     invalidate();
   });
   b.leaf("span", "sp", "spacer", "");
   b.open("button", "run", view.busy ? "btn small gold busy" : stale || !r.ok ? "btn small gold" : "btn small");
-  b.attr("title", t("Render the range once and measure everything (the same as `rosaclef mixcheck`)"));
+  b.attr("title", t("mixcheck.run.title"));
   b.on("click", (e) => runMixcheck());
   glyph(b, "meter");
-  b.leaf("span", "l", "", view.busy ? t("Measuring…") : r.ok ? t("Measure again") : t("Measure"));
+  b.leaf("span", "l", "", view.busy ? t("mixcheck.run.busy.label") : r.ok ? t("mixcheck.run.again.label") : t("mixcheck.run.label"));
   b.close();
   b.close();
 
@@ -933,8 +940,8 @@ export function mixcheckPanel(b, ask) {
     "mx-select small",
     view.threshold,
     ["strict", "normal", "loose"],
-    [t("Strict"), t("Normal"), t("Loose")],
-    t("How readily problems are reported"),
+    [t("mixcheck.threshold.option.strict"), t("mixcheck.threshold.option.normal"), t("mixcheck.threshold.option.loose")],
+    t("mixcheck.threshold.title"),
     (v) => {
       view.threshold = v;
       invalidate();
@@ -947,8 +954,8 @@ export function mixcheckPanel(b, ask) {
     "mx-select small",
     view.reference,
     [""].concat(audio),
-    [t("No reference")].concat(audio.map((s) => s.split("/").pop() ?? s)),
-    t("A reference track (in samples/): compared level-matched"),
+    [t("mixcheck.reference.option.none")].concat(audio.map((s) => s.split("/").pop() ?? s)),
+    t("mixcheck.reference.title"),
     (v) => {
       view.reference = v;
       invalidate();
@@ -956,12 +963,12 @@ export function mixcheckPanel(b, ask) {
   );
   b.leaf("span", "sp", "spacer", "");
   if (r.ok) {
-    const where = r.fromBar === r.toBar ? tf("bar {0}", [String(r.fromBar)]) : tf("bars {0}–{1}", [String(r.fromBar), String(r.toBar)]);
+    const where = r.fromBar === r.toBar ? tf("format.barLower", [String(r.fromBar)]) : tf("format.barRange", [String(r.fromBar), String(r.toBar)]);
     /** const facts: String[] */
     const facts = [where, `${fmt(r.seconds, 1)} s`];
-    if (r.repeats) facts.push(t("every pass"));
-    facts.push(r.cached ? t("cached") : `${fmt(r.ms / 1000, 1)} s`);
-    if (stale) facts.push(t("the song changed"));
+    if (r.repeats) facts.push(t("mixcheck.status.everyPass"));
+    facts.push(r.cached ? t("mixcheck.status.cached") : `${fmt(r.ms / 1000, 1)} s`);
+    if (stale) facts.push(t("mixcheck.status.stale"));
     b.leaf("span", "st", stale ? "mx-status stale" : "mx-status", facts.join(" · "));
   }
   b.close();
@@ -971,20 +978,13 @@ export function mixcheckPanel(b, ask) {
   if (!r.ok) {
     b.open("div", "empty", "mx-empty");
     glyph(b, "meter");
-    b.leaf("h3", "h", "", view.busy ? t("Listening…") : t("Measure the mix"));
-    b.leaf(
-      "p",
-      "p",
-      "",
-      t(
-        "One render of the song (or a range): loudness and true peak against a delivery target, the limiter's work, phase, the spectrum, how audible each part is under the others. The fixes touch the mixer only. The agent gets the same numbers from `rosaclef mixcheck`."
-      )
-    );
+    b.leaf("h3", "h", "", view.busy ? t("common.listening") : t("mixcheck.empty.label"));
+    b.leaf("p", "p", "", t("mixcheck.empty.body"));
     b.close();
   } else {
     masterView(b, r);
     findingsView(b, r, ask);
-    if (section(b, "history", t("Loudness history"), t("short-term · momentary · true peak · limiter"))) {
+    if (section(b, "history", t("mixcheck.history.label"), t("mixcheck.history.legend"))) {
       b.canvas("history", "mx-canvas mx-history", (g, w, h) => paintHistory(g, w, h, r));
       b.on("pointerdown", (e) => {
         const hs = r.history;
@@ -995,18 +995,25 @@ export function mixcheckPanel(b, ask) {
         for (const m of hs.bars) if (m.t <= time) best = m;
         revealBar(best.beat);
       });
-      b.on("pointerenter", (e) => hint(t("Click to show that bar in the playlist")));
+      b.on("pointerenter", (e) => hint(t("mixcheck.history.hint")));
     }
-    if (section(b, "spectrum", t("Spectrum"), r.reference.file !== "" ? tf("blue: {0}, level-matched", [r.reference.file.split("/").pop() ?? ""]) : "")) {
+    if (
+      section(
+        b,
+        "spectrum",
+        t("mixcheck.spectrum.label"),
+        r.reference.file !== "" ? tf("mixcheck.spectrum.legend.reference", [r.reference.file.split("/").pop() ?? ""]) : ""
+      )
+    ) {
       b.canvas("spectrum", "mx-canvas mx-spectrum", (g, w, h) => paintSpectrum(g, w, h, r));
-      const tip = r.master.spectrum.map((v, i) => `${t(BANDS[i])} (${t(BAND_TIPS[i])}) ${fmt(v, 1)} dB`).join(" · ");
+      const tip = r.master.spectrum.map((v, i) => `${t(BANDS[i])} (${bandTip(i)}) ${fmt(v, 1)} dB`).join(" · ");
       b.attr("title", tip);
-      if (r.reference.summary !== "") b.leaf("p", "ref", "mx-note", tf("Against the reference: {0}.", [r.reference.summary]));
+      if (r.reference.summary !== "") b.leaf("p", "ref", "mx-note", tf("mixcheck.spectrum.reference.summary", [r.reference.summary]));
     }
-    if (section(b, "parts", t("Parts"), tf("{0} need attention", [String(r.elements.filter((e) => e.verdict !== "ok").length)]))) {
+    if (section(b, "parts", t("term.parts"), tf("mixcheck.parts.needAttention", [String(r.elements.filter((e) => e.verdict !== "ok").length)]))) {
       b.open("div", "legend", "mx-legend");
-      b.leaf("span", "a", "", t("level against the mix"));
-      b.leaf("span", "b", "", t("audible"));
+      b.leaf("span", "a", "", t("mixcheck.parts.legend.rel"));
+      b.leaf("span", "b", "", t("mixcheck.parts.legend.audible"));
       b.close();
       const order = r.elements.slice().sort((x, y) => {
         const rank = (v) => (v === "inaudible" ? 0 : v === "buried" ? 1 : v === "overloading" ? 2 : v === "dominant" ? 3 : 4);
@@ -1014,7 +1021,7 @@ export function mixcheckPanel(b, ask) {
       });
       for (const e of order) elementRow(b, e);
     }
-    if (section(b, "rows", t("Bars"), t("momentary max · pre-limiter peak · limiter"))) barsView(b, r);
+    if (section(b, "rows", t("term.bars"), t("mixcheck.bars.legend"))) barsView(b, r);
     for (const w of r.warnings) b.leaf("div", `w-${w}`, "mx-warning", w);
   }
   b.close();
@@ -1030,20 +1037,25 @@ function masterView(b, r) {
   b.open("div", "lufs", "mx-lufs");
   const iState = Number.isFinite(tg.lufs) && Number.isFinite(m.integrated) ? light(false, Math.abs(m.integrated - tg.lufs) > 2) : "ok";
   b.open("div", "big", `mx-big ${iState}`);
-  b.attr("title", t("Integrated loudness (ITU-R BS.1770 / EBU R128): the average a streaming service normalizes"));
+  b.attr("title", t("mixcheck.master.integrated.title"));
   b.leaf("span", "v", "mx-big-value", db(m.integrated, 1));
-  b.leaf("span", "u", "mx-big-unit", t("LUFS integrated"));
+  b.leaf("span", "u", "mx-big-unit", t("mixcheck.master.integrated.unit"));
   b.close();
   b.open("div", "st", "mx-lufs-side");
-  readout(b, "s", t("Short-term max"), db(m.shortMax, 1), "LUFS", "ok", t("The loudest 3-second window"));
-  readout(b, "m", t("Momentary max"), db(m.momentaryMax, 1), "LUFS", "ok", t("The loudest 400 ms window"));
+  readout(b, "s", t("mixcheck.master.shortMax.label"), db(m.shortMax, 1), "LUFS", "ok", t("mixcheck.master.shortMax.title"));
+  readout(b, "m", t("mixcheck.master.momentaryMax.label"), db(m.momentaryMax, 1), "LUFS", "ok", t("mixcheck.master.momentaryMax.title"));
   b.close();
   if (tg.id !== "") {
     b.open("div", "target", `mx-target ${tg.status}`);
     b.attr("title", tg.notes.join("; "));
-    b.leaf("span", "chip", `mx-chip ${tg.status}`, tg.status === "pass" ? t("PASS") : tg.status === "warn" ? t("CHECK") : t("FAIL"));
+    b.leaf(
+      "span",
+      "chip",
+      `mx-chip ${tg.status}`,
+      tg.status === "pass" ? t("mixcheck.target.status.pass") : tg.status === "warn" ? t("mixcheck.target.status.warn") : t("mixcheck.target.status.fail")
+    );
     b.leaf("span", "n", "", `${tg.name} · ${fmt(tg.lufs, 0)} LUFS · ${fmt(tg.truePeak, 0)} dBTP`);
-    if (Number.isFinite(tg.gain)) b.leaf("span", "g", "mx-target-gain", tf("plays at {0} dB", [signed(tg.gain)]));
+    if (Number.isFinite(tg.gain)) b.leaf("span", "g", "mx-target-gain", tf("mixcheck.target.gain", [signed(tg.gain)]));
     b.close();
   }
   b.close();
@@ -1053,46 +1065,46 @@ function masterView(b, r) {
   readout(
     b,
     "tp",
-    t("True peak"),
+    t("mixcheck.master.truePeak.label"),
     db(m.truePeak, 1),
     "dBTP",
     light(m.truePeak > tpLimit, m.truePeak > tpLimit - 0.5),
-    tf("Inter-sample peak (4× oversampled); keep it under {0} dBTP", [fmt(tpLimit, 1)])
+    tf("mixcheck.master.truePeak.title", [fmt(tpLimit, 1)])
   );
   readout(
     b,
     "pl",
-    t("Pre-limiter"),
+    t("mixcheck.master.preLimiter.label"),
     signed(m.preLimiter),
     "dBFS",
     light(m.preLimiter > 3, m.preLimiter > 0),
-    t("Peak at the master limiter's input: over 0 the limiter is working")
+    t("mixcheck.master.preLimiter.title")
   );
-  readout(b, "plr", "PLR", db(m.plr, 1), "dB", light(m.plr < 6, m.plr < 8), t("Peak-to-loudness ratio: under about 8 dB the mix is squashed"));
-  readout(b, "lra", "LRA", db(m.lra, 1), "LU", light(false, m.lra < 2), t("Loudness range (EBU Tech 3342): how much the loudness moves"));
-  readout(b, "crest", t("Crest"), db(m.crest, 1), "dB", "ok", t("Sample peak minus RMS"));
-  readout(b, "mono", t("Mono"), signed(m.monoLoss), "dB", light(m.monoLoss < -6, m.monoLoss < -4), t("Loudness lost when the mix is folded to mono"));
+  readout(b, "plr", "PLR", db(m.plr, 1), "dB", light(m.plr < 6, m.plr < 8), t("mixcheck.master.plr.title"));
+  readout(b, "lra", "LRA", db(m.lra, 1), "LU", light(false, m.lra < 2), t("mixcheck.master.lra.title"));
+  readout(b, "crest", t("mixcheck.master.crest.label"), db(m.crest, 1), "dB", "ok", t("mixcheck.master.crest.title"));
+  readout(b, "mono", t("mixcheck.master.mono.label"), signed(m.monoLoss), "dB", light(m.monoLoss < -6, m.monoLoss < -4), t("mixcheck.master.mono.title"));
   b.close();
   b.open("div", "dyn", "mx-dyn");
   b.open("div", "grs", "mx-grs");
-  grMeter(b, "lim", t("Limiter"), m.limGr);
-  if (Number.isFinite(m.compGr.max)) grMeter(b, "comp", t("Bus comp"), m.compGr);
+  grMeter(b, "lim", t("mixcheck.master.gr.limiter.label"), m.limGr);
+  if (Number.isFinite(m.compGr.max)) grMeter(b, "comp", t("mixcheck.master.gr.busComp.label"), m.compGr);
   for (const g of r.gr.filter((x) => !x.id.startsWith("insert:0/") && x.max >= 1).slice(0, 4)) {
     grMeter(b, `${g.id}-${g.effect}`, nameOf(g.id), g);
   }
   b.close();
   correlationMeter(b, m);
   b.close();
-  if (r.whatIf !== "") b.leaf("div", "wi", "mx-note", tf("What-if: {0}", [r.whatIf]));
+  if (r.whatIf !== "") b.leaf("div", "wi", "mx-note", tf("mixcheck.master.whatIf", [r.whatIf]));
   b.close();
 }
 
 /** The findings, ranked, each with its fix. */
 /** function findingsView(b: Builder, r: MixReport, ask: (String) => Undefined) => Undefined */
 function findingsView(b, r, ask) {
-  if (!section(b, "findings", t("Findings"), r.findings.length === 0 ? t("none") : `${r.findings.length}`)) return undefined;
+  if (!section(b, "findings", t("mixcheck.findings.label"), r.findings.length === 0 ? t("mixcheck.findings.none") : `${r.findings.length}`)) return undefined;
   if (r.findings.length === 0) {
-    b.leaf("p", "none", "mx-note", t("Nothing to report at this threshold."));
+    b.leaf("p", "none", "mx-note", t("mixcheck.findings.empty"));
     return undefined;
   }
   for (const f of r.findings) {
@@ -1102,7 +1114,7 @@ function findingsView(b, r, ask) {
     b.open("div", "t", "mx-find-title");
     b.leaf("b", "r", "", f.rule.replace(/-/g, " "));
     b.open("button", "w", "mx-link");
-    b.attr("title", t("Show it"));
+    b.attr("title", t("common.showIt"));
     b.on("click", (e) => {
       if (f.element !== "") revealElement(f.element);
       else if (Number.isFinite(f.fromBeat)) revealBar(f.fromBeat);
@@ -1114,16 +1126,16 @@ function findingsView(b, r, ask) {
     b.open("div", "acts", "mx-acts");
     b.leaf("span", "sp", "spacer", "");
     if (state.backend !== "local")
-      button(b, "ask", "small ghost", t("Ask Maestro"), t("Type this into the agent's prompt"), () =>
+      button(b, "ask", "small ghost", t("agent.askMaestro"), t("agent.typeIntoPrompt"), () =>
         ask(`Mix check (${f.where}): ${f.detail} Please look into it (rosaclef mixcheck reports it as ${f.key}).`)
       );
     if (f.patch !== "") {
       const tried = view.tried.find((x) => x.patch === f.patch);
-      button(b, "try", "small ghost", t("Try"), t("Render with the fix without making it (a what-if)"), () => tryPatch(f.patch));
-      button(b, "fix", "small gold", t("Apply fix"), tf("Apply: {0} (one undo step)", [f.label]), () => applyPatch(f.patch, f.label));
+      button(b, "try", "small ghost", t("common.try"), t("mixcheck.findings.try.title"), () => tryPatch(f.patch));
+      button(b, "fix", "small gold", t("mixcheck.findings.fix.label"), tf("fix.applyOneUndo", [f.label]), () => applyPatch(f.patch, f.label));
       b.close();
-      if (f.label !== "") b.leaf("div", "fl", "mx-fixlabel", tf("Fix: {0}", [f.label]));
-      if (tried) b.leaf("div", "tried", "mx-tried", tf("Measured with it: {0}", [tried.summary]));
+      if (f.label !== "") b.leaf("div", "fl", "mx-fixlabel", tf("mixcheck.findings.fix.text", [f.label]));
+      if (tried) b.leaf("div", "tried", "mx-tried", tf("mixcheck.findings.tried", [tried.summary]));
     } else b.close();
     b.close();
     b.close();
@@ -1135,7 +1147,14 @@ function findingsView(b, r, ask) {
 function barsView(b, r) {
   b.open("div", "table", "mx-rows");
   b.open("div", "head", "mx-rowline head");
-  const heads = ["", t("M max"), t("S max"), t("pre-lim"), t("GR"), t("top")];
+  const heads = [
+    "",
+    t("mixcheck.bars.head.momentaryMax"),
+    t("mixcheck.bars.head.shortMax"),
+    t("mixcheck.bars.head.preLimiter"),
+    t("mixcheck.bars.head.gainReduction"),
+    t("mixcheck.bars.head.top"),
+  ];
   for (let i = 0; i < heads.length; i++) b.leaf("span", `h${i}`, "", heads[i]);
   b.close();
   const loudest = r.rows.reduce((a, x) => (Number.isFinite(x.mMax) ? Math.max(a, x.mMax) : a), -99);

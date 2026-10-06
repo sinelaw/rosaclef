@@ -258,11 +258,12 @@ export function fmtDate(ms) {
 
 // ------------------------------------------------------------------ translations
 
-/** The interface's translations (English text → translated text) and its locale ("" = the browser's). */
+/** The interface's texts by key: the language shown, the English under it, and the locale ("" = the browser's). */
 let messages = new Map();
+let baseMessages = new Map();
 let uiLocale = "";
 
-export async function loadMessages(url) {
+async function fetchMessages(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${r.status}`);
   const o = await r.json();
@@ -270,16 +271,25 @@ export async function loadMessages(url) {
   for (const k of Object.keys(o)) {
     if (typeof o[k] === "string" && o[k] !== "") m.set(k, o[k]);
   }
-  messages = m;
-  return m.size;
+  return m;
+}
+
+export async function loadMessages(url) {
+  messages = await fetchMessages(url);
+  return messages.size;
+}
+
+export async function loadBaseMessages(url) {
+  baseMessages = await fetchMessages(url);
+  return baseMessages.size;
 }
 
 export function clearMessages() {
   messages = new Map();
 }
 
-export function message(text) {
-  return messages.get(text) ?? text;
+export function message(key) {
+  return messages.get(key) ?? baseMessages.get(key) ?? key;
 }
 
 export function setUiLocale(code) {

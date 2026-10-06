@@ -209,7 +209,7 @@ function dragPoint(e, lane, idx, r, info, zoom, begun) {
       pt.beat = Math.max(lo, Math.min(hi, Math.max(0, beat)));
       const u = u0 - ((m.clientY - y0) / (LANE_H - 2 * PAD)) * (fine ? 0.2 : 1);
       pt.value = tidy(info, valueOf(r, u));
-      hint(tf("{0}: {1} at {2}", [info.label, formatValue(info, pt.value), barBeat(pt.beat, state.project.transport)]));
+      hint(tf("lanes.point.drag.hint", [info.label, formatValue(info, pt.value), barBeat(pt.beat, state.project.transport)]));
       changed(true);
     },
     (u) => {
@@ -231,7 +231,7 @@ function dragCurve(e, lane, idx, r, info) {
     (m) => {
       const d = (y0 - m.clientY) / 90;
       pt.curve = Math.round(Math.max(-1, Math.min(1, c0 + (rising ? -d : d))) * 100) / 100;
-      hint(tf("{0}: curve {1} (0 = straight)", [info.label, fmt(pt.curve, 2)]));
+      hint(tf("lanes.point.curve.hint", [info.label, fmt(pt.curve, 2)]));
       changed(true);
     },
     (u) => undefined
@@ -241,7 +241,7 @@ function dragCurve(e, lane, idx, r, info) {
 /** function deletePoint(lane: AutomationLane, idx: Int) => Undefined */
 function deletePoint(lane, idx) {
   if (lane.points.length <= 1) {
-    hint(t("A lane keeps at least one point — delete the lane from its header instead"));
+    hint(t("lanes.point.deleteLast.hint"));
     return undefined;
   }
   commit(() => {
@@ -256,12 +256,12 @@ function typeValue(lane, idx, info) {
   const pt = lane.points[idx];
   const ask =
     info.kind === "tempo"
-      ? tf("{0} — value (BPM)", [info.label])
+      ? tf("lanes.point.value.tempo.prompt", [info.label])
       : info.kind === "gain"
-        ? tf("{0} — value (linear gain, 1 = 0 dB)", [info.label])
+        ? tf("lanes.point.value.gain.prompt", [info.label])
         : info.spec.unit !== ""
-          ? tf("{0} — value ({1})", [info.label, info.spec.unit])
-          : tf("{0} — value", [info.label]);
+          ? tf("lanes.point.value.withUnit.prompt", [info.label, info.spec.unit])
+          : tf("lanes.point.value.prompt", [info.label]);
   const text = promptBox(ask, String(tidy(info, pt.value)));
   if (text === "") return undefined;
   const v = Number(text);
@@ -348,8 +348,8 @@ export function autoHint(lg, x, y) {
   const rel = y - lg.top;
   if (rel < DIV_H)
     return auto.collapsed
-      ? t("Automation — click to show the lanes")
-      : t("Automation — click to fold the lanes · right-click any knob, fader or the tempo to automate it");
+      ? t("lanes.divider.collapsed.hint")
+      : t("lanes.divider.expanded.hint");
   const lanes = state.project.automation;
   const k = Math.floor((rel - DIV_H) / LANE_H);
   if (auto.collapsed || k < 0 || k >= lanes.length) return "";
@@ -361,14 +361,14 @@ export function autoHint(lg, x, y) {
   const tp = state.project.transport;
   if (hit >= 0) {
     const pt = lane.points[hit];
-    return tf("{0}: {1} at {2} — drag to move (Shift: fine), Alt-drag to bend, double-click to type, right-click to delete", [
+    return tf("lanes.point.hover.hint", [
       info.label,
       formatValue(info, pt.value),
       barBeat(pt.beat, tp),
     ]);
   }
   const beat = x / lg.zoom;
-  return tf("{0}: {1} at {2} — click to add a point, Alt-drag a segment to bend it", [
+  return tf("lanes.lane.hover.hint", [
     info.label,
     formatValue(info, laneValueAt(lane.points, beat)),
     barBeat(beat, tp),
@@ -389,7 +389,7 @@ export function autoHeads(b, top) {
     invalidate();
   });
   b.leaf("span", "chev", "auto-chev", "▾");
-  b.leaf("span", "t", "auto-divtitle", t("Automation"));
+  b.leaf("span", "t", "auto-divtitle", t("lanes.divider.label"));
   b.leaf("span", "n", "auto-count", String(lanes.length));
   b.close();
   if (auto.collapsed) return undefined;
@@ -414,7 +414,7 @@ export function autoHeads(b, top) {
     b.leaf("i", "sw", "swatch", "");
     b.style("--c", lane.color);
     b.style("cursor", "pointer");
-    b.attr("title", t("Change colour"));
+    b.attr("title", t("lanes.lane.color.title"));
     b.on("click", (e) => {
       const at2 = PALETTE.indexOf(lane.color);
       commit(() => {
@@ -422,9 +422,9 @@ export function autoHeads(b, top) {
       });
     });
     b.leaf("span", "name", "auto-name", lane.name !== "" ? lane.name : lane.id);
-    b.attr("title", tf("{0} — double-click to rename", [lane.name]));
+    b.attr("title", tf("lanes.lane.name.title", [lane.name]));
     b.on("dblclick", (e) => {
-      const name = promptBox(t("Lane name"), lane.name);
+      const name = promptBox(t("lanes.lane.rename.prompt"), lane.name);
       if (name !== "") {
         commit(() => {
           lane.name = name;
@@ -434,20 +434,20 @@ export function autoHeads(b, top) {
     b.close();
 
     b.leaf("div", "target", "auto-target", lane.target);
-    b.attr("title", info.ok ? lane.target : tf("{0} — this target does not exist", [lane.target]));
+    b.attr("title", info.ok ? lane.target : tf("lanes.lane.target.missing.title", [lane.target]));
 
     b.open("div", "r2", "auto-row");
     b.leaf("span", "val", "auto-val", info.ok && lane.points.length > 0 ? formatValue(info, laneValueAt(lane.points, at)) : "—");
-    b.attr("title", t("Value at the playhead"));
+    b.attr("title", t("lanes.lane.value.title"));
     b.leaf("div", "mute", lane.mute ? "ch-mute off" : "ch-mute", "");
-    b.attr("title", lane.mute ? t("Unmute lane") : t("Mute lane (the control keeps its own value)"));
+    b.attr("title", lane.mute ? t("lanes.lane.unmute.title") : t("lanes.lane.mute.title"));
     b.on("click", (e) => {
       e.stopPropagation();
       commit(() => {
         lane.mute = !lane.mute;
       });
     });
-    iconButton(b, "del", "small ghost danger", "trash", t("Delete this automation lane"), () => {
+    iconButton(b, "del", "small ghost danger", "trash", t("lanes.lane.delete.title"), () => {
       removeLane(lane.id);
     });
     b.close();
@@ -605,19 +605,19 @@ function automationMenuBody(b) {
   b.leaf("div", "t", "auto-menu-title", info.label);
   b.leaf("div", "s", "auto-menu-sub", target);
   if (!info.ok) {
-    b.leaf("div", "x", "auto-menu-note", t("This control cannot be automated."));
+    b.leaf("div", "x", "auto-menu-note", t("lanes.menu.notAutomatable"));
   } else if (!lane) {
-    menuItem(b, "create", "draw", t("Create automation lane"), () => createLane(target));
+    menuItem(b, "create", "draw", t("lanes.menu.create.label"), () => createLane(target));
   } else {
     const id = lane.id;
     const muted = lane.mute;
-    menuItem(b, "go", "playlist", t("Go to automation lane"), () => goToLane(id));
-    menuItem(b, "mute", "mute", muted ? t("Unmute automation") : t("Mute automation"), () => {
+    menuItem(b, "go", "playlist", t("lanes.menu.goTo.label"), () => goToLane(id));
+    menuItem(b, "mute", "mute", muted ? t("lanes.menu.unmute.label") : t("lanes.menu.mute.label"), () => {
       commit(() => {
         for (const l of state.project.automation) if (l.id === id) l.mute = !muted;
       });
     });
-    menuItem(b, "rm", "trash", t("Remove automation"), () => removeLane(id));
+    menuItem(b, "rm", "trash", t("lanes.menu.remove.label"), () => removeLane(id));
   }
   b.close();
 }

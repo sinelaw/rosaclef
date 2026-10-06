@@ -1,71 +1,64 @@
-// The interface's language: every text the studio shows goes through t() (or
-// tf() when it has values in it), keyed by its English wording. The
-// translations are JSON files in web/locales/ (English text → translated
-// text; tx() for a text that means different things in different places);
-// web/locales/en.json lists every text, and tools/i18n.mjs keeps it in
-// step with the code (docs/i18n.md).
+// The interface's language. Every text the studio shows has a semantic key
+// ("score.ribbon.gloss.label"), shown with t(key), or tf(key, values) when it
+// has values in it. web/locales/en.json holds the English of every key, and
+// each other web/locales/<code>.json its translation; a key a language lacks
+// shows in English (docs/i18n.md).
 
-import { loadMessages, clearMessages, message, setUiLocale, browserLanguages, loadPref, savePref } from "#platform";
+import { loadMessages, loadBaseMessages, clearMessages, message, setUiLocale, browserLanguages, loadPref, savePref } from "#platform";
 
-/** A language the studio speaks: its BCP 47 tag, its name in itself and in English. */
+/** A language the studio speaks: its BCP 47 tag, its name in itself, and the key of its name in the interface's language. */
 /** type Language = { code: String, name: String, english: String } */
 
 /** The ten languages most used in music production, English first. */
 /** const LANGUAGES: Language[] */
 export const LANGUAGES = [
-  { code: "en", name: "English", english: tk("English") },
-  { code: "es", name: "Español", english: tk("Spanish") },
-  { code: "pt-BR", name: "Português (Brasil)", english: tk("Portuguese (Brazil)") },
-  { code: "fr", name: "Français", english: tk("French") },
-  { code: "de", name: "Deutsch", english: tk("German") },
-  { code: "it", name: "Italiano", english: tk("Italian") },
-  { code: "ja", name: "日本語", english: tk("Japanese") },
-  { code: "ko", name: "한국어", english: tk("Korean") },
-  { code: "zh-CN", name: "简体中文", english: tk("Chinese (Simplified)") },
-  { code: "ru", name: "Русский", english: tk("Russian") },
+  { code: "en", name: "English", english: tk("language.en") },
+  { code: "es", name: "Español", english: tk("language.es") },
+  { code: "pt-BR", name: "Português (Brasil)", english: tk("language.ptBR") },
+  { code: "fr", name: "Français", english: tk("language.fr") },
+  { code: "de", name: "Deutsch", english: tk("language.de") },
+  { code: "it", name: "Italiano", english: tk("language.it") },
+  { code: "ja", name: "日本語", english: tk("language.ja") },
+  { code: "ko", name: "한국어", english: tk("language.ko") },
+  { code: "zh-CN", name: "简体中文", english: tk("language.zhCN") },
+  { code: "ru", name: "Русский", english: tk("language.ru") },
 ];
 
 const PREF = "rosaclef.language";
 
-/** The language shown, and the one being loaded ("" = none). */
-const lang = { code: "en", loading: "" };
+/** The language shown, the one being loaded ("" = none), and whether the English (every key's fallback) is in. */
+const lang = { code: "en", loading: "", base: false };
 
-/** Joins a context to a text in a key (gettext's msgctxt separator). */
-const CTX = "\u0004";
-
-/** A text in the interface's language. A key made by tkx() shows its text when it has no translation. */
-/** function t(text: String) => String */
-export function t(text) {
-  const m = message(text);
-  if (m !== text) return m;
-  const i = text.indexOf(CTX);
-  return i < 0 ? text : text.slice(i + 1);
+/** The text of a key in the interface's language (English when the language lacks it). */
+/** function t(key: String) => String */
+export function t(key) {
+  return message(key);
 }
 
-/** A text that means different things in different places ("Bass": a clef, a band of the spectrum): the context tells them apart, so each can be translated on its own. */
+/** TEMPORARY (removed once no call site uses it). */
 /** function tx(context: String, text: String) => String */
 export function tx(context, text) {
-  return t(`${context}${CTX}${text}`);
+  return message(text);
 }
 
-/** Marks a text with a context where it is written (a table of labels): the key t() translates where it is shown. */
+/** TEMPORARY (removed once no call site uses it). */
 /** function tkx(context: String, text: String) => String */
 export function tkx(context, text) {
-  return `${context}${CTX}${text}`;
+  return text;
 }
 
-/** A text with values in it, in the interface's language: {0}, {1}… stand for the values, in order. */
-/** function tf(text: String, values: String[]) => String */
-export function tf(text, values) {
-  let s = message(text);
+/** The text of a key with values in it: {0}, {1}… in the text stand for the values, in order. */
+/** function tf(key: String, values: String[]) => String */
+export function tf(key, values) {
+  let s = message(key);
   for (let i = 0; i < values.length; i++) s = s.split(`{${i}}`).join(values[i]);
   return s;
 }
 
-/** Marks a text for translation where it is written (a table of labels) and gives it back as it is: t() translates it where it is shown. */
-/** function tk(text: String) => String */
-export function tk(text) {
-  return text;
+/** Marks a key where it is written (a table of labels) and gives it back: t() shows it where it is shown. */
+/** function tk(key: String) => String */
+export function tk(key) {
+  return key;
 }
 
 /** The language shown (a code of LANGUAGES). */
@@ -120,12 +113,14 @@ function useLanguage(code, done) {
       return true;
     })
     .catch((e) => {
+      // Not loaded: the studio stays in the language it shows.
       if (lang.loading === code) lang.loading = "";
+      done();
       return false;
     });
 }
 
-/** At start: the language chosen before, else the browser's (when the studio speaks it), else English. */
+/** At start: the English (every key's fallback), then the language chosen before, else the browser's (when the studio speaks it), else English; `done` runs once the texts are in. */
 /** function loadLanguage(done: () => Undefined) => Undefined */
 export function loadLanguage(done) {
   let code = matchLanguage(loadPref(PREF));
@@ -134,5 +129,15 @@ export function loadLanguage(done) {
       if (code === "") code = matchLanguage(tag);
     }
   }
-  useLanguage(code === "" ? "en" : code, done);
+  const chosen = code === "" ? "en" : code;
+  loadBaseMessages("locales/en.json")
+    .then((n) => {
+      lang.base = true;
+      useLanguage(chosen, done);
+      return true;
+    })
+    .catch((e) => {
+      useLanguage(chosen, done);
+      return false;
+    });
 }

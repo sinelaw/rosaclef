@@ -51,11 +51,11 @@ export function uploadAll(files) {
   for (const f of files) {
     uploadFile(`/api/samples?name=${encodeURIComponent(f.name)}`, f)
       .then((r) => {
-        toast(t("Sample added"), String(r.path), "info");
+        toast(t("browser.sampleAdded"), String(r.path), "info");
         return true;
       })
       .catch((e) => {
-        toast(t("Upload failed"), String(e), "error");
+        toast(t("browser.upload.failed.title"), String(e), "error");
         return false;
       });
   }
@@ -74,24 +74,26 @@ const DEVICE_ICONS = [
   { type: "transition", icon: "export" },
 ];
 
-/** The General MIDI families, eight programs each. */
+/** The General MIDI families, eight programs each: the English name (searched)
+ * and the key of the shown label. */
+/** const GM_FAMILIES: { name: String, label: String }[] */
 const GM_FAMILIES = [
-  tk("Pianos"),
-  tk("Chromatic percussion"),
-  tk("Organs"),
-  tk("Guitars"),
-  tk("Basses"),
-  tk("Strings"),
-  tk("Ensembles & choirs"),
-  tk("Brass"),
-  tk("Reeds"),
-  tk("Pipes & flutes"),
-  tk("Synth leads"),
-  tk("Synth pads"),
-  tk("Synth effects"),
-  tk("World"),
-  tk("Percussive"),
-  tk("Sound effects"),
+  { name: "Pianos", label: tk("browser.gmFamily.pianos.label") },
+  { name: "Chromatic percussion", label: tk("browser.gmFamily.chromaticPercussion.label") },
+  { name: "Organs", label: tk("browser.gmFamily.organs.label") },
+  { name: "Guitars", label: tk("browser.gmFamily.guitars.label") },
+  { name: "Basses", label: tk("browser.gmFamily.basses.label") },
+  { name: "Strings", label: tk("browser.gmFamily.strings.label") },
+  { name: "Ensembles & choirs", label: tk("browser.gmFamily.ensemblesChoirs.label") },
+  { name: "Brass", label: tk("browser.gmFamily.brass.label") },
+  { name: "Reeds", label: tk("browser.gmFamily.reeds.label") },
+  { name: "Pipes & flutes", label: tk("browser.gmFamily.pipesFlutes.label") },
+  { name: "Synth leads", label: tk("browser.gmFamily.synthLeads.label") },
+  { name: "Synth pads", label: tk("browser.gmFamily.synthPads.label") },
+  { name: "Synth effects", label: tk("browser.gmFamily.synthEffects.label") },
+  { name: "World", label: tk("browser.gmFamily.world.label") },
+  { name: "Percussive", label: tk("browser.gmFamily.percussive.label") },
+  { name: "Sound effects", label: tk("browser.gmFamily.soundEffects.label") },
 ];
 
 /** The browser's tree: which folders are open, and the search. A search
@@ -143,7 +145,7 @@ function folderRow(b, key, depth, icon, label, sub, doc, shownOpen, act) {
   b.on("pointerenter", (e) => hint(`${label} — ${doc}`));
   b.on("click", (e) => act());
   b.leaf("span", "caret", "b-caret", shownOpen ? "▾" : "▸");
-  b.attr("title", shownOpen ? t("Close") : t("Open"));
+  b.attr("title", shownOpen ? t("browser.folder.close.title") : t("common.open"));
   b.on("click", (e) => {
     e.stopPropagation();
     if (words().length > 0 && shownOpen && !isOpen(key)) return undefined;
@@ -165,7 +167,7 @@ function pickRow(b, depth, pick, sub, doc, icon) {
   b.style("--depth", String(depth));
   b.attr(
     "title",
-    `${doc}${doc !== "" ? "\n" : ""}${t("Click: play it on the keys · Double-click or +: add a channel · Drag onto a channel: replace its instrument")}`
+    `${doc}${doc !== "" ? "\n" : ""}${t("browser.pick.title")}`
   );
   b.attr("draggable", "true");
   b.on("dragstart", (e) => {
@@ -180,8 +182,8 @@ function pickRow(b, depth, pick, sub, doc, icon) {
   b.on("pointerenter", (e) =>
     hint(
       doc !== ""
-        ? tf("{0} — {1} · click to play it on the keys, double-click to add it", [pick.name, doc])
-        : tf("{0} · click to play it on the keys, double-click to add it", [pick.name])
+        ? tf("browser.pick.withDoc.hint", [pick.name, doc])
+        : tf("browser.pick.hint", [pick.name])
     )
   );
   b.on("click", (e) => tryPick(pick));
@@ -195,7 +197,7 @@ function pickRow(b, depth, pick, sub, doc, icon) {
   b.open("span", "acts", "b-acts");
   const ch = currentChannel();
   if (ch) {
-    const tip = tf("Replace the instrument of {0} with {1} (its notes stay)", [ch.name, pick.name]);
+    const tip = tf("browser.pick.swap.title", [ch.name, pick.name]);
     b.open("button", "swap", "btn icon small ghost");
     b.attr("title", tip);
     b.attr("aria-label", tip);
@@ -209,8 +211,8 @@ function pickRow(b, depth, pick, sub, doc, icon) {
     b.close();
   }
   b.open("button", "add", "btn icon small ghost");
-  b.attr("title", t("Add as a new channel"));
-  b.attr("aria-label", t("Add as a new channel"));
+  b.attr("title", t("browser.pick.add.title"));
+  b.attr("aria-label", t("browser.pick.add.title"));
   b.on("click", (e) => {
     e.stopPropagation();
     addPick(pick);
@@ -234,7 +236,7 @@ function songFolder(b) {
   const searching = words().length > 0;
   if (searching && chans.length === 0) return undefined;
   const open = isOpen("song") || searching;
-  folderRow(b, "song", 0, "song", t("In this song"), String(chans.length), t("The song's channels: click one to play it on the keys"), open, () =>
+  folderRow(b, "song", 0, "song", t("browser.song.label"), String(chans.length), t("browser.song.title"), open, () =>
     toggle("song")
   );
   b.close();
@@ -244,8 +246,8 @@ function songFolder(b) {
     b.open("div", `ch-${ch.id}`, on ? "b-item pick on" : "b-item pick");
     b.style("--depth", "1");
     const detail = instrumentLabel(ch.instrument);
-    b.attr("title", tf("{0}: {1}\nClick: play it on the keys · Double-click: its notes in the piano roll", [ch.name, detail]));
-    b.on("pointerenter", (e) => hint(tf("{0} ({1}) — click to play it on the keys", [ch.name, detail])));
+    b.attr("title", tf("browser.song.channel.title", [ch.name, detail]));
+    b.on("pointerenter", (e) => hint(tf("browser.song.channel.hint", [ch.name, detail])));
     b.on("click", (e) => selectChannel(ch.id));
     b.on("dblclick", (e) => {
       selectChannel(ch.id);
@@ -264,20 +266,20 @@ function songFolder(b) {
 function soundfontKids(b, d, parentHit) {
   const coll = collectionFor(d.type);
   if (!coll) return undefined;
-  const families = GM_FAMILIES.concat([tk("Drum kits")]);
+  const families = GM_FAMILIES.concat([{ name: "Drum kits", label: tk("browser.gmFamily.drumKits.label") }]);
   for (let f = 0; f < families.length; f++) {
     const fam = families[f];
     const progs = coll.presets.filter((pr) => (pr.bank === 128 ? families.length - 1 : Math.floor(pr.program / 8)) === f);
-    const shown = progs.filter((pr) => parentHit || hit(`${pr.name} ${fam} ${t(fam)}`));
+    const shown = progs.filter((pr) => parentHit || hit(`${pr.name} ${fam.name} ${t(fam.label)}`));
     if (shown.length === 0) continue;
     const key = `gm-${f}`;
     const open = isOpen(key) || (words().length > 0 && !parentHit);
-    folderRow(b, key, 1, "", t(fam), String(shown.length), `${d.label}: ${language() === "en" ? fam.toLowerCase() : t(fam)}`, open, () => toggle(key));
+    folderRow(b, key, 1, "", t(fam.label), String(shown.length), `${d.label}: ${language() === "en" ? fam.name.toLowerCase() : t(fam.label)}`, open, () => toggle(key));
     b.close();
     if (!open) continue;
     for (const pr of shown) {
       const pick = devicePick(d.type, `sf-${pr.name}`, pr.name, [{ key: "program", value: pr.name }], []);
-      pickRow(b, 2, pick, pr.bank === 128 ? t("kit") : pr.bank === 0 ? `#${pr.program + 1}` : t("variation"), `${d.label} · ${t(fam)}`, "");
+      pickRow(b, 2, pick, pr.bank === 128 ? t("browser.soundfont.kit.label") : pr.bank === 0 ? `#${pr.program + 1}` : t("browser.soundfont.variation.label"), `${d.label} · ${t(fam.label)}`, "");
     }
   }
 }
@@ -290,7 +292,7 @@ function instrumentFolders(b) {
     if (d.category !== "instrument" || d.type === "plugin") continue;
     let icon = "wave";
     for (const di of DEVICE_ICONS) if (di.type === d.type) icon = di.icon;
-    const doc = d.bestFor !== "" ? tf("Best for: {0} {1}", [d.bestFor, d.doc]) : d.doc;
+    const doc = d.bestFor !== "" ? tf("browser.instrument.bestFor", [d.bestFor, d.doc]) : d.doc;
     const selfHit = searching && hit(`${d.label} ${d.type}`);
     // What the instrument holds: presets, drum sounds, soundfont programs, samples.
     const presets = state.catalog.presets.filter((pr) => pr.type === d.type);
@@ -304,14 +306,14 @@ function instrumentFolders(b) {
       matches = presets.filter((pr) => hit(`${pr.name} ${pr.tags}`)).length + kinds.filter((k) => hit(`${k} drum`)).length;
       if (coll)
         matches =
-          matches + coll.presets.filter((pr) => hit(`${pr.name} ${GM_FAMILIES[Math.floor(pr.program / 8)]} ${pr.bank === 128 ? "drum kits" : ""}`)).length;
+          matches + coll.presets.filter((pr) => hit(`${pr.name} ${GM_FAMILIES[Math.floor(pr.program / 8)].name} ${pr.bank === 128 ? "drum kits" : ""}`)).length;
       if (d.type === "sampler") matches = matches + state.samples.filter((smp) => hit(smp)).length;
       if (matches === 0) continue;
     }
     const key = `dev-${d.type}`;
     const open = isOpen(key) || (searching && !selfHit);
     const base = devicePick(d.type, `dev-${d.type}`, d.label, [], []);
-    folderRow(b, key, 0, icon, d.label, searching && !selfHit ? tf("{0} of {1}", [String(matches), String(count)]) : String(count), doc, open, () => {
+    folderRow(b, key, 0, icon, d.label, searching && !selfHit ? tf("browser.instrument.matchCount", [String(matches), String(count)]) : String(count), doc, open, () => {
       if (d.type === "sampler") {
         toggle(key);
         return undefined;
@@ -323,7 +325,7 @@ function instrumentFolders(b) {
     const credit = collectionFor(d.type);
     if (credit) {
       // Sampled instruments: who made the samples, and their license.
-      const tip = tf("{0} samples — credits and {1} license", [credit.name, credit.license]);
+      const tip = tf("browser.instrument.credits.title", [credit.name, credit.license]);
       b.open("button", "credit", "btn icon small ghost b-credit");
       b.attr("title", tip);
       b.attr("aria-label", tip);
@@ -336,8 +338,8 @@ function instrumentFolders(b) {
     }
     if (d.type === "sampler") {
       b.open("button", "up", "btn icon small ghost");
-      b.attr("title", t("Import audio files into samples/"));
-      b.attr("aria-label", t("Import audio files into samples/"));
+      b.attr("title", t("browser.importSamples.title"));
+      b.attr("aria-label", t("browser.importSamples.title"));
       b.on("click", (e) => {
         e.stopPropagation();
         pickFiles("audio/*", (files) => {
@@ -355,7 +357,7 @@ function instrumentFolders(b) {
       const at = kindSpec ? kindSpec.choices.indexOf(k) : -1;
       const kdoc = kindSpec && at >= 0 && at < kindSpec.choiceDocs.length ? kindSpec.choiceDocs[at] : "";
       const name = k.charAt(0).toUpperCase() + k.slice(1);
-      pickRow(b, 1, devicePick(d.type, `drum-${k}`, name, [{ key: "kind", value: k }], []), t("sound"), kdoc, "");
+      pickRow(b, 1, devicePick(d.type, `drum-${k}`, name, [{ key: "kind", value: k }], []), t("browser.drum.sound.label"), kdoc, "");
     }
     for (const pr of presets) {
       if (searching && !selfHit && !hit(`${pr.name} ${pr.tags}`)) continue;
@@ -375,7 +377,7 @@ function instrumentFolders(b) {
       );
     }
     if (d.type === "sampler") {
-      if (state.samples.length === 0) b.leaf("div", "none", "b-empty", t("Import audio with +"));
+      if (state.samples.length === 0) b.leaf("div", "none", "b-empty", t("browser.sampler.empty"));
       for (const smp of state.samples) {
         if (searching && !selfHit && !hit(smp)) continue;
         pickRow(b, 1, samplerPick(smp), "", smp, "wave");
@@ -395,7 +397,7 @@ function instrumentFolders(b) {
       ],
       []
     );
-    pickRow(b, 0, pick, "CLAP", tf("{0} — {1} (plays through the Studio output)", [pl.vendor, pl.description]), "plug");
+    pickRow(b, 0, pick, "CLAP", tf("browser.plugin.title", [pl.vendor, pl.description]), "plug");
   }
 }
 
@@ -414,9 +416,9 @@ function searchBox(b) {
   b.open("div", "search", "b-search");
   glyph(b, "search");
   b.leaf("input", "in", "text-input", "");
-  b.attr("placeholder", t("Search instruments, presets, sounds…"));
+  b.attr("placeholder", t("browser.search.placeholder"));
   b.attr("spellcheck", "false");
-  b.attr("aria-label", t("Search the browser"));
+  b.attr("aria-label", t("browser.search.aria"));
   b.prop("value", tree.query);
   b.on("input", (e) => {
     tree.query = e.value;
@@ -435,7 +437,7 @@ function searchBox(b) {
   });
   // Always there (hidden while empty): an element appearing after the input
   // would make the tree re-attach the row, and the input lose the focus.
-  iconButton(b, "clear", tree.query === "" ? "small ghost b-search-clear empty" : "small ghost b-search-clear", "close", t("Clear the search"), () => {
+  iconButton(b, "clear", tree.query === "" ? "small ghost b-search-clear empty" : "small ghost b-search-clear", "close", t("browser.search.clear.title"), () => {
     tree.query = "";
     invalidate();
   });
@@ -449,7 +451,7 @@ export function browser(b) {
   b.on("pointerdown", (e) => setFocus("browser"));
   b.open("div", "head", "panel-head");
   paneHeader(b, "browser");
-  b.leaf("div", "t", "panel-title", t("Browser"));
+  b.leaf("div", "t", "panel-title", t("panel.browser"));
   paneControls(b, "browser");
   b.close();
   searchBox(b);
@@ -460,12 +462,12 @@ export function browser(b) {
   // Instruments. (Sections are grouped so a maximized browser can lay them out in columns.)
   b.open("div", "sec-inst", "b-section");
   b.open("div", "inst-title", "section-title");
-  b.text(t("Instruments"));
+  b.text(t("browser.instruments.label"));
   b.close();
   songFolder(b);
   instrumentFolders(b);
   if (searching && tree.first.length === 0 && !state.project.channels.some((c) => hit(`${c.name} ${instrumentLabel(c.instrument)} song`))) {
-    b.leaf("div", "none", "b-empty", tf("Nothing matches “{0}”", [tree.query.trim()]));
+    b.leaf("div", "none", "b-empty", tf("browser.instruments.empty", [tree.query.trim()]));
   }
   b.close();
   if (tree.enter) {
@@ -490,8 +492,8 @@ export function browser(b) {
 function patternSection(b, pats) {
   b.open("div", "sec-pat", "b-section");
   b.open("div", "pat-title", "section-title");
-  b.text(t("Patterns"));
-  iconButton(b, "add", "small ghost", "plus", t("New pattern"), addPattern);
+  b.text(t("browser.patterns.label"));
+  iconButton(b, "add", "small ghost", "plus", t("browser.patterns.add.title"), addPattern);
   b.close();
   for (const pat of pats) {
     b.open("div", `pat-${pat.id}`, pat.id === state.pattern ? "b-item on" : "b-item");
@@ -519,7 +521,7 @@ function patternSection(b, pats) {
     b.leaf("span", "sw", "swatch", "");
     b.style("--c", pat.color);
     b.leaf("span", "n", "b-name", pat.name);
-    b.leaf("span", "s", "b-sub", pat.notes.length === 1 ? t("1 note") : tf("{0} notes", [String(pat.notes.length)]));
+    b.leaf("span", "s", "b-sub", pat.notes.length === 1 ? t("browser.patterns.notes.one") : tf("browser.patterns.notes.other", [String(pat.notes.length)]));
     b.close();
   }
   b.close();
@@ -529,18 +531,18 @@ function patternSection(b, pats) {
 function sampleSection(b, smps) {
   b.open("div", "sec-smp", "b-section");
   b.open("div", "smp-title", "section-title");
-  b.text(t("Samples"));
-  iconButton(b, "up", "small ghost", "plus", t("Import audio files into samples/"), () => {
+  b.text(t("browser.samples.label"));
+  iconButton(b, "up", "small ghost", "plus", t("browser.importSamples.title"), () => {
     pickFiles("audio/*", (files) => {
       uploadAll(files);
     });
   });
   b.close();
-  if (state.samples.length === 0) b.leaf("div", "none", "b-empty", t("Drop audio files here"));
+  if (state.samples.length === 0) b.leaf("div", "none", "b-empty", t("browser.samples.empty"));
   for (const s of smps) {
     const pick = samplerPick(s);
     b.open("div", `smp-${s}`, state.audition.on && state.audition.key === pick.key ? "b-item on" : "b-item");
-    b.attr("title", tf("{0}\nClick: play it on the keys. Double-click: new sampler channel. Drag onto the playlist: audio clip.", [s]));
+    b.attr("title", tf("browser.samples.item.title", [s]));
     b.attr("draggable", "true");
     b.on("dragstart", (e) => {
       dragSample.path = s;
@@ -562,18 +564,18 @@ function projectSection(b) {
   const p = state.project;
   b.open("div", "sec-prj", "b-section");
   b.open("div", "prj-title", "section-title");
-  b.text(t("Project"));
+  b.text(t("term.project"));
   b.close();
   b.open("div", "f-title", "field");
-  b.leaf("label", "l", "", t("Title"));
-  textInput(b, "in", "", p.meta.title, t("Untitled"), (v) => {
+  b.leaf("label", "l", "", t("browser.project.title.label"));
+  textInput(b, "in", "", p.meta.title, t("browser.project.title.placeholder"), (v) => {
     commit(() => {
       state.project.meta.title = v;
     });
   });
   b.close();
   b.open("div", "f-author", "field");
-  b.leaf("label", "l", "", t("Author"));
+  b.leaf("label", "l", "", t("browser.project.author.label"));
   textInput(b, "in", "", p.meta.author, "", (v) => {
     commit(() => {
       state.project.meta.author = v;
