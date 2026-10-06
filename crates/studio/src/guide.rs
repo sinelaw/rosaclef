@@ -192,7 +192,8 @@ right before editing it, and never rewrite the whole file from memory.
 
 HTTP API (while the studio runs, base URL in `$ROSACLEF_URL`): `POST /api/mixcheck` (the mixcheck
 flags as JSON: `{"range": "52:59", "focus": ["rbass"], "whatIf": [...]}`; same report; the producer's
-Mix check panel shows it), `GET /api/project`,
+Mix check panel shows it; `?job=ID` with any number, then `GET /api/progress?job=ID` says how far
+its render has come — `POST /api/render?job=ID` too), `GET /api/project`,
 `PUT /api/project` (full document; validated), `GET /api/schema`, `GET /api/catalog`,
 `GET /api/projects` (the library), `GET /api/files` (this project's files).
 Editing the file is preferred. The producer can open another project from the studio; when

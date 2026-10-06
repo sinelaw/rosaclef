@@ -6,7 +6,7 @@
 import { Terminal } from "../vendor/xterm/xterm.mjs";
 import { FitAddon } from "../vendor/xterm/addon-fit.mjs";
 import { WebLinksAddon } from "../vendor/xterm/addon-web-links.mjs";
-import { backend, request, localSocket, resolveUrl } from "./backend.js";
+import { backend, request, localSocket, resolveUrl, isLocal, localJob } from "./backend.js";
 
 // ------------------------------------------------------------------ events
 
@@ -174,6 +174,14 @@ export async function uploadFile(url, file) {
   const r = await request("POST", url, file);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+/** How far job `id` (an export, a mix check: the id the page sent with its
+ * request, `?job=ID`) has come: the server says when asked; the browser back
+ * end said so as it went. */
+export function jobProgress(id) {
+  if (isLocal()) return Promise.resolve(localJob(id));
+  return getJson(`/api/progress?job=${id}`);
 }
 
 /** "server" or "local" (the browser-only studio), once known. */

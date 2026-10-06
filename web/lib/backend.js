@@ -39,6 +39,13 @@ export function isLocal() {
   return mode === "local";
 }
 
+/** The browser back end's last word on each job, by id (it says as it goes). */
+const jobs = new Map();
+
+export function localJob(id) {
+  return jobs.get(id) || { id, active: false, what: "", stage: "", done: 0, render: 0, seconds: 0, total: 0 };
+}
+
 function startWorker() {
   const url = new URL("local/worker.js", document.baseURI);
   if (typeof SharedWorker !== "undefined") {
@@ -66,6 +73,11 @@ function onWorker(m) {
     if (!s) return;
     if (m.raw) s.onBinary(new TextEncoder().encode(m.text));
     else s.onText(m.text);
+  } else if (m.t === "progress") {
+    jobs.delete(m.job.id);
+    jobs.set(m.job.id, m.job);
+    // Keep the last few.
+    while (jobs.size > 32) jobs.delete(jobs.keys().next().value);
   } else if (m.t === "fatal") {
     console.error("Rosaclef back end:", m.message);
     for (const s of sockets.values()) s.onText(JSON.stringify({ t: "error", message: m.message }));

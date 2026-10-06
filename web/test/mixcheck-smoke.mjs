@@ -50,7 +50,9 @@ await page.fill(".mx-num >> nth=1", "79");
 await page.press(".mx-num >> nth=1", "Tab");
 await page.click(".mixcheck .btn:has-text('Measure')");
 await page.waitForSelector(".mx-progress", { timeout: 5000 });
-ok("measuring shows its progress");
+// What the back end says as it renders: how far in, then the measuring.
+await page.waitForFunction(() => /Rendering \d+%|Measuring/.test(document.querySelector(".mx-progress-label")?.textContent ?? ""), null, { timeout: 60000 });
+ok(`measuring shows how far the render has come (${await page.textContent(".mx-progress-label")})`);
 await page.waitForSelector(".mx-master", { timeout: 120000 });
 const lufs = Number((await page.textContent(".mx-big-value")).replace("−", "-"));
 if (!(lufs < -3 && lufs > -40)) throw new Error(`integrated loudness reads ${lufs}`);
@@ -147,6 +149,14 @@ await page.waitForFunction(
   }
 );
 ok("Ctrl+Z (undo) puts the drive back");
+
+// Export says how far into the song its render has come.
+const [wav] = await Promise.all([
+  page.waitForEvent("download", { timeout: 120000 }),
+  page.click(".btn.export"),
+  page.waitForFunction(() => /Exporting [1-9]\d*%/.test(document.querySelector(".btn.export")?.textContent ?? ""), null, { timeout: 60000 }),
+]);
+ok(`Export shows its progress, then downloads ${wav.suggestedFilename()}`);
 
 if (errors.length > 0) throw new Error(`page errors:\n${errors.join("\n")}`);
 await browser.close();

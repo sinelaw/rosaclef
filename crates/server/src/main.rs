@@ -773,6 +773,7 @@ fn audio_findings(
         progress: &|_| {},
         disk_cache: true,
         any_file: true,
+        job: 0,
     };
     let mut all = p.clone();
     all.critic.suppress.clear();
@@ -856,6 +857,7 @@ fn mixcheck_cli(a: MixcheckArgs) -> Result<i32> {
         progress: &progress,
         disk_cache: true,
         any_file: true,
+        job: 0,
     };
     let load = |f: &Path| -> Result<rosaclef_core::Project> {
         let text =

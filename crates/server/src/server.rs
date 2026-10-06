@@ -20,7 +20,7 @@ use rosaclef_engine::Engine;
 use rosaclef_fs::Fs;
 use rosaclef_studio::fonts::{DirFonts, Fonts};
 use rosaclef_studio::library::{unique_sample_path, Library};
-use rosaclef_studio::render::{levels_db, render_project};
+use rosaclef_studio::render::{levels_db, render_project_with};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -209,6 +209,13 @@ pub async fn run(cfg: Config) -> Result<()> {
                 .layer(axum::extract::DefaultBodyLimit::max(256 << 20)),
         )
         .route("/api/render", post(render))
+        // How far an export or a mix check under way has come.
+        .route(
+            "/api/progress",
+            get(|Query(q): Query<JobQuery>| async move {
+                Json(rosaclef_studio::jobs::get(q.job.unwrap_or(0)))
+            }),
+        )
         .route("/api/agents", get(get_agents))
         .route("/api/info", get(get_info))
         .nest("/files", Router::new().fallback(serve_file))
@@ -914,7 +921,19 @@ async fn critique(headers: HeaderMap, body: String) -> Response {
 /// Mix check (`rosaclef mixcheck` over HTTP): the request object in (the
 /// command line's flags as JSON), the report out. Without `project` it
 /// checks the open project.
-async fn mixcheck(State(app): State<Shared>, headers: HeaderMap, body: String) -> Response {
+/// `?job=ID`: the page's id for a long job, to ask how far it has come
+/// (`GET /api/progress?job=ID`).
+#[derive(Deserialize)]
+struct JobQuery {
+    job: Option<u32>,
+}
+
+async fn mixcheck(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<JobQuery>,
+    body: String,
+) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
@@ -929,6 +948,7 @@ async fn mixcheck(State(app): State<Shared>, headers: HeaderMap, body: String) -
             progress: &|_| {},
             disk_cache: true,
             any_file: false,
+            job: q.job.unwrap_or(0),
         };
         rosaclef_studio::mixcheck::api(&env, &project, &body)
     })
@@ -952,6 +972,7 @@ struct RenderReq {
 async fn render(
     State(app): State<Shared>,
     headers: HeaderMap,
+    Query(q): Query<JobQuery>,
     Json(req): Json<RenderReq>,
 ) -> Response {
     if !same_origin(&headers) {
@@ -978,13 +999,15 @@ async fn render(
             .map(|d| d.as_secs())
             .unwrap_or(0);
         let rel = format!("{}/{name}-{stamp}.wav", folder::RENDERS_DIR);
-        let (audio, warnings) = render_project(
+        let _job = rosaclef_studio::jobs::start(q.job.unwrap_or(0), "export");
+        let (audio, warnings) = render_project_with(
             &folder,
             project,
             &scope,
             req.sample_rate.unwrap_or(48000) as f32,
             &fonts(),
             install_plugin_host,
+            rosaclef_studio::jobs::exported,
         );
         folder::write_atomic(
             &folder.dir.join(&rel),

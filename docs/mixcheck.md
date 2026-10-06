@@ -321,8 +321,13 @@ The **Mix check** tab of the Maestro panel reads like a mastering meter:
   audibility; open one for its maskers and suggestions;
 - every row.
 
-A progress bar runs while it measures (its estimate learns this machine's
-render speed); with no report yet, an arrow points at **Measure**.
+A progress bar runs while it measures — how far into the range the render
+has come, then the measuring; Export shows the same. The page gives each job
+an id (`POST /api/mixcheck?job=ID`, `POST /api/render?job=ID`) and follows it:
+the native server answers `GET /api/progress?job=ID` (`{id, active, what,
+stage, done, seconds, total, render}`; several jobs at once each answer for
+themselves), the browser back end tells its page as it goes. With no report
+yet, an arrow points at **Measure**.
 
 Each finding with a fix has:
 

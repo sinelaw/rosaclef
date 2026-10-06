@@ -579,6 +579,7 @@ impl Host {
                     a.num("bits", 24)?,
                     a.num("sample-rate", 48000)?,
                     out.as_deref(),
+                    0,
                 )?;
                 let mut s = format!(
                     "rendered {} ({:.1}s, peak {:.1} dBFS, rms {:.1} dBFS)",

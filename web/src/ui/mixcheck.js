@@ -20,6 +20,7 @@ import { button, select, glyph } from "./widgets.js";
 import { openDock, setTop, setView, isCompact, layoutState } from "./panes.js";
 import { revealBeat } from "./playlist.js";
 import { revealScoreBeat } from "./score.js";
+import { newJob, watchJob, jobLabel, jobFraction } from "./progress.js";
 import { toast } from "./toast.js";
 import { insertIx } from "#brands";
 
@@ -37,9 +38,8 @@ const view = {
   /** A sample in the project to compare with ("" = none). */
   reference: "",
   busy: false,
-  /** When the measuring started (ms), and how long it should take. */
-  started: 0,
-  expected: 1,
+  /** The job id of the measuring under way (its progress). */
+  job: 0,
   error: "",
   /** The project version the report is about (-1: none yet). */
   edits: -1,
@@ -353,61 +353,17 @@ function loadCatalog() {
     .catch((e) => false);
 }
 
-/** The seconds the request will render (from the tempo; a guess for
- * drum-part sections). */
-/** function rangeSeconds() => Number */
-function rangeSeconds() {
-  const p = state.project;
-  const spb = 60 / Math.max(1, p.transport.bpm);
-  let end = 0;
-  for (const c of p.playlist.clips) end = Math.max(end, c.start + c.length);
-  if (view.scope === "bars") return (Math.max(Math.round(view.from), Math.round(view.to)) - Math.round(view.from) + 1) * p.transport.beatsPerBar * spb;
-  if (view.scope === "section") {
-    let beats = 0;
-    for (const m of p.score.marks) {
-      if (m.pattern === "" && m.label.trim() === view.section) beats += m.end - m.start;
-    }
-    return (beats > 0 ? beats : end / 4) * spb;
-  }
-  return end * spb;
-}
-
-/** Render milliseconds per second of song, as this machine last measured. */
-/** function msPerSecond() => Number */
-function msPerSecond() {
-  const v = Number(localStorage.getItem("rosaclef.mixcheck.msPerSecond") ?? "");
-  return Number.isFinite(v) && v > 0 ? v : 80;
-}
-
-/** How far the measuring has come (0–1): its time against the expected,
- * slowing near the end rather than stopping. */
-/** function progress() => Number */
-function progress() {
-  const t = (Date.now() - view.started) / view.expected;
-  return t < 1 ? 0.9 * t : 0.9 + 0.09 * (1 - Math.exp(1 - t));
-}
-
-/** Redraw the progress while measuring. */
-/** function tick() => Undefined */
-function tick() {
-  if (!view.busy) return undefined;
-  invalidate();
-  setTimeout(() => tick(), 150);
-}
-
 /** Measure the song (or the range) as it is now. */
 export function runMixcheck() {
   if (view.busy) return undefined;
   const edits = state.edits;
   view.busy = true;
   view.error = "";
-  view.started = Date.now();
-  // A render, the analysis, and a little for the round trip.
-  view.expected = Math.max(800, rangeSeconds() * msPerSecond() + 400);
+  view.job = newJob();
   invalidate();
-  tick();
+  watchJob(view.job, () => view.busy);
   const q = request();
-  sendJson("/api/mixcheck", "POST", {
+  sendJson(`/api/mixcheck?job=${view.job}`, "POST", {
     project: encodeProject(state.project),
     range: q.range,
     section: q.section,
@@ -425,11 +381,6 @@ export function runMixcheck() {
       view.appliedEdits = -1;
       view.excluded = [];
       view.patched = [];
-      // How long a render takes here, for the next progress bar.
-      const rep = view.report;
-      if (!rep.cached && rep.seconds > 1 && rep.ms > 0) {
-        localStorage.setItem("rosaclef.mixcheck.msPerSecond", String(Math.round((rep.ms / rep.seconds) * 10) / 10));
-      }
       invalidate();
       return true;
     })
@@ -522,12 +473,11 @@ function local(r, f) {
 function tryPatch(patch, range) {
   if (view.busy || !fresh()) return undefined;
   view.busy = true;
-  view.started = Date.now();
-  view.expected = Math.max(800, rangeSeconds() * msPerSecond() * (range === "" ? 2 : 0.6) + 400);
+  view.job = newJob();
   invalidate();
-  tick();
+  watchJob(view.job, () => view.busy);
   const q = request();
-  sendJson("/api/mixcheck", "POST", {
+  sendJson(`/api/mixcheck?job=${view.job}`, "POST", {
     project: encodeProject(state.project),
     range: range !== "" ? range : q.range,
     section: range !== "" ? "" : q.section,
@@ -1239,23 +1189,16 @@ export function mixcheckPanel(b, ask) {
   b.close();
 
   if (view.busy) {
-    const f = progress();
-    const left = Math.max(0, (view.expected - (Date.now() - view.started)) / 1000);
+    const f = jobFraction(view.job);
     b.open("div", "prog", "mx-progress");
     b.attr("role", "progressbar");
     b.attr("aria-valuemin", "0");
     b.attr("aria-valuemax", "100");
     b.attr("aria-valuenow", String(Math.round(f * 100)));
-    b.attr("title", "Rendering the song through every part's tap, then measuring");
     b.leaf("div", "fill", "mx-progress-fill", "");
     b.style("width", `${Math.round(f * 1000) / 10}%`);
     b.close();
-    b.leaf(
-      "div",
-      "progl",
-      "mx-progress-label",
-      `Rendering and measuring… ${Math.round(f * 100)}%${left >= 1 ? ` · about ${Math.ceil(left)} s left` : " · almost done"}`
-    );
+    b.leaf("div", "progl", "mx-progress-label", jobLabel(view.job));
   }
 
   b.open("div", "scroll", "mx-scroll");
