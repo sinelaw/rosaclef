@@ -233,6 +233,11 @@ pub struct ElementOut {
     /// fader aside). A reverb or delay adding a lot is a wash.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub insert_effects_db: Option<f64>,
+    /// The share of what is heard of it that its insert's time effects
+    /// (reverb, delay, chorus, phaser) add: what is left of the dry signal
+    /// through them, against all of it (an insert of time effects only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wet_pct: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audibility: Option<AudibilityOut>,
     /// Its own spectrum at the master where it plays: the six bands of
@@ -1143,6 +1148,27 @@ pub fn build<'a>(
             let fader = (ins.volume * ins.volume).max(1e-8);
             if dry_ms > 1e-12 && own_ms > 1e-12 {
                 out.insert_effects_db = Some(r1(dsp::db(own_ms / (dry_ms * fader))));
+                // What each time effect passes of the dry signal.
+                let on: Vec<&rosaclef_core::Device> =
+                    ins.effects.iter().filter(|x| x.enabled).collect();
+                let timed = on
+                    .iter()
+                    .all(|x| matches!(x.kind.as_str(), "reverb" | "delay" | "chorus" | "phaser"));
+                if timed {
+                    let g: f64 = on
+                        .iter()
+                        .map(|x| {
+                            let m = x.param("mix");
+                            match x.kind.as_str() {
+                                "delay" => 1.0,
+                                "chorus" => (1.0 - m / 2.0) * (1.0 + 0.2 * m),
+                                _ => 1.0 - m / 2.0,
+                            }
+                        })
+                        .product();
+                    let dry = g * g * dry_ms * fader;
+                    out.wet_pct = Some(pct((1.0 - dry / own_ms).clamp(0.0, 1.0)));
+                }
             }
         }
         if o.has(Check::Spectrum) {

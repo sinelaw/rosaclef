@@ -430,6 +430,10 @@
             "type": "number",
             "description": "Its left against its right (dB; positive: left), where it plays."
           },
+          "wetPct": {
+            "type": "number",
+            "description": "The share of what is heard of it that its insert's time effects (reverb, delay, chorus, phaser) add (an insert of time effects only)."
+          },
           "insertEffectsDb": {
             "type": "number",
             "description": "How much its insert's effects change its level (a channel alone on an insert with effects; its fader aside): a reverb or delay adding a lot is a wash."

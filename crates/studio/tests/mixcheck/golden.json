@@ -248,6 +248,7 @@
       "correlation": 0.6,
       "balanceDb": 3.7,
       "insertEffectsDb": 0.7,
+      "wetPct": 30.0,
       "audibility": {
         "audibleFractionPct": 100.0,
         "maskedBy": [],

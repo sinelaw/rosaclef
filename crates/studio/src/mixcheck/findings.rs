@@ -2214,7 +2214,7 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             } else {
                 0.0
             };
-            if low >= 0.4 && b.abs() >= pick(3.0, 2.0, 6.0) {
+            if low >= 0.5 && b.abs() >= pick(6.0, 4.0, 10.0) {
                 let channel =
                     e.id.strip_prefix("channel:")
                         .and_then(|id| p.channels.iter().position(|c| c.id == id));
@@ -2262,76 +2262,90 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                 ));
             }
         }
-        // reverb-wash: its insert's effects make up most of what is heard of
-        // it.
-        if let Some(added) = e.insert_effects_db {
+        // reverb-wash: its insert's reverb or delay makes up most of what
+        // is heard of it, or a delay's repeats pile up.
+        if let Some(wet) = e.wet_pct {
             let ins = &p.mixer.inserts[e.insert];
-            let verb = ins
+            let fx: Vec<(usize, &rosaclef_core::Device)> = ins
                 .effects
                 .iter()
                 .enumerate()
-                .rev()
-                .find(|(_, d)| d.enabled && d.kind == "reverb");
-            let at = pick(3.0, 2.0, 5.0);
-            if added >= at {
-                // Where the reverb's mix keeps what it adds at +1 dB: the
-                // dry part falls with (1 - mix/2), the wet one rises with mix.
-                let fix = verb.and_then(|(j, d)| {
-                    let m0 = d.param("mix").max(1e-3);
-                    let d0 = (1.0 - m0 / 2.0).powi(2);
-                    let w0 = (10f64.powf(added / 10.0) - d0).max(0.0);
-                    let r = |m: f64| (1.0 - m / 2.0).powi(2) + w0 * (m / m0).powi(2);
-                    let mut m = m0;
-                    while m > 0.05 && r(m) > 10f64.powf(0.1) {
-                        m -= 0.05;
+                .filter(|(_, d)| d.enabled)
+                .collect();
+            let piling = fx
+                .iter()
+                .find(|(_, d)| d.kind == "delay" && d.param("feedback") >= 0.7);
+            let at = pick(50.0, 40.0, 65.0);
+            if wet >= at || (piling.is_some() && wet >= 20.0) {
+                let mut ops = vec![];
+                let mut said = vec![];
+                for (j, d) in &fx {
+                    let base = format!("/mixer/inserts/{}/effects/{j}/params", e.insert);
+                    let m = d.param("mix");
+                    match d.kind.as_str() {
+                        // Where the wet share falls to about a quarter: the
+                        // dry falls with (1 - mix/2), the wet rises with mix.
+                        "reverb" => {
+                            let share = wet / 100.0;
+                            let to = (m * 0.3).max(0.1).min(m);
+                            let r = |x: f64| {
+                                let w = share / (1.0 - share).max(0.02)
+                                    * (1.0 - m / 2.0).powi(2)
+                                    * (x / m.max(1e-3)).powi(2);
+                                w / (w + (1.0 - x / 2.0).powi(2))
+                            };
+                            let mut x = m;
+                            while x > to && r(x) > 0.25 {
+                                x -= 0.05;
+                            }
+                            let x = (x.max(to) * 100.0).round() / 100.0;
+                            if x < m - 0.01 {
+                                ops.push(set(format!("{base}/mix"), json!(x)));
+                                said.push(format!("the reverb's mix {m:.2} → {x:.2}"));
+                            }
+                        }
+                        "delay" => {
+                            let fb = d.param("feedback");
+                            if fb > 0.4 {
+                                ops.push(set(format!("{base}/feedback"), json!(0.35)));
+                                said.push(format!("the delay's feedback {fb:.2} → 0.35"));
+                            }
+                            if m > 0.3 {
+                                ops.push(set(format!("{base}/mix"), json!(0.25)));
+                                said.push(format!("its mix {m:.2} → 0.25"));
+                            }
+                        }
+                        _ => {}
                     }
-                    let m = (m * 100.0).round() / 100.0;
-                    (m < m0 - 0.01).then(|| {
-                        (
-                            vec![set(
-                                format!("/mixer/inserts/{}/effects/{j}/params/mix", e.insert),
-                                json!(m),
-                            )],
+                }
+                let what: Vec<&str> = fx.iter().map(|(_, d)| d.kind.as_str()).collect();
+                out.push((
+                    FindingOut {
+                        element: Some(e.id.clone()),
+                        from_bar: Some(report.range.from_bar),
+                        to_bar: Some(report.range.to_bar),
+                        fix: ops,
+                        fix_label: format!("on {}: {}", model::insert_id(p, e.insert), said.join(", ")),
+                        ..finding(
+                            "reverb-wash",
+                            &e.id,
+                            e.name.clone(),
                             format!(
-                                "the reverb's mix on {} {m0:.2} → {m:.2}",
-                                model::insert_id(p, e.insert)
+                                "{wet:.0}% of what is heard of {} is its {}{}: far away and washy, smearing into the parts around it.",
+                                e.name,
+                                what.join(" and "),
+                                match piling {
+                                    Some((_, d)) => format!(
+                                        " (the delay's feedback at {:.2} piles the repeats up)",
+                                        d.param("feedback")
+                                    ),
+                                    None => String::new(),
+                                }
                             ),
                         )
-                    })
-                });
-                let what: Vec<&str> = ins
-                    .effects
-                    .iter()
-                    .filter(|d| {
-                        d.enabled
-                            && matches!(d.kind.as_str(), "reverb" | "delay" | "chorus" | "phaser")
-                    })
-                    .map(|d| d.kind.as_str())
-                    .collect();
-                if !what.is_empty() {
-                    let (fix, fix_label) = fix.unwrap_or_default();
-                    out.push((
-                        FindingOut {
-                            element: Some(e.id.clone()),
-                            from_bar: Some(report.range.from_bar),
-                            to_bar: Some(report.range.to_bar),
-                            fix,
-                            fix_label,
-                            ..finding(
-                                "reverb-wash",
-                                &e.id,
-                                e.name.clone(),
-                                format!(
-                                    "{}'s {} {} it {added:.1} dB louder than it is dry: most of what is heard of it is the effect — far away and washy, and it covers the parts around it.",
-                                    e.name,
-                                    what.join(" and "),
-                                    if what.len() > 1 { "make" } else { "makes" }
-                                ),
-                            )
-                        },
-                        added,
-                    ));
-                }
+                    },
+                    wet,
+                ));
             }
         }
         // dominant-part: one part (not the lead) is most of the mix.
@@ -2341,7 +2355,14 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
             .flatten()
             .map(|r| 100.0 * 10f64.powf(r / 10.0))
             .unwrap_or(0.0);
-        if !lead && e.verdict == "dominant" && loud_share >= pick(60.0, 50.0, 75.0) {
+        // The lead is meant to lead, not to be the whole mix: 80 % or more
+        // of its loudness and the band behind it disappears.
+        let too_much = if lead {
+            loud_share >= pick(80.0, 70.0, 90.0)
+        } else {
+            e.verdict == "dominant" && loud_share >= pick(60.0, 50.0, 75.0)
+        };
+        if too_much {
             let unit = mix
                 .elements
                 .iter()
@@ -2373,8 +2394,9 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
                         &e.id,
                         e.name.clone(),
                         format!(
-                            "{} is {:.0}% of the mix's loudness ({:+.1} dB against it; {:.0}% of its energy): it covers the other parts and what the sections add.{cause}",
+                            "{}{} is {:.0}% of the mix's loudness ({:+.1} dB against it; {:.0}% of its energy): it covers the other parts and what the sections add.{cause}",
                             e.name,
+                            if lead { ", the lead," } else { "" },
                             loud_share,
                             e.relative_to_mix_db.flatten().unwrap_or(0.0),
                             e.share_of_energy_pct
@@ -2727,13 +2749,17 @@ pub fn derive(report: &Report, ctx: &Context, o: &Options) -> Vec<FindingOut> {
     if ctx.include_master && o.has(Check::Spectrum) {
         if let Some(sp) = report.master.spectrum.as_ref() {
             let over = sp.db[4] - sp.db[3];
-            if over > pick(-1.0, -2.0, 1.0) {
-                let pres = mix.ranked(&mix.inside, &|u, h| mix.unit_six(u, h)[4]);
-                let boosted = pres
-                    .iter()
-                    .filter(|(_, share)| *share >= 0.25)
-                    .find_map(|(u, _)| presence_boost(p, mix.units[*u].insert).map(|b| (*u, b)))
-                    .filter(|(_, b)| b.3 >= pick(6.0, 4.0, 9.0));
+            let pres = mix.ranked(&mix.inside, &|u, h| mix.unit_six(u, h)[4]);
+            // A boost there on a part carrying a tenth of it, in a mix that
+            // is already nearly as bright as its mids; else a mix brighter
+            // than distorted guitars make it (2 dB over its mids).
+            let boosted = pres
+                .iter()
+                .filter(|(_, share)| *share >= 0.1)
+                .find_map(|(u, _)| presence_boost(p, mix.units[*u].insert).map(|b| (*u, b)))
+                .filter(|(_, b)| b.3 >= pick(6.0, 4.0, 9.0))
+                .filter(|_| over > pick(-1.0, -2.0, 1.0));
+            if boosted.is_some() || over > pick(2.0, 1.0, 4.0) {
                 let names: Vec<String> = pres
                     .iter()
                     .take(3)
