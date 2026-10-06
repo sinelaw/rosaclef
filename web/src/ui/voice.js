@@ -173,7 +173,12 @@ function analyze(path) {
       voice.kinds = [];
       voice.status = "idle";
       const found = voice.take.mode === "drums" ? voice.take.hits.length : voice.take.notes.length;
-      if (found === 0) toast(mode === "drums" ? t("voice.analyze.noHits.toast.title") : t("voice.analyze.noNotes.toast.title"), t("voice.analyze.nothingFound.toast.body"), "info");
+      if (found === 0)
+        toast(
+          mode === "drums" ? t("voice.analyze.noHits.toast.title") : t("voice.analyze.noNotes.toast.title"),
+          t("voice.analyze.nothingFound.toast.body"),
+          "info"
+        );
       invalidate();
       return true;
     })
@@ -414,9 +419,16 @@ const DRUM_TEXTS = [
   { kind: "tom", name: tk("voice.drum.tom.label"), tip: tk("voice.target.tom.title"), one: tk("voice.summary.tom.one"), many: tk("voice.summary.tom.other") },
   { kind: "snare", name: tk("drum.snare"), tip: tk("voice.target.snare.title"), one: tk("voice.summary.snare.one"), many: tk("voice.summary.snare.other") },
   { kind: "hat", name: tk("voice.drum.hat.label"), tip: tk("voice.target.hat.title"), one: tk("voice.summary.hat.one"), many: tk("voice.summary.hat.other") },
-  { kind: "openhat", name: tk("drum.openHat"), tip: tk("voice.target.openHat.title"), one: tk("voice.summary.openHat.one"), many: tk("voice.summary.openHat.other") },
+  {
+    kind: "openhat",
+    name: tk("drum.openHat"),
+    tip: tk("voice.target.openHat.title"),
+    one: tk("voice.summary.openHat.one"),
+    many: tk("voice.summary.openHat.other"),
+  },
 ];
 
+/** A drum's texts (kind "" for a drum without any). */
 /** function drumText(kind: String) => DrumText */
 function drumText(kind) {
   for (const d of DRUM_TEXTS) {
@@ -584,7 +596,11 @@ export function addToSong() {
   stopResult();
   const r = voiceResult();
   if (r.notes.length === 0) {
-    toast(t("voice.addToSong.nothing.toast.title"), voice.path === "" ? t("voice.addToSong.noTake.toast.body") : t("voice.addToSong.noNotes.toast.body"), "error");
+    toast(
+      t("voice.addToSong.nothing.toast.title"),
+      voice.path === "" ? t("voice.addToSong.noTake.toast.body") : t("voice.addToSong.noNotes.toast.body"),
+      "error"
+    );
     return undefined;
   }
   const p = state.project;
@@ -629,15 +645,9 @@ export function addToSong() {
   const times = String(voice.repeat);
   let body = "";
   if (drums) {
-    body =
-      voice.repeat > 1
-        ? tf("voice.addToSong.done.toast.body.hitsLooped", [count, at, times])
-        : tf("voice.addToSong.done.toast.body.hits", [count, at]);
+    body = voice.repeat > 1 ? tf("voice.addToSong.done.toast.body.hitsLooped", [count, at, times]) : tf("voice.addToSong.done.toast.body.hits", [count, at]);
   } else {
-    body =
-      voice.repeat > 1
-        ? tf("voice.addToSong.done.toast.body.notesLooped", [count, at, times])
-        : tf("voice.addToSong.done.toast.body.notes", [count, at]);
+    body = voice.repeat > 1 ? tf("voice.addToSong.done.toast.body.notesLooped", [count, at, times]) : tf("voice.addToSong.done.toast.body.notes", [count, at]);
   }
   toast(tf("voice.addToSong.done.toast.title", [name]), body, "info");
 }
@@ -712,7 +722,13 @@ function gridLabels() {
 }
 
 /** The names of the Detail levels (DETAILS in ../voice.js, in order). */
-const DETAIL_NAMES = [tk("voice.settings.detail.option.smooth"), tk("voice.settings.detail.option.clean"), tk("voice.settings.detail.option.balanced"), tk("voice.settings.detail.option.detailed"), tk("voice.settings.detail.option.everyNote")];
+const DETAIL_NAMES = [
+  tk("voice.settings.detail.option.smooth"),
+  tk("voice.settings.detail.option.clean"),
+  tk("voice.settings.detail.option.balanced"),
+  tk("voice.settings.detail.option.detailed"),
+  tk("voice.settings.detail.option.everyNote"),
+];
 
 /** A scale's name as shown (SCALES in ../voice.js). */
 /** function scaleName(id: String) => String */
@@ -843,7 +859,9 @@ function settingsView(b) {
     /** const keys: String[] */
     const keys = ["-1"];
     /** const keyLabels: String[] */
-    const keyLabels = [cropped.notes.length > 0 && s.key < 0 ? tf("voice.settings.key.option.detectFound", [KEY_NAMES[k.key]]) : t("voice.settings.key.option.detect")];
+    const keyLabels = [
+      cropped.notes.length > 0 && s.key < 0 ? tf("voice.settings.key.option.detectFound", [KEY_NAMES[k.key]]) : t("voice.settings.key.option.detect"),
+    ];
     for (let i = 0; i < 12; i++) {
       keys.push(String(i));
       keyLabels.push(KEY_NAMES[i]);
@@ -863,9 +881,18 @@ function settingsView(b) {
         s.scale = v;
       }
     );
-    choice(b, "oct", t("voice.settings.octave.label"), String(s.octave), ["-2", "-1", "0", "1", "2"], ["−2", "−1", "0", "+1", "+2"], t("voice.settings.octave.title"), (v) => {
-      s.octave = Math.round(Number(v));
-    });
+    choice(
+      b,
+      "oct",
+      t("voice.settings.octave.label"),
+      String(s.octave),
+      ["-2", "-1", "0", "1", "2"],
+      ["−2", "−1", "0", "+1", "+2"],
+      t("voice.settings.octave.title"),
+      (v) => {
+        s.octave = Math.round(Number(v));
+      }
+    );
     b.close();
     b.close();
   }
@@ -884,7 +911,10 @@ function targetView(b, r) {
     const ids = ["auto", "new"];
     const sel = melodicSelection();
     /** const names: String[] */
-    const names = [sel !== "" ? tf("voice.target.channel.option.selected", [channelName(sel)]) : t("voice.target.channel.option.selectedNew"), t("voice.target.channel.option.new")];
+    const names = [
+      sel !== "" ? tf("voice.target.channel.option.selected", [channelName(sel)]) : t("voice.target.channel.option.selectedNew"),
+      t("voice.target.channel.option.new"),
+    ];
     for (const c of chs) {
       if (c.instrument.type === "drum") continue;
       ids.push(c.id);
@@ -1170,18 +1200,15 @@ function previewView(b, r) {
       "div",
       "t",
       "voice-empty-title",
-      voice.status === "recording" ? (drums ? t("voice.preview.empty.title.recordingDrums") : t("voice.preview.empty.title.recordingMelody")) : drums ? t("voice.preview.empty.title.drums") : t("voice.preview.empty.title.melody")
+      voice.status === "recording"
+        ? drums
+          ? t("voice.preview.empty.title.recordingDrums")
+          : t("voice.preview.empty.title.recordingMelody")
+        : drums
+          ? t("voice.preview.empty.title.drums")
+          : t("voice.preview.empty.title.melody")
     );
-    b.leaf(
-      "div",
-      "d",
-      "voice-empty-doc",
-      drums
-        ? t(
-            "voice.preview.empty.doc.drums"
-          )
-        : t("voice.preview.empty.doc.melody")
-    );
+    b.leaf("div", "d", "voice-empty-doc", drums ? t("voice.preview.empty.doc.drums") : t("voice.preview.empty.doc.melody"));
     b.close();
   }
   b.close();
@@ -1356,12 +1383,8 @@ function takeStep(b) {
   stepHead(b, "1", t("term.take"), t("voice.step.take.subtitle"));
   b.close();
   b.open("div", "mode", "seg");
-  button(b, "melody", voice.mode === "melody" ? "small on" : "small", t("term.melody"), t("voice.mode.melody.title"), () =>
-    setVoiceMode("melody")
-  );
-  button(b, "drums", voice.mode === "drums" ? "small on" : "small", t("voice.mode.drums.label"), t("voice.mode.drums.title"), () =>
-    setVoiceMode("drums")
-  );
+  button(b, "melody", voice.mode === "melody" ? "small on" : "small", t("term.melody"), t("voice.mode.melody.title"), () => setVoiceMode("melody"));
+  button(b, "drums", voice.mode === "drums" ? "small on" : "small", t("voice.mode.drums.label"), t("voice.mode.drums.title"), () => setVoiceMode("drums"));
   b.close();
   b.open("div", "rec", "voice-rec");
   iconButton(
@@ -1380,7 +1403,11 @@ function takeStep(b) {
     "div",
     "time",
     "voice-time",
-    rec ? `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, "0")}` : voice.status === "analyzing" ? t("voice.record.analyzing.label") : t("voice.record.start.label")
+    rec
+      ? `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, "0")}`
+      : voice.status === "analyzing"
+        ? t("voice.record.analyzing.label")
+        : t("voice.record.start.label")
   );
   b.close();
   choice(
@@ -1409,7 +1436,9 @@ function takeStep(b) {
   b.open("div", "acts", "voice-actions");
   button(b, "open", "small", t("voice.open.label"), t("voice.open.title"), () => openRecording());
   if (voice.path !== "") {
-    button(b, "listen", voice.playing ? "small on" : "small", voice.playing ? t("common.stop") : t("voice.listen.label"), t("voice.listen.title"), () => listenTake());
+    button(b, "listen", voice.playing ? "small on" : "small", voice.playing ? t("common.stop") : t("voice.listen.label"), t("voice.listen.title"), () =>
+      listenTake()
+    );
   }
   b.close();
   b.close();
@@ -1455,14 +1484,7 @@ function addStep(b, r, ready) {
   b.close();
   b.leaf("div", "sum", "voice-summary", summary(r));
   targetView(b, r);
-  button(
-    b,
-    "add",
-    r.notes.length > 0 ? "gold voice-addbtn" : "voice-addbtn",
-    t("voice.addToSong.label"),
-    t("voice.addToSong.title"),
-    () => addToSong()
-  );
+  button(b, "add", r.notes.length > 0 ? "gold voice-addbtn" : "voice-addbtn", t("voice.addToSong.label"), t("voice.addToSong.title"), () => addToSong());
   b.close();
 }
 

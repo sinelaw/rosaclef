@@ -18,18 +18,20 @@ import { toast } from "./toast.js";
 import { insertIx, noteIx, clipIx } from "#brands";
 import { t, tf, tk } from "../i18n.js";
 
+/** The categories, in the order shown: `value` is the server's category (data), `label` the key shown. */
+/** const CATEGORIES: { value: String, label: String }[] */
 const CATEGORIES = [
-  tk("critic.category.harmony"),
-  tk("critic.category.melody"),
-  tk("critic.category.rhythm"),
-  tk("critic.category.arrangement"),
-  tk("critic.category.lowEnd"),
-  tk("critic.category.mix"),
-  tk("critic.category.stereo"),
-  tk("critic.category.effects"),
-  tk("critic.category.master"),
-  tk("critic.category.project"),
-  tk("critic.category.mixCheck"),
+  { value: "Harmony", label: tk("critic.category.harmony") },
+  { value: "Melody", label: tk("critic.category.melody") },
+  { value: "Rhythm", label: tk("critic.category.rhythm") },
+  { value: "Arrangement", label: tk("critic.category.arrangement") },
+  { value: "Low end", label: tk("critic.category.lowEnd") },
+  { value: "Mix", label: tk("critic.category.mix") },
+  { value: "Stereo", label: tk("critic.category.stereo") },
+  { value: "Effects", label: tk("critic.category.effects") },
+  { value: "Master", label: tk("critic.category.master") },
+  { value: "Project", label: tk("critic.category.project") },
+  { value: "Mix check", label: tk("critic.category.mixCheck") },
 ];
 
 const view = {
@@ -309,9 +311,9 @@ function rulesView(b) {
     )
   );
   for (const cat of CATEGORIES) {
-    b.leaf("h4", `h-${cat}`, "crit-cat", t(cat));
+    b.leaf("h4", `h-${cat.value}`, "crit-cat", t(cat.label));
     for (const r of view.catalog) {
-      if (r.category !== cat) continue;
+      if (r.category !== cat.value) continue;
       const on = ruleEnabled(r);
       b.open("label", r.id, on ? "crit-rule on" : "crit-rule");
       b.attr("title", r.why);
@@ -427,10 +429,10 @@ export function criticPanel(b, ask) {
     }
     // Grouped by category, then by rule.
     for (const cat of CATEGORIES) {
-      const inCat = list.filter((f) => f.category === cat);
+      const inCat = list.filter((f) => f.category === cat.value);
       if (inCat.length === 0) continue;
-      b.open("section", cat, "crit-group");
-      b.leaf("h4", "h", "crit-cat", t(cat));
+      b.open("section", cat.value, "crit-group");
+      b.leaf("h4", "h", "crit-cat", t(cat.label));
       /** const ids: String[] */
       const ids = [];
       for (const f of inCat) if (!ids.includes(f.rule)) ids.push(f.rule);

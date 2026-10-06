@@ -41,13 +41,7 @@ function onMessage(text) {
     if (kind === "switched") projectSwitched();
     else if (state.backend === "local" && loadPref("rosaclef.localIntro") === "") {
       savePref("rosaclef.localIntro", "shown");
-      toast(
-        t("net.localIntro.toast.title"),
-        t(
-          "net.localIntro.toast.body"
-        ),
-        "info"
-      );
+      toast(t("net.localIntro.toast.title"), t("net.localIntro.toast.body"), "info");
     }
   } else if (kind === "project") {
     state.rev = Number(m.rev);
