@@ -207,6 +207,9 @@ pub struct ElementOut {
     pub kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<&'static str>,
+    /// The song's lead (one per song): judged by its level in the mix too.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub lead: bool,
     pub insert: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rms_dbfs: Option<f64>,
@@ -267,6 +270,9 @@ pub struct ClashOut {
     pub interval: String,
     pub overlap_beats: f64,
     pub severity: &'static str,
+    /// Why the chord makes it a colour (ranked low).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idiom: Option<&'static str>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub also_in_bars: Vec<u32>,
     /// Moves the quieter note to the nearest pitch that does not clash.
@@ -299,6 +305,9 @@ pub struct FindingOut {
     pub fix: Vec<Value>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub fix_label: String,
+    /// `--verify`: the check again with `fix` applied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified: Option<Value>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -534,6 +543,35 @@ fn focused(mix: &Mix, p: &Project, focus: &[String]) -> Result<(Vec<Element>, bo
         fresh
     });
     Ok((out, master))
+}
+
+/// The song's lead: the part named like one (lead, vocal, melody, topline,
+/// solo), else the loudest the Critic reads as a lead. One song, one lead;
+/// other melodic parts are judged as parts.
+fn lead_of(mix: &Mix, roles: &[&'static str], hops: &[usize]) -> Option<String> {
+    let energy = |e: &Element| -> f64 {
+        hops.iter()
+            .map(|h| e.units.iter().map(|u| mix.unit_ms(*u, *h)).sum::<f64>())
+            .sum()
+    };
+    let named = |e: &Element| {
+        let n = format!("{} {}", e.id, e.name).to_ascii_lowercase();
+        ["lead", "vocal", "vox", "melody", "topline", "solo"]
+            .iter()
+            .any(|w| n.contains(w))
+    };
+    let loudest = |pick: &dyn Fn(&Element) -> bool| {
+        mix.elements
+            .iter()
+            .filter(|e| e.channel.is_some() && pick(e))
+            .map(|e| (e, energy(e)))
+            .filter(|x| x.1 > 0.0)
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|x| x.0.id.clone())
+    };
+    loudest(&named).or_else(|| {
+        loudest(&|e: &Element| e.channel.and_then(|c| roles.get(c).copied()) == Some("lead"))
+    })
 }
 
 /// The written beat where row key `k` ends (for `--by`).
@@ -784,6 +822,8 @@ pub fn build<'a>(
         Threshold::Normal => (0.25, 0.6),
         Threshold::Loose => (0.15, 0.45),
     };
+    let lead = lead_of(&mix, &roles, &hops);
+    let lead_floor = o.threshold.lead_floor_db();
     let mut outs: Vec<(ElementOut, usize)> = vec![];
     let mut kept_aud = vec![];
     for (i, e) in elements.iter().enumerate() {
@@ -817,9 +857,13 @@ pub fn build<'a>(
         };
         let au = &aud[i];
         let frac = au.fraction();
+        let is_lead = lead.as_deref() == Some(e.id.as_str());
         let verdict = if want_aud && frac < inaudible_at {
             "inaudible"
         } else if want_aud && frac < buried_at {
+            "buried"
+        } else if is_lead && rel.is_some_and(|r| r < lead_floor) {
+            // Heard, but far under the mix: a lead the song leans on.
             "buried"
         } else if own_peak > 1.0 || (overloaded && share >= 0.4) {
             "overloading"
@@ -850,6 +894,7 @@ pub fn build<'a>(
                 "insert"
             },
             role: e.channel.and_then(|c| roles.get(c).copied()),
+            lead: is_lead,
             insert: e.insert,
             share_of_energy_pct: pct(share),
             active_pct: pct(active.len() as f64 / hops.len().max(1) as f64),
@@ -889,6 +934,7 @@ pub fn build<'a>(
         let mut trial_elems = vec![];
         let mut trials = vec![];
         let mut cuts = vec![];
+        let mut bals = vec![];
         for &k in &flagged {
             let ei = outs[k].1;
             let au = &aud[ei];
@@ -907,6 +953,18 @@ pub fn build<'a>(
                 });
             }
             cuts.push(cut);
+            // A lead under the mix: its balance, as one change.
+            let rel = outs[k].0.relative_to_mix_db.flatten();
+            let bal = match rel {
+                Some(r) if outs[k].0.lead && r < lead_floor => {
+                    super::findings::balance(p, &mix, &blocks, &elements[ei], au, r)
+                }
+                _ => None,
+            };
+            if let Some(b) = &bal {
+                t.push(b.change.clone());
+            }
+            bals.push(bal);
             trial_elems.push(elements[ei].clone());
             trials.push(t);
         }
@@ -922,6 +980,7 @@ pub fn build<'a>(
                 &gains,
                 &fr[n],
                 cuts[n].as_ref(),
+                bals[n].as_ref(),
                 buried_at,
             );
         }
@@ -1067,7 +1126,12 @@ fn clash_out(p: &Project, t: &Timeline, c: &clashes::Clash, notes: &[clashes::Pl
     also.dedup();
     let bar = t.bar_of(beat);
     also.retain(|b| *b != bar);
-    let fix = super::findings::clash_fix(p, c, notes);
+    // A colour of the chord is not a mistake: nothing to fix.
+    let fix = c
+        .idiom
+        .is_none()
+        .then(|| super::findings::clash_fix(p, c, notes))
+        .flatten();
     ClashOut {
         bar,
         beat: (beat * 1000.0).round() / 1000.0,
@@ -1078,6 +1142,7 @@ fn clash_out(p: &Project, t: &Timeline, c: &clashes::Clash, notes: &[clashes::Pl
         interval: interval_name(c.semis),
         overlap_beats: (c.overlap * 100.0).round() / 100.0,
         severity: c.severity,
+        idiom: c.idiom,
         also_in_bars: also,
         fix: fix.as_ref().map(|f| f.0.clone()),
         fix_label: fix.map(|f| f.1),

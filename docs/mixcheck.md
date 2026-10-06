@@ -31,7 +31,7 @@ rosaclef mixcheck [PATH]
   --checks levels,audibility,masking,dynamics,gainreduction,clashes,spectrum,stereo
   --what-if JSONPATCH|@file.json                    # RFC 6902, in memory only
   --compare A.json B.json                           # the report of B, with what changed from A
-  --verify                                          # re-measure each suggestion under its patch
+  --verify                                          # re-measure each finding's fix and each suggestion under its patch
   --target spotify|apple|youtube|amazon|tidal|ebu-r128|atsc-a85
   --reference FILE                                  # a reference recording, level-matched
   --history                                         # the master over time (every 200 ms)
@@ -65,7 +65,8 @@ One render answers every question: the engine taps every channel (after its
 fader), every insert (after its effects and fader), and the master three times
 (before its effects, at its limiter's input — after the limiter's own input
 gain — and at the output), and the measurements are made as it plays. A
-what-if is a second render; `--verify`, one per suggestion.
+what-if is a second render; `--verify`, one per finding fix and suggestion
+(at most 10).
 
 - Only the range is rendered, with a **pre-roll** (8 beats, and at least 3
   seconds) before each stretch: reverb and delay tails, compressor envelopes and
@@ -121,7 +122,12 @@ what-if is a second render; `--verify`, one per suggestion.
   the parts' measured levels at that moment, weighed by overlap × the quieter
   part's level. Short passing tones are left out unless `--threshold strict`.
   Each names both notes (`pattern`, `noteIndex`, pitch) and the same two notes
-  clashing again in a loop are one clash (`alsoInBars`).
+  clashing again in a loop are one clash (`alsoInBars`). The chord sounding
+  with them (every note, read above the lowest) can make the interval a
+  colour, not a mistake: the tensions of a dominant seventh (♭9, ♯9, ♯11, ♭13,
+  13), a major seventh chord's seventh and ♯11, a lydian ♯11 over a major
+  chord, a diminished chord's tritone — and a passing or approach note (by
+  step, a beat or less). Those rank low, say why (`idiom`) and offer no fix.
 
 ## The report
 
@@ -154,18 +160,33 @@ silent parts are left out.
   "clashes": [ { "bar": 65, "beatInBar": 0.25, "a": { "channel": "counter", "pattern": "counter-b", "noteIndex": 81, "pitch": "C#5" },
                  "b": { "channel": "pad", "pattern": "pad-C", "noteIndex": 4, "pitch": "C4" }, "interval": "m9", "overlapBeats": 3.7,
                  "severity": "high", "fix": [ … ] } ],
-  "findings": [ { "severity": "warn", "rule": "master-overload", "key": "master-overload|bars:52-59", "where": "bars 52–59",
-                  "detail": "pre-limiter peaks +5.2 dBFS; …", "fix": [ … ], "fixLabel": "…" } ],
+  "findings": [ { "severity": "warn", "rule": "master-overload", "key": "master-overload|master", "where": "bars 52–59",
+                  "detail": "pre-limiter peaks +5.2 dBFS (its input gain alone adds +6.0 dB); …", "fix": [ … ],
+                  "fixLabel": "the limiter's input gain +6.0 → +0.8 dB",
+                  "verified": { "resolved": true, "summary": "loudness -3.1 LU; pre-limiter peak -5.2 dB; 1 finding(s) resolved", "new": [] } } ],
   "render": { "cached": false, "ms": 2380, "prerollBeats": 8, "renders": 1, "sampleRate": 48000 }
 }
 ```
 
 - Ids: `channel:<id>`, `insert:<index>/<name>`; notes by `pattern` and `noteIndex`.
 - `verdict`: `inaudible` (audible under 25 % of the time it plays; strict 35,
-  loose 15), `buried` (under 60 %), `overloading` (its own peak over 0 dBFS, or
-  a big share of a master that overloads), `dominant` (most of the mix), `ok`.
+  loose 15), `buried` (under 60 % — or, for the song's lead, more than 10 LU
+  under the mix however audible; strict 8, loose 13), `overloading` (its own
+  peak over 0 dBFS, or a big share of a master that overloads), `dominant`
+  (most of the mix), `ok`. The lead carries `"lead": true` (one per song).
 - `suggestions` are JSON Patch against `project.json`, with what the model
-  predicts (`expected…`); `--verify` adds `verified`, measured under the patch.
+  predicts (`expected…`). A lead under the mix gets its balance first: the
+  faders of the parts over it that sit above unity back to unity, and the lead
+  up (a cut insert fader restored first) to about -5 LU against the mix.
+- `--verify` measures every finding's `fix` (the whole check again with it
+  applied: `verified.resolved`, `summary`, `new` findings, and `still` — what
+  and where — when not resolved), then the suggestions (`verified`: the part's
+  level, audibility and verdict), one render each, at most 10. `--text` shows
+  both.
+- Finding keys are stable (`master-overload|master`, `masked-lead|channel:sax`,
+  `harmonic-clash|<pattern>:<note>|<pattern>:<note>`): the same problem keeps
+  its key when it moves or shrinks, so `whatIf`/`compare` list it as resolved
+  only when it is gone.
 - `whatIf` / `compare`: the master's numbers that moved (`from`, `to`,
   `delta`), the parts whose level, audibility or verdict changed, the findings
   resolved and new, rows that moved 0.5 dB or more, and a one-line `summary`.
@@ -184,17 +205,21 @@ silent parts are left out.
 Findings are ranked, de-duplicated and at most `--max-findings` (10), and no
 rule takes more than a third of the list. One problem is one finding, with one
 fix: an overload or a low-end build-up lists every stretch it happens in
-("bars 1–7, 9–12 (pass 2), 13–18"). Each is a rule of the Critic (category
-*Mix check*), with a JSON Patch `fix`:
+("bars 1–7, 9–12 (pass 2), 13–18"; more than four read "bars 2–140 (112 bars,
+in 20 stretches)"). Fixes go to the setting at fault when there is one — a
+limiter's drive, an EQ's boost, a fader pushed above unity — rather than
+turning everything else down. Each is a rule of the Critic (category *Mix
+check*), with a JSON Patch `fix`:
 
 | rule | when | fix |
 |---|---|---|
-| `master-overload` | bars where the limiter's input peaks over +1 dBFS and it reduces 6 dB or more (strict: 0 / 3, loose: +3 / 9) — catching the odd peak is mastering, not overload | the parts carrying 15 % or more of the mix down (up to three); when none does, less limiter drive and every fader down |
-| `limiter-pumping` | the master limiter's (or bus compressor's) gain reduction swings 4 dB or more within a beat, over 3 dB a fifth of the time | a slower release (at least 60 ms for a limiter, 150 ms for a compressor), less drive |
-| `masked-lead` | the lead is buried or inaudible. The lead is the part named like one (lead, vocal, melody, topline, solo), else the loudest the Critic reads as a lead: one per song | an EQ cut on its masker where it covers it, or more level |
+| `master-overload` | bars where the limiter's input peaks over +1 dBFS and it reduces 6 dB or more (strict: 0 / 3, loose: +3 / 9) — catching the odd peak is mastering, not overload | a limiter driven more than 3 dB: its drive first; then the parts carrying 15 % or more of the mix down (up to three); when none does, the rest of the drive and every fader down |
+| `true-peak` | the output's true peak over 0 dBTP (strict −1, loose +0.5): peaks between the samples clip when converted or encoded | the limiter's ceiling down to land at −1 dBTP (no limiter: the master fader) |
+| `limiter-pumping` | the master limiter's (or bus compressor's) gain reduction swings 4 dB or more within a beat, over 3 dB a fifth of the time | a slower release (at least 60 ms for a limiter, 150 ms for a compressor); less drive, until the limiter takes 3 dB at most (a compressor: a higher threshold) |
+| `masked-lead` | the lead is buried or inaudible, or more than 10 LU under the mix (strict 8, loose 13). The lead is the part named like one (lead, vocal, melody, topline, solo), else the loudest the Critic reads as a lead: one per song | its balance (boosted faders over it back to unity, the lead up), else an EQ cut on its masker where it covers it, or more level |
 | `inaudible-part` | a part is inaudible (strict: buried too) | the level the model says it needs — only when the model says it helps and the faders can reach it (else the finding says so) |
-| `harmonic-clash` | a clash of high severity (strict: medium too). Minor seconds and ninths rank highest; a major seventh (a maj7 colour as often as not) and a tritone one step lower; notes more than two octaves apart are not clashes | the quieter note moved to the nearest pitch that clashes with nothing |
-| `low-end-buildup` | for 2 bars or more, under 250 Hz is 14 dB over 500 Hz–6 kHz, or 250–500 Hz 6 dB over a balanced tilt | a low shelf on the part (not the bass or drums) carrying the most low end |
+| `harmonic-clash` | a clash of high severity (strict: medium too). Minor seconds and ninths rank highest; a major seventh and a tritone one step lower; notes more than two octaves apart are not clashes; a colour of the chord or a passing note ranks low | the quieter note (never the bass: the note over it) moved to the nearest pitch that clashes with nothing |
+| `low-end-buildup` | a part carrying a quarter of the lows boosts them 6 dB or more with an EQ (strict 4, loose 9) in a mix whose lows lean 3 dB over (strict 2, loose 5); else for 2 bars or more, under 250 Hz is 14 dB over 500 Hz–6 kHz, or 250–500 Hz 6 dB over a balanced tilt (drum breaks aside) | that EQ's boost down to +3 dB or less; else a low-shelf cut on the part boosting its lows, or (not the bass or drums) carrying the most low end |
 | `phase-correlation` | the mix's correlation is negative or it loses 6 dB in mono; a part's correlation under −0.3 (however quiet: it vanishes in mono) | — |
 | `section-loudness-flat` | three or more sections all within 1.5 LU (strict 2.5, loose 1.0) | a master volume lane: the sparse sections 1.5–3 dB down |
 

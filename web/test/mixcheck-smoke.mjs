@@ -23,19 +23,19 @@ await page.click(".maestro-tab:has-text('Mix check')");
 await page.waitForSelector(".mx-empty");
 ok("the Mix check tab opens");
 
-// Bars 12–14 of the demo: the piano's F#3 rubs against the bass's G2 in bar 13
-// (a major seventh: a finding at the strict threshold).
+// Bars 77–79 of the demo: in the sax solo, the sax's C4 rubs against the
+// bass's B2 in bar 78 (a minor ninth: a finding at the strict threshold).
 await page.selectOption(".mx-bar .mx-select >> nth=0", "bars");
 await page.selectOption(".mx-bar2 .mx-select >> nth=0", "strict");
-await page.fill(".mx-num >> nth=0", "12");
+await page.fill(".mx-num >> nth=0", "77");
 await page.press(".mx-num >> nth=0", "Tab");
-await page.fill(".mx-num >> nth=1", "14");
+await page.fill(".mx-num >> nth=1", "79");
 await page.press(".mx-num >> nth=1", "Tab");
 await page.click(".mixcheck .btn:has-text('Measure')");
 await page.waitForSelector(".mx-master", { timeout: 120000 });
 const lufs = Number((await page.textContent(".mx-big-value")).replace("−", "-"));
 if (!(lufs < -5 && lufs > -40)) throw new Error(`integrated loudness reads ${lufs}`);
-ok(`bars 12–14 measure ${lufs} LUFS integrated`);
+ok(`bars 77–79 measure ${lufs} LUFS integrated`);
 for (const label of ["True peak", "Pre-limiter", "PLR", "LRA", "Mono"]) {
   if ((await page.locator(".mx-readout", { hasText: label }).count()) !== 1) throw new Error(`no ${label} readout`);
 }
@@ -50,12 +50,12 @@ const tried = await page.textContent(".mx-tried");
 if (!tried.includes("resolved")) throw new Error(`the what-if says: ${tried}`);
 ok(`a fix can be tried without making it (${tried.trim()})`);
 
-// The note the fix moves: the piano's F#3 in its "Head" pattern.
+// The note the fix moves: the sax's C4 in its "Solo" pattern.
 const pitch = () =>
   page.evaluate(async () => {
     const { state } = await import("./src/store.js");
-    const p = state.project.patterns.find((x) => x.id === "piano-head");
-    return p ? p.notes[19].pitch : -1;
+    const p = state.project.patterns.find((x) => x.id === "sax-solo");
+    return p ? p.notes[121].pitch : -1;
   });
 const before = await pitch();
 await clash.locator(".btn:has-text('Apply fix')").click();
@@ -69,7 +69,7 @@ if ((await pitch()) !== after) throw new Error("a stale report's fix was applied
 ok("a stale report's fixes are refused until it is measured again");
 await page.click("button[title^='Undo']");
 await page.waitForFunction(
-  (p) => import("./src/store.js").then((m) => m.state.project.patterns.find((x) => x.id === "piano-head").notes[19].pitch === p),
+  (p) => import("./src/store.js").then((m) => m.state.project.patterns.find((x) => x.id === "sax-solo").notes[121].pitch === p),
   before,
   {
     timeout: 5000,

@@ -37,8 +37,75 @@ pub struct Clash {
     pub b_db: f64,
     pub weight: f64,
     pub severity: &'static str,
+    /// The chord makes it a colour, not a mistake (a ♯11 on a dominant
+    /// seventh, a major seventh's seventh, …): it ranks low.
+    pub idiom: Option<&'static str>,
     /// Other places the same two notes clash: (bar, pass).
     pub also: Vec<(u32, u32)>,
+}
+
+/// The lowest note sounding at `at` (performance beats).
+pub fn bass_at(notes: &[Played], at: f64) -> Option<&Played> {
+    notes
+        .iter()
+        .filter(|n| n.from <= at + 1e-6 && n.to > at + 1e-6)
+        .min_by_key(|n| n.pitch)
+}
+
+/// Whether the chord sounding at `at` makes the interval between `a` and
+/// `b` one of its own colours. The chord is read from every note sounding,
+/// above its lowest: a dominant seventh (major third and minor seventh)
+/// takes ♭9, ♯9, ♯11, ♭13 and 13; a major seventh chord its seventh and ♯11;
+/// a half-diminished or diminished chord its tritone.
+fn idiom(notes: &[Played], at: f64, a: i32, b: i32) -> Option<&'static str> {
+    let bass = bass_at(notes, at)?.pitch;
+    let pcs: Vec<i32> = notes
+        .iter()
+        .filter(|n| n.from <= at + 1e-6 && n.to > at + 1e-6)
+        .map(|n| (n.pitch - bass).rem_euclid(12))
+        .collect();
+    let has = |x: i32| pcs.contains(&x);
+    let both = |ok: &[i32]| {
+        ok.contains(&(a - bass).rem_euclid(12)) && ok.contains(&(b - bass).rem_euclid(12))
+    };
+    if has(4) && has(10) && both(&[0, 1, 3, 4, 6, 7, 8, 9, 10]) {
+        return Some("a tension of a dominant seventh chord");
+    }
+    if has(11) && (has(4) || has(3)) && both(&[0, 2, 3, 4, 6, 7, 9, 11]) {
+        return Some("the seventh (or ♯11) of a major seventh chord");
+    }
+    if has(3) && has(6) && both(&[0, 3, 6, 9, 10]) {
+        return Some("the tritone of a diminished chord");
+    }
+    if has(7) && !has(3) && both(&[0, 2, 4, 6, 7, 9, 11]) {
+        return Some("a ♯11 over a major chord (lydian)");
+    }
+    None
+}
+
+/// Note `k` passes by step between its neighbours in its part (a beat or
+/// less, a tone or less each side, in one direction), or leads a semitone
+/// into the next: a passing or an approach note.
+fn passing(notes: &[Played], k: usize) -> bool {
+    let x = &notes[k];
+    if x.length > 1.0 + 1e-9 {
+        return false;
+    }
+    let prev = notes[..k]
+        .iter()
+        .rev()
+        .find(|n| n.channel == x.channel && n.to <= x.from + 0.05);
+    let next = notes[k + 1..]
+        .iter()
+        .find(|n| n.channel == x.channel && n.from >= x.to - 0.05);
+    if next.is_some_and(|b| (b.pitch - x.pitch).abs() == 1) {
+        return true;
+    }
+    let (Some(a), Some(b)) = (prev, next) else {
+        return false;
+    };
+    let (d1, d2) = (x.pitch - a.pitch, b.pitch - x.pitch);
+    d1 != 0 && d1.signum() == d2.signum() && d1.abs() <= 2 && d2.abs() <= 2
 }
 
 pub const NAMES: [&str; 12] = [
@@ -213,6 +280,13 @@ pub fn find(
             if !semitone && sev > 0 {
                 sev -= 1;
             }
+            let colour = idiom(notes, from, m.pitch, n.pitch).or_else(|| {
+                (passing(notes, i) || passing(notes, j))
+                    .then_some("a passing or approach note (by step, a beat or less)")
+            });
+            if colour.is_some() {
+                sev = 0;
+            }
             let (hi, lo, hd, ld) = if m.pitch >= n.pitch {
                 (m.clone(), n.clone(), da, db)
             } else {
@@ -229,6 +303,7 @@ pub fn find(
                 b_db: ld,
                 weight,
                 severity: ["low", "medium", "high"][sev],
+                idiom: colour,
                 also: vec![],
             });
         }
@@ -267,4 +342,68 @@ pub fn find(
             .then(x.from.total_cmp(&y.from))
     });
     merged
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn n(channel: usize, pitch: i32, from: f64, to: f64) -> Played {
+        Played {
+            channel,
+            pattern: 0,
+            note: 0,
+            pitch,
+            from,
+            to,
+            span: 0,
+            beat: from,
+            length: to - from,
+        }
+    }
+
+    #[test]
+    fn a_chord_makes_its_tensions_colours() {
+        // G7 with a ♯11 (C#) over G2: a dominant's tension.
+        let g7 = [
+            n(0, 43, 0.0, 4.0),
+            n(1, 59, 0.0, 4.0),
+            n(1, 53, 0.0, 4.0),
+            n(1, 61, 0.0, 4.0),
+        ];
+        assert!(idiom(&g7, 1.0, 61, 43).is_some());
+        // A♭ with D and E♭ (no third): a lydian ♯11.
+        let lyd = [
+            n(0, 32, 0.0, 2.0),
+            n(1, 50, 0.0, 2.0),
+            n(1, 58, 0.0, 2.0),
+            n(2, 75, 0.0, 2.0),
+        ];
+        assert!(idiom(&lyd, 0.5, 50, 32).is_some());
+        // G♯3 over G2 among A and C: a minor ninth that grinds.
+        let bad = [
+            n(0, 43, 0.0, 2.0),
+            n(1, 56, 0.0, 2.0),
+            n(1, 57, 0.0, 2.0),
+            n(1, 60, 0.0, 2.0),
+        ];
+        assert!(idiom(&bad, 0.5, 56, 43).is_none());
+    }
+
+    #[test]
+    fn walking_by_step_is_passing() {
+        // G2 G#2 A2 under a held A3: the G#2 passes.
+        let mut v = vec![
+            n(0, 43, 0.0, 1.0),
+            n(0, 44, 1.0, 2.0),
+            n(0, 45, 2.0, 3.0),
+            n(1, 57, 0.0, 3.0),
+        ];
+        v.sort_by(|a, b| a.from.total_cmp(&b.from).then(a.pitch.cmp(&b.pitch)));
+        let k = v.iter().position(|x| x.pitch == 44).unwrap();
+        assert!(passing(&v, k));
+        // A leap there and back is no passing note.
+        let w = vec![n(0, 43, 0.0, 1.0), n(0, 50, 1.0, 2.0), n(0, 43, 2.0, 3.0)];
+        assert!(!passing(&w, 1));
+    }
 }

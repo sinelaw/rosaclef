@@ -273,10 +273,55 @@ pub fn run(env: &Env, project: &Project, o: &Options) -> Result<Report, Error> {
     Ok(r)
 }
 
-/// Re-measure each suggestion under its own patch (one render each, at
-/// most `max_findings`).
+/// Re-measure each finding's fix, then each suggestion, under its own
+/// patch (one render each, at most `max_findings` and [`MAX_VERIFY`]).
 fn verify(env: &Env, project: &Project, o: &Options, r: &mut Report) -> Result<(), Error> {
     let mut left = o.max_findings.clamp(1, MAX_VERIFY);
+    let fixes = r.findings.iter().filter(|f| !f.fix.is_empty()).count();
+    let suggestions: usize = r.elements.iter().map(|e| e.suggestions.len()).sum();
+    if fixes + suggestions == 0 {
+        r.warnings
+            .push("--verify: no fix or suggestion to verify".into());
+        return Ok(());
+    }
+    // A finding's fix: the whole check again, as asked, with it applied.
+    let again = Options {
+        what_if: vec![],
+        verify: false,
+        history: false,
+        reference: None,
+        ..o.clone()
+    };
+    for i in 0..r.findings.len() {
+        if left == 0 {
+            break;
+        }
+        if r.findings[i].fix.is_empty() {
+            continue;
+        }
+        left -= 1;
+        let v = match patched(project, &r.findings[i].fix, "fix") {
+            Err(e) => json!({"error": e.0}),
+            Ok(p2) => {
+                let r2 = report_of(env, &p2, &again)?;
+                r.render.renders += r2.render.renders;
+                let d = diff::diff(r, &r2);
+                let key = &r.findings[i].key;
+                let still = r2.findings.iter().find(|f| &f.key == key);
+                let mut v = json!({
+                    "resolved": still.is_none(),
+                    "summary": d["summary"],
+                    "new": d["findings"]["new"],
+                });
+                if let Some(f) = still {
+                    // The same problem, smaller or elsewhere.
+                    v["still"] = json!(format!("{}: {}", f.at, f.detail));
+                }
+                v
+            }
+        };
+        r.findings[i].verified = Some(v);
+    }
     for e in &mut r.elements {
         for s in &mut e.suggestions {
             if left == 0 {

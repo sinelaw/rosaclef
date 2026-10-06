@@ -160,7 +160,9 @@ right before editing it, and never rewrite the whole file from memory.
   a JSON Patch `fix`; elements carry `suggestions` with the predicted effect.
   `--what-if '[{"op":"replace","path":"/mixer/inserts/4/volume","value":0.5}]'` (or `@file.json`)
   measures a change without writing it (the report gets `whatIf` with the differences; that report's
-  own fixes are for the patched project); `--verify` re-measures each suggestion. Also `--by bar|section|8-beats`, `--focus rbass,4,master`,
+  own fixes are for the patched project); `--verify` re-measures each finding's fix (`verified.resolved`,
+  `still`) and each suggestion. Fixes name the setting at fault (a limiter's drive, an EQ boost, a fader
+  above unity); the song's lead (`"lead": true`) is also `buried` when it sits 10 LU under the mix. Also `--by bar|section|8-beats`, `--focus rbass,4,master`,
   `--checks levels,audibility,masking,dynamics,gainreduction,clashes,spectrum,stereo`,
   `--target spotify|apple|youtube|ebu-r128|…`, `--reference samples/ref.wav` (level-matched A/B),
   `--history`, `--compare A.json B.json`, `--threshold strict|loose`, `--max-findings N`.

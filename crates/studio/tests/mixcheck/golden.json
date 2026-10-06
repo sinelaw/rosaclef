@@ -227,6 +227,7 @@
       "name": "Lead",
       "kind": "channel",
       "role": "lead",
+      "lead": true,
       "insert": 3,
       "rmsDbfs": -23.8,
       "peakDbfs": -9.9,
@@ -248,7 +249,26 @@
         "channelVolume": 0.5,
         "automated": []
       },
-      "verdict": "ok"
+      "verdict": "buried",
+      "suggestions": [
+        {
+          "why": "Lead sits 10.2 dB under the mix: Kick's faders back to unity (1.6 dB down), and Lead up 5.5 dB brings it to -4.9 dB",
+          "patch": [
+            {
+              "op": "add",
+              "path": "/mixer/inserts/1/volume",
+              "value": 1.0
+            },
+            {
+              "op": "add",
+              "path": "/channels/2/volume",
+              "value": 0.942
+            }
+          ],
+          "expectedRelativeToMixDb": -4.9,
+          "expectedAudibleFractionPct": 100.0
+        }
+      ]
     },
     {
       "id": "channel:pad",
@@ -375,25 +395,20 @@
     {
       "severity": "warn",
       "rule": "master-overload",
-      "key": "master-overload|bars:2-3",
+      "key": "master-overload|master",
       "where": "bars 2–3",
-      "detail": "pre-limiter peaks +8.0 dBFS; the limiter reduces up to 8.1 dB, above 3 dB 5% of the time. Top contributors: Kick (insert 1, fader +1.6 dB) 68%, Pad (insert 4, fader -1.9 dB) 15%, Bass (insert 2, fader +0.0 dB) 10%.",
+      "detail": "pre-limiter peaks +8.0 dBFS (its input gain alone adds +6.0 dB); the limiter reduces up to 8.1 dB, above 3 dB 5% of the time. Top contributors: Kick (insert 1, fader +1.6 dB) 68%, Pad (insert 4, fader -1.9 dB) 15%, Bass (insert 2, fader +0.0 dB) 10%.",
       "fromBar": 2,
       "toBar": 3,
       "fromBeat": 4.0,
       "fix": [
         {
           "op": "add",
-          "path": "/mixer/inserts/1/volume",
-          "value": 0.597
-        },
-        {
-          "op": "add",
-          "path": "/mixer/inserts/4/volume",
-          "value": 0.398
+          "path": "/mixer/inserts/0/effects/1/params/gain",
+          "value": 0.0
         }
       ],
-      "fixLabel": "Kick and Pad down 6.1 dB"
+      "fixLabel": "the limiter's input gain +6.0 → +0.0 dB"
     },
     {
       "severity": "warn",
@@ -417,14 +432,38 @@
           "value": -12.9
         }
       ],
-      "fixLabel": "a slower release and less drive"
+      "fixLabel": "the compressor's release 120 → 300 ms, threshold -14.0 → -12.9 dB"
+    },
+    {
+      "severity": "warn",
+      "rule": "masked-lead",
+      "key": "masked-lead|channel:lead",
+      "where": "Lead in bars 2–3",
+      "detail": "the lead sits 10.2 dB under the mix (its insert fader at +0.0 dB) and is audible 100% of the time it plays.",
+      "element": "channel:lead",
+      "fromBar": 2,
+      "toBar": 3,
+      "fromBeat": 4.0,
+      "fix": [
+        {
+          "op": "add",
+          "path": "/mixer/inserts/1/volume",
+          "value": 1.0
+        },
+        {
+          "op": "add",
+          "path": "/channels/2/volume",
+          "value": 0.942
+        }
+      ],
+      "fixLabel": "Lead sits 10.2 dB under the mix: Kick's faders back to unity (1.6 dB down), and Lead up 5.5 dB brings it to -4.9 dB"
     },
     {
       "severity": "warn",
       "rule": "harmonic-clash",
       "key": "harmonic-clash|tune:1|tune:3",
       "where": "bar 2",
-      "detail": "lead C#5 (pattern tune, note 1) against pad C4 (pattern tune, note 3): a m9 held 2.00 beats, the quieter at -11.5 dB against the mix.",
+      "detail": "lead C#5 (pattern tune, note 1) against pad C4 (pattern tune, note 3): m9 held 2.00 beats, the quieter at -11.5 dB against the mix.",
       "element": "channel:lead",
       "fromBar": 2,
       "toBar": 2,

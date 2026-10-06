@@ -388,6 +388,10 @@
             "type": "string",
             "description": "The Critic's role: drums, bass, harmony, lead, part, fx, gen, arp, sample, idle."
           },
+          "lead": {
+            "type": "boolean",
+            "description": "The song's lead (one per song: named like one, else the loudest the Critic reads as a lead). Also buried when it sits far under the mix (10 LU; strict 8, loose 13)."
+          },
           "insert": {
             "type": "integer"
           },
@@ -712,6 +716,10 @@
               "high"
             ]
           },
+          "idiom": {
+            "type": "string",
+            "description": "Why the chord makes the interval a colour, not a mistake (the clash ranks low)."
+          },
           "alsoInBars": {
             "type": "array",
             "items": {
@@ -784,6 +792,7 @@
           "rule": {
             "enum": [
               "master-overload",
+              "true-peak",
               "limiter-pumping",
               "masked-lead",
               "inaudible-part",
@@ -845,6 +854,10 @@
           },
           "fixLabel": {
             "type": "string"
+          },
+          "verified": {
+            "type": "object",
+            "description": "--verify: the whole check again with the fix applied: resolved (the finding is gone), summary, new (findings it brings), still (where and what remains when not resolved)."
           },
           "fromBeat": {
             "type": "number",

@@ -750,3 +750,114 @@ fn every_planted_fault_is_found_and_the_fixes_converge() {
         );
     }
 }
+
+// --------------------------------------------------- causes, not symptoms
+
+/// The fixture with faults in its settings: the limiter driven 11 dB into
+/// a 0 dB ceiling, a +12 dB low shelf on the kick (the most of the lows),
+/// the lead's insert cut to -8 dB under the kick's fader at +1.6 dB.
+fn misset() -> Project {
+    let mut v: Value = serde_json::from_str(include_str!("mixcheck/fixture.json")).unwrap();
+    v["mixer"]["inserts"][0]["effects"][1]["params"] = json!({"gain": 11, "ceiling": 0});
+    v["mixer"]["inserts"][1]["effects"] =
+        json!([{"type": "eq", "params": {"low": 12, "lowFreq": 120}}]);
+    v["mixer"]["inserts"][3]["volume"] = json!(0.4);
+    serde_json::from_value(v).unwrap()
+}
+
+fn finding<'a>(r: &'a Report, rule: &str) -> &'a mixcheck::report::FindingOut {
+    r.findings
+        .iter()
+        .find(|f| f.rule == rule)
+        .unwrap_or_else(|| {
+            panic!(
+                "no {rule}: {:?}",
+                r.findings.iter().map(|f| f.rule).collect::<Vec<_>>()
+            )
+        })
+}
+
+fn sets(f: &mixcheck::report::FindingOut, path: &str) -> Option<f64> {
+    f.fix
+        .iter()
+        .find(|o| o["path"] == json!(path))
+        .and_then(|o| o["value"].as_f64())
+}
+
+#[test]
+fn findings_name_the_setting_at_fault_and_verify_their_fixes() {
+    let dir = scratch("causes");
+    let p = misset();
+    let r = check(&dir, &p, json!({"verify": true, "maxFindings": 10}));
+    // The overload: the drive is named and cut first.
+    let o = finding(&r, "master-overload");
+    assert_eq!(o.key, "master-overload|master");
+    assert!(
+        o.detail.contains("input gain alone adds +11.0 dB"),
+        "{}",
+        o.detail
+    );
+    assert!(
+        sets(o, "/mixer/inserts/0/effects/1/params/gain").is_some_and(|g| g < 11.0),
+        "{:?}",
+        o.fix
+    );
+    // Inter-sample peaks over 0 dBTP: the ceiling comes down.
+    let tp = finding(&r, "true-peak");
+    assert!(r.master.true_peak_dbtp.unwrap() > 0.0);
+    assert!(
+        sets(tp, "/mixer/inserts/0/effects/1/params/ceiling").is_some_and(|c| c < 0.0),
+        "{:?}",
+        tp.fix
+    );
+    // The low end: the kick's own shelf, not a cut on another part.
+    let low = finding(&r, "low-end-buildup");
+    assert!(
+        low.detail.contains("boosts its lows +12.0 dB"),
+        "{}",
+        low.detail
+    );
+    let shelf = sets(low, "/mixer/inserts/1/effects/0/params/low");
+    assert!(
+        shelf.is_some_and(|x| (0.0..=3.0).contains(&x)),
+        "{:?}",
+        low.fix
+    );
+    // The lead under the mix: the kick's fader back to unity, the lead's cut
+    // insert restored before its channel is pushed.
+    let lead = element(&r, "channel:lead");
+    assert!(lead.lead && lead.verdict == "buried", "{lead:?}");
+    let m = finding(&r, "masked-lead");
+    assert_eq!(sets(m, "/mixer/inserts/1/volume"), Some(1.0), "{:?}", m.fix);
+    assert!(
+        sets(m, "/mixer/inserts/3/volume").is_some_and(|v| v > 0.4),
+        "{:?}",
+        m.fix
+    );
+    // --verify: every fix measured; the lead's balance and the drive
+    // resolve their findings, and what remains is said.
+    for f in r.findings.iter().filter(|f| !f.fix.is_empty()) {
+        let v = f
+            .verified
+            .as_ref()
+            .unwrap_or_else(|| panic!("{} not verified", f.key));
+        assert!(v.get("summary").is_some(), "{v}");
+        match v["resolved"].as_bool() {
+            Some(true) => {}
+            // The fixture's kick is heavy in itself: the rest stays.
+            Some(false) if f.rule == "low-end-buildup" => {
+                assert!(
+                    v["still"].as_str().is_some_and(|x| x.contains("bars")),
+                    "{v}"
+                )
+            }
+            _ if matches!(f.rule, "masked-lead" | "master-overload") => {
+                panic!("{}: {v}", f.key)
+            }
+            _ => {}
+        }
+    }
+    let text = mixcheck::text::summary(&r);
+    assert!(text.contains("verified: resolved"), "{text}");
+    assert!(text.lines().count() <= 40, "{text}");
+}

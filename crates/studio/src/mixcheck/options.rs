@@ -54,6 +54,15 @@ impl Threshold {
             Threshold::Loose => "loose",
         }
     }
+    /// How far under the mix (LU) the lead may sit before it is buried,
+    /// however audible.
+    pub fn lead_floor_db(self) -> f64 {
+        match self {
+            Threshold::Strict => -8.0,
+            Threshold::Normal => -10.0,
+            Threshold::Loose => -13.0,
+        }
+    }
     /// Share of its own loudness an element must keep in the mix to count
     /// as audible in a hop.
     pub fn theta(self) -> f64 {

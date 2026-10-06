@@ -2,8 +2,40 @@
 //! important first.
 
 use super::report::Report;
+use serde_json::Value;
 
 const MAX_LINES: usize = 40;
+
+/// A `verified` object in a line: "resolved — loudness -9.9 LU; …".
+fn verified(v: &Value) -> String {
+    if let Some(e) = v.get("error").and_then(|x| x.as_str()) {
+        return format!("does not apply ({e})");
+    }
+    let summary = v.get("summary").and_then(|x| x.as_str()).unwrap_or("");
+    match v.get("resolved").and_then(|x| x.as_bool()) {
+        Some(true) => format!("resolved — {summary}"),
+        Some(false) => format!(
+            "NOT resolved — {summary}{}",
+            v.get("still")
+                .and_then(|x| x.as_str())
+                .map(|s| format!("; still: {s}"))
+                .unwrap_or_default()
+        ),
+        None => {
+            // A suggestion: the part's level and audibility under it.
+            let rel = v.get("relativeToMixDb").and_then(|x| x.as_f64());
+            let aud = v.get("audibleFractionPct").and_then(|x| x.as_f64());
+            let verdict = v.get("verdict").and_then(|x| x.as_str()).unwrap_or("");
+            format!(
+                "{verdict}{}{}",
+                rel.map(|r| format!(", {r:+.1} dB against the mix"))
+                    .unwrap_or_default(),
+                aud.map(|a| format!(", audible {a:.0}%"))
+                    .unwrap_or_default()
+            )
+        }
+    }
+}
 
 fn f(x: Option<f64>, unit: &str) -> String {
     match x {
@@ -119,9 +151,12 @@ pub fn summary(r: &Report) -> String {
             if !x.fix_label.is_empty() {
                 out.push(format!("    fix: {}  (key {})", x.fix_label, x.key));
             }
+            if let Some(v) = &x.verified {
+                out.push(format!("    verified: {}", verified(v)));
+            }
         }
     }
-    let not_ok: Vec<String> = r
+    let not_ok: Vec<Vec<String>> = r
         .elements
         .iter()
         .filter(|e| e.verdict != "ok")
@@ -149,18 +184,28 @@ pub fn summary(r: &Report) -> String {
                     format!(", audible {:.0}%{by}", a.audible_fraction_pct)
                 })
                 .unwrap_or_default();
-            format!("  {} ({}) {}{rel}{aud}", e.name, e.id, e.verdict)
+            let mut lines = vec![format!("  {} ({}) {}{rel}{aud}", e.name, e.id, e.verdict)];
+            if let Some(s) = e.suggestions.first() {
+                let checked = s
+                    .verified
+                    .as_ref()
+                    .map(|v| format!(" — verified: {}", verified(v)))
+                    .unwrap_or_default();
+                lines.push(format!("    try: {}{checked}", s.why));
+            }
+            lines
         })
         .collect();
     if !not_ok.is_empty() {
         out.push("elements:".into());
         let n = not_ok.len();
-        out.extend(not_ok.into_iter().take(6));
+        out.extend(not_ok.into_iter().take(6).flatten());
         if n > 6 {
             out.push(format!("  … {} more not ok", n - 6));
         }
     }
     if let Some(cl) = &r.clashes {
+        let shown = cl.iter().filter(|c| c.severity != "low").count();
         let top: Vec<String> = cl
             .iter()
             .filter(|c| c.severity != "low")
@@ -183,6 +228,18 @@ pub fn summary(r: &Report) -> String {
         if !top.is_empty() {
             out.push("clashes:".into());
             out.extend(top);
+            let low = cl.len() - shown;
+            if shown > 3 || low > 0 {
+                out.push(format!(
+                    "  … {} more{} (--json lists them)",
+                    shown.saturating_sub(3) + low,
+                    if low > 0 {
+                        format!(", {low} of low severity")
+                    } else {
+                        String::new()
+                    }
+                ));
+            }
         }
     }
     let rows: Vec<(String, f64)> = r

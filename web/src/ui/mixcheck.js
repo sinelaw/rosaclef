@@ -233,6 +233,7 @@ function decodeReport(r) {
         name: str(e.name),
         kind: str(e.kind),
         role: str(e.role),
+        lead: e.lead === true,
         insert: int(e.insert),
         rms: num(e.rmsDbfs),
         peak: num(e.peakDbfs),
@@ -267,6 +268,7 @@ function decodeReport(r) {
       interval: str(c.interval),
       overlap: num(c.overlapBeats),
       severity: str(c.severity),
+      idiom: str(c.idiom),
       also: (c.alsoInBars ?? []).map((x) => int(x)),
       patch: patchText(c.fix),
       label: str(c.fixLabel),
@@ -780,7 +782,12 @@ function elementRow(b, e) {
   });
   b.leaf("span", "v", `mx-verdict ${e.verdict}`, verdictText(e.verdict));
   b.leaf("b", "n", "mx-el-name", e.name);
-  if (e.role !== "") b.leaf("span", "role", "mx-el-role", e.role);
+  if (e.lead) {
+    b.open("span", "role", "mx-el-role lead");
+    b.attr("title", "The song's lead: also buried when it sits far under the mix");
+    b.text("lead");
+    b.close();
+  } else if (e.role !== "") b.leaf("span", "role", "mx-el-role", e.role);
   b.leaf("span", "sp", "spacer", "");
   // Level against the mix: −30 … +6 dB.
   const relTip = `${e.name}: ${signed(e.rel)} dB against the mix (its loudness where it plays), ${db(e.share, 0)}% of the mix's energy`;
@@ -870,7 +877,10 @@ function clashRow(b, c, i) {
     b.close();
   }
   b.close();
-  b.leaf("span", "iv", "mx-interval", `${c.interval} · ${fmt(c.overlap, 2)} beats`);
+  b.open("span", "iv", "mx-interval");
+  if (c.idiom !== "") b.attr("title", `A colour of the chord: ${c.idiom}`);
+  b.text(`${c.interval} · ${fmt(c.overlap, 2)} beats${c.idiom !== "" ? " · colour" : ""}`);
+  b.close();
   b.leaf("span", "sp", "spacer", "");
   if (c.patch !== "") button(b, "fix", "small ghost", "Fix", c.label, () => applyPatch(c.patch, c.label));
   b.close();
