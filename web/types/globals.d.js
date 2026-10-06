@@ -280,4 +280,4 @@
 /** type MixReport = { ok: Boolean, fromBar: Int, toBar: Int, fromBeat: Number, toBeat: Number, seconds: Number, repeats: Boolean, master: MixMaster, target: MixTarget, reference: MixReference, rows: MixRow[], elements: MixElement[], gr: MixGr[], findings: MixFinding[], history: MixHistory, whatIf: String, cached: Boolean, ms: Number, renders: Int, warnings: String[] } */
 /** type MixTargetInfo = { id: String, name: String, lufs: Number, truePeak: Number } */
 /** How far an export or a mix check under way has come (see crates/studio/src/jobs.rs). */
-/** type Job = { id: Int, active: Boolean, what: String, stage: String, done: Number, render: Int, seconds: Number, total: Number } */
+/** type Job = { id: Int, active: Boolean, what: String, stage: String, done: Number, render: Int, seconds: Number, total: Number, state: String } */

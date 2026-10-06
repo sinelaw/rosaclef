@@ -35,7 +35,6 @@ fn check(dir: &std::path::Path, p: &Project, req: Value) -> Report {
         progress: &|_| {},
         disk_cache: true,
         any_file: true,
-        job: 0,
     };
     let mut req = req;
     req["cache"] = json!(false);
@@ -140,7 +139,6 @@ fn a_cached_report_is_the_same() {
         progress: &|_| {},
         disk_cache: true,
         any_file: true,
-        job: 0,
     };
     let o = Options::from_json(&json!({"range": "1:2"})).unwrap();
     let mut a = mixcheck::run(&env, &p, &o).unwrap();
@@ -404,7 +402,6 @@ fn bars_follow_the_meters_and_each_pass_of_a_repeat() {
         progress: &|_| {},
         disk_cache: true,
         any_file: true,
-        job: 0,
     };
     let o = Options::from_json(&json!({"section": "Chorus"})).unwrap();
     assert!(mixcheck::run(&env, &p, &o)
@@ -440,7 +437,6 @@ fn what_if_never_touches_the_project_and_reports_the_change() {
         progress: &|_| {},
         disk_cache: true,
         any_file: true,
-        job: 0,
     };
     let o = Options::from_json(
         &json!({"whatIf": [{"op": "replace", "path": "/channels/9/volume", "value": 1}]}),
@@ -621,7 +617,6 @@ fn bad_requests_are_refused_by_name() {
         progress: &|_| {},
         disk_cache: false,
         any_file: false,
-        job: 0,
     };
     let e = mixcheck::api(&env, &p, r#"{"reference": "/etc/hostname"}"#).unwrap_err();
     assert!(e.0.contains("in the project folder"), "{e}");

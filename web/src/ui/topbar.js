@@ -1,6 +1,6 @@
 // The top bar: brand, song title, transport, tempo, output and export.
 
-import { drag, fmt, sendJson, download } from "#platform";
+import { drag, fmt, download } from "#platform";
 import { state, begin, changed, commit, undo, redo, hint, invalidate } from "../store.js";
 import { barBeat, semitonesText } from "../model.js";
 import { togglePlay, stop, record, setMode, setOutput, toggleMetronome } from "../audio.js";
@@ -11,7 +11,7 @@ import { toast } from "./toast.js";
 import { projectsButton } from "./projects.js";
 import { keyboard, toggleKeyboard } from "./keyboard.js";
 import { meterLcd } from "./meter.js";
-import { newJob, watchJob, jobLabel, jobFraction } from "./progress.js";
+import { followJob, jobLabel, jobFraction } from "./progress.js";
 
 /** function lcd(b: Builder, key: String, label: String, value: String, unit: String) => Undefined */
 function lcd(b, key, label, value, unit) {
@@ -112,10 +112,11 @@ let exportJob = 0;
 function exportSong() {
   if (exporting) return;
   exporting = true;
-  exportJob = newJob();
+  exportJob = 0;
   invalidate();
-  watchJob(exportJob, () => exporting);
-  sendJson(`/api/render?job=${exportJob}`, "POST", { bits: 24 })
+  followJob("render", { bits: 24 }, (id) => {
+    exportJob = id;
+  })
     .then((r) => {
       exporting = false;
       invalidate();

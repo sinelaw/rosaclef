@@ -36,8 +36,8 @@ export const uploadFile;
 /** "server" (the Rosaclef server) or "local" (the browser-only studio). */
 /** const backendMode: () => Promise<String> */
 export const backendMode;
-/** const jobProgress: (Int) => Promise<Job> */
-export const jobProgress;
+/** const runJob: <B, T>(String, B, (Job) => Undefined) => Promise<T> */
+export const runJob;
 
 /** const storageEstimate: () => Promise<StorageUse> */
 export const storageEstimate;

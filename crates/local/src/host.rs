@@ -211,7 +211,8 @@ pub fn parse_url(url: &str) -> (String, BTreeMap<String, String>) {
     (percent_decode(&path.replace('+', "%2B")), q)
 }
 
-/// `?job=ID`: the page's id for a long job (0: none).
+/// `?job=ID`: the id the page gave a job of its `/api/jobs` (web/lib/backend.js),
+/// that its progress goes to (0: none).
 fn job_of(q: &BTreeMap<String, String>) -> u32 {
     q.get("job").and_then(|j| j.parse().ok()).unwrap_or(0)
 }
@@ -569,10 +570,6 @@ impl Host {
             ("POST", "/api/mixcheck") => {
                 self.mixcheck(&String::from_utf8_lossy(body), job_of(q))?
             }
-            // Asked while no job runs (the worker tells the page as one goes).
-            ("GET", "/api/progress") => {
-                Response::json(serde_json::to_value(rosaclef_studio::jobs::get(job_of(q)))?)
-            }
             ("POST", "/api/render") => {
                 let v = body_json(body)?;
                 let r = self.render(
@@ -771,6 +768,7 @@ impl Host {
         job: u32,
     ) -> Result<Result<(rosaclef_studio::mixcheck::Report, bool), String>> {
         use rosaclef_studio::mixcheck;
+        let _job = rosaclef_studio::jobs::start(job, "mixcheck");
         let project = match mixcheck::request_project(&self.doc.project, body) {
             Ok(p) => p,
             Err(e) => return Ok(Err(e.0)),
@@ -792,7 +790,6 @@ impl Host {
             progress: &|_| {},
             disk_cache: false,
             any_file: false,
-            job,
         };
         let out = mixcheck::run_request(&env, &self.doc.project, body);
         // The browser holds this memory: keep only the soundfont indexes.

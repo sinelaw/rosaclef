@@ -20,7 +20,7 @@ import { button, select, glyph } from "./widgets.js";
 import { openDock, setTop, setView, isCompact, layoutState } from "./panes.js";
 import { revealBeat } from "./playlist.js";
 import { revealScoreBeat } from "./score.js";
-import { newJob, watchJob, jobLabel, jobFraction } from "./progress.js";
+import { followJob, jobLabel, jobFraction } from "./progress.js";
 import { toast } from "./toast.js";
 import { insertIx } from "#brands";
 import { t, tf, tk } from "../i18n.js";
@@ -375,19 +375,24 @@ export function runMixcheck() {
   const edits = state.edits;
   view.busy = true;
   view.error = "";
-  view.job = newJob();
+  view.job = 0;
   invalidate();
-  watchJob(view.job, () => view.busy);
   const q = request();
-  sendJson(`/api/mixcheck?job=${view.job}`, "POST", {
-    project: encodeProject(state.project),
-    range: q.range,
-    section: q.section,
-    target: q.target,
-    threshold: q.threshold,
-    reference: q.reference,
-    history: true,
-  })
+  followJob(
+    "mixcheck",
+    {
+      project: encodeProject(state.project),
+      range: q.range,
+      section: q.section,
+      target: q.target,
+      threshold: q.threshold,
+      reference: q.reference,
+      history: true,
+    },
+    (id) => {
+      view.job = id;
+    }
+  )
     .then((r) => {
       view.busy = false;
       view.edits = edits;
@@ -489,17 +494,22 @@ function local(r, f) {
 function tryPatch(patch, range) {
   if (view.busy || !fresh()) return undefined;
   view.busy = true;
-  view.job = newJob();
+  view.job = 0;
   invalidate();
-  watchJob(view.job, () => view.busy);
   const q = request();
-  sendJson(`/api/mixcheck?job=${view.job}`, "POST", {
-    project: encodeProject(state.project),
-    range: range !== "" ? range : q.range,
-    section: range !== "" ? "" : q.section,
-    threshold: q.threshold,
-    whatIf: patch,
-  })
+  followJob(
+    "mixcheck",
+    {
+      project: encodeProject(state.project),
+      range: range !== "" ? range : q.range,
+      section: range !== "" ? "" : q.section,
+      threshold: q.threshold,
+      whatIf: patch,
+    },
+    (id) => {
+      view.job = id;
+    }
+  )
     .then((r) => {
       view.busy = false;
       const summary = r.whatIf === undefined || r.whatIf === null ? "" : String(r.whatIf.summary);

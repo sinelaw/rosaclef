@@ -61,8 +61,6 @@ pub struct Env<'a> {
     /// A `reference` may be any file (the command line, run by its user);
     /// otherwise only one in the project folder (HTTP).
     pub any_file: bool,
-    /// The page's id for this job, to ask how far it has come (0: nobody asks).
-    pub job: u32,
 }
 
 /// One mix check at a time: each render takes every core, and a burst of
@@ -276,7 +274,6 @@ pub fn patched(project: &Project, ops: &[Value], what: &str) -> Result<Project, 
 /// verification of the suggestions.
 pub fn run(env: &Env, project: &Project, o: &Options) -> Result<Report, Error> {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
-    let _job = crate::jobs::start(env.job, "mixcheck");
     let t0 = env.folder.fs.now_ms();
     // The report is of the project as the what-if leaves it.
     let what_if = if o.what_if.is_empty() {

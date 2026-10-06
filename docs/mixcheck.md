@@ -322,12 +322,15 @@ The **Mix check** tab of the Maestro panel reads like a mastering meter:
 - every row.
 
 A progress bar runs while it measures — how far into the range the render
-has come, then the measuring; Export shows the same. The page gives each job
-an id (`POST /api/mixcheck?job=ID`, `POST /api/render?job=ID`) and follows it:
-the native server answers `GET /api/progress?job=ID` (`{id, active, what,
-stage, done, seconds, total, render}`; several jobs at once each answer for
-themselves), the browser back end tells its page as it goes. With no report
-yet, an arrow points at **Measure**.
+has come, then the measuring; Export shows the same. Both run as jobs: `POST
+/api/jobs/mixcheck` (the body of `POST /api/mixcheck`) or `POST
+/api/jobs/render` answers at once with `{"job": ID}`, and `GET /api/jobs/ID`
+says how far it has come (`{id, what, stage, done, seconds, total, render,
+state: "running"}`) until `state` is `"done"` with its `result` (what the
+request on its own answers) or `"failed"` with its `error`. Several jobs at
+once each answer for themselves; in the browser-only studio the page serves the
+same exchange, its worker telling it as the job goes. With no report yet, an
+arrow points at **Measure**.
 
 Each finding with a fix has:
 

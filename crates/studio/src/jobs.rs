@@ -1,9 +1,9 @@
 //! How far a long job (an export, a mix check) has come, for a studio's
-//! progress bar. A page picks a job id and sends it with the request
-//! (`?job=ID`), so it can ask about that job while it runs — several jobs at
-//! once included: the native server answers `GET /api/progress?job=ID`; the
-//! browser back end, busy in the job, has a listener pass each step to its
-//! page. A job runs on one thread: its steps go to that thread's job.
+//! progress bar. The native server runs each as a job of `/api/jobs` (its
+//! id answered at once) and says how far it has come when asked; the browser
+//! back end, busy in the job, has a listener pass each step to its page
+//! (`?job=ID`, the id the page gave it). A job runs on one thread: its steps
+//! go to that thread's job, so several at once each keep their own.
 
 use crate::render::Progress;
 use rosaclef_engine::render::RenderProgress;

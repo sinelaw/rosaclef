@@ -1,10 +1,9 @@
 // How far a long job (an export, a mix check) has come — what the back end
-// says while it renders (crates/studio/src/jobs.rs). The page picks each
-// job's id and sends it with the request (`?job=ID`), so several jobs at once
-// each have their own: the server answers when asked, the browser back end
-// tells as it goes. Polled while the job runs.
+// says while it renders (crates/studio/src/jobs.rs). The request is answered
+// at once with the job's id, and the page asks about that job until it ends
+// (runJob in the platform layer), so several jobs at once each have their own.
 
-import { jobProgress } from "#platform";
+import { runJob } from "#platform";
 import { invalidate } from "../store.js";
 import { t, tf } from "../i18n.js";
 
@@ -12,38 +11,25 @@ import { t, tf } from "../i18n.js";
 /** const heard: Job[] */
 const heard = [];
 
-/** A new job's id (sent as `?job=ID`). */
-/** function newJob() => Int */
-export function newJob() {
-  return 1 + Math.floor(Math.random() * 4294967294);
-}
-
-/** Follow job `id` while `busy()` holds: ask how far it has come, and redraw. */
-/** function watchJob(id: Int, busy: () => Boolean) => Undefined */
-export function watchJob(id, busy) {
-  const tick = () => {
-    if (!busy()) {
-      const k = heard.findIndex((j) => j.id === id);
+/** Run job `kind` (a request of the back end's: "mixcheck", "render") and
+ * follow it, redrawing as it goes: `started` gets its id once known (for
+ * jobLabel and jobFraction); resolves with its answer. */
+/** function followJob<B, T>(kind: String, body: B, started: (Int) => Undefined) => Promise<T> */
+export function followJob(kind, body, started) {
+  return runJob(kind, body, (j) => {
+    const k = heard.findIndex((x) => x.id === j.id);
+    if (k < 0) started(j.id);
+    if (j.state !== "running") {
       if (k >= 0) heard.splice(k, 1);
-      return undefined;
-    }
-    jobProgress(id)
-      .then((j) => {
-        const k = heard.findIndex((x) => x.id === id);
-        if (k >= 0) heard[k] = j;
-        else heard.push(j);
-        invalidate();
-        return true;
-      })
-      .catch((e) => false);
-    setTimeout(() => tick(), 200);
-  };
-  tick();
+    } else if (k >= 0) heard[k] = j;
+    else heard.push(j);
+    invalidate();
+  });
 }
 
 /** function jobOf(id: Int) => Job */
 function jobOf(id) {
-  return heard.find((j) => j.id === id) ?? { id: id, active: false, what: "", stage: "", done: 0, render: 0, seconds: 0, total: 0 };
+  return heard.find((j) => j.id === id) ?? { id: id, active: false, what: "", stage: "", done: 0, render: 0, seconds: 0, total: 0, state: "" };
 }
 
 /** m:ss */

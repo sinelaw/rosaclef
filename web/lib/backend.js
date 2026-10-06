@@ -39,11 +39,34 @@ export function isLocal() {
   return mode === "local";
 }
 
-/** The browser back end's last word on each job, by id (it says as it goes). */
+/** The jobs this page started on the browser back end (`/api/jobs`), by id:
+ * how far each has come (the worker says as it goes), then how it ended. */
 const jobs = new Map();
 
-export function localJob(id) {
-  return jobs.get(id) || { id, active: false, what: "", stage: "", done: 0, render: 0, seconds: 0, total: 0 };
+/** POST /api/jobs/<kind>, served here: the worker runs POST /api/<kind> (busy
+ * until it ends) and tells how far it has come, and GET /api/jobs/<id> is
+ * answered from what it said — the same exchange as with the server. */
+function startLocalJob(kind, body) {
+  // Random: the tabs share the worker, and it tells every tab of every job.
+  const id = 1 + Math.floor(Math.random() * 4294967294);
+  jobs.set(id, { id, active: false, what: kind, stage: "", done: 0, render: 0, seconds: 0, total: 0, state: "running" });
+  // Forget the oldest finished ones.
+  for (const [k, j] of jobs) if (jobs.size > 32 && j.state !== "running") jobs.delete(k);
+  localRequest("POST", `/api/${kind}?job=${id}`, body).then((r) => {
+    const j = jobs.get(id);
+    if (!j) return;
+    const text = new TextDecoder().decode(r.body);
+    if (r.status >= 200 && r.status < 300) Object.assign(j, { state: "done", result: text ? JSON.parse(text) : {} });
+    else Object.assign(j, { state: "failed", status: r.status, error: text || String(r.status) });
+  });
+  return { status: 202, type: "application/json", body: JSON.stringify({ job: id }) };
+}
+
+/** GET /api/jobs/<id>, served here. */
+function localJob(id) {
+  const j = jobs.get(id);
+  if (!j) return { status: 404, type: "text/plain", body: `no job ${id}` };
+  return { status: 200, type: "application/json", body: JSON.stringify(j) };
 }
 
 function startWorker() {
@@ -74,10 +97,8 @@ function onWorker(m) {
     if (m.raw) s.onBinary(new TextEncoder().encode(m.text));
     else s.onText(m.text);
   } else if (m.t === "progress") {
-    jobs.delete(m.job.id);
-    jobs.set(m.job.id, m.job);
-    // Keep the last few.
-    while (jobs.size > 32) jobs.delete(jobs.keys().next().value);
+    const j = jobs.get(m.job.id);
+    if (j) Object.assign(j, m.job);
   } else if (m.t === "fatal") {
     console.error("Rosaclef back end:", m.message);
     for (const s of sockets.values()) s.onText(JSON.stringify({ t: "error", message: m.message }));
@@ -104,7 +125,10 @@ export async function request(method, url, body, headers) {
     const r = await fetch(url, { method, headers, body });
     return r;
   }
-  const r = await localRequest(method, url, body);
+  const started = method === "POST" && url.match(/^\/api\/jobs\/([a-z]+)$/);
+  const asked = method === "GET" && url.match(/^\/api\/jobs\/(\d+)$/);
+  const r = started ? startLocalJob(started[1], body) : asked ? localJob(Number(asked[1])) : await localRequest(method, url, body);
+  if (typeof r.body === "string") r.body = new TextEncoder().encode(r.body).buffer;
   return {
     ok: r.status >= 200 && r.status < 300,
     status: r.status,
