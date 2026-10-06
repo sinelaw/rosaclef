@@ -4,6 +4,7 @@
 import { drag, fmt } from "#platform";
 import { begin, changed, hint, commit } from "../store.js";
 import { isAutomated, shownValue, openMenu } from "../automation.js";
+import { t, tf } from "../i18n.js";
 
 /** function clamp01(v: Number) => Number */
 export function clamp01(v) {
@@ -43,7 +44,7 @@ export function paramText(spec, v) {
   if (u === "s") return v < 1 ? `${fmt(v * 1000, 0)} ms` : `${fmt(v, 2)} s`;
   if (u === "ms") return `${num(v)} ms`;
   if (u === "dB") return `${v > 0 ? "+" : ""}${fmt(v, 1)} dB`;
-  if (u === "beats") return `${num(v)} beats`;
+  if (u === "beats") return tf("{0} beats", [num(v)]);
   if (u === "" && spec.min >= -1 && spec.max <= 1) return `${Math.round(v * 100)}%`;
   if (u === "") return spec.key.toLowerCase().includes("ratio") ? `${num(v)}×` : num(v);
   return `${num(v)} ${u}`;
@@ -74,7 +75,7 @@ function automatable(b, target) {
 function autoDot(b, target) {
   if (isAutomated(target)) {
     b.leaf("i", "auto", "auto-dot", "");
-    b.attr("title", "Automated — right-click for the automation lane");
+    b.attr("title", t("Automated — right-click for the automation lane"));
   }
 }
 

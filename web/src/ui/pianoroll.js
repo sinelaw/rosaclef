@@ -15,6 +15,7 @@ import { followButton } from "./playlist.js";
 import { dockScore } from "./score.js";
 import { openDock } from "./panes.js";
 import { noteIx, noteIndex } from "#brands";
+import { t, tf } from "../i18n.js";
 
 const view = {
   zoom: 72,
@@ -414,7 +415,10 @@ function gridView(b, g, pat, ch) {
     const pitch = 127 - Math.floor(y / g.rowH);
     const beat = (e.clientX - e.targetLeft + e.scrollLeft) / g.zoom;
     hint(
-      `${drumName(ch, pitch) || noteName(pitch)} · beat ${fmt(beat, 2)} — click to draw, drag to move, right-click to delete, Shift-drag to select, Ctrl+wheel to zoom`
+      tf("{0} · beat {1} — click to draw, drag to move, right-click to delete, Shift-drag to select, Ctrl+wheel to zoom", [
+        drumName(ch, pitch) || noteName(pitch),
+        fmt(beat, 2),
+      ])
     );
   });
   if (view.centered) b.prop("scrollTop", String(view.scrollTop));
@@ -433,11 +437,11 @@ function gridView(b, g, pat, ch) {
     b.style("top", `${pitchY(g, p)}px`);
     b.style("height", `${g.rowH}px`);
   }
-  const t = state.project.transport;
+  const tp = state.project.transport;
   b.leaf("div", "bg", "grid-bg", "");
   b.style("--beat", `${g.zoom}px`);
   b.style("--step", `${g.zoom / 4}px`);
-  if (t.meters.length === 0) b.style("--bar", `${g.zoom * t.beatsPerBar}px`);
+  if (tp.meters.length === 0) b.style("--bar", `${g.zoom * tp.beatsPerBar}px`);
   else {
     // Bars of changing length: drawn one by one.
     b.style("--bar", `${g.width + 1}px`);
@@ -556,7 +560,7 @@ export function pianoRoll(b) {
   const ch = currentChannel();
   b.open("div", "pr", "editor");
   if (!pat || !ch) {
-    b.leaf("div", "none", "b-empty", "Select a pattern and a channel.");
+    b.leaf("div", "none", "b-empty", t("Select a pattern and a channel."));
     b.close();
     return undefined;
   }
@@ -593,7 +597,7 @@ export function pianoRoll(b) {
   rulerView(b, g, pat);
   keysView(b, g, ch);
   gridView(b, g, pat, ch);
-  b.leaf("div", "vl", "vel-label", "Velocity");
+  b.leaf("div", "vl", "vel-label", t("Velocity"));
   velocityView(b, g, pat, ch);
   b.close();
   b.close();
@@ -604,25 +608,34 @@ export function pianoTools(b) {
   const ids = state.project.channels.map((c) => c.id);
   const names = state.project.channels.map((c) => c.name);
   followButton(b);
-  b.leaf("span", "cl", "label", "Channel");
-  select(b, "ch", "", state.channel, ids, names, "Channel to edit", (v) => selectChannel(v));
-  iconButton(b, "draw", view.tool === "draw" ? "small on" : "small", "draw", "Draw tool (Shift+P)", () => {
+  b.leaf("span", "cl", "label", t("Channel"));
+  select(b, "ch", "", state.channel, ids, names, t("Channel to edit"), (v) => selectChannel(v));
+  iconButton(b, "draw", view.tool === "draw" ? "small on" : "small", "draw", t("Draw tool (Shift+P)"), () => {
     view.tool = "draw";
     invalidate();
   });
-  iconButton(b, "select", view.tool === "select" ? "small on" : "small", "select", "Select tool (Shift+E)", () => {
+  iconButton(b, "select", view.tool === "select" ? "small on" : "small", "select", t("Select tool (Shift+E)"), () => {
     view.tool = "select";
     invalidate();
   });
-  iconButton(b, "asScore", "small", "score", "Read this pattern as sheet music (F10)", () => {
+  iconButton(b, "asScore", "small", "score", t("Read this pattern as sheet music (F10)"), () => {
     dockScore.scope = "current";
     openDock("score");
   });
-  b.leaf("span", "sl", "label", "Snap");
-  select(b, "snap", "", String(state.snap), ["0", "0.125", "0.25", "0.5", "1", "4"], ["Off", "1/32", "1/16", "1/8", "Beat", "Bar"], "Grid snap", (v) => {
-    state.snap = Number(v);
-    invalidate();
-  });
+  b.leaf("span", "sl", "label", t("Snap"));
+  select(
+    b,
+    "snap",
+    "",
+    String(state.snap),
+    ["0", "0.125", "0.25", "0.5", "1", "4"],
+    [t("Off"), "1/32", "1/16", "1/8", t("Beat"), t("Bar")],
+    t("Grid snap"),
+    (v) => {
+      state.snap = Number(v);
+      invalidate();
+    }
+  );
 }
 
 /** Scroll the grid so a note at `beat` and `pitch` is in view (recording from the keys). */

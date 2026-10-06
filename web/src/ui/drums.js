@@ -214,18 +214,18 @@ function meterAt(bar) {
  * the song cursor's; and a key that changes when either moves. */
 /** function pointedBar() => { bar: Number, key: String } */
 function pointedBar() {
-  const t = state.project.transport;
+  const tp = state.project.transport;
   const clips = state.project.playlist.clips;
   if (state.clipSelection.length > 0) {
     const i = clipIndex(state.clipSelection[0]);
     if (i < clips.length) {
       const c = clips[i];
-      return { bar: barAt(t, c.start).bar, key: `clip ${i} ${c.start}` };
+      return { bar: barAt(tp, c.start).bar, key: `clip ${i} ${c.start}` };
     }
   }
   // The song cursor; while a pattern or a groove plays on its own, where it was.
   if (state.mode === "song" && drums.trying === "") drums.songAt = Math.max(0, state.position);
-  const bar = barAt(t, drums.songAt).bar;
+  const bar = barAt(tp, drums.songAt).bar;
   return { bar: bar, key: `bar ${bar}` };
 }
 
@@ -1275,7 +1275,7 @@ function drumClipAt(bar) {
 function drumTrack() {
   const dc = drumClips();
   if (dc.length > 0) return trackIndex(dc[0].clip.track);
-  return state.project.playlist.tracks.findIndex((t) => t.name.toLowerCase() === "drums");
+  return state.project.playlist.tracks.findIndex((x) => x.name.toLowerCase() === "drums");
 }
 
 /** The pattern the tab works on (none when it is gone). */
@@ -1287,11 +1287,11 @@ function targetPattern() {
 /** The bars (from 0) where the target pattern's clips start. */
 /** function targetSpans(id: String) => { from: Number, to: Number }[] */
 function targetSpans(id) {
-  const t = state.project.transport;
+  const tp = state.project.transport;
   return state.project.playlist.clips
     .filter((c) => c.pattern === id)
     .sort((a, b) => a.start - b.start)
-    .map((c) => ({ from: barAt(t, c.start).bar, to: barAt(t, Math.max(c.start, c.start + c.length - 1e-6)).bar }));
+    .map((c) => ({ from: barAt(tp, c.start).bar, to: barAt(tp, Math.max(c.start, c.start + c.length - 1e-6)).bar }));
 }
 
 /** The time signature the target plays in: at its clip under the cursor
@@ -1443,18 +1443,18 @@ function clearDrums(p, track, start, end) {
  * clip's bars, else 4, up to the next drum clip. */
 /** function newSpan(bar: Number) => Number */
 function newSpan(bar) {
-  const t = state.project.transport;
+  const tp = state.project.transport;
   const clips = state.project.playlist.clips;
   let span = 4;
   const sel = state.clipSelection.length > 0 ? clipIndex(state.clipSelection[0]) : -1;
-  if (sel >= 0 && sel < clips.length && barAt(t, clips[sel].start).bar === bar) {
+  if (sel >= 0 && sel < clips.length && barAt(tp, clips[sel].start).bar === bar) {
     span = Math.max(1, Math.round(clips[sel].length / meterAt(bar).barBeats));
   }
   const start = barStart(bar);
   const track = drumTrack();
   for (const d of drumClips()) {
     if (trackIndex(d.clip.track) === track && d.clip.start > start + 1e-6) {
-      span = Math.min(span, Math.max(1, barAt(t, d.clip.start - 1e-6).bar - bar + 1));
+      span = Math.min(span, Math.max(1, barAt(tp, d.clip.start - 1e-6).bar - bar + 1));
     }
   }
   return Math.max(1, span);
@@ -1615,8 +1615,8 @@ function stretchClip(by) {
   const p = state.project;
   const c = cursorClip(drums.target);
   if (!c) return undefined;
-  const t = p.transport;
-  const first = barAt(t, c.start).bar;
+  const tp = p.transport;
+  const first = barAt(tp, c.start).bar;
   const bars = Math.max(1, Math.round(c.length / meterAt(first).barBeats) + by);
   const end = barStart(first + bars);
   commit(() => {
@@ -1957,10 +1957,10 @@ function targetView(b) {
 function crossing(pat) {
   const c = cursorClip(pat.id);
   const here = pointedBar().bar;
-  const t = state.project.transport;
+  const tp = state.project.transport;
   if (!c) return { bar: -1, label: "" };
-  const first = barAt(t, c.start).bar;
-  const last = barAt(t, c.start + c.length - 1e-6).bar;
+  const first = barAt(tp, c.start).bar;
+  const last = barAt(tp, c.start + c.length - 1e-6).bar;
   if (here < first || here > last) return { bar: -1, label: "" };
   const began = meterAt(first);
   const now = meterAt(here);
@@ -2406,11 +2406,11 @@ function toggleCell(pat, row, i, step) {
 /** function mapView(b: Builder) => Undefined */
 function mapView(b) {
   const p = state.project;
-  const t = p.transport;
+  const tp = p.transport;
   const d = p.drums;
   const partEnd = d.on ? barStart(d.start - 1 + d.sections.reduce((n, s) => n + s.bars, 0)) : 0;
   const end = Math.max(Math.max(songLength(p), partEnd), Math.max(barStart(pointedBar().bar + 4), barStart(16)));
-  const bars = barLines(t, 0, end - 1e-6);
+  const bars = barLines(tp, 0, end - 1e-6);
   const pct = (beat) => `${Math.max(0, Math.min(100, (beat / end) * 100))}%`;
   const dc = drumClips();
   /** const tracks: Int[] */
@@ -2425,7 +2425,7 @@ function mapView(b) {
   b.open("div", "lanes", "drums-map-lanes");
   b.on("pointerdown", (e) => {
     const beat = ((e.clientX - e.targetLeft) / Math.max(1, e.targetWidth)) * end;
-    const bar = barAt(t, Math.max(0, beat)).bar;
+    const bar = barAt(tp, Math.max(0, beat)).bar;
     state.clipSelection = [];
     if (state.mode !== "song") setMode("song");
     seek(barStart(bar));
@@ -2447,8 +2447,8 @@ function mapView(b) {
       b.open("div", `c${x.i}`, x.clip.pattern === drums.target ? "drums-map-clip on" : "drums-map-clip");
       b.style("left", pct(x.clip.start));
       b.style("width", pct(x.clip.length));
-      const s = barAt(t, x.clip.start).bar;
-      b.attr("title", `${pat ? pat.name : x.clip.pattern}: bars ${s + 1}–${barAt(t, x.clip.start + x.clip.length - 1e-6).bar + 1}`);
+      const s = barAt(tp, x.clip.start).bar;
+      b.attr("title", `${pat ? pat.name : x.clip.pattern}: bars ${s + 1}–${barAt(tp, x.clip.start + x.clip.length - 1e-6).bar + 1}`);
       b.on("pointerdown", (e) => {
         e.stopPropagation();
         targetClip(x.i);

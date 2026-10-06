@@ -36,6 +36,7 @@ import {
   setView,
   setTop,
 } from "./panes.js";
+import { t, tf } from "../i18n.js";
 
 /** function px(v: Number) => String */
 function px(v) {
@@ -54,7 +55,7 @@ function paneDown(e, name) {
 /** function tab(b: Builder, id: String, label: String, icon: String, key: String) => Undefined */
 function tab(b, id, label, icon, key) {
   b.open("button", id, state.dock === id ? "tab on" : "tab");
-  b.attr("title", workMode("dock") === "min" ? `${label} (${key}) — restores the dock` : `${label} (${key}) — double-click to maximize the dock`);
+  b.attr("title", workMode("dock") === "min" ? tf("{0} ({1}) — restores the dock", [label, key]) : tf("{0} ({1}) — double-click to maximize the dock", [label, key]));
   b.on("click", (e) => openDock(id));
   b.on("dblclick", (e) => {
     e.stopPropagation();
@@ -84,7 +85,8 @@ function navItem(b, key, label, icon, on, dot, onClick) {
 function topTab(b, id, label, icon, mode) {
   const on = layoutState.top === id;
   b.open("button", `t-${id}`, on ? "tab on" : "tab");
-  b.attr("title", mode === "min" ? `${label} — click to restore` : on ? `${label} — double-click to maximize` : `Show the ${label.toLowerCase()} here`);
+  b.attr("title", mode === "min" ? tf("{0} — click to restore", [label]) : on ? tf("{0} — double-click to maximize", [label]) : tf("Show the {0} here", [label.toLowerCase()])
+  );
   b.on("click", (e) => setTop(id));
   glyph(b, icon);
   b.leaf("span", "l", "", label);
@@ -96,15 +98,15 @@ function topTab(b, id, label, icon, mode) {
 function navBar(b) {
   const v = layoutState.view;
   b.open("nav", "nav", "navbar");
-  navItem(b, "browser", "Browser", "folder", v === "browser", "", () => setView("browser"));
-  navItem(b, "playlist", "Playlist", "playlist", v === "playlist", "", () => setView("playlist"));
-  navItem(b, "rack", "Rack", "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
-  navItem(b, "piano", "Piano", "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
-  navItem(b, "voice", "Voice", "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
-  navItem(b, "drums", "Drums", "drum", v === "dock" && state.dock === "drums", "", () => openDock("drums"));
-  navItem(b, "mixer", "Mixer", "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
-  navItem(b, "score", "Score", "score", v === "dock" && state.dock === "score", "", () => openDock("score"));
-  navItem(b, "agent", "Maestro", "spark", v === "agent", agentDot(), () => setView("agent"));
+  navItem(b, "browser", t("Browser"), "folder", v === "browser", "", () => setView("browser"));
+  navItem(b, "playlist", t("Playlist"), "playlist", v === "playlist", "", () => setView("playlist"));
+  navItem(b, "rack", t("Rack"), "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
+  navItem(b, "piano", t("Piano"), "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
+  navItem(b, "voice", t("Voice"), "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
+  navItem(b, "drums", t("Drums"), "drum", v === "dock" && state.dock === "drums", "", () => openDock("drums"));
+  navItem(b, "mixer", t("Mixer"), "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
+  navItem(b, "score", t("Score"), "score", v === "dock" && state.dock === "score", "", () => openDock("score"));
+  navItem(b, "agent", t("Maestro"), "spark", v === "agent", agentDot(), () => setView("agent"));
   b.close();
 }
 
@@ -129,20 +131,20 @@ export function studio(b) {
   // Side panels sit in a clipping column; the rail shows when minimized.
   b.open("div", "browser-side", `side side-browser ${compact ? "open" : sideMode("browser")}`);
   browser(b);
-  paneRail(b, "browser", "Browser", "folder", "");
+  paneRail(b, "browser", t("Browser"), "folder", "");
   b.close();
 
   b.open("main", "work", "workspace");
   if (state.diskIssues.length > 0) {
     const first = state.diskIssues[0];
     b.open("div", "banner", "banner");
-    b.leaf("b", "t", "", "project.json on disk has errors — playing the last valid version:");
+    b.leaf("b", "t", "", t("project.json on disk has errors — playing the last valid version:"));
     b.leaf("code", "c", "", `${first.path}: ${first.message}`);
     b.close();
   }
   if (!state.connected) {
     b.open("div", "offline", "banner");
-    b.leaf("b", "t", "", state.loaded ? "Reconnecting to the Rosaclef server…" : "Starting the studio…");
+    b.leaf("b", "t", "", state.loaded ? t("Reconnecting to the Rosaclef server…") : t("Starting the studio…"));
     b.close();
   }
 
@@ -152,8 +154,8 @@ export function studio(b) {
   b.on("pointerdown", (e) => paneDown(e, top === "score" ? "score" : "playlist"));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "playlist");
-  topTab(b, "playlist", "Playlist", "playlist", plMode);
-  topTab(b, "score", "Score", "score", plMode);
+  topTab(b, "playlist", t("Playlist"), "playlist", plMode);
+  topTab(b, "score", t("Score"), "score", plMode);
   b.open("div", "tools", "tools");
   if (top === "score") scoreTools(b, topScore);
   else playlistTools(b);
@@ -191,12 +193,12 @@ export function studio(b) {
   b.on("pointerdown", (e) => paneDown(e, dockName(state.dock)));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "dock");
-  tab(b, "rack", "Channel Rack", "rack", "F6");
-  tab(b, "piano", "Piano Roll", "piano", "F7");
-  tab(b, "voice", "Voice", "mic", "F8");
-  tab(b, "drums", "Drums", "drum", "F4");
-  tab(b, "mixer", "Mixer", "mixer", "F9");
-  tab(b, "score", "Score", "score", "F10");
+  tab(b, "rack", t("Channel Rack"), "rack", "F6");
+  tab(b, "piano", t("Piano Roll"), "piano", "F7");
+  tab(b, "voice", t("Voice"), "mic", "F8");
+  tab(b, "drums", t("Drums"), "drum", "F4");
+  tab(b, "mixer", t("Mixer"), "mixer", "F9");
+  tab(b, "score", t("Score"), "score", "F10");
   b.open("div", "tools", "tools");
   if (state.dock === "rack") rackTools(b);
   else if (state.dock === "piano") pianoTools(b);
@@ -221,9 +223,9 @@ export function studio(b) {
 
   b.open("div", "agent-side", `side side-agent ${compact ? "open" : sideMode("agent")}`);
   agentPanel(b);
-  paneRail(b, "agent", "Maestro", "spark", agentDot());
+  paneRail(b, "agent", t("Maestro"), "spark", agentDot());
   b.leaf("div", "resize", "agent-resize", "");
-  b.attr("title", "Drag to resize the agent panel");
+  b.attr("title", t("Drag to resize the agent panel"));
   b.on("pointerdown", (e) => {
     e.preventDefault();
     const x0 = e.clientX;
@@ -270,22 +272,26 @@ function hintBar(b) {
     "hint",
     state.hint !== ""
       ? state.hint
-      : "Space plays · Z–/ and Q–[ play notes · Shift+L pattern/song · Shift+R records · F6 rack · F7 piano roll · F8 voice · F9 mixer · F10 score · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
+      : t(
+          "Space plays · Z–/ and Q–[ play notes · Shift+L pattern/song · Shift+R records · F6 rack · F7 piano roll · F8 voice · F9 mixer · F10 score · Ctrl+Z undoes the agent too · Ctrl+Alt+B/P/D/A folds the panels"
+        )
   );
   b.open("span", "m1", "meta");
   b.leaf("span", "dot", state.connected ? "status-dot live" : "status-dot bad", "");
-  b.leaf("span", "t", "", !state.connected ? "Offline" : state.backend === "local" ? "Saved in this browser" : "Synced");
+  b.leaf("span", "t", "", !state.connected ? t("Offline") : state.backend === "local" ? t("Saved in this browser") : t("Synced"));
   b.close();
   b.leaf(
     "span",
     "m2",
     "meta",
     state.output === "native"
-      ? `Studio engine${state.nativeDevice !== "" ? " · " + state.nativeDevice : ""}`
+      ? state.nativeDevice !== ""
+        ? tf("Studio engine · {0}", [state.nativeDevice])
+        : t("Studio engine")
       : state.audioReady
-        ? "Browser engine · WebAssembly"
-        : "Click anywhere to start audio"
+        ? t("Browser engine · WebAssembly")
+        : t("Click anywhere to start audio")
   );
-  b.leaf("span", "m3", "meta", `rev ${state.rev}`);
+  b.leaf("span", "m3", "meta", tf("rev {0}", [String(state.rev)]));
   b.close();
 }
