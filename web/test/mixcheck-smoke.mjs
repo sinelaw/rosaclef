@@ -114,9 +114,11 @@ const ceiling = () =>
     const { state } = await import("./src/store.js");
     return Number(state.project.mixer.inserts[0].effects[1].params.find((k) => k.key === "ceiling")?.value);
   });
-const peak = page.locator(".mx-find", { hasText: "true peak" });
+// The true-peak fix, when it moves the ceiling (a hard-driven limiter's
+// input comes down first: the setting the overload's fix just set).
+const peak = page.locator(".mx-find", { hasText: "true peak" }).filter({ hasText: "limiter's ceiling" });
 let applied = 1;
-if ((await peak.count()) > 0) {
+if ((await peak.locator(".btn:has-text('Apply fix')").count()) > 0) {
   const c0 = await ceiling();
   await peak.locator(".btn:has-text('Apply fix')").click();
   await peak.locator(".mx-applied").waitFor({ timeout: 10000 });
