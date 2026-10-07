@@ -69,7 +69,8 @@ import { t, tf, tk } from "../i18n.js";
 /** type Hover = { kind: String, sys: Int, idx: Int, x: Number } */
 /** The menu of a part, opened from its name (on the page or in the sidebar): the channels of its staff,
  * the one it acts on, and where it opens (client pixels). */
-/** type PartMenu = { on: Boolean, channels: String[], channel: String, x: Number, y: Number } */
+/** `sub`: the list of instruments to move the part to shows, beside the item at `subY` (`subH` tall). */
+/** type PartMenu = { on: Boolean, channels: String[], channel: String, x: Number, y: Number, sub: Boolean, subY: Number, subH: Number } */
 /** The engraved score of the last flush, and what it was built from. */
 /** `score` keeps its colored passages (the sidebar lists them); `ink` is what is engraved and printed (without them when colors are hidden). */
 /** type Cached = { key: String, score: Score, ink: Score, page: Page } */
@@ -105,7 +106,7 @@ function newView(id, scope) {
     range: { on: false, t0: 0, t1: 0, s0: 0, s1: 0 },
     ghost: { sys: -1, row: -1, step: 0, tick: -1, x: 0 },
     hover: { kind: "", sys: -1, idx: -1, x: 0 },
-    menu: { on: false, channels: [], channel: "", x: 0, y: 0 },
+    menu: { on: false, channels: [], channel: "", x: 0, y: 0, sub: false, subY: 0, subH: 0 },
     cache: [],
     film: false,
     fv: newFilmView(id),
@@ -662,7 +663,7 @@ function channelById(id) {
 function openPartMenu(v, channels, x, y) {
   if (channels.length === 0) return undefined;
   const pick = channels.includes(state.channel) ? state.channel : channels[0];
-  v.menu = { on: true, channels: channels, channel: pick, x: x, y: y };
+  v.menu = { on: true, channels: channels, channel: pick, x: x, y: y, sub: false, subY: 0, subH: 0 };
   v.range.on = false;
   v.hover = { kind: "", sys: -1, idx: -1, x: 0 };
   selectChannel(pick);
@@ -780,7 +781,8 @@ function partMenu(b, v, c) {
     closePartMenu(v);
   });
   b.open("div", "menu", "auto-menu score-partmenu");
-  b.style("left", `min(${m.x}px, calc(100vw - 290px))`);
+  const left = Math.max(4, Math.min(m.x, window.innerWidth - 290));
+  b.style("left", `${Math.round(left)}px`);
   // Below the pointer, or above it when the window has more room there; never past its edges (the list scrolls).
   const winH = window.innerHeight;
   const up = m.y > winH / 2;
@@ -811,6 +813,7 @@ function partMenu(b, v, c) {
       b.attr("title", tf("score.partMenu.channel.title", [cc.name]));
       b.on("click", (e) => {
         m.channel = id;
+        m.sub = false;
         selectChannel(id);
       });
       b.leaf("i", "sw", "swatch", "");
@@ -869,28 +872,60 @@ function partMenu(b, v, c) {
       if (!p.score.hidden.includes(id)) p.score.hidden.push(id);
     });
   });
-  // Give the part to another instrument.
+  // Give the part to another instrument: one item, opening the list of them beside the menu.
   const others = p.channels.filter((x) => x.id !== id);
+  const scope = scopeWords(scopeOf(v));
   if (others.length > 0) {
-    b.leaf("div", "mh", "score-partmenu-h", tf("score.partMenu.moveTo.label", [ch.name, scopeWords(scopeOf(v))]));
-    b.open("div", "to", "score-partmenu-to");
-    for (const o of others) {
-      b.open("button", o.id, "auto-menu-item score-partmenu-dest");
-      const tip = tf("score.partMenu.moveTo.dest.title", [ch.name, scopeWords(scopeOf(v)), o.name, instrumentLabel(o.instrument)]);
-      b.attr("title", tip);
-      b.on("pointerenter", (e) => hint(tip));
-      b.on("click", (e) => {
-        v.menu.on = false;
-        movePart(v, [id], o.id, 0, Infinity, scopeWords(scopeOf(v)));
-      });
-      b.leaf("i", "sw", "swatch", "");
-      b.style("--c", o.color);
-      b.leaf("span", "l", "", o.name);
-      b.leaf("span", "i", "score-partmenu-ins", instrumentLabel(o.instrument));
-      b.close();
-    }
+    const label = tf("score.partMenu.moveTo.label", [ch.name, scope]);
+    b.open("button", "move", m.sub ? "auto-menu-item score-partmenu-move on" : "auto-menu-item score-partmenu-move");
+    b.attr("aria-expanded", m.sub ? "true" : "false");
+    b.on("pointerenter", (e) => hint(label));
+    b.on("click", (e) => {
+      m.sub = !m.sub;
+      m.subY = e.targetTop;
+      m.subH = e.targetHeight;
+      invalidate();
+    });
+    glyph(b, "follow");
+    b.leaf("span", "l", "", label);
+    b.open("span", "more", "score-partmenu-more");
+    glyph(b, "right");
+    b.close();
     b.close();
   }
+  b.close();
+  if (others.length === 0 || !m.sub) return undefined;
+  b.open("div", "submenu", "auto-menu score-partmenu score-partmenu-sub");
+  // Beside the menu, on the right where it fits, else on the left; level with the item, or
+  // rising from it when the window has more room above.
+  const w = 280;
+  const right = left + w + 4 + w <= window.innerWidth - 4;
+  b.style("left", `${Math.round(right ? left + w + 4 : Math.max(4, left - w - 4))}px`);
+  const rise = m.subY > winH / 2;
+  b.style("top", rise ? "auto" : `${Math.round(m.subY - 8)}px`);
+  b.style("bottom", rise ? `${Math.round(winH - m.subY - m.subH - 6)}px` : "auto");
+  b.style("max-height", `${Math.round(rise ? m.subY + m.subH - 6 : winH - m.subY - 4)}px`);
+  b.on("contextmenu", (e) => {
+    e.preventDefault();
+  });
+  b.leaf("div", "mh", "score-partmenu-h", tf("score.partMenu.moveTo.label", [ch.name, scope]));
+  b.open("div", "to", "score-partmenu-to");
+  for (const o of others) {
+    b.open("button", o.id, "auto-menu-item score-partmenu-dest");
+    const tip = tf("score.partMenu.moveTo.dest.title", [ch.name, scope, o.name, instrumentLabel(o.instrument)]);
+    b.attr("title", tip);
+    b.on("pointerenter", (e) => hint(tip));
+    b.on("click", (e) => {
+      v.menu.on = false;
+      movePart(v, [id], o.id, 0, Infinity, scope);
+    });
+    b.leaf("i", "sw", "swatch", "");
+    b.style("--c", o.color);
+    b.leaf("span", "l", "", o.name);
+    b.leaf("span", "i", "score-partmenu-ins", instrumentLabel(o.instrument));
+    b.close();
+  }
+  b.close();
   b.close();
 }
 
