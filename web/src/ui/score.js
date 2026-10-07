@@ -1095,6 +1095,9 @@ function barOf(sc, tick) {
 
 // ------------------------------------------------------------------ render
 
+/** How far (px) above and below the view systems are kept in the page. */
+const SYS_AHEAD = 3000;
+
 /** function paperView(b: Builder, v: ScoreView, c: Cached, geo: PageGeo, sc: Scope) => Undefined */
 function paperView(b, v, c, geo, sc) {
   const page = c.page;
@@ -1193,9 +1196,11 @@ function paperView(b, v, c, geo, sc) {
 
   inkDefs(b, v);
 
-  // Systems in view (and a screen around).
-  const lo = v.scrollTop - v.height;
-  const hiY = v.scrollTop + v.height * 2;
+  // Systems in view, and well around it: the browser draws what is near before it is scrolled
+  // to (the ink filter takes it a while), so what shows has been drawn already.
+  const ahead = Math.max(SYS_AHEAD, v.height * 2);
+  const lo = v.scrollTop - ahead;
+  const hiY = v.scrollTop + v.height + ahead;
   const sel = state.selection.map(noteIndex);
   for (let i = 0; i < page.systems.length; i++) {
     const s = page.systems[i];
@@ -2153,9 +2158,9 @@ export function scoreView(b, v) {
     showBeat(v, c, geo, pendingBeat.beat);
     pendingBeat.beat = -1;
   }
-  // Every child here is always described, in the same order: when the children of a node change,
-  // the tree attaches them all again, and a scrolled view attached again is back at its top. So
-  // what comes and goes (the sidebar, the passage's bar, the menus) lives in containers that stay.
+  // Every child here is always described, in the same order: a node the tree moves is taken out
+  // and put back, and a scrolled view put back is at its top. So what comes and goes (the
+  // sidebar, the passage's bar, the menus) lives in containers that stay.
   if (v.side) sideView(b, v, c, sc, geo);
   else b.leaf("aside", "side", "score-side off", "");
   b.open("div", "main", "score-main");

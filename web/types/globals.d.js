@@ -249,6 +249,7 @@
     setStyle: (Handle, String, String) => Undefined,
     setProp: (Handle, String, String) => Undefined,
     append: (Handle, Handle) => Undefined,
+    insert: (Handle, Handle, Handle) => Undefined,
     remove: (Handle) => Undefined,
     listen: (Handle, String, (Ev) => Undefined) => Undefined,
     paint: (Handle, Painter) => Undefined,
