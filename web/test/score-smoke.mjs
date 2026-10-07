@@ -96,6 +96,10 @@ ok(`"Open in the channel rack" selects ${await page.textContent(".rack .rack-row
 const partsBefore = await partNames();
 await page.mouse.click(nameBox.x + nameBox.width / 2, nameBox.y + nameBox.height / 2);
 await page.waitForSelector(".score-partmenu");
+if ((await page.locator(".score-partmenu-dest").count()) > 0) throw new Error("the instruments to move the part to show before they are asked for");
+await page.click(".score-partmenu-move");
+await page.waitForSelector(".score-partmenu-sub .score-partmenu-dest");
+ok("the part's menu has one item to move it, opening a list of instruments beside it");
 const dest = await page.locator(".score-partmenu-dest").first().locator("span").first().textContent();
 await page.click(".score-partmenu-dest >> nth=0");
 await page.waitForFunction((n) => ![...document.querySelectorAll(".score-top .score-part-name.hot")].some((e) => e.textContent === n), partName);
@@ -149,10 +153,15 @@ const lowBox = await lowName.boundingBox();
 await page.mouse.click(lowBox.x + lowBox.width / 2, Math.min(lowBox.y + lowBox.height / 2, view0.y + view0.height - 8));
 if ((await page.locator(".score-partmenu").count()) > 0) {
   if ((await scrollOf()) !== down) throw new Error("opening a part's menu scrolled the score");
-  // Opened low, it opens upward: every destination shows.
+  // Opened low, it opens upward, and so does its list of instruments: every destination shows.
+  await page.click(".score-partmenu-move");
+  await page.waitForSelector(".score-partmenu-sub");
   const all = await page.locator(".score-partmenu-to").evaluate((e) => e.scrollHeight <= e.clientHeight + 1);
-  const box = await page.locator(".score-partmenu").boundingBox();
-  if (!all || box.y + box.height > 950) throw new Error("the part's menu does not fit in the window");
+  for (const sel of [".score-partmenu >> nth=0", ".score-partmenu-sub"]) {
+    const box = await page.locator(sel).boundingBox();
+    if (box.y < 0 || box.y + box.height > 950 || box.x < 0 || box.x + box.width > 1500) throw new Error(`${sel} does not fit in the window`);
+  }
+  if (!all) throw new Error("the list of instruments does not show them all");
   await page.keyboard.press("Escape");
 }
 ok(`scrolled down the song (${down}px), a passage or a part's menu keeps the place`);

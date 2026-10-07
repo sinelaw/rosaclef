@@ -116,6 +116,14 @@ export function memoryBackend() {
       node(p).children.push(handleIndex(c));
       node(c).parent = handleIndex(p);
     },
+    insert: (p, c, before) => {
+      ops = ops + 1;
+      detach(c);
+      const kids = node(p).children;
+      const at = kids.indexOf(handleIndex(before));
+      kids.splice(at < 0 ? kids.length : at, 0, handleIndex(c));
+      node(c).parent = handleIndex(p);
+    },
     remove: (h) => {
       ops = ops + 1;
       detach(h);

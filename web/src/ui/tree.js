@@ -96,6 +96,39 @@ function findKS(list, key) {
   return e ? e.value : undefined;
 }
 
+/**
+ * Which of `at` (positions, -1 for none) make up a longest strictly increasing run:
+ * the children that can stay where they are.
+ */
+/** function increasingRun(at: Int[]) => Boolean[] */
+export function increasingRun(at) {
+  // tails[k]: the index in `at` ending the best run of length k + 1 found so far.
+  /** const tails: Int[] */
+  const tails = [];
+  /** const prev: Int[] */
+  const prev = at.map((_) => -1);
+  for (let i = 0; i < at.length; i++) {
+    if (at[i] < 0) continue;
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (at[tails[mid]] < at[i]) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    if (lo === tails.length) tails.push(i);
+    else tails[lo] = i;
+  }
+  const stay = at.map((_) => false);
+  let k = tails.length > 0 ? tails[tails.length - 1] : -1;
+  while (k >= 0) {
+    stay[k] = true;
+    k = prev[k];
+  }
+  return stay;
+}
+
 /** type Ui = { mark: () => Undefined, flush: () => Undefined, stats: () => { elements: Int, flushes: Int, created: Int } } */
 
 /** Mount a view onto a backend. */
@@ -204,6 +237,9 @@ export function mount(backend, view) {
     function place(parent, children) {
       /** const order: String[] */
       const order = [];
+      /** Children made this flush (not in the backend's tree yet). */
+      /** const fresh: String[] */
+      const fresh = [];
       const counts = new Map();
       for (const i of children) {
         const d = nodes[i];
@@ -217,6 +253,7 @@ export function mount(backend, view) {
         paths[i] = path;
         let el = elems.get(path);
         if (el === undefined || el.seen === generation) {
+          fresh.push(path);
           const handle = backend.create(d.type);
           created = created + 1;
           el = { path: path, handle: handle, type: d.type, cls: "", text: "", attrs: [], styles: [], props: [], on: [], bound: [], order: [], seen: 0 };
@@ -240,11 +277,35 @@ export function mount(backend, view) {
         }
       }
       if (!same) {
-        for (const path of order) {
-          const child = elems.get(path);
-          if (child) backend.append(parent.handle, child.handle);
-        }
+        arrange(parent, order, fresh);
         parent.order = order;
+      }
+    }
+
+    /**
+     * Put `parent`'s children in `order`, moving as few as it takes: the longest run
+     * already in order stays where it is, and only the rest are inserted around it.
+     * (A node moved is a node taken out and put back: a browser paints it again, and
+     * a scrolled one is back at its top.) Children no longer described are left for
+     * the disposal below.
+     */
+    /** function arrange(parent: Elem, order: String[], fresh: String[]) => Undefined */
+    function arrange(parent, order, fresh) {
+      // Where each child was before (-1: new here).
+      const at = order.map((path) => (fresh.includes(path) ? -1 : parent.order.indexOf(path)));
+      const stay = increasingRun(at);
+      // From the last child back, each placed before the one after it.
+      let last = true;
+      let next = parent.handle;
+      for (let i = order.length - 1; i >= 0; i--) {
+        const child = elems.get(order[i]);
+        if (child === undefined) continue;
+        if (!stay[i]) {
+          if (last) backend.append(parent.handle, child.handle);
+          else backend.insert(parent.handle, child.handle, next);
+        }
+        last = false;
+        next = child.handle;
       }
     }
 

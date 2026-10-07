@@ -978,6 +978,9 @@ export function domBackend(rootId) {
     append: (p, c) => {
       nodes[p].appendChild(nodes[c]);
     },
+    insert: (p, c, before) => {
+      nodes[p].insertBefore(nodes[c], nodes[before]);
+    },
     remove: (h) => {
       const el = nodes[h];
       if (el) el.remove();
