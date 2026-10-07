@@ -74,8 +74,10 @@ function wetInk(night, gloss, shine, px) {
     // (stems, staff text and hairlines vanish), softened at its edge.
     el("feMorphology", "pool", ["in", "SourceAlpha", "operator", "erode", "radius", "0.075", "result", "pool"], []),
     el("feGaussianBlur", "body", ["in", "pool", "stdDeviation", "0.05", "result", "body"], []),
-    // Its height: the pooled ink swells into a dome.
-    el("feGaussianBlur", "dome", ["in", "SourceAlpha", "stdDeviation", "0.17", "result", "dome"], []),
+    // Its height: the pooled ink swells into a dome. (From the pool, not all the ink: the
+    // heads of a chord touch, and as one drop their domes would flatten into each other
+    // and catch the light in a broad patch, not a glint.)
+    el("feGaussianBlur", "dome", ["in", "pool", "stdDeviation", "0.17", "result", "dome"], []),
     // The window's light, mirrored where the dome turns toward it. The tighter
     // the shine, the sharper the reflection (and the brighter, to be seen).
     el(
