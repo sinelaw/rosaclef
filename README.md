@@ -131,7 +131,7 @@ instrument:
   ends, legato, auto-tune to a key and scale (or let it detect the key),
   octave, and velocities that follow how loud you sang. The result is a new
   pattern for the piano roll, on the selected channel or a new one.
-- **Beatbox** — kicks (a low "b"/"boom"), toms (a hummed "dum"), snares
+- **Beatbox** — kicks (a "p", a low "b"/"boom"), toms (a hummed "dum"), snares
   ("pf", "k"), hats ("ts") and open hats (a long "tsss") become a drum loop on
   drum machine channels (existing ones are reused). A drum recording works too:
   several drums on one beat (a kick and a hat) are told apart, and rolls,
