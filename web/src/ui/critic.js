@@ -245,7 +245,7 @@ function reveal(w) {
     openDock("mixer");
   } else if (w.kind === "song" || w.kind === "lane") {
     setTop("playlist");
-    if (isCompact(window.innerWidth, window.innerHeight)) setView("playlist");
+    if (isCompact(state.screen.width, state.screen.height)) setView("playlist");
     if (w.kind === "song" && w.index >= 0) state.clipSelection = [clipIx(w.index)];
     revealBeat(Math.max(0, w.beat));
   }

@@ -10,15 +10,15 @@
 //     (type, key) pairs. They own the backend handle, the last applied
 //     properties and the current event handlers, and they survive rebuilds.
 //  3. The backend — a set of primitive operations on numeric handles (the
-//     DOM in the browser, an in-memory tree in tests). Nothing else touches
-//     the platform.
+//     DOM in the browser, ./dom.js; an in-memory tree in tests, ./memory.js).
+//     Nothing else touches the platform.
 //
 // State flows down (a view is a function of state writing descriptions),
 // events flow up (handlers are callbacks in the description). There are no
 // signals and no observers: anything that changes calls `mark()`, and the
 // next frame rebuilds and reconciles everything.
 
-import { nodeIx, nodeIndex } from "#brands";
+import { nodeIx, nodeIndex } from "#tree-ids";
 
 /** function noPaint(g: Ctx, w: Number, h: Number) => Undefined */
 function noPaint(g, w, h) {}
@@ -241,6 +241,8 @@ export function mount(backend, view) {
       /** const fresh: String[] */
       const fresh = [];
       const counts = new Map();
+      /** Paths given to children so far: each is one element. */
+      const taken = new Map();
       for (const i of children) {
         const d = nodes[i];
         let key = d.key;
@@ -249,10 +251,20 @@ export function mount(backend, view) {
           counts.set(d.type, n + 1);
           key = `@${n}`;
         }
-        const path = `${parent.path}/${d.type}:${key}`;
+        // A key repeated among siblings names its next occurrence ("x", "x#1",
+        // …): two children never share an element (the first's would be lost
+        // to the reconciler and stay in the backend's tree, one more each flush).
+        const base = `${parent.path}/${d.type}:${key}`;
+        let path = base;
+        let again = 0;
+        while (taken.get(path) !== undefined) {
+          again = again + 1;
+          path = `${base}#${again}`;
+        }
+        taken.set(path, true);
         paths[i] = path;
         let el = elems.get(path);
-        if (el === undefined || el.seen === generation) {
+        if (el === undefined) {
           fresh.push(path);
           const handle = backend.create(d.type);
           created = created + 1;

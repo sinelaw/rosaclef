@@ -8,7 +8,7 @@
 // (./critic.js) lints the project; the Mix check (./mixcheck.js) measures it. The terminal stays mounted while another
 // tab shows, so the agent keeps running.
 
-import { connectRaw, wsUrl, createTerm, getJson } from "#platform";
+import { connectRaw, wsUrl, createTerm, getJson, loadPref, loadPrefOr, savePref } from "#platform";
 import { state, invalidate, currentPattern, currentChannel, hint, setFocus } from "../store.js";
 import { iconButton, button, select, glyph } from "./widgets.js";
 import { paneHeader, paneControls } from "./panes.js";
@@ -46,12 +46,12 @@ const PLUGINS = [
   },
 ];
 
-const maestro = { tab: localStorage.getItem("rosaclef.maestro.tab") ?? "terminal" };
+const maestro = { tab: loadPrefOr("rosaclef.maestro.tab", "terminal") };
 
 /** function setTab(id: String) => Undefined */
 function setTab(id) {
   maestro.tab = id;
-  localStorage.setItem("rosaclef.maestro.tab", id);
+  savePref("rosaclef.maestro.tab", id);
   invalidate();
 }
 
@@ -67,12 +67,12 @@ function send(m) {
 
 /** function preferred() => String */
 function preferred() {
-  return localStorage.getItem("rosaclef.agent") ?? "";
+  return loadPref("rosaclef.agent");
 }
 
 /** function start(id: String) => Undefined */
 export function startAgent(id) {
-  localStorage.setItem("rosaclef.agent", id);
+  savePref("rosaclef.agent", id);
   agent.choosing = false;
   agent.error = "";
   const tm = term.length > 0 ? term[0] : undefined;
@@ -128,8 +128,7 @@ function connectTerm() {
 /** Called once the terminal's DOM node exists. */
 function mountTerm() {
   if (term.length > 0) return;
-  const el = document.getElementById("agent-term");
-  const tm = createTerm(el, (data) => {
+  const tm = createTerm("agent-term", (data) => {
     send({ t: "input", data: data });
   });
   term.push(tm);

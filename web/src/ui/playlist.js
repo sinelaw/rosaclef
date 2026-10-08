@@ -11,27 +11,29 @@ import { openMeterMenu } from "./meter.js";
 import { passesText } from "../notation.js";
 import { seek, followPattern, setMode } from "../audio.js";
 import { select, iconButton, glyph } from "./widgets.js";
-import { dragSample } from "./browser.js";
+import { dragSample, endSampleDrag } from "./browser.js";
 import { revealDock } from "./panes.js";
 import { toast } from "./toast.js";
 import { autoHeight, autoHeads, autoBody, onAutoDown, onAutoDblClick, autoHint, revealOffset, LANE_H } from "./lanes.js";
 import { t, tf } from "../i18n.js";
 import { clipIx, clipIndex, trackIx, trackIndex, insertIx } from "#brands";
 
-const view = {
-  zoom: 22,
-  trackH: 54,
-  scrollLeft: 0,
-  scrollTop: 0,
-  width: 900,
-  height: 300,
-};
+/** What a playlist view shows: its zoom (pixels a beat), track height, scroll and size. */
+/** type PlaylistView = { zoom: Number, trackH: Number, scrollLeft: Number, scrollTop: Number, width: Number, height: Number } */
+
+/** function newPlaylistView() => PlaylistView */
+export function newPlaylistView() {
+  return { zoom: 22, trackH: 54, scrollLeft: 0, scrollTop: 0, width: 900, height: 300 };
+}
+
+/** The studio's playlist (the top pane). */
+export const mainPlaylist = newPlaylistView();
 
 /** type PGeo = { zoom: Number, trackH: Number, beats: Number, width: Number, height: Number } */
 /** type CBox = { i: ClipIx, x: Number, y: Number, w: Number, h: Number } */
 
-/** function geometry() => PGeo */
-function geometry() {
+/** function geometry(view: PlaylistView) => PGeo */
+function geometry(view) {
   const p = state.project;
   const bpb = p.transport.beatsPerBar;
   const beats = Math.max(songLength(p) + bpb * 8, Math.ceil(view.width / view.zoom / bpb + 1) * bpb);
@@ -239,7 +241,7 @@ function onLaneDown(e, g) {
             c.track = trackIx(Math.max(0, Math.min(p.playlist.tracks.length - 1, o.track + dt)));
           }
         }
-        changed(true);
+        changed();
       },
       (u) => undefined
     );
@@ -254,14 +256,14 @@ function onLaneDown(e, g) {
   p.playlist.clips.push({ pattern: pat.id, sample: "", track: trackIx(track), start: start, length: pat.length, offset: 0, gain: 1, mixer: insertIx(0) });
   const idx = p.playlist.clips.length - 1;
   state.clipSelection = [clipIx(idx)];
-  changed(true);
+  changed();
   const x0 = e.clientX;
   drag(
     e,
     (m) => {
       const db = (m.clientX - x0) / g.zoom;
       p.playlist.clips[idx].length = Math.max(snap, snapTo(pat.length + db, snap));
-      changed(true);
+      changed();
     },
     (u) => undefined
   );
@@ -346,13 +348,13 @@ function clipBody(b, c, w) {
   }
 }
 
-/** function playlist(b: Builder) => Undefined */
-export function playlist(b) {
+/** function playlist(b: Builder, view: PlaylistView) => Undefined */
+export function playlist(b, view) {
   const p = state.project;
-  const g = geometry();
-  followPlayhead(g);
-  revealLane(g);
-  reportViewport(g);
+  const g = geometry(view);
+  followPlayhead(g, view);
+  revealLane(g, view);
+  reportViewport(g, view);
   const bpb = p.transport.beatsPerBar;
   b.open("div", "pl", "editor");
   b.open("div", "main", "editor-main pl");
@@ -487,7 +489,7 @@ export function playlist(b) {
     if (dragSample.path === "") return undefined;
     e.preventDefault();
     dropSample(dragSample.path, e.clientX - e.targetLeft + e.scrollLeft, e.clientY - e.targetTop + e.scrollTop, g);
-    dragSample.path = "";
+    endSampleDrag();
   });
   b.on("wheel", (e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -571,8 +573,8 @@ export function playlist(b) {
 }
 
 /** Record the visible part of the song for the agent context. */
-/** function reportViewport(g: PGeo) => Undefined */
-function reportViewport(g) {
+/** function reportViewport(g: PGeo, view: PlaylistView) => Undefined */
+function reportViewport(g, view) {
   const vp = state.viewport;
   const start = Math.round((view.scrollLeft / g.zoom) * 100) / 100;
   const end = Math.round(((view.scrollLeft + view.width) / g.zoom) * 100) / 100;
@@ -588,8 +590,8 @@ function reportViewport(g) {
 }
 
 /** Scroll an automation lane into view (after "Create / Go to automation"). */
-/** function revealLane(g: PGeo) => Undefined */
-function revealLane(g) {
+/** function revealLane(g: PGeo, view: PlaylistView) => Undefined */
+function revealLane(g, view) {
   const off = revealOffset();
   if (off < 0) return undefined;
   const y = g.height + off;
@@ -599,14 +601,15 @@ function revealLane(g) {
 /** Scroll the playlist so a song beat is in view (the Critic's "show me"). */
 /** function revealBeat(beat: Number) => Undefined */
 export function revealBeat(beat) {
+  const view = mainPlaylist;
   const x = beat * view.zoom;
   if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.88) view.scrollLeft = Math.max(0, x - view.width * 0.08);
   invalidate();
 }
 
 /** Page the view along with the playhead (FL Studio style) while playing. */
-/** function followPlayhead(g: PGeo) => Undefined */
-function followPlayhead(g) {
+/** function followPlayhead(g: PGeo, view: PlaylistView) => Undefined */
+function followPlayhead(g, view) {
   if (!state.follow || !state.playing || state.mode !== "song") return undefined;
   const x = state.position * g.zoom;
   if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.88) {

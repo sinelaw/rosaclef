@@ -17,27 +17,39 @@ import { openDock } from "./panes.js";
 import { noteIx, noteIndex } from "#brands";
 import { t, tf } from "../i18n.js";
 
-const view = {
-  zoom: 72,
-  rowH: 14,
-  scrollLeft: 0,
-  scrollTop: 0,
-  width: 800,
-  height: 300,
-  tool: "draw",
-  lastLength: 0.25,
-  centered: false,
-  focus: "",
-  marquee /*: { x0: Number, y0: Number, x1: Number, y1: Number } */: { x0: 0, y0: 0, x1: 0, y1: 0 },
-  marqueeOn: false,
-  keyDown: -1,
-};
+/** What a piano roll view shows and holds: its zoom (pixels a beat), row
+ * height, scroll and size; the tool, the length of the last note drawn, the
+ * marquee being dragged and the key held on its keyboard. `centered`: scrolled
+ * to the pattern's notes once; `focus`: the pattern it was last scrolled for. */
+/** type PianoView = { zoom: Number, rowH: Number, scrollLeft: Number, scrollTop: Number, width: Number, height: Number, tool: String, lastLength: Number, centered: Boolean, focus: String, marquee: { x0: Number, y0: Number, x1: Number, y1: Number }, marqueeOn: Boolean, keyDown: Number } */
+
+/** function newPianoView() => PianoView */
+export function newPianoView() {
+  return {
+    zoom: 72,
+    rowH: 14,
+    scrollLeft: 0,
+    scrollTop: 0,
+    width: 800,
+    height: 300,
+    tool: "draw",
+    lastLength: 0.25,
+    centered: false,
+    focus: "",
+    marquee: { x0: 0, y0: 0, x1: 0, y1: 0 },
+    marqueeOn: false,
+    keyDown: -1,
+  };
+}
+
+/** The studio's piano roll (in the dock). */
+export const mainPiano = newPianoView();
 
 /** type Geo = { zoom: Number, rowH: Number, width: Number, height: Number, beats: Number } */
 /** type Box = { i: Int, x: Number, y: Number, w: Number, h: Number } */
 
-/** function geometry(pat: Pattern) => Geo */
-function geometry(pat) {
+/** function geometry(pat: Pattern, view: PianoView) => Geo */
+function geometry(pat, view) {
   const shown = Math.ceil(view.width / view.zoom / 4) * 4;
   // Recording plays on past the pattern's end (nothing loops): room for the
   // playhead, a screen ahead, so following it keeps the grid under the ruler.
@@ -163,8 +175,8 @@ export function duplicateSelection() {
 
 // ------------------------------------------------------------------ pointer
 
-/** function onGridDown(e: Ev, pat: Pattern, ch: Channel, g: Geo) => Undefined */
-function onGridDown(e, pat, ch, g) {
+/** function onGridDown(e: Ev, pat: Pattern, ch: Channel, g: Geo, view: PianoView) => Undefined */
+function onGridDown(e, pat, ch, g, view) {
   e.preventDefault();
   const x = e.clientX - e.targetLeft + e.scrollLeft;
   const y = e.clientY - e.targetTop + e.scrollTop;
@@ -223,7 +235,7 @@ function onGridDown(e, pat, ch, g) {
             preview(ch.id, p, n0.velocity);
           }
         }
-        changed(true);
+        changed();
       },
       (u) => undefined
     );
@@ -268,7 +280,7 @@ function onGridDown(e, pat, ch, g) {
   const idx = pat.notes.length - 1;
   setSelection([idx]);
   preview(ch.id, pitch, 0.8);
-  changed(true);
+  changed();
   const x0 = e.clientX;
   drag(
     e,
@@ -277,7 +289,7 @@ function onGridDown(e, pat, ch, g) {
       const l = snap > 0 ? Math.max(snap, snapTo(len + db, snap)) : Math.max(0.03, len + db);
       pat.notes[idx].length = l;
       view.lastLength = l;
-      changed(true);
+      changed();
     },
     (u) => undefined
   );
@@ -301,8 +313,8 @@ function patternBars(pat, lo, hi) {
   return barLines(t, origin + lo, origin + hi).map((bl) => ({ bar: bl.bar - first, start: bl.start - origin, length: bl.length }));
 }
 
-/** function rulerView(b: Builder, g: Geo, pat: Pattern) => Undefined */
-function rulerView(b, g, pat) {
+/** function rulerView(b: Builder, g: Geo, pat: Pattern, view: PianoView) => Undefined */
+function rulerView(b, g, pat, view) {
   b.open("div", "ruler", "ruler");
   b.on("pointerdown", (e) => {
     const beat = (e.clientX - e.targetLeft + view.scrollLeft) / g.zoom;
@@ -334,8 +346,8 @@ function rulerView(b, g, pat) {
   b.close();
 }
 
-/** function keysView(b: Builder, g: Geo, ch: Channel) => Undefined */
-function keysView(b, g, ch) {
+/** function keysView(b: Builder, g: Geo, ch: Channel, view: PianoView) => Undefined */
+function keysView(b, g, ch, view) {
   b.open("div", "keys", "keys");
   b.open("div", "in", "");
   b.style("transform", `translateY(${-view.scrollTop}px)`);
@@ -378,8 +390,8 @@ function keysView(b, g, ch) {
   b.close();
 }
 
-/** function gridView(b: Builder, g: Geo, pat: Pattern, ch: Channel) => Undefined */
-function gridView(b, g, pat, ch) {
+/** function gridView(b: Builder, g: Geo, pat: Pattern, ch: Channel, view: PianoView) => Undefined */
+function gridView(b, g, pat, ch, view) {
   b.open("div", "grid", "scroller");
   b.on("scroll", (e) => {
     view.scrollLeft = e.scrollLeft;
@@ -395,7 +407,7 @@ function gridView(b, g, pat, ch) {
     }
     invalidate();
   });
-  b.on("pointerdown", (e) => pressOrTap(e, (d) => onGridDown(d, pat, ch, g)));
+  b.on("pointerdown", (e) => pressOrTap(e, (d) => onGridDown(d, pat, ch, g, view)));
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });
@@ -507,8 +519,8 @@ function gridView(b, g, pat, ch) {
   b.close();
 }
 
-/** function velocityView(b: Builder, g: Geo, pat: Pattern, ch: Channel) => Undefined */
-function velocityView(b, g, pat, ch) {
+/** function velocityView(b: Builder, g: Geo, pat: Pattern, ch: Channel, view: PianoView) => Undefined */
+function velocityView(b, g, pat, ch, view) {
   b.open("div", "vel", "vel-lane");
   b.on("pointerdown", (e) => {
     e.preventDefault();
@@ -528,7 +540,7 @@ function velocityView(b, g, pat, ch) {
       if (best >= 0) {
         const targets = isSelected(best) ? state.selection.map(noteIndex) : [best];
         for (const t of targets) pat.notes[t].velocity = Math.round(v * 100) / 100;
-        changed(true);
+        changed();
       }
     };
     setAt(e);
@@ -549,8 +561,8 @@ function velocityView(b, g, pat, ch) {
   b.close();
 }
 
-/** function pianoRoll(b: Builder) => Undefined */
-export function pianoRoll(b) {
+/** function pianoRoll(b: Builder, view: PianoView) => Undefined */
+export function pianoRoll(b, view) {
   const pat = currentPattern();
   const ch = currentChannel();
   b.open("div", "pr", "editor");
@@ -559,7 +571,7 @@ export function pianoRoll(b) {
     b.close();
     return undefined;
   }
-  const g = geometry(pat);
+  const g = geometry(pat, view);
   if (state.follow && state.playing && state.mode === "pattern") {
     const x = state.position * g.zoom;
     if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.88) view.scrollLeft = Math.max(0, x - view.width * 0.08);
@@ -589,17 +601,17 @@ export function pianoRoll(b) {
   }
   b.open("div", "main", "editor-main pr");
   b.leaf("div", "corner", "corner", pat.name);
-  rulerView(b, g, pat);
-  keysView(b, g, ch);
-  gridView(b, g, pat, ch);
+  rulerView(b, g, pat, view);
+  keysView(b, g, ch, view);
+  gridView(b, g, pat, ch, view);
   b.leaf("div", "vl", "vel-label", t("pianoRoll.velocity.label"));
-  velocityView(b, g, pat, ch);
+  velocityView(b, g, pat, ch, view);
   b.close();
   b.close();
 }
 
-/** function pianoTools(b: Builder) => Undefined */
-export function pianoTools(b) {
+/** function pianoTools(b: Builder, view: PianoView) => Undefined */
+export function pianoTools(b, view) {
   const ids = state.project.channels.map((c) => c.id);
   const names = state.project.channels.map((c) => c.name);
   followButton(b);
@@ -636,6 +648,7 @@ export function pianoTools(b) {
 /** Scroll the grid so a note at `beat` and `pitch` is in view (recording from the keys). */
 /** function revealNote(beat: Number, pitch: Number) => Undefined */
 export function revealNote(beat, pitch) {
+  const view = mainPiano;
   const x = beat * view.zoom;
   if (x < view.scrollLeft || x > view.scrollLeft + view.width * 0.88) view.scrollLeft = Math.max(0, x - view.width * 0.08);
   const y = (127 - pitch) * view.rowH;
@@ -645,6 +658,7 @@ export function revealNote(beat, pitch) {
 
 /** function setTool(t: String) => Undefined */
 export function setTool(t) {
+  const view = mainPiano;
   view.tool = t;
   invalidate();
 }

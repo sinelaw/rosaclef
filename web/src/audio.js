@@ -23,9 +23,14 @@ const loading = [];
 function onEngineMessage(m) {
   if (m.t === "status") {
     if (state.output !== "browser") return undefined;
-    state.position = m.position;
-    state.positionAt = now();
-    state.playing = m.playing;
+    // A status sent before the engine applied the last play, pause, stop or
+    // seek would undo it here (Space twice would play twice; a stop would
+    // jump back to where it played).
+    if (!m.stale) {
+      state.position = m.position;
+      state.positionAt = now();
+      state.playing = m.playing;
+    }
     state.loopLength = m.loopLength;
     const nIns = Math.round(m.meters.length > 0 ? m.meters[0] : 0);
     const nCh = Math.round(m.meters.length > 1 ? m.meters[1] : 0);

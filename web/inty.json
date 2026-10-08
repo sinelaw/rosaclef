@@ -1,6 +1,7 @@
 {
   "paths": {
     "#platform": ["./types/platform.d.js"],
-    "#brands": ["./types/brands.d.js"]
+    "#brands": ["./types/brands.d.js"],
+    "#tree-ids": ["./tree/ids.d.js"]
   }
 }

@@ -1,13 +1,13 @@
 // The studio shell: composes every panel into one description tree.
 
 import { drag, fmt, releaseFocus } from "#platform";
-import { state, invalidate, setFocus, dockName } from "../store.js";
+import { state, setFocus, dockName } from "../store.js";
 import { scoreView, scoreTools, topScore, dockScore } from "./score.js";
 import { topbar } from "./topbar.js";
 import { browser } from "./browser.js";
 import { rack, rackTools } from "./rack.js";
-import { pianoRoll, pianoTools } from "./pianoroll.js";
-import { playlist, playlistTools } from "./playlist.js";
+import { pianoRoll, pianoTools, mainPiano } from "./pianoroll.js";
+import { playlist, playlistTools, mainPlaylist } from "./playlist.js";
 import { mixer, mixerTools } from "./mixer.js";
 import { voicePanel, voiceTools } from "./voice.js";
 import { drumsPanel, drumsTools } from "./drums.js";
@@ -18,7 +18,7 @@ import { meterMenu } from "./meter.js";
 import { projectsOverlay } from "./projects.js";
 import { creditsOverlay } from "./credits.js";
 import { glyph } from "./widgets.js";
-import { keyboard, keyboardStrip, keysHelp } from "./keyboard.js";
+import { keyboard, keyboardStrip } from "./keyboard.js";
 import {
   layoutState,
   sideMode,
@@ -31,12 +31,41 @@ import {
   openDock,
   setWork,
   toggleWorkMax,
-  saveLayout,
+  startDockResize,
+  resizeDock,
+  endDockResize,
+  startAgentResize,
+  resizeAgent,
+  endAgentResize,
   isCompact,
   setView,
   setTop,
 } from "./panes.js";
 import { t, tf } from "../i18n.js";
+import { DOCKS, dockInfo } from "../docks.js";
+
+/** A dock tab's views: what it shows, and its tools in the tab strip. */
+/** type DockView = { id: String, body: (Builder) => Undefined, tools: (Builder) => Undefined } */
+
+/** The views of each dock tab (the tabs themselves are listed in ../docks.js). */
+/** const DOCK_VIEWS: DockView[] */
+const DOCK_VIEWS = [
+  { id: "rack", body: rack, tools: rackTools },
+  { id: "piano", body: (b) => pianoRoll(b, mainPiano), tools: (b) => pianoTools(b, mainPiano) },
+  { id: "voice", body: voicePanel, tools: voiceTools },
+  { id: "drums", body: drumsPanel, tools: drumsTools },
+  { id: "mixer", body: mixer, tools: mixerTools },
+  { id: "score", body: (b) => scoreView(b, dockScore), tools: (b) => scoreTools(b, dockScore) },
+];
+
+/** The views of the dock tab with this id (the first's for an unknown one). */
+/** function dockView(id: String) => DockView */
+function dockView(id) {
+  for (const v of DOCK_VIEWS) {
+    if (v.id === id) return v;
+  }
+  return DOCK_VIEWS[0];
+}
 
 /** function px(v: Number) => String */
 function px(v) {
@@ -108,24 +137,21 @@ function navBar(b) {
   b.open("nav", "nav", "navbar");
   navItem(b, "browser", t("panel.browser"), "folder", v === "browser", "", () => setView("browser"));
   navItem(b, "playlist", t("panel.playlist"), "playlist", v === "playlist", "", () => setView("playlist"));
-  navItem(b, "rack", t("shell.nav.rack.label"), "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
-  navItem(b, "piano", t("shell.nav.piano.label"), "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
-  navItem(b, "voice", t("panel.voice"), "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
-  navItem(b, "drums", t("panel.drums"), "drum", v === "dock" && state.dock === "drums", "", () => openDock("drums"));
-  navItem(b, "mixer", t("panel.mixer"), "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
-  navItem(b, "score", t("panel.score"), "score", v === "dock" && state.dock === "score", "", () => openDock("score"));
+  for (const d of DOCKS) {
+    navItem(b, d.id, t(d.navLabel), d.icon, v === "dock" && state.dock === d.id, "", () => openDock(d.id));
+  }
   navItem(b, "agent", t("panel.maestro"), "spark", v === "agent", agentDot(), () => setView("agent"));
   b.close();
 }
 
 /** function studio(b: Builder) => Undefined */
 export function studio(b) {
-  const sizes = sideSizes(window.innerWidth);
+  const sizes = sideSizes(state.screen.width);
   // A phone shows one view at a time; its panels are never folded.
-  const compact = isCompact(window.innerWidth, window.innerHeight);
+  const compact = isCompact(state.screen.width, state.screen.height);
   // On a phone the keys show under the editors that use them: not over the
   // browser or the terminal, nor under the mixer or the Voice panel.
-  const keys = keyboard.shown && (!compact || layoutState.view === "playlist" || (layoutState.view === "dock" && keysHelp(state.dock)));
+  const keys = keyboard.shown && (!compact || layoutState.view === "playlist" || (layoutState.view === "dock" && dockInfo(state.dock).keys));
   const base = compact ? `studio compact v-${layoutState.view}` : "studio";
   const cls = keys ? `${base} has-keys` : base;
   b.open("div", "studio", layoutState.dragging ? `${cls} dragging` : cls);
@@ -172,7 +198,7 @@ export function studio(b) {
   b.close();
   b.open("div", "body", "dock-body");
   if (top === "score") scoreView(b, topScore);
-  else playlist(b);
+  else playlist(b, mainPlaylist);
   b.close();
   b.close();
 
@@ -181,19 +207,12 @@ export function studio(b) {
     e.preventDefault();
     const y0 = e.clientY;
     const h0 = layoutState.dockH;
-    const total = Math.max(200, window.innerHeight - 86);
-    layoutState.dragging = true;
+    const total = Math.max(200, state.screen.height - 86);
+    startDockResize();
     drag(
       e,
-      (m) => {
-        layoutState.dockH = Math.max(18, Math.min(82, h0 + ((y0 - m.clientY) / total) * 100));
-        invalidate();
-      },
-      (u) => {
-        layoutState.dragging = false;
-        saveLayout();
-        invalidate();
-      }
+      (m) => resizeDock(h0 + ((y0 - m.clientY) / total) * 100),
+      (u) => endDockResize()
     );
   });
 
@@ -201,30 +220,16 @@ export function studio(b) {
   b.on("pointerdown", (e) => paneDown(e, dockName(state.dock)));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "dock");
-  tab(b, "rack", t("shell.dock.rack.label"), "rack", "F6");
-  tab(b, "piano", t("shell.dock.piano.label"), "piano", "F7");
-  tab(b, "voice", t("panel.voice"), "mic", "F8");
-  tab(b, "drums", t("panel.drums"), "drum", "F4");
-  tab(b, "mixer", t("panel.mixer"), "mixer", "F9");
-  tab(b, "score", t("panel.score"), "score", "F10");
+  for (const d of DOCKS) tab(b, d.id, t(d.label), d.icon, d.key);
+  const view = dockView(state.dock);
   b.open("div", "tools", "tools");
-  if (state.dock === "rack") rackTools(b);
-  else if (state.dock === "piano") pianoTools(b);
-  else if (state.dock === "voice") voiceTools(b);
-  else if (state.dock === "drums") drumsTools(b);
-  else if (state.dock === "score") scoreTools(b, dockScore);
-  else mixerTools(b);
+  view.tools(b);
   b.close();
   paneControls(b, "dock");
   b.close();
   b.open("div", "body", "dock-body");
   if (state.dock !== "piano") state.viewport.prOn = false;
-  if (state.dock === "rack") rack(b);
-  else if (state.dock === "piano") pianoRoll(b);
-  else if (state.dock === "voice") voicePanel(b);
-  else if (state.dock === "drums") drumsPanel(b);
-  else if (state.dock === "score") scoreView(b, dockScore);
-  else mixer(b);
+  view.body(b);
   b.close();
   b.close();
   b.close();
@@ -237,23 +242,12 @@ export function studio(b) {
   b.on("pointerdown", (e) => {
     e.preventDefault();
     const x0 = e.clientX;
-    // Dragging a maximized panel resizes it from where it is.
     const w0 = sizes.agentCol;
-    if (layoutState.agent === "max") layoutState.agent = "open";
-    layoutState.agentW = w0;
-    layoutState.dragging = true;
+    startAgentResize(w0);
     drag(
       e,
-      (m) => {
-        layoutState.agentW = Math.max(300, Math.min(1600, w0 + (x0 - m.clientX)));
-        invalidate();
-      },
-      (u) => {
-        layoutState.dragging = false;
-        layoutState.agentW = sideSizes(window.innerWidth).agentW;
-        saveLayout();
-        invalidate();
-      }
+      (m) => resizeAgent(w0 + (x0 - m.clientX)),
+      (u) => endAgentResize(state.screen.width)
     );
   });
   b.close();

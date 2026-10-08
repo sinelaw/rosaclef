@@ -12,8 +12,9 @@
 // (against a level-matched reference), then the mix's parts with their
 // audibility, and the findings ranked with their fixes.
 
-import { getJson, sendJson, fmt, audioPost, now } from "#platform";
-import { state, commit, invalidate, fixSelection, selectChannel, selectInsert, hint, hooks, engineJson, currentPattern } from "../store.js";
+import { getJson, sendJson, fmt, audioPost, now, loadPrefOr, savePref } from "#platform";
+import { state, commit, invalidate, fixSelection, selectChannel, selectInsert, hint, engineJson, currentPattern, onOpened } from "../store.js";
+import { claimPreview, releasePreview } from "../preview.js";
 import { encodeProject, decodeProject, meterMap } from "../model.js";
 import { startAudio, seek, livePosition } from "../audio.js";
 import { button, select, glyph } from "./widgets.js";
@@ -49,7 +50,7 @@ const view = {
   from: 1,
   to: 8,
   section: "",
-  target: localStorage.getItem("rosaclef.mixcheck.target") ?? "spotify",
+  target: loadPrefOr("rosaclef.mixcheck.target", "spotify"),
   threshold: "normal",
   /** A sample in the project to compare with ("" = none). */
   reference: "",
@@ -110,7 +111,7 @@ function resetMixcheck() {
   invalidate();
 }
 
-hooks.opened = resetMixcheck;
+onOpened(resetMixcheck);
 
 /** function emptyGr() => MixGr */
 function emptyGr() {
@@ -612,8 +613,7 @@ async function listen(key, patch) {
   a.end = start + LISTEN_BARS * state.project.transport.beatsPerBar;
   a.at = now();
   // An edit meanwhile ends it (and gives the engine the song back).
-  hooks.preview = stopAudition;
-  hooks.previewing = true;
+  claimPreview("mixcheck", stopAudition, stopAudition);
   audioPost({ t: "metronome", on: false });
   audioPost({ t: "project", json: engineJson() });
   audioPost({ t: "mode", pattern: "" });
@@ -659,7 +659,7 @@ function stopAudition() {
   if (!a.on) return undefined;
   a.on = false;
   a.seq = a.seq + 1;
-  hooks.previewing = false;
+  releasePreview("mixcheck");
   // A pause keeps the place (a stop goes back to the start).
   audioPost({ t: "pause" });
   audioPost({ t: "project", json: engineJson() });
@@ -739,7 +739,7 @@ function revealBar(beat) {
   if (layoutState.top === "score") revealScoreBeat(b);
   else {
     setTop("playlist");
-    if (isCompact(window.innerWidth, window.innerHeight)) setView("playlist");
+    if (isCompact(state.screen.width, state.screen.height)) setView("playlist");
     revealBeat(b);
   }
   // The playhead there too: Play starts where the problem is.
@@ -1180,7 +1180,7 @@ export function mixcheckPanel(b, ask) {
   const names = [t("mixcheck.target.option.none")].concat(view.targets.map((x) => `${x.name} ${fmt(x.lufs, 0)} LUFS`));
   select(b, `target${view.targets.length}`, "mx-select", view.target, ids, names, t("mixcheck.target.title"), (v) => {
     view.target = v;
-    localStorage.setItem("rosaclef.mixcheck.target", v);
+    savePref("rosaclef.mixcheck.target", v);
     invalidate();
   });
   b.leaf("span", "sp", "spacer", "");

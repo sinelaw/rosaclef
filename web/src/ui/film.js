@@ -681,7 +681,7 @@ function editShot(fv, fn) {
   }
   anim();
   fn(sel[0]);
-  changed(true);
+  changed();
 }
 
 /** End a gesture. */
@@ -1265,7 +1265,7 @@ function ribbon(b, fv, f, inp) {
       fv.gesture = true;
     }
     anim().energy = Number(e.value);
-    changed(true);
+    changed();
   });
   b.on("change", (e) => endEdit(fv));
   b.close();
@@ -1390,7 +1390,7 @@ function slider(b, fv, key, label, tip, value, min, max, step, dflt, shown, onSe
     }
     anim();
     onSet(Number(e.value));
-    changed(true);
+    changed();
   });
   b.on("change", (e) => endEdit(fv));
   b.on("dblclick", (e) => {

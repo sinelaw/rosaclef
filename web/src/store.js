@@ -2,11 +2,13 @@
 //
 // State flows down into the view functions; there are no observers. Every
 // change calls `invalidate()`, which marks the UI tree; the next animation
-// frame rebuilds all descriptions and reconciles them (see ui/tree.js).
+// frame rebuilds all descriptions and reconciles them (see web/tree/tree.js).
 
 import { debounce, nowIso } from "#platform";
 import { decodeProject, emptyProject, projectJson, cloneProject, describeChange, defaultArpCatalog, newDevice, noArp } from "./model.js";
 import { insertIx, insertIndex, trackIx, noteIndex, clipIndex } from "#brands";
+import { dockInfo } from "./docks.js";
+import { previewTakes } from "./preview.js";
 
 export const state = {
   project /*: Project */: emptyProject(),
@@ -50,6 +52,8 @@ export const state = {
   focus: "playlist",
   /** The film on screen (Score view, Film mode), for the agent's context: the scene at the playhead. */
   film: { on: false, mode: "", shot: -1, selected: -1, start: 0, end: 0, frame: "", focus /*: String[] */: [], why: "" },
+  /** The window's inner size (CSS pixels): set by main.js, from the platform, on every resize. */
+  screen: { width: 1280, height: 800 },
   viewport: { plStart: 0, plEnd: 0, plTrack0: 0, plTrack1: 0, prStart: 0, prEnd: 0, prLow: 0, prHigh: 0, prOn: false },
   recent /*: { at: String, summary: String }[] */: [],
   hint: "",
@@ -70,14 +74,10 @@ export function invalidate() {
   if (hooks.mark) hooks.mark();
 }
 
-/** Same as invalidate: descriptions are cheap, everything is rebuilt. */
-export function tick() {
-  if (hooks.mark) hooks.mark();
-}
-
 // ------------------------------------------------------------------ hooks
 
-/** Set by the network and audio layers. */
+/** Set once, at start, by the network and audio layers (one each). Panels use
+ * `claimPreview` (preview.js) and `onOpened` below instead. */
 export const hooks = {
   /** @type {() => Undefined} */
   mark: null,
@@ -85,21 +85,29 @@ export const hooks = {
   sync: null,
   /** @type {(String) => Undefined} */
   engine: null,
-  /** While a preview plays its own version of the song (the Drums tab's,
-   * `previewing`), project changes go to it instead of the engine. */
-  /** @type {() => Undefined} */
-  preview: null,
-  previewing: false,
   /** @type {() => Undefined} */
   context: null,
   /** The tried-out instrument changed (audio.js tells the engine). */
   /** @type {() => Undefined} */
   audition: null,
-  /** Another project opened (net.js): the panels drop what they measured
-   * of the last one (the Mix check's report). */
-  /** @type {() => Undefined} */
-  opened: null,
 };
+
+// ------------------------------------------------------------------ opening
+
+/** const openedListeners: (() => Undefined)[] */
+const openedListeners = [];
+
+/** Run `fn` whenever another project opens: panels drop what they measured
+ * of the last one (the Mix check's report). */
+/** function onOpened(fn: () => Undefined) => Undefined */
+export function onOpened(fn) {
+  openedListeners.push(fn);
+}
+
+/** Another project opened (net.js). */
+export function projectOpened() {
+  for (const fn of openedListeners) fn();
+}
 
 // ------------------------------------------------------------------ editing
 
@@ -134,8 +142,7 @@ function pushToEngine() {
   engineQueued = true;
   setTimeout(() => {
     engineQueued = false;
-    if (hooks.previewing && hooks.preview) hooks.preview();
-    else if (hooks.engine) hooks.engine(engineJson());
+    if (!previewTakes() && hooks.engine) hooks.engine(engineJson());
   }, 30);
 }
 
@@ -186,7 +193,7 @@ function snapshot() {
 export function commit(fn) {
   snapshot();
   fn();
-  changed(true);
+  changed();
 }
 
 /** Start a gesture (drag): one undo step for many `change` calls. */
@@ -194,15 +201,23 @@ export function begin() {
   snapshot();
 }
 
-/** Report a mutation made during a gesture. `structural` re-renders views. */
-/** function changed(structural: Boolean) => Undefined */
-export function changed(structural) {
+/** Report a mutation of the project (each step of a gesture, or after
+ * `commit`): it is synced, played and drawn. */
+export function changed() {
   state.edits = state.edits + 1;
   syncSoon();
   pushToEngine();
-  if (structural) invalidate();
-  else tick();
+  invalidate();
 }
+
+/** How controls (widgets.js) record changes to the project: a gesture is one
+ * undo step, and every change is synced, played and drawn. */
+/** const projectEdit: Edit */
+export const projectEdit = {
+  begin: () => begin(),
+  change: () => changed(),
+  commit: (fn) => commit(fn),
+};
 
 export function undo() {
   const prev = undoStack.pop();
@@ -210,7 +225,7 @@ export function undo() {
   redoStack.push(projectJson(state.project));
   state.project = decodeProject(JSON.parse(prev));
   fixSelection();
-  changed(true);
+  changed();
 }
 
 export function redo() {
@@ -219,7 +234,7 @@ export function redo() {
   undoStack.push(projectJson(state.project));
   state.project = decodeProject(JSON.parse(next));
   fixSelection();
-  changed(true);
+  changed();
 }
 
 /** A new version arrived from the server (the agent, the API, a recording). */
@@ -308,12 +323,7 @@ export function selectInsert(i) {
 /** The dock's editor as the agent's context names it. */
 /** function dockName(dock: String) => String */
 export function dockName(dock) {
-  if (dock === "piano") return "piano roll";
-  if (dock === "mixer") return "mixer";
-  if (dock === "voice") return "voice to notes";
-  if (dock === "drums") return "drums";
-  if (dock === "score") return "score";
-  return "channel rack";
+  return dockInfo(dock).agentName;
 }
 
 /** function showDock(name: String) => Undefined */
@@ -349,6 +359,6 @@ export function deviceSpec(type, category) {
 export function hint(text) {
   if (state.hint !== text) {
     state.hint = text;
-    tick();
+    invalidate();
   }
 }

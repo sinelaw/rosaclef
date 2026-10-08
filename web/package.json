@@ -5,11 +5,12 @@
   "description": "Rosaclef studio UI: plain ES modules type-checked with inty (no build step)",
   "imports": {
     "#brands": "./lib/brands.js",
-    "#platform": "./lib/platform.js"
+    "#platform": "./lib/platform.js",
+    "#tree-ids": "./tree/ids.js"
   },
   "scripts": {
     "check": "./check.sh",
-    "test": "node test/tree.test.js && node test/voice.test.js && node test/score.test.js && node test/film.test.js && node test/model.test.js",
+    "test": "node test/tree.test.js && node test/preview.test.js && node test/voice.test.js && node test/score.test.js && node test/film.test.js && node test/model.test.js",
     "format": "npx --yes prettier@3.8.1 --write .",
     "format:check": "npx --yes prettier@3.8.1 --check ."
   }

@@ -11,7 +11,22 @@
 import { drag, promptBox, fmt } from "#platform";
 import { state, commit, begin, changed, invalidate, hint, reportContext } from "../store.js";
 import { snapTo, dbText, panText, barBeat, PALETTE } from "../model.js";
-import { auto, curveShape, laneValueAt, targetInfo, goToLane, removeLane, createLane, closeMenu, laneByTarget, selectedPoints } from "../automation.js";
+import {
+  auto,
+  curveShape,
+  laneValueAt,
+  targetInfo,
+  goToLane,
+  removeLane,
+  createLane,
+  closeMenu,
+  laneByTarget,
+  selectedPoints,
+  setAutoLane,
+  setAutoPoints,
+  toggleAutoCollapsed,
+  takeAutoReveal,
+} from "../automation.js";
 import { iconButton, paramText, glyph } from "./widgets.js";
 import { pointIx, pointIndex } from "#brands";
 import { t, tf } from "../i18n.js";
@@ -155,9 +170,8 @@ function segmentEnd(lane, beat) {
 
 /** Scroll offset (inside the section) of a lane to reveal, or -1. */
 export function revealOffset() {
-  if (auto.reveal === "") return -1;
-  const id = auto.reveal;
-  auto.reveal = "";
+  const id = takeAutoReveal();
+  if (id === "") return -1;
   const lanes = state.project.automation;
   for (let k = 0; k < lanes.length; k++) {
     if (lanes[k].id === id) return laneTop(k);
@@ -170,8 +184,7 @@ export function revealOffset() {
 /** function selectLane(lane: AutomationLane) => Undefined */
 function selectLane(lane) {
   if (auto.lane !== lane.id) {
-    auto.lane = lane.id;
-    auto.points = [];
+    setAutoLane(lane.id);
     reportContext();
     invalidate();
   }
@@ -210,7 +223,7 @@ function dragPoint(e, lane, idx, r, info, zoom, begun) {
       const u = u0 - ((m.clientY - y0) / (LANE_H - 2 * PAD)) * (fine ? 0.2 : 1);
       pt.value = tidy(info, valueOf(r, u));
       hint(tf("lanes.point.drag.hint", [info.label, formatValue(info, pt.value), barBeat(pt.beat, state.project.transport)]));
-      changed(true);
+      changed();
     },
     (u) => {
       reportContext();
@@ -232,7 +245,7 @@ function dragCurve(e, lane, idx, r, info) {
       const d = (y0 - m.clientY) / 90;
       pt.curve = Math.round(Math.max(-1, Math.min(1, c0 + (rising ? -d : d))) * 100) / 100;
       hint(tf("lanes.point.curve.hint", [info.label, fmt(pt.curve, 2)]));
-      changed(true);
+      changed();
     },
     (u) => undefined
   );
@@ -247,7 +260,7 @@ function deletePoint(lane, idx) {
   commit(() => {
     lane.points.splice(idx, 1);
   });
-  auto.points = [];
+  setAutoPoints([]);
   reportContext();
 }
 
@@ -279,7 +292,7 @@ export function onAutoDown(e, lg, x, y) {
   const rel = y - lg.top;
   if (rel < DIV_H) {
     if (e.button === 0) {
-      auto.collapsed = !auto.collapsed;
+      toggleAutoCollapsed();
       invalidate();
     }
     return undefined;
@@ -307,8 +320,8 @@ export function onAutoDown(e, lg, x, y) {
   }
   if (hit >= 0) {
     if (e.shiftKey) {
-      if (!isSelPoint(lane, hit)) auto.points = auto.points.concat([pointIx(hit)]);
-    } else auto.points = [pointIx(hit)];
+      if (!isSelPoint(lane, hit)) setAutoPoints(auto.points.concat([pointIx(hit)]));
+    } else setAutoPoints([pointIx(hit)]);
     reportContext();
     dragPoint(e, lane, hit, r, info, lg.zoom, false);
     invalidate();
@@ -323,8 +336,8 @@ export function onAutoDown(e, lg, x, y) {
   while (idx < lane.points.length && lane.points[idx].beat <= beat) idx = idx + 1;
   begin();
   lane.points.splice(idx, 0, { beat: beat, value: value, curve: 0 });
-  auto.points = [pointIx(idx)];
-  changed(true);
+  setAutoPoints([pointIx(idx)]);
+  changed();
   reportContext();
   dragPoint(e, lane, idx, r, info, lg.zoom, true);
 }
@@ -374,7 +387,7 @@ export function autoHeads(b, top) {
   b.style("top", `${top}px`);
   b.style("height", `${DIV_H}px`);
   b.on("click", (e) => {
-    auto.collapsed = !auto.collapsed;
+    toggleAutoCollapsed();
     invalidate();
   });
   b.leaf("span", "chev", "auto-chev", "▾");

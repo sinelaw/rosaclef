@@ -20,7 +20,7 @@ import { glyph } from "./widgets.js";
 import { openDock } from "./panes.js";
 import { revealNote } from "./pianoroll.js";
 import { toast } from "./toast.js";
-import { keysTarget, keepTried, stopTrying, pickHooks } from "./instruments.js";
+import { keysTarget, keepTried, stopTrying, onTried } from "./instruments.js";
 import { t, tf } from "../i18n.js";
 
 /** A sounding key: who holds it (a pointer or a computer key), on which channel;
@@ -102,13 +102,6 @@ export const keyboard = {
   armed: false,
 };
 
-/** Whether the piano helps in a dock tab: not in the mixer, nor while
- * singing into the microphone (a phone hides it there to free the room). */
-/** function keysHelp(dock: String) => Boolean */
-export function keysHelp(dock) {
-  return dock !== "mixer" && dock !== "voice" && dock !== "drums";
-}
-
 /** const held: Held[] */
 const held = [];
 
@@ -162,7 +155,7 @@ function triedInstrument(d) {
     if (state.audition.on && state.audition.key === key) preview(AUDITION, pitch, 0.8);
   }, 90);
 }
-pickHooks.tried = triedInstrument;
+onTried(triedInstrument);
 
 export function toggleKeyboard() {
   keyboard.shown = !keyboard.shown;
@@ -289,7 +282,7 @@ function growTake(run) {
     if (want > pat.length) {
       if (take.grew) {
         pat.length = want;
-        changed(true);
+        changed();
       } else {
         commit(() => {
           pat.length = want;
@@ -311,7 +304,7 @@ function trimTake() {
   const len = Math.max(take.before, Math.ceil(end / bpb - 1e-6) * bpb);
   if (len < pat.length) {
     pat.length = len;
-    changed(true);
+    changed();
   }
 }
 

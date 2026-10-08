@@ -12,7 +12,7 @@ import { glyph, iconButton, textInput } from "./widgets.js";
 import { toast } from "./toast.js";
 import { collectionFor, showCredits } from "./credits.js";
 import { paneHeader, paneControls, revealDock, sideMode, setSide } from "./panes.js";
-import { addPick, tryPick, replaceInstrument, instrumentLabel, dragPick } from "./instruments.js";
+import { addPick, tryPick, replaceInstrument, instrumentLabel, startPickDrag, endPickDrag } from "./instruments.js";
 import { t, tf, tk, language } from "../i18n.js";
 
 /** function addPattern() => Undefined */
@@ -168,12 +168,10 @@ function pickRow(b, depth, pick, sub, doc, icon) {
   b.attr("title", `${doc}${doc !== "" ? "\n" : ""}${t("browser.pick.title")}`);
   b.attr("draggable", "true");
   b.on("dragstart", (e) => {
-    dragPick.on = true;
-    dragPick.pick = pick;
+    startPickDrag(pick);
   });
   b.on("dragend", (e) => {
-    dragPick.on = false;
-    dragPick.over = "";
+    endPickDrag();
     invalidate();
   });
   b.on("pointerenter", (e) => hint(doc !== "" ? tf("browser.pick.withDoc.hint", [pick.name, doc]) : tf("browser.pick.hint", [pick.name])));
@@ -604,3 +602,8 @@ function projectSection(b) {
 
 /** The sample being dragged from the browser (read by the playlist). */
 export const dragSample = { path: "" };
+
+/** The dragged sample was dropped (the playlist took it). */
+export function endSampleDrag() {
+  dragSample.path = "";
+}

@@ -2,7 +2,7 @@
 // element tree and every primitive operation so tests can assert on the
 // result of a view without a browser.
 
-import { handle, handleIndex } from "#brands";
+import { handle, handleIndex } from "#tree-ids";
 
 /** type MemNode = { type: String, cls: String, text: String, attrs: KS[], styles: KS[], props: KS[], children: Int[], parent: Int, alive: Boolean } */
 

@@ -49,6 +49,8 @@ class RosaclefProcessor extends AudioWorkletProcessor {
     this.mem = null;
     this.frame = 0;
     this.recording = false;
+    // The last transport command applied (numbered by the page), told with each status.
+    this.transport = 0;
     // Messages that arrive before the WebAssembly module is ready wait for it.
     this.ready = new Promise((resolve) => {
       this.resolveReady = resolve;
@@ -134,6 +136,7 @@ class RosaclefProcessor extends AudioWorkletProcessor {
         break;
       }
       case "play":
+        this.transport = m.transport || this.transport;
         if (m.countIn > 0) w.rc_play_count_in(m.countIn);
         else w.rc_play();
         break;
@@ -144,15 +147,18 @@ class RosaclefProcessor extends AudioWorkletProcessor {
         w.rc_set_open_ended(m.on ? 1 : 0);
         break;
       case "pause":
+        this.transport = m.transport || this.transport;
         w.rc_pause();
         break;
       case "stop":
+        this.transport = m.transport || this.transport;
         w.rc_stop();
         break;
       case "mode":
         this.withStr(m.pattern, (p, l) => w.rc_set_mode(p, l));
         break;
       case "seek":
+        this.transport = m.transport || this.transport;
         w.rc_seek(m.beat);
         break;
       case "note":
@@ -194,6 +200,7 @@ class RosaclefProcessor extends AudioWorkletProcessor {
         t: "status",
         position: w.rc_position(),
         playing: w.rc_is_playing() === 1,
+        transport: this.transport,
         loopLength: w.rc_loop_length(),
         meters,
       });

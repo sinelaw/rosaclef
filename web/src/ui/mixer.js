@@ -1,13 +1,13 @@
 // The mixer: insert strips and the effect rack of the selected insert.
 
 import { promptBox } from "#platform";
-import { state, commit, selectInsert, deviceSpec, hint } from "../store.js";
+import { state, commit, selectInsert, deviceSpec, hint, projectEdit } from "../store.js";
 import { newDevice, dbText, panText } from "../model.js";
-import { faderAt, knobAt, meter, button, iconButton, select } from "./widgets.js";
+import { fader, knob, meter, button, iconButton, select } from "./widgets.js";
 import { deviceControls } from "./rack.js";
 import { shownValue, remapEffects } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
-import { reveal } from "./panes.js";
+import { reveal, insertRevealed } from "./panes.js";
 import { t, tf } from "../i18n.js";
 
 /** Fader travel: 0..1 maps to -inf..+6 dB with a musical curve. */
@@ -65,13 +65,31 @@ function strip(b, ins, i) {
 
   const pan = shownValue(`insert/${i}/pan`, ins.pan);
   const vol = shownValue(`insert/${i}/volume`, ins.volume);
-  knobAt(b, "pan", "small", (pan + 1) / 2, "", tf("mixer.strip.pan.title", [panText(pan)]), 0.5, `insert/${i}/pan`, (v) => {
-    ins.pan = Math.round((v * 2 - 1) * 100) / 100;
+  knob(b, {
+    key: "pan",
+    cls: "small",
+    value: (pan + 1) / 2,
+    label: "",
+    tip: tf("mixer.strip.pan.title", [panText(pan)]),
+    dflt: 0.5,
+    target: `insert/${i}/pan`,
+    edit: projectEdit,
+    onSet: (v) => {
+      ins.pan = Math.round((v * 2 - 1) * 100) / 100;
+    },
   });
 
   b.open("div", "faders", "strip-faders");
-  faderAt(b, "vol", volToFader(vol), `${ins.name}: ${dbText(vol)}`, volToFader(1), `insert/${i}/volume`, (t) => {
-    ins.volume = faderToVol(t);
+  fader(b, {
+    key: "vol",
+    value: volToFader(vol),
+    tip: `${ins.name}: ${dbText(vol)}`,
+    dflt: volToFader(1),
+    target: `insert/${i}/volume`,
+    edit: projectEdit,
+    onSet: (u) => {
+      ins.volume = faderToVol(u);
+    },
   });
   meter(b, "meter", l, r);
   b.close();
@@ -183,7 +201,7 @@ export function mixer(b) {
   b.open("div", "strips", "strips");
   const inserts = state.project.mixer.inserts;
   for (let i = 0; i < inserts.length; i++) strip(b, inserts[i], i);
-  reveal.insert = -1;
+  insertRevealed();
   b.close();
   fxPanel(b);
   b.close();
