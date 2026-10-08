@@ -29,16 +29,17 @@ await page.waitForSelector(".score-top .score-sys", { timeout: 20000 });
 
 // The page fits itself to the view once it has its size, which can bring
 // another system into view: count only once the systems in view stay put.
-/** The number of `sel` once it has stayed the same for a second. */
+/** The number of `sel` once it has stayed the same for a second (within 15 s). */
 async function settled(sel) {
   let last = -1;
   let same = 0;
-  while (same < 4) {
+  for (let i = 0; i < 60 && same < 4; i++) {
     await page.waitForTimeout(250);
     const n = await count(sel);
     same = n === last ? same + 1 : 0;
     last = n;
   }
+  if (same < 4) throw new Error(`the number of ${sel} kept changing for 15 s`);
   return last;
 }
 await settled(".score-top .score-sys");
