@@ -7,7 +7,7 @@ import { fader, knob, meter, button, iconButton, select } from "./widgets.js";
 import { deviceControls } from "./rack.js";
 import { shownValue, remapEffects } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
-import { reveal } from "./panes.js";
+import { reveal, insertRevealed } from "./panes.js";
 import { t, tf } from "../i18n.js";
 
 /** Fader travel: 0..1 maps to -inf..+6 dB with a musical curve. */
@@ -201,7 +201,7 @@ export function mixer(b) {
   b.open("div", "strips", "strips");
   const inserts = state.project.mixer.inserts;
   for (let i = 0; i < inserts.length; i++) strip(b, inserts[i], i);
-  reveal.insert = -1;
+  insertRevealed();
   b.close();
   fxPanel(b);
   b.close();

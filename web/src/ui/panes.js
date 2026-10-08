@@ -186,8 +186,60 @@ export function revealDock(name) {
   showDock(name);
 }
 
+// ------------------------------------------------------------------ resizing
+// While a splitter is dragged the panels follow it at once (`dragging` turns
+// off their transitions); the layout is saved when it is let go.
+
+/** The splitter between the playlist and the dock is taken. */
+export function startDockResize() {
+  layoutState.dragging = true;
+  invalidate();
+}
+
+/** The dock is `pct` % of the workspace's height (kept within 18–82). */
+/** function resizeDock(pct: Number) => Undefined */
+export function resizeDock(pct) {
+  layoutState.dockH = Math.max(18, Math.min(82, pct));
+  invalidate();
+}
+
+export function endDockResize() {
+  layoutState.dragging = false;
+  changedLayout();
+}
+
+/** The agent panel's edge is taken, the panel `w` pixels wide (a maximized
+ * one is resized from where it is). */
+/** function startAgentResize(w: Number) => Undefined */
+export function startAgentResize(w) {
+  if (layoutState.agent === "max") layoutState.agent = "open";
+  layoutState.agentW = w;
+  layoutState.dragging = true;
+  invalidate();
+}
+
+/** The agent panel is `w` pixels wide (kept within 300–1600). */
+/** function resizeAgent(w: Number) => Undefined */
+export function resizeAgent(w) {
+  layoutState.agentW = Math.max(300, Math.min(1600, w));
+  invalidate();
+}
+
+/** The agent panel's edge is let go: it keeps the width a window `winW` wide gives it. */
+/** function endAgentResize(winW: Number) => Undefined */
+export function endAgentResize(winW) {
+  layoutState.dragging = false;
+  layoutState.agentW = sideSizes(winW).agentW;
+  changedLayout();
+}
+
 /** The mixer insert whose strip scrolls into view on the mixer's next draw (-1: none). */
 export const reveal = { insert: -1 };
+
+/** The mixer drew the insert it was to bring into view. */
+export function insertRevealed() {
+  reveal.insert = -1;
+}
 
 /** Show an insert in the mixer (a channel's, from the rack or the score): select it, open the mixer and bring its strip into view. */
 /** function showInsert(ix: InsertIx) => Undefined */

@@ -20,7 +20,7 @@ import { glyph } from "./widgets.js";
 import { openDock } from "./panes.js";
 import { revealNote } from "./pianoroll.js";
 import { toast } from "./toast.js";
-import { keysTarget, keepTried, stopTrying, pickHooks } from "./instruments.js";
+import { keysTarget, keepTried, stopTrying, onTried } from "./instruments.js";
 import { t, tf } from "../i18n.js";
 
 /** A sounding key: who holds it (a pointer or a computer key), on which channel;
@@ -157,7 +157,7 @@ function triedInstrument(d) {
     if (state.audition.on && state.audition.key === key) preview(AUDITION, pitch, 0.8);
   }, 90);
 }
-pickHooks.tried = triedInstrument;
+onTried(triedInstrument);
 
 export function toggleKeyboard() {
   keyboard.shown = !keyboard.shown;

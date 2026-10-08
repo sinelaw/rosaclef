@@ -15,7 +15,7 @@ import { knob, paramKnob, select, button, iconButton, led, textInput, glyph } fr
 import { shownValue, retargetLanes } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
 import { sampleCredit } from "./credits.js";
-import { dragPick, replaceInstrument, addPick } from "./instruments.js";
+import { dragPick, replaceInstrument, addPick, pickDragOver, endPickDrag } from "./instruments.js";
 import { browseInstrument } from "./browser.js";
 import { showInsert } from "./panes.js";
 import { t, tf, tk } from "../i18n.js";
@@ -130,8 +130,7 @@ function rackRow(b, pat, ch, idx) {
     if (!dragPick.on) return undefined;
     e.preventDefault();
     e.stopPropagation();
-    if (dragPick.over !== ch.id) {
-      dragPick.over = ch.id;
+    if (pickDragOver(ch.id)) {
       hint(tf("rack.row.drop.replace.hint", [ch.name, dragPick.pick.name]));
       invalidate();
     }
@@ -140,10 +139,10 @@ function rackRow(b, pat, ch, idx) {
     if (!dragPick.on) return undefined;
     e.preventDefault();
     e.stopPropagation();
-    dragPick.on = false;
-    dragPick.over = "";
+    const pick = dragPick.pick;
+    endPickDrag();
     hint("");
-    replaceInstrument(ch, dragPick.pick);
+    replaceInstrument(ch, pick);
   });
 
   b.leaf("div", "mute", ch.mute ? "ch-mute off" : "ch-mute", "");
@@ -794,8 +793,7 @@ export function rack(b) {
   b.on("dragover", (e) => {
     if (!dragPick.on) return undefined;
     e.preventDefault();
-    if (dragPick.over !== "+") {
-      dragPick.over = "+";
+    if (pickDragOver("+")) {
       hint(tf("rack.drop.add.hint", [dragPick.pick.name]));
       invalidate();
     }
@@ -803,10 +801,10 @@ export function rack(b) {
   b.on("drop", (e) => {
     if (!dragPick.on) return undefined;
     e.preventDefault();
-    dragPick.on = false;
-    dragPick.over = "";
+    const pick = dragPick.pick;
+    endPickDrag();
     hint("");
-    addPick(dragPick.pick);
+    addPick(pick);
   });
   if (!pat) {
     b.leaf("div", "none", "b-empty", t("rack.empty.noPattern"));

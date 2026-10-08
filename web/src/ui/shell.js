@@ -1,13 +1,13 @@
 // The studio shell: composes every panel into one description tree.
 
 import { drag, fmt, releaseFocus } from "#platform";
-import { state, invalidate, setFocus, dockName } from "../store.js";
+import { state, setFocus, dockName } from "../store.js";
 import { scoreView, scoreTools, topScore, dockScore } from "./score.js";
 import { topbar } from "./topbar.js";
 import { browser } from "./browser.js";
 import { rack, rackTools } from "./rack.js";
-import { pianoRoll, pianoTools } from "./pianoroll.js";
-import { playlist, playlistTools } from "./playlist.js";
+import { pianoRoll, pianoTools, mainPiano } from "./pianoroll.js";
+import { playlist, playlistTools, mainPlaylist } from "./playlist.js";
 import { mixer, mixerTools } from "./mixer.js";
 import { voicePanel, voiceTools } from "./voice.js";
 import { drumsPanel, drumsTools } from "./drums.js";
@@ -31,7 +31,12 @@ import {
   openDock,
   setWork,
   toggleWorkMax,
-  saveLayout,
+  startDockResize,
+  resizeDock,
+  endDockResize,
+  startAgentResize,
+  resizeAgent,
+  endAgentResize,
   isCompact,
   setView,
   setTop,
@@ -46,7 +51,7 @@ import { DOCKS, dockInfo } from "../docks.js";
 /** const DOCK_VIEWS: DockView[] */
 const DOCK_VIEWS = [
   { id: "rack", body: rack, tools: rackTools },
-  { id: "piano", body: pianoRoll, tools: pianoTools },
+  { id: "piano", body: (b) => pianoRoll(b, mainPiano), tools: (b) => pianoTools(b, mainPiano) },
   { id: "voice", body: voicePanel, tools: voiceTools },
   { id: "drums", body: drumsPanel, tools: drumsTools },
   { id: "mixer", body: mixer, tools: mixerTools },
@@ -193,7 +198,7 @@ export function studio(b) {
   b.close();
   b.open("div", "body", "dock-body");
   if (top === "score") scoreView(b, topScore);
-  else playlist(b);
+  else playlist(b, mainPlaylist);
   b.close();
   b.close();
 
@@ -203,18 +208,11 @@ export function studio(b) {
     const y0 = e.clientY;
     const h0 = layoutState.dockH;
     const total = Math.max(200, window.innerHeight - 86);
-    layoutState.dragging = true;
+    startDockResize();
     drag(
       e,
-      (m) => {
-        layoutState.dockH = Math.max(18, Math.min(82, h0 + ((y0 - m.clientY) / total) * 100));
-        invalidate();
-      },
-      (u) => {
-        layoutState.dragging = false;
-        saveLayout();
-        invalidate();
-      }
+      (m) => resizeDock(h0 + ((y0 - m.clientY) / total) * 100),
+      (u) => endDockResize()
     );
   });
 
@@ -244,23 +242,12 @@ export function studio(b) {
   b.on("pointerdown", (e) => {
     e.preventDefault();
     const x0 = e.clientX;
-    // Dragging a maximized panel resizes it from where it is.
     const w0 = sizes.agentCol;
-    if (layoutState.agent === "max") layoutState.agent = "open";
-    layoutState.agentW = w0;
-    layoutState.dragging = true;
+    startAgentResize(w0);
     drag(
       e,
-      (m) => {
-        layoutState.agentW = Math.max(300, Math.min(1600, w0 + (x0 - m.clientX)));
-        invalidate();
-      },
-      (u) => {
-        layoutState.dragging = false;
-        layoutState.agentW = sideSizes(window.innerWidth).agentW;
-        saveLayout();
-        invalidate();
-      }
+      (m) => resizeAgent(w0 + (x0 - m.clientX)),
+      (u) => endAgentResize(window.innerWidth)
     );
   });
   b.close();

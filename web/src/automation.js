@@ -26,6 +26,32 @@ export const auto = {
   menu: { open: false, x: 0, y: 0, target: "" },
 };
 
+/** Select a lane ("" = none); none of its points is selected. */
+/** function setAutoLane(id: String) => Undefined */
+export function setAutoLane(id) {
+  auto.lane = id;
+  auto.points = [];
+}
+
+/** Select these points of the selected lane. */
+/** function setAutoPoints(points: PointIx[]) => Undefined */
+export function setAutoPoints(points) {
+  auto.points = points;
+}
+
+/** Fold or unfold the automation lanes under the playlist. */
+export function toggleAutoCollapsed() {
+  auto.collapsed = !auto.collapsed;
+}
+
+/** The lane to scroll into view on this render ("" = none): asked for once. */
+/** function takeAutoReveal() => String */
+export function takeAutoReveal() {
+  const id = auto.reveal;
+  auto.reveal = "";
+  return id;
+}
+
 // ------------------------------------------------------------------ curves
 
 /** Shape a segment position `t` (0..1) by `curve` (-1..1). */

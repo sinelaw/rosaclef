@@ -13,16 +13,43 @@ import { insertIx } from "#brands";
 import { toast } from "./toast.js";
 import { t, tf } from "../i18n.js";
 
-/** Set by the piano (keyboard.js, which imports this module): show the
- * strip and play a short note of the instrument just picked. */
-export const pickHooks = {
-  /** @type {(Device) => Undefined} */
-  tried: null,
-};
+/** What the piano does with the instrument just picked: shows its strip and
+ * plays a short note (keyboard.js says so with `onTried`: it imports this module). */
+/** const pickHooks: { tried: (Device) => Undefined } */
+const pickHooks = { tried: (d) => undefined };
+
+/** function onTried(fn: (Device) => Undefined) => Undefined */
+export function onTried(fn) {
+  pickHooks.tried = fn;
+}
 
 /** The instrument being dragged from the browser (dropped on the rack: onto
- * a channel it replaces the channel's instrument, elsewhere it adds one). */
+ * a channel it replaces the channel's instrument, elsewhere it adds one).
+ * `over`: the channel id it is over ("+" = the rack's empty space, "" = none).
+ * Read it anywhere; change it with the functions below. */
 export const dragPick = { on: false, over: "", pick: { key: "", name: "", device: newDevice("") } };
+
+/** An instrument starts being dragged from the browser. */
+/** function startPickDrag(pick: Pick) => Undefined */
+export function startPickDrag(pick) {
+  dragPick.on = true;
+  dragPick.pick = pick;
+}
+
+/** The dragged instrument is over this drop target (a channel id, or "+"):
+ * true when that is news (the view then shows it). */
+/** function pickDragOver(target: String) => Boolean */
+export function pickDragOver(target) {
+  if (dragPick.over === target) return false;
+  dragPick.over = target;
+  return true;
+}
+
+/** The drag ended (dropped, or let go elsewhere). */
+export function endPickDrag() {
+  dragPick.on = false;
+  dragPick.over = "";
+}
 
 /** function copyDevice(d: Device) => Device */
 export function copyDevice(d) {
@@ -113,7 +140,7 @@ export function tryPick(pick) {
   a.color = "#d4af37";
   a.device = copyDevice(pick.device);
   if (hooks.audition) hooks.audition();
-  if (pickHooks.tried) pickHooks.tried(a.device);
+  pickHooks.tried(a.device);
   hint(tf("instruments.try.hint", [pick.name]));
   invalidate();
 }
