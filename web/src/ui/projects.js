@@ -22,6 +22,8 @@ import {
   confirmBox,
   listenWindow,
   storageEstimate,
+  urlFragment,
+  setUrlFragment,
 } from "#platform";
 import { state, invalidate, hint } from "../store.js";
 import { PALETTE } from "../model.js";
@@ -464,6 +466,127 @@ listenWindow("keydown", (e) => {
     if (pm.open) closeProjects();
     else openProjects();
   }
+});
+
+// ------------------------------------------------------------------ the address
+
+// The address names the open project in its fragment, so that a reload, a
+// bookmark or a link opens it again: `#project=<name>` for a project in the
+// browser's storage, `#path=<folder>` for a project folder on disk (the
+// server's library). Opening another project adds a history entry: Back
+// returns to the last one.
+
+/** type Asked = { kind: String, value: String } */
+
+/** function decoded(s: String) => String */
+function decoded(s) {
+  try {
+    return decodeURIComponent(s);
+  } catch (e) {
+    return "";
+  }
+}
+
+/** The open project, as the address names it. */
+/** function fragmentFor() => String */
+function fragmentFor() {
+  if (state.backend === "local") return `project=${encodeURIComponent(state.name)}`;
+  return `path=${encodePath(state.folder)}`;
+}
+
+/** What an address's fragment asks for: kind "project" or "path" ("" when nothing). */
+/** function asked(frag: String) => Asked */
+function asked(frag) {
+  for (const kind of ["project", "path"]) {
+    if (frag.startsWith(`${kind}=`)) return { kind: kind, value: decoded(frag.slice(kind.length + 1)) };
+  }
+  return { kind: "", value: "" };
+}
+
+/** function trimSep(path: String) => String */
+function trimSep(path) {
+  return path.length > 1 ? path.replace(/[\\/]+$/, "") : path;
+}
+
+/** Whether the fragment asks for nothing but the open project. */
+/** function isOpen(a: Asked) => Boolean */
+function isOpen(a) {
+  if (a.kind === "project") return state.backend === "local" && a.value === state.name;
+  if (a.kind === "path") return state.backend !== "local" && trimSep(a.value) === trimSep(state.folder);
+  return true;
+}
+
+/** Put the open project back in the address (after an address that could not be opened). */
+function showOpen() {
+  setUrlFragment(fragmentFor(), false);
+}
+
+/** Open the project of the library called `name`, which the address named as `shown`. */
+/** function openNamed(name: String, shown: String) => Undefined */
+function openNamed(name, shown) {
+  sendJson("/api/projects/open", "POST", { name: name })
+    .then((r) => true)
+    .catch((e) => {
+      toast(tf("projects.open.failed", [shown]), errText(e), "error");
+      showOpen();
+      return false;
+    });
+}
+
+/** Open the project the address asks for, if it is not the open one. */
+/** function openAsked(a: Asked) => Undefined */
+function openAsked(a) {
+  if (a.value === "" || isOpen(a)) return undefined;
+  if (state.backend === "local") {
+    if (a.kind === "project") openNamed(a.value, a.value);
+    else showOpen();
+    return undefined;
+  }
+  if (a.kind !== "path") {
+    showOpen();
+    return undefined;
+  }
+  // On disk: a folder of the library (what the Projects window opens), by its name.
+  const path = trimSep(a.value);
+  getJson("/api/projects")
+    .then((r) => {
+      const library = trimSep(String(r.library));
+      /** const projects: ProjectInfo[] */
+      const projects = r.projects;
+      const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+      const name = path.slice(cut + 1);
+      if (cut < 0 || path.slice(0, cut) !== library || !projects.some((p) => p.name === name)) {
+        toast(t("projects.address.notFound.title"), tf("projects.address.notFound.body", [path, library]), "error");
+        showOpen();
+        return false;
+      }
+      openNamed(name, path);
+      return true;
+    })
+    .catch((e) => {
+      toast(t("projects.list.failed.title"), errText(e), "error");
+      showOpen();
+      return false;
+    });
+}
+
+/** Called by net.js when the back end says which project is open: on the
+ * page's first word from it, open the project the address names instead (if
+ * another); otherwise name the open project in the address (a new history
+ * entry when another was opened). */
+/** function followAddress(first: Boolean, switched: Boolean) => Undefined */
+export function followAddress(first, switched) {
+  const a = asked(urlFragment());
+  if (first && !isOpen(a)) {
+    openAsked(a);
+    return undefined;
+  }
+  setUrlFragment(fragmentFor(), switched && !isOpen(a));
+}
+
+// Back, Forward, or a fragment typed into the address.
+listenWindow("hashchange", (e) => {
+  if (state.loaded) openAsked(asked(urlFragment()));
 });
 
 // ------------------------------------------------------------------ views

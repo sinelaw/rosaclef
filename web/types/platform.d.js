@@ -173,6 +173,14 @@ export const recStop;
 /** const setTitle: (String) => Undefined */
 export const setTitle;
 
+/** The address's fragment, without the "#" ("" when none). */
+/** const urlFragment: () => String */
+export const urlFragment;
+
+/** Show a fragment in the address (no reload, no hashchange): a new history entry when the flag is set, else in place. */
+/** const setUrlFragment: (String, Boolean) => Undefined */
+export const setUrlFragment;
+
 /** const confirmBox: (String) => Boolean */
 export const confirmBox;
 

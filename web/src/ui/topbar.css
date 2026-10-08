@@ -281,6 +281,5 @@
 /* Export while it renders: how far into the song, as a fill. */
 .btn.export.busy {
   background: linear-gradient(90deg, var(--gold-hi) var(--done, 0%), rgba(212, 175, 55, 0.35) var(--done, 0%));
-  pointer-events: none;
   font-variant-numeric: tabular-nums;
 }

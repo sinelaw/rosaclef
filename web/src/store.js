@@ -20,6 +20,8 @@ export const state = {
   agents /*: AgentPreset[] */: [],
   samples /*: String[] */: [],
   folder: "",
+  /** The open project's name (its folder's name: in the library, or in the browser's storage). */
+  name: "",
   pattern: "",
   channel: "",
   insert: insertIx(1),

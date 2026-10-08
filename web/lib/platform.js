@@ -554,6 +554,24 @@ export function setTitle(t) {
   document.title = t;
 }
 
+/** The address's fragment, without the "#" ("" when none). */
+export function urlFragment() {
+  return location.hash.replace(/^#/, "");
+}
+
+/** Show `frag` as the address's fragment without reloading or a hashchange:
+ * a new history entry when `push` (Back returns to the last one), else in place. */
+export function setUrlFragment(frag, push) {
+  const url = location.pathname + location.search + (frag === "" ? "" : "#" + frag);
+  if (url === location.pathname + location.search + location.hash) return;
+  try {
+    if (push) history.pushState(null, "", url);
+    else history.replaceState(null, "", url);
+  } catch (_) {
+    /* a sandboxed frame: the address stays */
+  }
+}
+
 export function confirmBox(msg) {
   return window.confirm(msg);
 }

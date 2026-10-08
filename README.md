@@ -71,7 +71,7 @@ there is no Studio audio output or CLAP plugins. See
 
 | command | |
 |---|---|
-| `rosaclef serve [DIR] [--port 7470] [--demo] [--library LIB]` | open a project folder in the studio; the **Projects** window (Ctrl+O) manages the projects in `LIB` (default: the parent of `DIR`) and the open project's files |
+| `rosaclef serve [DIR] [--port 7470] [--demo] [--library LIB]` | open a project folder in the studio; the **Projects** window (Ctrl+O) manages the projects in `LIB` (default: the parent of `DIR`) and the open project's files; the page's address names the open folder (`#path=<folder>`), so a bookmark reopens it |
 | `rosaclef new DIR [--demo]` | create a project folder |
 | `rosaclef validate [DIR\|FILE]` | check `project.json` (errors carry JSON paths) |
 | `rosaclef summary [DIR]` | compact overview of a project |

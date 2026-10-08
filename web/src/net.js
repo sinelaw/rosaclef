@@ -6,7 +6,7 @@ import { toast } from "./ui/toast.js";
 import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
 import { decodeProject, encodeClipWire, barBeat } from "./model.js";
 import { selectedLane, selectedPoints, laneValueAt } from "./automation.js";
-import { projectSwitched } from "./ui/projects.js";
+import { projectSwitched, followAddress } from "./ui/projects.js";
 import { t } from "./i18n.js";
 
 /** const sock: RawSock[] */
@@ -34,13 +34,16 @@ function onMessage(text) {
     // Another project (opened, imported, or found on reconnecting): what
     // was measured of the last one goes.
     if (kind === "switched" || (state.loaded && state.folder !== String(m.folder))) projectOpened();
+    const first = !state.loaded;
     state.folder = String(m.folder);
+    state.name = String(m.name ?? "");
     state.samples = m.samples;
     state.rev = Number(m.rev);
     state.nativeAvailable = m.native.available === true;
     state.nativeEnabled = m.native.enabled === true;
     state.backend = m.backend === "local" ? "local" : "server";
     load(decodeProject(m.project));
+    followAddress(first, kind === "switched");
     if (kind === "switched") projectSwitched();
     else if (state.backend === "local" && loadPref("rosaclef.localIntro") === "") {
       savePref("rosaclef.localIntro", "shown");

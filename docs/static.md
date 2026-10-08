@@ -30,7 +30,8 @@ behaves the same way:
 | import | LMMS projects (`.mmp`, `.mmpz`), MIDI files (as a new project, or added to the open song) |
 | sampled instruments | the General MIDI soundfont: each program's pieces are fetched from `soundfonts/` the first time a song plays it (the browser caches them) |
 | backup | download any project as a `.zip`; import a `.zip` as a new project |
-| export | render the song offline to a WAV (saved in `renders/` and downloaded) |
+| export | the **Export** window: render the song offline to a WAV (16-bit, 24-bit or 32-bit float; 44.1 or 48 kHz; saved in `renders/` and downloaded), or download the project's `project.json` or the whole project as a `.zip` |
+| address | the page's address names the open project (`#project=<name>`): reload, bookmark or share it to open that project again; Back returns to the project before |
 | recording | from the microphone onto a playlist track |
 | waveforms | audio clips show their waveform |
 | terminal | the **Rosaclef shell**: `summary`, `validate`, `get` / `set` / `del` on the song, `render`, `note`, `catalog`, `presets`, `ls`, `cat`, `open`, … |

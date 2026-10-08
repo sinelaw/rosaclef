@@ -17,6 +17,7 @@ import { automationMenu } from "./lanes.js";
 import { meterMenu } from "./meter.js";
 import { projectsOverlay } from "./projects.js";
 import { creditsOverlay } from "./credits.js";
+import { exportOverlay } from "./export.js";
 import { glyph } from "./widgets.js";
 import { keyboard, keyboardStrip } from "./keyboard.js";
 import {
@@ -257,6 +258,7 @@ export function studio(b) {
   else hintBar(b);
 
   projectsOverlay(b);
+  exportOverlay(b);
   creditsOverlay(b);
   toastView(b);
   automationMenu(b);
