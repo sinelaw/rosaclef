@@ -320,7 +320,8 @@ function clipBody(b, c, w) {
       for (let rep = -c.offset; rep < c.length; rep = rep + pat.length) {
         for (const n of pat.notes) {
           const t = rep + n.start;
-          if (t < 0 || t >= c.length) continue;
+          // As the engine plays it: a note past the pattern's end never sounds.
+          if (t < 0 || t >= c.length || n.start >= pat.length) continue;
           g2.fillRect(t * scale, ch - 2 - (n.pitch - lo + 1) * nh, Math.max(1.5, n.length * scale - 1), Math.max(1.2, nh - 0.6));
         }
         if (pat.length <= 0) break;

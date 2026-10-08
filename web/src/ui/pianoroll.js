@@ -7,21 +7,37 @@
 // become nodes.
 
 import { drag, fmt, pressOrTap } from "#platform";
-import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, invalidate, reportContext, hint } from "../store.js";
-import { isBlackKey, noteName, drumName, snapTo, snapDown, barAt, barLines } from "../model.js";
-import { preview, noteOn, noteOff, seek } from "../audio.js";
+import {
+  state,
+  commit,
+  begin,
+  changed,
+  currentPattern,
+  currentChannel,
+  selectChannel,
+  selectPattern,
+  invalidate,
+  reportContext,
+  hint,
+  deviceSpec,
+} from "../store.js";
+import { isBlackKey, noteName, drumName, snapTo, snapDown, barAt, barLines, uniqueId, paletteColor, noPatternDrums, newDevice, noArp } from "../model.js";
+import { preview, noteOn, noteOff, seek, followPattern } from "../audio.js";
 import { select, iconButton } from "./widgets.js";
 import { followButton } from "./playlist.js";
 import { dockScore } from "./score.js";
 import { openDock } from "./panes.js";
-import { noteIx, noteIndex } from "#brands";
+import { pushChannel, keepTried } from "./instruments.js";
+import { noteIx, noteIndex, insertIx, trackIx, trackIndex } from "#brands";
 import { t, tf } from "../i18n.js";
 
 /** What a piano roll view shows and holds: its zoom (pixels a beat), row
  * height, scroll and size; the tool, the length of the last note drawn, the
  * marquee being dragged and the key held on its keyboard. `centered`: scrolled
- * to the pattern's notes once; `focus`: the pattern it was last scrolled for. */
-/** type PianoView = { zoom: Number, rowH: Number, scrollLeft: Number, scrollTop: Number, width: Number, height: Number, tool: String, lastLength: Number, centered: Boolean, focus: String, marquee: { x0: Number, y0: Number, x1: Number, y1: Number }, marqueeOn: Boolean, keyDown: Number } */
+ * to the pattern's notes once; `focus`: the pattern it was last scrolled for.
+ * `shiftOn`: a shift-tool drag is moving the notes from beat `shiftAt` on by
+ * `shiftBy` beats. */
+/** type PianoView = { zoom: Number, rowH: Number, scrollLeft: Number, scrollTop: Number, width: Number, height: Number, tool: String, lastLength: Number, centered: Boolean, focus: String, marquee: { x0: Number, y0: Number, x1: Number, y1: Number }, marqueeOn: Boolean, keyDown: Number, shiftOn: Boolean, shiftAt: Number, shiftBy: Number } */
 
 /** function newPianoView() => PianoView */
 export function newPianoView() {
@@ -39,6 +55,9 @@ export function newPianoView() {
     marquee: { x0: 0, y0: 0, x1: 0, y1: 0 },
     marqueeOn: false,
     keyDown: -1,
+    shiftOn: false,
+    shiftAt: 0,
+    shiftBy: 0,
   };
 }
 
@@ -94,6 +113,83 @@ function isSelected(i) {
 function setSelection(list) {
   state.selection = list.map(noteIx);
   reportContext();
+}
+
+// ------------------------------------------------------------------ pattern length
+
+/** A pattern being kept long enough for its notes while an edit moves them,
+ * its length when the edit began, and the clips that showed all of it then. */
+/** type Fit = { pat: Pattern, before: Number, clips: Clip[] } */
+
+/** function fitStart(pat: Pattern) => Fit */
+function fitStart(pat) {
+  const clips = state.project.playlist.clips.filter((c) => c.pattern === pat.id && c.offset === 0 && Math.abs(c.length - pat.length) < 1e-6);
+  return { pat: pat, before: pat.length, clips: clips };
+}
+
+/** Lengthen the pattern by whole bars to hold every note (as recording does),
+ * never below `floor`; the clips that showed all of it follow, so the song
+ * plays (and the playlist shows) the notes drawn past the old end. Dragging
+ * back gives the room back. */
+/** function fitTo(f: Fit, floor: Number) => Undefined */
+function fitTo(f, floor) {
+  const bpb = state.project.transport.beatsPerBar;
+  let end = 0;
+  for (const n of f.pat.notes) end = Math.max(end, n.start + n.length);
+  const len = Math.max(floor, Math.ceil(end / bpb - 1e-6) * bpb);
+  if (Math.abs(len - f.pat.length) > 1e-9) {
+    f.pat.length = len;
+    for (const c of f.clips) c.length = len;
+  }
+}
+
+/** What the piano roll shows before there is a pattern or a channel to edit:
+ * an empty bar to draw in. */
+/** function draftPattern() => Pattern */
+function draftPattern() {
+  const bpb = state.project.transport.beatsPerBar;
+  return { id: "", name: t("pianoRoll.draft.label"), color: paletteColor(2), length: bpb, notes: [], drums: noPatternDrums() };
+}
+
+/** function draftChannel() => Channel */
+function draftChannel() {
+  return { id: "", name: "", color: "#d4af37", instrument: newDevice("fm"), volume: 0.8, pan: 0, mute: false, mixer: insertIx(0), arp: noArp(), layerOf: "" };
+}
+
+/** Make what drawing needs, so the piano roll is ready from the start: a
+ * channel (the instrument being tried, or Silver Keys), a new pattern when
+ * none is selected, and a clip for a pattern the song does not play yet. */
+function startPattern() {
+  const p = state.project;
+  const bpb = p.transport.beatsPerBar;
+  if (!currentChannel() && state.audition.on) keepTried();
+  let chId = state.channel;
+  let patId = state.pattern;
+  commit(() => {
+    if (!currentChannel()) {
+      const spec = deviceSpec("fm", "instrument");
+      chId = pushChannel("fm", spec ? spec.label : "Keys", (d) => undefined);
+    }
+    if (!currentPattern()) {
+      const n = p.patterns.length + 1;
+      patId = uniqueId(
+        `pattern-${n}`,
+        p.patterns.map((x) => x.id)
+      );
+      p.patterns.push({ id: patId, name: `Pattern ${n}`, color: paletteColor(n + 2), length: bpb, notes: [], drums: noPatternDrums() });
+    }
+    const pat = p.patterns.find((x) => x.id === patId);
+    if (pat && !p.playlist.clips.some((c) => c.pattern === patId)) {
+      const track = trackIndex(state.track) < p.playlist.tracks.length ? state.track : trackIx(0);
+      let start = 0;
+      for (const c of p.playlist.clips) if (trackIndex(c.track) === trackIndex(track)) start = Math.max(start, c.start + c.length);
+      start = Math.ceil(start / bpb - 1e-6) * bpb;
+      p.playlist.clips.push({ pattern: patId, sample: "", track: track, start: start, length: pat.length, offset: 0, gain: 1, mixer: insertIx(0) });
+    }
+  });
+  selectChannel(chId);
+  selectPattern(patId);
+  followPattern();
 }
 
 // ------------------------------------------------------------------ editing ops
@@ -163,12 +259,14 @@ export function duplicateSelection() {
   const shift = Math.max(state.snap, snapTo(hi - lo, Math.max(state.snap, 0.25)));
   /** const fresh: Int[] */
   const fresh = [];
+  const fit = fitStart(pat);
   commit(() => {
     for (const s of state.selection) {
       const n = pat.notes[noteIndex(s)];
       pat.notes.push({ channel: n.channel, pitch: n.pitch, start: n.start + shift, length: n.length, velocity: n.velocity });
       fresh.push(pat.notes.length - 1);
     }
+    fitTo(fit, fit.before);
   });
   setSelection(fresh);
 }
@@ -196,6 +294,11 @@ function onGridDown(e, pat, ch, g, view) {
     return undefined;
   }
 
+  if (view.tool === "shift" && !e.shiftKey) {
+    onShiftDown(e, pat, ch, g, view, k >= 0 ? boxes[k].i : -1, x);
+    return undefined;
+  }
+
   if (k >= 0) {
     const box = boxes[k];
     const idx = box.i;
@@ -211,6 +314,7 @@ function onGridDown(e, pat, ch, g, view) {
     const x0 = e.clientX;
     const y0 = e.clientY;
     begin();
+    const fit = fitStart(pat);
     let lastPitch = n0.pitch;
     drag(
       e,
@@ -235,6 +339,7 @@ function onGridDown(e, pat, ch, g, view) {
             preview(ch.id, p, n0.velocity);
           }
         }
+        fitTo(fit, fit.before);
         changed();
       },
       (u) => undefined
@@ -276,10 +381,12 @@ function onGridDown(e, pat, ch, g, view) {
   const start = snap > 0 ? snapDown(beat, snap) : beat;
   const len = view.lastLength;
   begin();
+  const fit = fitStart(pat);
   pat.notes.push({ channel: ch.id, pitch: pitch, start: start, length: len, velocity: 0.8 });
   const idx = pat.notes.length - 1;
   setSelection([idx]);
   preview(ch.id, pitch, 0.8);
+  fitTo(fit, fit.before);
   changed();
   const x0 = e.clientX;
   drag(
@@ -289,9 +396,64 @@ function onGridDown(e, pat, ch, g, view) {
       const l = snap > 0 ? Math.max(snap, snapTo(len + db, snap)) : Math.max(0.03, len + db);
       pat.notes[idx].length = l;
       view.lastLength = l;
+      fitTo(fit, fit.before);
       changed();
     },
     (u) => undefined
+  );
+}
+
+/** The shift tool: every note of the channel (with Alt, of every channel)
+ * from the pressed point in time on moves with the drag — right opens a gap,
+ * left closes one — and the pattern's end moves with them. Pressing a note
+ * shifts from it (from the selection's first note when it is selected). */
+/** function onShiftDown(e: Ev, pat: Pattern, ch: Channel, g: Geo, view: PianoView, hitNote: Int, x: Number) => Undefined */
+function onShiftDown(e, pat, ch, g, view, hitNote, x) {
+  const snap = state.snap;
+  let at = snap > 0 ? snapDown(x / g.zoom, snap) : x / g.zoom;
+  if (hitNote >= 0) {
+    at = pat.notes[hitNote].start;
+    if (isSelected(hitNote)) for (const s of state.selection) at = Math.min(at, pat.notes[noteIndex(s)].start);
+  }
+  const every = e.altKey;
+  /** const movers: { i: Int, start: Number }[] */
+  const movers = [];
+  for (let i = 0; i < pat.notes.length; i++) {
+    const n = pat.notes[i];
+    if ((every || n.channel === ch.id) && n.start >= at - 1e-6) movers.push({ i: i, start: n.start });
+  }
+  // Closing a gap stops at the end of the last note before the shift point.
+  let first = Infinity;
+  for (const m of movers) first = Math.min(first, m.start);
+  let before = 0;
+  for (const n of pat.notes) if ((every || n.channel === ch.id) && n.start < at - 1e-6) before = Math.max(before, n.start + n.length);
+  const room = Math.max(0, first - before);
+  setSelection(movers.filter((m) => pat.notes[m.i].channel === ch.id).map((m) => m.i));
+  view.shiftOn = true;
+  view.shiftAt = at;
+  view.shiftBy = 0;
+  invalidate();
+  const bpb = state.project.transport.beatsPerBar;
+  const x0 = e.clientX;
+  begin();
+  const fit = fitStart(pat);
+  drag(
+    e,
+    (m) => {
+      const db = (m.clientX - x0) / g.zoom;
+      const by = Math.max(-room, snap > 0 ? snapTo(db, snap) : db);
+      view.shiftBy = by;
+      for (const o of movers) pat.notes[o.i].start = o.start + by;
+      // Closing a gap before the end pulls the end back too, by whole bars.
+      const floor = by < 0 && at < fit.before ? Math.min(fit.before, Math.max(bpb, Math.ceil((fit.before + by) / bpb - 1e-6) * bpb)) : fit.before;
+      fitTo(fit, floor);
+      hint(tf("pianoRoll.shift.drag.hint", [String(movers.length), fmt(by, 2)]));
+      changed();
+    },
+    (u) => {
+      view.shiftOn = false;
+      invalidate();
+    }
   );
 }
 
@@ -390,8 +552,8 @@ function keysView(b, g, ch, view) {
   b.close();
 }
 
-/** function gridView(b: Builder, g: Geo, pat: Pattern, ch: Channel, view: PianoView) => Undefined */
-function gridView(b, g, pat, ch, view) {
+/** function gridView(b: Builder, g: Geo, pat: Pattern, ch: Channel, view: PianoView, draft: Boolean) => Undefined */
+function gridView(b, g, pat, ch, view, draft) {
   b.open("div", "grid", "scroller");
   b.on("scroll", (e) => {
     view.scrollLeft = e.scrollLeft;
@@ -407,7 +569,18 @@ function gridView(b, g, pat, ch, view) {
     }
     invalidate();
   });
-  b.on("pointerdown", (e) => pressOrTap(e, (d) => onGridDown(d, pat, ch, g, view)));
+  b.on("pointerdown", (e) =>
+    pressOrTap(e, (d) => {
+      if (!draft) onGridDown(d, pat, ch, g, view);
+      else if (d.button === 0 && view.tool === "draw" && !d.shiftKey) {
+        // The first note makes the pattern (and a channel) to draw in.
+        startPattern();
+        const p2 = currentPattern();
+        const c2 = currentChannel();
+        if (p2 && c2) onGridDown(d, p2, c2, g, view);
+      }
+    })
+  );
   b.on("contextmenu", (e) => {
     e.preventDefault();
   });
@@ -507,6 +680,14 @@ function gridView(b, g, pat, ch, view) {
     b.leaf("div", "ph", "playhead", "");
     b.style("left", `${state.position * g.zoom}px`);
   }
+  if (view.shiftOn) {
+    const by = view.shiftBy;
+    b.leaf("div", "shb", by < 0 ? "shift-band close" : "shift-band", "");
+    b.style("left", `${Math.min(view.shiftAt, view.shiftAt + by) * g.zoom}px`);
+    b.style("width", `${Math.abs(by) * g.zoom}px`);
+    b.leaf("div", "shl", "shift-line", "");
+    b.style("left", `${view.shiftAt * g.zoom}px`);
+  }
   if (view.marqueeOn) {
     const mq = view.marquee;
     b.leaf("div", "mq", "marquee", "");
@@ -563,14 +744,13 @@ function velocityView(b, g, pat, ch, view) {
 
 /** function pianoRoll(b: Builder, view: PianoView) => Undefined */
 export function pianoRoll(b, view) {
-  const pat = currentPattern();
-  const ch = currentChannel();
+  const cur = currentPattern();
+  const curCh = currentChannel();
+  // Without a pattern or a channel there is still a grid: drawing makes them.
+  const draft = !cur || !curCh;
+  const pat = cur ? cur : draftPattern();
+  const ch = curCh ? curCh : draftChannel();
   b.open("div", "pr", "editor");
-  if (!pat || !ch) {
-    b.leaf("div", "none", "b-empty", t("pianoRoll.empty"));
-    b.close();
-    return undefined;
-  }
   const g = geometry(pat, view);
   if (state.follow && state.playing && state.mode === "pattern") {
     const x = state.position * g.zoom;
@@ -603,7 +783,8 @@ export function pianoRoll(b, view) {
   b.leaf("div", "corner", "corner", pat.name);
   rulerView(b, g, pat, view);
   keysView(b, g, ch, view);
-  gridView(b, g, pat, ch, view);
+  gridView(b, g, pat, ch, view, draft);
+  if (draft) b.leaf("div", "draft", "pr-draft", curCh ? t("pianoRoll.draft.pattern.hint") : t("pianoRoll.draft.channel.hint"));
   b.leaf("div", "vl", "vel-label", t("pianoRoll.velocity.label"));
   velocityView(b, g, pat, ch, view);
   b.close();
@@ -623,6 +804,10 @@ export function pianoTools(b, view) {
   });
   iconButton(b, "select", view.tool === "select" ? "small on" : "small", "select", t("pianoRoll.tools.select.title"), () => {
     view.tool = "select";
+    invalidate();
+  });
+  iconButton(b, "shift", view.tool === "shift" ? "small on" : "small", "shift", t("pianoRoll.tools.shift.title"), () => {
+    view.tool = "shift";
     invalidate();
   });
   iconButton(b, "asScore", "small", "score", t("pianoRoll.tools.asScore.title"), () => {

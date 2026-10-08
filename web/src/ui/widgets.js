@@ -325,6 +325,7 @@ const ICONS = [
   { name: "loop", d: "M17 3.5l3 3-3 3M4 11V9.5a3 3 0 0 1 3-3h13M7 20.5l-3-3 3-3M20 13v1.5a3 3 0 0 1-3 3H4" },
   { name: "draw", d: "M4 20l4-1 11-11-3-3L5 16zM14 6l3 3" },
   { name: "select", d: "M4.5 4.5h4M4.5 4.5v4M19.5 4.5h-4M19.5 4.5v4M4.5 19.5h4M4.5 19.5v-4M19.5 19.5h-4M19.5 19.5v-4" },
+  { name: "shift", d: "M5 4.5v15M9 12h10.5M16 8.5l3.5 3.5-3.5 3.5" },
   { name: "trash", d: "M5 7h14M9.5 7V4.5h5V7M7 7l1 12.5h8L17 7" },
   { name: "folder", d: "M3.5 6.5h6l2 2h9v10h-17z" },
   { name: "wave", d: "M3 12h2l2-6 3 12 3-9 2 6 2-3h4" },

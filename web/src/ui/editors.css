@@ -237,6 +237,47 @@
   pointer-events: none;
   z-index: 6;
 }
+/* The shift tool: the time opened (gold) or closed (rose) by the drag. */
+.shift-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(212, 175, 55, 0.12);
+  pointer-events: none;
+  z-index: 5;
+}
+.shift-band.close {
+  background: rgba(208, 138, 147, 0.16);
+}
+.shift-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--gold-hi);
+  pointer-events: none;
+  z-index: 6;
+}
+/* An empty piano roll: drawing starts a pattern. */
+.pr-draft {
+  position: absolute;
+  left: 64px;
+  right: 0;
+  top: 26px;
+  bottom: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  text-align: center;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 18px;
+  pointer-events: none;
+  z-index: 4;
+}
 
 .vel-lane {
   position: relative;

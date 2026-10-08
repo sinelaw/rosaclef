@@ -37,6 +37,7 @@ function letterShortcut(c) {
   else if (c === "h" && state.focus === "score") setScoreTool("pan");
   else if (c === "p" && state.dock === "piano") setTool("draw");
   else if (c === "e" && state.dock === "piano") setTool("select");
+  else if (c === "s" && state.dock === "piano") setTool("shift");
   else return false;
   return true;
 }
