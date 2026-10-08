@@ -284,7 +284,7 @@ function growTake(run) {
     if (want > pat.length) {
       if (take.grew) {
         pat.length = want;
-        changed(true);
+        changed();
       } else {
         commit(() => {
           pat.length = want;
@@ -306,7 +306,7 @@ function trimTake() {
   const len = Math.max(take.before, Math.ceil(end / bpb - 1e-6) * bpb);
   if (len < pat.length) {
     pat.length = len;
-    changed(true);
+    changed();
   }
 }
 

@@ -223,7 +223,7 @@ function dragPoint(e, lane, idx, r, info, zoom, begun) {
       const u = u0 - ((m.clientY - y0) / (LANE_H - 2 * PAD)) * (fine ? 0.2 : 1);
       pt.value = tidy(info, valueOf(r, u));
       hint(tf("lanes.point.drag.hint", [info.label, formatValue(info, pt.value), barBeat(pt.beat, state.project.transport)]));
-      changed(true);
+      changed();
     },
     (u) => {
       reportContext();
@@ -245,7 +245,7 @@ function dragCurve(e, lane, idx, r, info) {
       const d = (y0 - m.clientY) / 90;
       pt.curve = Math.round(Math.max(-1, Math.min(1, c0 + (rising ? -d : d))) * 100) / 100;
       hint(tf("lanes.point.curve.hint", [info.label, fmt(pt.curve, 2)]));
-      changed(true);
+      changed();
     },
     (u) => undefined
   );
@@ -337,7 +337,7 @@ export function onAutoDown(e, lg, x, y) {
   begin();
   lane.points.splice(idx, 0, { beat: beat, value: value, curve: 0 });
   setAutoPoints([pointIx(idx)]);
-  changed(true);
+  changed();
   reportContext();
   dragPoint(e, lane, idx, r, info, lg.zoom, true);
 }

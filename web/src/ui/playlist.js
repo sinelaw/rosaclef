@@ -241,7 +241,7 @@ function onLaneDown(e, g) {
             c.track = trackIx(Math.max(0, Math.min(p.playlist.tracks.length - 1, o.track + dt)));
           }
         }
-        changed(true);
+        changed();
       },
       (u) => undefined
     );
@@ -256,14 +256,14 @@ function onLaneDown(e, g) {
   p.playlist.clips.push({ pattern: pat.id, sample: "", track: trackIx(track), start: start, length: pat.length, offset: 0, gain: 1, mixer: insertIx(0) });
   const idx = p.playlist.clips.length - 1;
   state.clipSelection = [clipIx(idx)];
-  changed(true);
+  changed();
   const x0 = e.clientX;
   drag(
     e,
     (m) => {
       const db = (m.clientX - x0) / g.zoom;
       p.playlist.clips[idx].length = Math.max(snap, snapTo(pat.length + db, snap));
-      changed(true);
+      changed();
     },
     (u) => undefined
   );

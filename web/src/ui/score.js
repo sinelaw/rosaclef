@@ -516,7 +516,7 @@ function grabNote(e, v, sc, s, hi, y0) {
         preview(pat.notes[n0.index].channel, p, 0.8);
       }
       hint(tf("score.note.drag.hint", [spelledName(Math.round(p), sc.fifths)]));
-      changed(true);
+      changed();
     },
     (u) => undefined
   );

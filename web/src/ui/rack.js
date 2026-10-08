@@ -201,7 +201,7 @@ function rackRow(b, pat, ch, idx) {
           begin();
         }
         ch.mixer = insertIx(i);
-        changed(true);
+        changed();
       },
       (u) => {
         // A click without a drag: go to the insert.
@@ -257,7 +257,7 @@ function rackRow(b, pat, ch, idx) {
           begin();
           const n = pat.notes[ni];
           n.velocity = Math.max(0.05, Math.min(1, Math.round((n.velocity - e.deltaY / 1000) * 100) / 100));
-          changed(true);
+          changed();
         });
       }
       b.close();

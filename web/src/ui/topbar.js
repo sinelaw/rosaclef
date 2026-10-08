@@ -89,7 +89,7 @@ function tempoLcd(b) {
         const step = m.shiftKey ? 0.05 : 0.5;
         const v = Math.round((bpm0 + (y0 - m.clientY) * step) * 100) / 100;
         state.project.transport.bpm = Math.max(20, Math.min(400, v));
-        changed(true);
+        changed();
       },
       (u) => {
         // A click without a drag: type the tempo.
@@ -168,7 +168,7 @@ function transposeLcd(b) {
         const v = Math.max(-12, Math.min(12, t0 + Math.round((y0 - m.clientY) / 14)));
         if (v !== state.project.transport.transpose) {
           state.project.transport.transpose = v;
-          changed(true);
+          changed();
         }
       },
       (u) => undefined

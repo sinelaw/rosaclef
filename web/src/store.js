@@ -74,11 +74,6 @@ export function invalidate() {
   if (hooks.mark) hooks.mark();
 }
 
-/** Same as invalidate: descriptions are cheap, everything is rebuilt. */
-export function tick() {
-  if (hooks.mark) hooks.mark();
-}
-
 // ------------------------------------------------------------------ hooks
 
 /** Set once, at start, by the network and audio layers (one each). Panels use
@@ -198,7 +193,7 @@ function snapshot() {
 export function commit(fn) {
   snapshot();
   fn();
-  changed(true);
+  changed();
 }
 
 /** Start a gesture (drag): one undo step for many `change` calls. */
@@ -206,14 +201,13 @@ export function begin() {
   snapshot();
 }
 
-/** Report a mutation made during a gesture. `structural` re-renders views. */
-/** function changed(structural: Boolean) => Undefined */
-export function changed(structural) {
+/** Report a mutation of the project (each step of a gesture, or after
+ * `commit`): it is synced, played and drawn. */
+export function changed() {
   state.edits = state.edits + 1;
   syncSoon();
   pushToEngine();
-  if (structural) invalidate();
-  else tick();
+  invalidate();
 }
 
 /** How controls (widgets.js) record changes to the project: a gesture is one
@@ -221,7 +215,7 @@ export function changed(structural) {
 /** const projectEdit: Edit */
 export const projectEdit = {
   begin: () => begin(),
-  change: () => changed(true),
+  change: () => changed(),
   commit: (fn) => commit(fn),
 };
 
@@ -231,7 +225,7 @@ export function undo() {
   redoStack.push(projectJson(state.project));
   state.project = decodeProject(JSON.parse(prev));
   fixSelection();
-  changed(true);
+  changed();
 }
 
 export function redo() {
@@ -240,7 +234,7 @@ export function redo() {
   undoStack.push(projectJson(state.project));
   state.project = decodeProject(JSON.parse(next));
   fixSelection();
-  changed(true);
+  changed();
 }
 
 /** A new version arrived from the server (the agent, the API, a recording). */
@@ -365,6 +359,6 @@ export function deviceSpec(type, category) {
 export function hint(text) {
   if (state.hint !== text) {
     state.hint = text;
-    tick();
+    invalidate();
   }
 }

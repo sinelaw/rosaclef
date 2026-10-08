@@ -235,7 +235,7 @@ function onGridDown(e, pat, ch, g, view) {
             preview(ch.id, p, n0.velocity);
           }
         }
-        changed(true);
+        changed();
       },
       (u) => undefined
     );
@@ -280,7 +280,7 @@ function onGridDown(e, pat, ch, g, view) {
   const idx = pat.notes.length - 1;
   setSelection([idx]);
   preview(ch.id, pitch, 0.8);
-  changed(true);
+  changed();
   const x0 = e.clientX;
   drag(
     e,
@@ -289,7 +289,7 @@ function onGridDown(e, pat, ch, g, view) {
       const l = snap > 0 ? Math.max(snap, snapTo(len + db, snap)) : Math.max(0.03, len + db);
       pat.notes[idx].length = l;
       view.lastLength = l;
-      changed(true);
+      changed();
     },
     (u) => undefined
   );
@@ -540,7 +540,7 @@ function velocityView(b, g, pat, ch, view) {
       if (best >= 0) {
         const targets = isSelected(best) ? state.selection.map(noteIndex) : [best];
         for (const t of targets) pat.notes[t].velocity = Math.round(v * 100) / 100;
-        changed(true);
+        changed();
       }
     };
     setAt(e);
