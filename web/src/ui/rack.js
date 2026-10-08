@@ -8,10 +8,10 @@
 // browser onto a row replaces that channel's instrument in place.
 
 import { drag, getJson } from "#platform";
-import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, showDock, deviceSpec, invalidate, hint } from "../store.js";
+import { state, commit, begin, changed, currentPattern, currentChannel, selectChannel, showDock, deviceSpec, invalidate, hint, projectEdit } from "../store.js";
 import { getParam, setParam, getOption, setOption, presetDevice, PALETTE, copyArp, newDevice, noArp } from "../model.js";
 import { preview } from "../audio.js";
-import { knobAt, paramKnobAt, select, button, iconButton, led, textInput, glyph } from "./widgets.js";
+import { knob, paramKnob, select, button, iconButton, led, textInput, glyph } from "./widgets.js";
 import { shownValue, retargetLanes } from "../automation.js";
 import { insertIx, insertIndex } from "#brands";
 import { sampleCredit } from "./credits.js";
@@ -156,11 +156,31 @@ function rackRow(b, pat, ch, idx) {
 
   const pan = shownValue(`channel/${ch.id}/pan`, ch.pan);
   const vol = shownValue(`channel/${ch.id}/volume`, ch.volume);
-  knobAt(b, "pan", "small", (pan + 1) / 2, "", tf("rack.row.pan.title", [String(Math.round(pan * 100))]), 0.5, `channel/${ch.id}/pan`, (v) => {
-    ch.pan = Math.round((v * 2 - 1) * 100) / 100;
+  knob(b, {
+    key: "pan",
+    cls: "small",
+    value: (pan + 1) / 2,
+    label: "",
+    tip: tf("rack.row.pan.title", [String(Math.round(pan * 100))]),
+    dflt: 0.5,
+    target: `channel/${ch.id}/pan`,
+    edit: projectEdit,
+    onSet: (v) => {
+      ch.pan = Math.round((v * 2 - 1) * 100) / 100;
+    },
   });
-  knobAt(b, "vol", "small", vol / 1.25, "", tf("rack.row.volume.title", [String(Math.round(vol * 100))]), 0.64, `channel/${ch.id}/volume`, (v) => {
-    ch.volume = Math.round(v * 125) / 100;
+  knob(b, {
+    key: "vol",
+    cls: "small",
+    value: vol / 1.25,
+    label: "",
+    tip: tf("rack.row.volume.title", [String(Math.round(vol * 100))]),
+    dflt: 0.64,
+    target: `channel/${ch.id}/volume`,
+    edit: projectEdit,
+    onSet: (v) => {
+      ch.volume = Math.round(v * 125) / 100;
+    },
   });
 
   b.leaf("div", "ins", "ch-ins", insertIndex(ch.mixer) === 0 ? "M" : String(insertIndex(ch.mixer)));
@@ -349,7 +369,7 @@ export function deviceControls(b, dev, spec, target) {
   }
   b.open("div", "params", "params");
   for (const ps of general) {
-    paramKnobAt(b, ps, getParam(dev, ps), target + ps.key, (v) => setParam(dev, ps.key, v));
+    paramKnob(b, { spec: ps, value: getParam(dev, ps), target: target + ps.key, edit: projectEdit, onSet: (v) => setParam(dev, ps.key, v) });
   }
   b.close();
   for (const g of groups) {
@@ -357,7 +377,7 @@ export function deviceControls(b, dev, spec, target) {
     b.leaf("div", "t", "param-group-title", tf("rack.params.operator.label", [g.digit]));
     b.open("div", "params", "params");
     for (const ps of g.params) {
-      paramKnobAt(b, ps, getParam(dev, ps), target + ps.key, (v) => setParam(dev, ps.key, v));
+      paramKnob(b, { spec: ps, value: getParam(dev, ps), target: target + ps.key, edit: projectEdit, onSet: (v) => setParam(dev, ps.key, v) });
     }
     b.close();
     b.close();

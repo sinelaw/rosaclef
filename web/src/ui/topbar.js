@@ -1,10 +1,10 @@
 // The top bar: brand, song title, transport, tempo, output and export.
 
 import { drag, fmt, download } from "#platform";
-import { state, begin, changed, commit, undo, redo, hint, invalidate } from "../store.js";
+import { state, begin, changed, commit, undo, redo, hint, invalidate, projectEdit } from "../store.js";
 import { barBeat, semitonesText } from "../model.js";
 import { togglePlay, stop, record, setMode, setOutput, toggleMetronome } from "../audio.js";
-import { iconButton, button, knobAt, meter, glyph } from "./widgets.js";
+import { iconButton, button, knob, meter, glyph } from "./widgets.js";
 import { t, tf, tk, language, setLanguage, LANGUAGES } from "../i18n.js";
 import { isAutomated, shownValue, openMenu } from "../automation.js";
 import { toast } from "./toast.js";
@@ -251,8 +251,18 @@ export function topbar(b) {
   const swing = shownValue("swing", p.transport.swing);
   b.open("div", "swing", "lcd static");
   b.leaf("span", "label", "lcd-label", t("term.swing"));
-  knobAt(b, "k", "small", swing, "", tf("format.swingPercent", [String(Math.round(swing * 100))]), 0, "swing", (v) => {
-    state.project.transport.swing = Math.round(v * 100) / 100;
+  knob(b, {
+    key: "k",
+    cls: "small",
+    value: swing,
+    label: "",
+    tip: tf("format.swingPercent", [String(Math.round(swing * 100))]),
+    dflt: 0,
+    target: "swing",
+    edit: projectEdit,
+    onSet: (v) => {
+      state.project.transport.swing = Math.round(v * 100) / 100;
+    },
   });
   b.close();
   b.close();
@@ -274,9 +284,19 @@ export function topbar(b) {
     const ml = state.meters.length > 1 ? state.meters[0] : 0;
     const mr = state.meters.length > 1 ? state.meters[1] : 0;
     b.open("div", "master", "master-mini");
-    knobAt(b, "vol", "", shownValue("insert/0/volume", master.volume) / 1.25, "", t("topbar.masterVolume.title"), 0.8, "insert/0/volume", (v) => {
-      const ins = state.project.mixer.inserts[0];
-      ins.volume = Math.round(v * 1.25 * 1000) / 1000;
+    knob(b, {
+      key: "vol",
+      cls: "",
+      value: shownValue("insert/0/volume", master.volume) / 1.25,
+      label: "",
+      tip: t("topbar.masterVolume.title"),
+      dflt: 0.8,
+      target: "insert/0/volume",
+      edit: projectEdit,
+      onSet: (v) => {
+        const ins = state.project.mixer.inserts[0];
+        ins.volume = Math.round(v * 1.25 * 1000) / 1000;
+      },
     });
     meter(b, "meter", ml, mr);
     b.close();

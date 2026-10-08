@@ -214,6 +214,15 @@ export function changed(structural) {
   else tick();
 }
 
+/** How controls (widgets.js) record changes to the project: a gesture is one
+ * undo step, and every change is synced, played and drawn. */
+/** const projectEdit: Edit */
+export const projectEdit = {
+  begin: () => begin(),
+  change: () => changed(true),
+  commit: (fn) => commit(fn),
+};
+
 export function undo() {
   const prev = undoStack.pop();
   if (prev === undefined) return;

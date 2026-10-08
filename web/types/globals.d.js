@@ -149,6 +149,10 @@
 /** type Catalog = { devices: DeviceSpec[], plugins: PluginInfo[], presets: PresetInfo[], arp: ArpCatalog, collections: SampleCollection[] } */
 /** A resolved automation target (web/src/automation.js). `kind`: tempo, swing, gain, pan or param; `open`: plugin parameter without a known range. */
 /** type TargetInfo = { ok: Boolean, kind: String, spec: ParamSpec, base: Number, label: String, color: String, open: Boolean } */
+/** How a control records its changes (web/src/ui/widgets.js): a gesture is
+ * `begin`, then `change` at each step (one undo step); `commit` makes one of a
+ * single change. The store's `projectEdit` records project edits. */
+/** type Edit = { begin: () => Undefined, change: () => Undefined, commit: (() => Undefined) => Undefined } */
 /** type AgentPreset = { id: String, name: String, command: String[], available: Boolean, hint: String } */
 
 // --------------------------------------------------------------- platform
