@@ -5,9 +5,12 @@
 //! onsets are found band by band — low (kicks, toms), mid (snares, claps,
 //! rims), high (hats, shakers) — each band against its own typical level, so
 //! a quiet hat under a loud kick still counts. Onsets of different bands
-//! within 20 ms are one moment. Each moment is then read from how much each
-//! band rose, where the low part sits (a kick below a tom) and how long the
-//! highs ring (an open hat).
+//! within 20 ms are one moment, and a moment soon after another that brought
+//! nothing new (a "tsss" swelling, a hummed kick ringing on) is the same
+//! sound. Each moment is then read from how much each band rose, where the
+//! low part sits (a kick below a tom) and how long the highs ring (an open
+//! hat), against what the take's own clear hits look like: a voice's "p"
+//! is a bright kick and its "ts" sits lower than a cymbal.
 
 use super::{power, round3, twiddles, Hit};
 
@@ -32,6 +35,8 @@ pub struct Moment {
     /// measured until the next moment; 0 when there is no time to tell).
     pub high_decay: f32,
     pub low_decay: f32,
+    /// The same as `high_decay` from 5 kHz up.
+    pub wide_decay: f32,
     /// Peak level of the moment (for velocities).
     pub peak: f32,
 }
@@ -91,7 +96,37 @@ pub fn moments(x: &[f32], sr: f32) -> Vec<Moment> {
     let mut flux = vec![[0f32; 3]; frames];
     let mut energy = vec![[0f32; 10]; frames];
     let mut level = vec![0f32; frames];
+    // The four regions (`Regions`) in a short window centred on the long
+    // one's centre: dips between hits a few tens of ms apart show in it.
+    let ns = n / 4;
+    let tws = twiddles(ns);
+    let wins: Vec<f32> = (0..ns)
+        .map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / ns as f32).cos())
+        .collect();
+    let region_of: Vec<usize> = (0..=ns / 2)
+        .map(|k| {
+            let f = k as f32 * sr / ns as f32;
+            REGION_EDGES
+                .iter()
+                .filter(|&&e| f >= e)
+                .count()
+                .wrapping_sub(1)
+        })
+        .collect();
+    let mut segs = vec![0f32; ns];
+    let mut short = vec![[0f32; 4]; frames];
     for f in 0..frames {
+        for (i, v) in segs.iter_mut().enumerate() {
+            *v = x[f * hop + (n - ns) / 2 + i] * gain;
+        }
+        for (k, v) in power(&segs, &wins, ns, &tws, &mut re, &mut im)
+            .iter()
+            .enumerate()
+        {
+            if region_of[k] < 4 {
+                short[f][region_of[k]] += v;
+            }
+        }
         for (i, v) in seg.iter_mut().enumerate() {
             *v = x[f * hop + i] * gain;
         }
@@ -244,9 +279,73 @@ pub fn moments(x: &[f32], sr: f32) -> Vec<Moment> {
             rise,
             high_decay: 0.0,
             low_decay: 0.0,
+            wide_decay: 0.0,
             peak,
         });
     }
+    // One sound can set off more than one onset: a "tsss" swelling, a
+    // hummed kick ringing on. A moment soon after the last one is a new hit
+    // only if some region dipped after the last one's peak and came back,
+    // or jumped well past it (a hat on the tail of a kick); a roll's hits
+    // each come out of a dip.
+    let mut keep = vec![true; out.len()];
+    let mut last = 0;
+    for i in 1..out.len() {
+        let (fp, f0) = (starts[last].0, starts[i].0);
+        if f0 - fp >= ms(0.1) {
+            last = i;
+            continue;
+        }
+        let after_end = (f0 + ms(0.05)).min(frames);
+        let tops: Vec<f32> = (0..4)
+            .map(|r| {
+                short[f0..after_end]
+                    .iter()
+                    .map(|e| e[r])
+                    .fold(0.0, f32::max)
+            })
+            .collect();
+        let loudest_region = tops.iter().cloned().fold(0.0, f32::max);
+        // The last one just before and far quieter than this: it was the
+        // lead-in of this sound (the "t" of a "ts"), which is heard where it
+        // peaks.
+        let lead_in = (0..4)
+            .map(|r| short[fp..f0].iter().map(|e| e[r]).fold(0.0, f32::max))
+            .fold(0.0, f32::max);
+        if f0 - fp < ms(0.06) && loudest_region > 4.0 * lead_in {
+            keep[last] = false;
+            last = i;
+            continue;
+        }
+        let new_hit = (0..4).any(|r| {
+            let (mut top, mut at) = (0.0f32, fp);
+            for (f, e) in short.iter().enumerate().take(f0).skip(fp) {
+                if e[r] > top {
+                    top = e[r];
+                    at = f;
+                }
+            }
+            let valley = short[at..=f0].iter().map(|e| e[r]).fold(f32::MAX, f32::min);
+            tops[r] >= 0.1 * loudest_region
+                && tops[r] > 2.0 * valley
+                && (valley < 0.5 * top || tops[r] > 4.0 * top)
+        });
+        let onset = |m: &Moment| m.strength.iter().cloned().fold(0.0, f32::max);
+        if new_hit {
+            last = i;
+        } else if onset(&out[i]) > onset(&out[last]) {
+            // One sound: it is where its onset is clearest.
+            keep[last] = false;
+            last = i;
+        } else {
+            keep[i] = false;
+        }
+    }
+    let mut k = keep.iter();
+    out.retain(|_| *k.next().unwrap());
+    let mut k = keep.iter();
+    starts.retain(|_| *k.next().unwrap());
+
     // Decay rates of what the hit added (above the valley before it): from
     // its peak just after the hit to its lowest point before the next
     // moment (at most 150 ms on) — a sound still ringing from before does
@@ -273,10 +372,14 @@ pub fn moments(x: &[f32], sr: f32) -> Vec<Moment> {
             10.0 * (top / low).log10() / ((end - at) as f32 * hop as f32 / sr)
         };
         out[i].high_decay = rate(8..10);
+        out[i].wide_decay = rate(7..10);
         out[i].low_decay = rate(0..3);
     }
     out
 }
+
+/// Lower edges of the four regions of `Regions` (Hz).
+const REGION_EDGES: [f32; 5] = [30.0, 300.0, 1200.0, 5000.0, 20000.0];
 
 /// Flux a band onset needs at least (keeps steady tones and hiss out).
 const FLOOR: [f32; 3] = [0.02, 0.02, 0.02];
@@ -290,6 +393,9 @@ const ON_KICK: f32 = 0.2;
 /// Least share of a typical hat that counts on top of a kick, or of a snare
 /// in the middle of a roll.
 const ON_OTHER: f32 = 0.35;
+/// How much brighter than the take's kicks (noise per unit of body) a kick
+/// has to be to have a snare on it.
+const BRIGHTER: f32 = 5.0;
 /// Hiss dying slower than this (dB/s) is an open hat's.
 const OPEN_RING: f32 = 60.0;
 
@@ -303,12 +409,13 @@ struct Regions {
     hiss: f32,
 }
 
-fn regions(r: &[f32; 10]) -> Regions {
+/// `low_hiss`: the share of 5-8 kHz that is hiss (the rest is noise).
+fn regions(r: &[f32; 10], low_hiss: f32) -> Regions {
     Regions {
         body: r[0] + r[1] + r[2],
         click: r[3] + r[4],
-        noise: r[5] + r[6] + r[7],
-        hiss: r[8] + r[9],
+        noise: r[5] + r[6] + (1.0 - low_hiss) * r[7],
+        hiss: low_hiss * r[7] + r[8] + r[9],
     }
 }
 
@@ -336,10 +443,26 @@ pub fn hits(x: &[f32], sr: f32) -> Vec<Hit> {
     // loudest moment (a held tone's leakage wavers, but by next to nothing).
     let loudest_power = ms.iter().map(|m| m.peak * m.peak).fold(0.0, f32::max);
     let heard = |v: f32| if v >= loudest_power * 3e-4 { v } else { 0.0 };
+    // Where 5-8 kHz belongs: a voice's "ts" sits there, a drum's snare
+    // reaches up into it under cymbals that ring higher. It is the hiss as
+    // far as the take's hats (moments ruled by what is above 5 kHz) have
+    // their energy there rather than higher: drums have under a fifth of it
+    // there (a third through a phone), voices half or more.
+    let low_share = percentile(
+        ms.iter()
+            .filter_map(|m| {
+                let top = heard(m.rise[7] + m.rise[8] + m.rise[9]);
+                let rest: f32 = m.rise[..7].iter().sum();
+                (top > 2.0 * rest).then(|| m.rise[7] / top)
+            })
+            .collect(),
+        0.5,
+    );
+    let low_hiss = ((low_share - 0.25) / 0.2).clamp(0.0, 1.0);
     let rs: Vec<Regions> = ms
         .iter()
         .map(|m| {
-            let r = regions(&m.rise);
+            let r = regions(&m.rise, low_hiss);
             Regions {
                 body: heard(r.body),
                 click: heard(r.click),
@@ -356,14 +479,16 @@ pub fn hits(x: &[f32], sr: f32) -> Vec<Hit> {
     // without a hat on top).
     let hat_noise = learned(
         rs.iter()
-            .filter(|r| r.hiss > 2.0 * (r.body + r.click))
+            .filter(|r| r.hiss > 2.0 * (r.body + r.click) && r.hiss > 2.0 * r.noise)
             .map(|r| (r.noise, r.hiss))
             .collect(),
         0.8,
         0.2,
     );
-    let snare_like =
-        |r: &&Regions| r.noise > 0.15 * max_noise && r.noise > hat_noise * r.hiss * 1.5;
+    // (Snares ring with more noise than body: a bright "p" is no snare.)
+    let snare_like = |r: &&Regions| {
+        r.noise > 0.15 * max_noise && r.noise > hat_noise * r.hiss * 1.5 && r.noise > r.body
+    };
     let snare_hiss = learned(
         rs.iter()
             .filter(snare_like)
@@ -383,6 +508,18 @@ pub fn hits(x: &[f32], sr: f32) -> Vec<Hit> {
             .collect(),
         0.5,
         0.12,
+    );
+    // The noise a kick brings of its own per unit of body: next to none
+    // from a drum, plenty from a "p" (a lower quantile: kicks without a
+    // snare on them).
+    let max_body = max_of(&|r| r.body);
+    let kick_noise = learned(
+        rs.iter()
+            .filter(|r| r.body >= 0.1 * max_body && r.body > r.noise)
+            .map(|r| (r.noise, r.body))
+            .collect(),
+        0.25,
+        0.0,
     );
     let snare_click = learned(
         rs.iter()
@@ -448,7 +585,7 @@ pub fn hits(x: &[f32], sr: f32) -> Vec<Hit> {
     );
 
     let mut out: Vec<(Hit, f32)> = vec![];
-    for (i, ((m, r), p)) in ms.iter().zip(&rs).zip(&parts).enumerate() {
+    for ((m, r), p) in ms.iter().zip(&rs).zip(&parts) {
         let (low, snare, hat) = (p.low / t_low, p.snare / t_snare, p.hat / t_hat);
         let mut push = |kind: &'static str, ratio: f32, energy: f32| {
             if ratio >= PRESENT {
@@ -471,8 +608,9 @@ pub fn hits(x: &[f32], sr: f32) -> Vec<Hit> {
             low
         };
         // A snare's body can read as a little kick under it (a flam, a roll
-        // piling up): a kick on a snare has to be a real one.
-        let low = if snare >= ON_KICK && low < ON_KICK {
+        // piling up), and so can the breath behind a "ts": a kick on a snare
+        // or a hat has to be a real one.
+        let low = if (snare >= ON_KICK || hat >= ON_OTHER) && low < ON_KICK {
             0.0
         } else {
             low
@@ -485,22 +623,30 @@ pub fn hits(x: &[f32], sr: f32) -> Vec<Hit> {
         push(if tom { "tom" } else { "kick" }, low, p.low);
         // A kick's click spills a little into the snare's noise: a snare on
         // a kick has to be a real hit (ghost notes fall between the beats).
-        let snare = if low >= PRESENT && snare < ON_KICK {
+        // A hat's hiss reaches down into the noise too: a snare on a hat has
+        // to be a real one as well.
+        let snare = if (low >= PRESENT
+            && (snare < ON_KICK || r.noise < BRIGHTER * kick_noise * r.body))
+            || (hat >= ON_OTHER && snare < ON_KICK)
+        {
             0.0
         } else {
             snare
         };
         push("snare", snare, p.snare);
-        // Likewise the hiss of a kick's click, or the hiss a roll leaves: a
-        // hat on a kick, or on a snare right after the last moment, has to
-        // be a real one.
-        let crowded = i > 0 && m.time - ms[i - 1].time < 0.1;
-        let hat = if ((crowded && snare >= PRESENT) || low >= PRESENT) && hat < ON_OTHER {
+        // Likewise the hiss of a kick's click or of a "k", or the hiss a roll
+        // leaves: a hat on a kick or a snare has to be a real one.
+        let hat = if (snare >= PRESENT || low >= PRESENT) && hat < ON_OTHER {
             0.0
         } else {
             hat
         };
-        let open = m.high_decay > 0.0 && m.high_decay < OPEN_RING;
+        let decay = if low_hiss > 0.5 {
+            m.wide_decay
+        } else {
+            m.high_decay
+        };
+        let open = decay > 0.0 && decay < OPEN_RING;
         push(if open { "openhat" } else { "hat" }, hat, p.hat);
     }
     // Velocities: each drum against its loudest hit.

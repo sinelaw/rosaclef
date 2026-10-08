@@ -1319,6 +1319,118 @@ mod tests {
         }
     }
 
+    /// Noise between `lo` and `hi` Hz (one-pole filters, two each side).
+    fn band(rng: &mut Rng, sr: f32, lo: f32, hi: f32, len: usize) -> Vec<f32> {
+        let a = 1.0 - (-2.0 * PI * hi / sr).exp();
+        let b = 1.0 - (-2.0 * PI * lo / sr).exp();
+        let (mut l1, mut l2, mut h1, mut h2) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+        (0..len)
+            .map(|_| {
+                l1 += (rng.noise() - l1) * a;
+                l2 += (l1 - l2) * a;
+                h1 += (l2 - h1) * b;
+                h2 += (l2 - h1 - h2) * b;
+                l2 - h1 - h2
+            })
+            .collect()
+    }
+
+    /// Sounds the way a real beatboxer's are (measured on recorded takes):
+    /// a "p" kick is a lip burst across the spectrum, strongest at 4-8 kHz,
+    /// over a low thump; a "k" snare is a click of 1-4 kHz noise with some
+    /// hiss; a "ts" hat is 5-9 kHz hiss that swells for 40 ms after the
+    /// little "t" that starts it.
+    fn voiced(out: &mut [f32], sr: f32, at: f32, kind: &str, rng: &mut Rng) {
+        let a = (at * sr) as usize;
+        let len = (0.3 * sr) as usize;
+        let env = |t: f32, attack: f32, decay: f32| {
+            (t / attack).min(1.0) * (-(t - attack).max(0.0) / decay).exp()
+        };
+        let (n1, n2) = match kind {
+            "p" => (
+                band(rng, sr, 3500.0, 9000.0, len),
+                band(rng, sr, 300.0, 2500.0, len),
+            ),
+            "k" => (
+                band(rng, sr, 1000.0, 4000.0, len),
+                band(rng, sr, 5000.0, 9000.0, len),
+            ),
+            _ => (
+                band(rng, sr, 5000.0, 9000.0, len),
+                band(rng, sr, 2000.0, 9000.0, len),
+            ),
+        };
+        let mut phase = 0.0f32;
+        for i in 0..len {
+            if a + i >= out.len() {
+                break;
+            }
+            let t = i as f32 / sr;
+            out[a + i] += match kind {
+                "p" => {
+                    phase += 2.0 * PI * (70.0 + 60.0 * (-t / 0.02).exp()) / sr;
+                    0.5 * phase.sin() * env(t, 0.003, 0.06)
+                        + 0.6 * n1[i] * env(t, 0.001, 0.012)
+                        + 0.6 * n2[i] * env(t, 0.001, 0.01)
+                }
+                "k" => 3.0 * n1[i] * env(t, 0.001, 0.03) + 1.5 * n2[i] * env(t, 0.001, 0.02),
+                // The "t" first, then the "s" swelling in.
+                _ => 0.8 * n2[i] * env(t, 0.0005, 0.004) + 2.5 * n1[i] * env(t, 0.04, 0.05),
+            };
+        }
+    }
+
+    #[test]
+    fn a_human_beatbox_take_becomes_one_hit_per_sound() {
+        // "p ts k ts p ts k ts" with the "ts" peaking 40 ms after it starts.
+        let sr = 44100.0;
+        let pattern = [
+            (0.10, "p"),
+            (0.37, "ts"),
+            (0.64, "k"),
+            (0.91, "ts"),
+            (1.18, "p"),
+            (1.45, "ts"),
+            (1.72, "k"),
+            (1.99, "ts"),
+            (2.26, "p"),
+            (2.53, "k"),
+        ];
+        let mut x = vec![0.0; (2.8 * sr) as usize];
+        let mut rng = Rng(0x2545f491);
+        for &(t, k) in &pattern {
+            voiced(&mut x, sr, t, k, &mut rng);
+        }
+        for v in x.iter_mut() {
+            *v = 0.2 * *v + 0.0005 * rng.noise();
+        }
+        let t = transcribe(&take(x, sr), "drums");
+        let got: Vec<&str> = t
+            .hits
+            .iter()
+            .filter(|h| h.strength >= 0.12)
+            .map(|h| h.kind)
+            .collect();
+        let want: Vec<&str> = pattern
+            .iter()
+            .map(|p| match p.1 {
+                "p" => "kick",
+                "k" => "snare",
+                _ => "hat",
+            })
+            .collect();
+        assert_eq!(got, want, "{:#?}", t.hits);
+        for (h, p) in t.hits.iter().filter(|h| h.strength >= 0.12).zip(pattern) {
+            // A "ts" is heard between its "t" and where its hiss peaks.
+            let late = if p.1 == "ts" { 0.04 } else { 0.0 };
+            assert!(
+                h.time > p.0 - 0.015 && h.time < p.0 + late + 0.015,
+                "{h:?} should be at {}",
+                p.0
+            );
+        }
+    }
+
     #[test]
     fn quiet_takes_and_steady_tones() {
         // The same loop recorded 30 dB lower is found all the same.

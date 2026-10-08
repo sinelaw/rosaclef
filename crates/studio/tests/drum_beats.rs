@@ -388,8 +388,8 @@ fn drum_beats_report() {
     // Floors a little under what the detector scores today (F per drum
     // over all the beats), so a change that loses hits shows here.
     let floors = [
-        ("studio", [0.95, 0.85, 0.95, 0.85, 0.95]),
-        ("phone", [0.95, 0.85, 0.9, 0.75, 0.95]),
+        ("studio", [0.95, 0.95, 0.95, 0.9, 0.95]),
+        ("phone", [0.95, 0.85, 0.95, 0.78, 0.95]),
     ];
     for (variant, floor) in floors {
         let total = if variant == "studio" {

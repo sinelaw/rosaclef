@@ -128,8 +128,11 @@
   fit of whole semitones (a cost per note change, five detail levels, the
   singer's own tuning) (melody); SuperFlux onsets band by band (low, mid,
   high, each against its own typical hit), so one moment can hold several
-  drums, read from how much its body, click, noise and hiss rose — with the
-  spill between drums learned from the take's clear hits — into kick, tom,
+  drums, one sound that sets off several onsets (a swelling "tsss", a
+  hummed kick ringing on) kept as one hit, read from how much its body,
+  click, noise and hiss rose — with the spill between drums, how bright the
+  kicks are and where the hats' hiss sits (a voice's "ts" lower than a
+  cymbal) learned from the take's clear hits — into kick, tom,
   snare, hat and open hat (beatbox, `transcribe/drums.rs`; scored against
   beats played on the `drum` machine by `crates/studio/tests/drum_beats.rs`).
   It returns raw seconds and fractional pitches (`GET /api/transcribe`, on
