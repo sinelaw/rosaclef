@@ -9,7 +9,8 @@ import { tk } from "./i18n.js";
 /** A dock tab. `label`, `navLabel`: message keys of its tab and of its button
  * in the phone's navigation bar. `key`: the function key that opens it.
  * `agentName`: how the agent's context and the panel focus name it. `keys`:
- * whether the on-screen piano shows under it on a phone (it plays there). */
+ * whether the on-screen piano shows under it on a phone: not in the mixer,
+ * nor while singing into the microphone (the phone frees the room). */
 /** type DockInfo = { id: String, label: String, navLabel: String, icon: String, key: String, agentName: String, keys: Boolean } */
 
 /** const DOCKS: DockInfo[] */

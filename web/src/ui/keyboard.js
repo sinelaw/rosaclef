@@ -102,8 +102,6 @@ export const keyboard = {
   armed: false,
 };
 
-/** Whether the piano helps in a dock tab: not in the mixer, nor while
- * singing into the microphone (a phone hides it there to free the room). */
 /** const held: Held[] */
 const held = [];
 
