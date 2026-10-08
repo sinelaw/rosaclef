@@ -174,7 +174,7 @@
 } */
 
 /** type PresetRef = { font: String, bank: Number, program: Number } */
-/** type AudioMsg = { t: String, position: Number, playing: Boolean, loopLength: Number, meters: Number[], missing: String[], presets: PresetRef[], message: String, sampleRate: Number } */
+/** type AudioMsg = { t: String, position: Number, playing: Boolean, loopLength: Number, meters: Number[], missing: String[], presets: PresetRef[], message: String, sampleRate: Number, stale: Boolean } */
 
 /** type Decoded = { sampleRate: Number, channels: Floats[], duration: Number } */
 

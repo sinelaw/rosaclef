@@ -332,6 +332,7 @@ function normalizeMsg(m) {
     presets: m.presets || [],
     message: m.message || "",
     sampleRate: m.sampleRate || 0,
+    stale: m.t === "status" && (m.transport || 0) < transport.sent,
   };
 }
 
@@ -368,8 +369,17 @@ export async function audioStart(workletUrl, wasmUrl, onMsg) {
   return ready;
 }
 
+// Transport commands (play, pause, stop) are numbered; the engine reports the
+// last one it applied with each status. A status sent before the engine
+// applied the latest command is stale: its `playing` is from before it.
+const transport = { sent: 0 };
+
 export function audioPost(msg) {
-  if (node) node.port.postMessage(msg);
+  if (!node) return;
+  if (msg.t === "play" || msg.t === "pause" || msg.t === "stop") {
+    transport.sent = transport.sent + 1;
+    node.port.postMessage({ ...msg, transport: transport.sent });
+  } else node.port.postMessage(msg);
 }
 
 export function audioPostSample(path, decoded) {

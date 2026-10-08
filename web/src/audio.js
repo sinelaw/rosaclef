@@ -25,7 +25,9 @@ function onEngineMessage(m) {
     if (state.output !== "browser") return undefined;
     state.position = m.position;
     state.positionAt = now();
-    state.playing = m.playing;
+    // A status sent before the engine applied the last play, pause or stop
+    // would undo it here (Space twice would play twice).
+    if (!m.stale) state.playing = m.playing;
     state.loopLength = m.loopLength;
     const nIns = Math.round(m.meters.length > 0 ? m.meters[0] : 0);
     const nCh = Math.round(m.meters.length > 1 ? m.meters[1] : 0);
