@@ -3,8 +3,10 @@
 A small retained, reconciling UI tree in the spirit of
 [fresh-ui](https://github.com/sinelaw/fresh/tree/master/crates/fresh-ui).
 Plain ES modules, no build step, type-checked with
-[inty](https://sinelaw.github.io/inty/). It knows nothing about Rosaclef:
-the studio (`web/src`) is one program written on it.
+[inty](https://sinelaw.github.io/inty/). The studio (`web/src`) is one
+program written on it. Only `dom.js` knows a little of the studio: which
+elements count as controls (`CONTROLS`: a press there does not take the
+keyboard back) and as its terminal (`TERMINAL`: its keys are typed).
 
 | file                 | what                                                                                  | checked                    |
 | -------------------- | ------------------------------------------------------------------------------------- | -------------------------- |

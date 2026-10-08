@@ -20,6 +20,7 @@ mkdir -p "$out"
 for d in engine fonts lib local locales soundfonts src styles tree vendor; do
   cp -R "web/$d" "$out/$d"
 done
+rm -f "$out"/tree/*.d.js "$out/tree/README.md"
 # Tell the page it has no server (skips probing for one).
 awk '{ print } /<meta charset="utf-8">/ { print "  <meta name=\"rosaclef-backend\" content=\"local\">" }' web/index.html > "$out/index.html"
 # GitHub Pages: serve files as they are.
