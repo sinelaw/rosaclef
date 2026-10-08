@@ -62,7 +62,8 @@ stale and never need unbinding.
   selected), `reveal` (scroll into view, only as far as it takes),
   `scrollLeft` / `scrollTop`.
 - `b.canvas(key, cls, paint)` for per-pixel content: `paint(ctx, w, h)` runs
-  after the flush, at the device's pixel ratio.
+  after the flush, at the device's pixel ratio. CSS or the view's styles size
+  the canvas (both width and height); `w` and `h` are its box.
 
 ## Events
 

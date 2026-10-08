@@ -83,15 +83,16 @@ export function pixelRatio() {
   return window.devicePixelRatio || 1;
 }
 
-/** Size a canvas for the device pixel ratio and return its 2D context. */
+/** Size a canvas's pixels for the device pixel ratio and return its 2D
+ * context. Its box is left to CSS (or the view's styles): pinning it here
+ * would keep a canvas sized by its container, such as a clip's preview, at
+ * its first width for good. */
 export function canvas2d(canvas, width, height) {
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(1, Math.floor(width * dpr));
   const h = Math.max(1, Math.floor(height * dpr));
   if (canvas.width !== w) canvas.width = w;
   if (canvas.height !== h) canvas.height = h;
-  canvas.style.width = width + "px";
-  canvas.style.height = height + "px";
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (!ctx.fillGradient) {
