@@ -18,7 +18,7 @@ import { meterMenu } from "./meter.js";
 import { projectsOverlay } from "./projects.js";
 import { creditsOverlay } from "./credits.js";
 import { glyph } from "./widgets.js";
-import { keyboard, keyboardStrip, keysHelp } from "./keyboard.js";
+import { keyboard, keyboardStrip } from "./keyboard.js";
 import {
   layoutState,
   sideMode,
@@ -37,6 +37,30 @@ import {
   setTop,
 } from "./panes.js";
 import { t, tf } from "../i18n.js";
+import { DOCKS, dockInfo } from "../docks.js";
+
+/** A dock tab's views: what it shows, and its tools in the tab strip. */
+/** type DockView = { id: String, body: (Builder) => Undefined, tools: (Builder) => Undefined } */
+
+/** The views of each dock tab (the tabs themselves are listed in ../docks.js). */
+/** const DOCK_VIEWS: DockView[] */
+const DOCK_VIEWS = [
+  { id: "rack", body: rack, tools: rackTools },
+  { id: "piano", body: pianoRoll, tools: pianoTools },
+  { id: "voice", body: voicePanel, tools: voiceTools },
+  { id: "drums", body: drumsPanel, tools: drumsTools },
+  { id: "mixer", body: mixer, tools: mixerTools },
+  { id: "score", body: (b) => scoreView(b, dockScore), tools: (b) => scoreTools(b, dockScore) },
+];
+
+/** The views of the dock tab with this id (the first's for an unknown one). */
+/** function dockView(id: String) => DockView */
+function dockView(id) {
+  for (const v of DOCK_VIEWS) {
+    if (v.id === id) return v;
+  }
+  return DOCK_VIEWS[0];
+}
 
 /** function px(v: Number) => String */
 function px(v) {
@@ -108,12 +132,9 @@ function navBar(b) {
   b.open("nav", "nav", "navbar");
   navItem(b, "browser", t("panel.browser"), "folder", v === "browser", "", () => setView("browser"));
   navItem(b, "playlist", t("panel.playlist"), "playlist", v === "playlist", "", () => setView("playlist"));
-  navItem(b, "rack", t("shell.nav.rack.label"), "rack", v === "dock" && state.dock === "rack", "", () => openDock("rack"));
-  navItem(b, "piano", t("shell.nav.piano.label"), "piano", v === "dock" && state.dock === "piano", "", () => openDock("piano"));
-  navItem(b, "voice", t("panel.voice"), "mic", v === "dock" && state.dock === "voice", "", () => openDock("voice"));
-  navItem(b, "drums", t("panel.drums"), "drum", v === "dock" && state.dock === "drums", "", () => openDock("drums"));
-  navItem(b, "mixer", t("panel.mixer"), "mixer", v === "dock" && state.dock === "mixer", "", () => openDock("mixer"));
-  navItem(b, "score", t("panel.score"), "score", v === "dock" && state.dock === "score", "", () => openDock("score"));
+  for (const d of DOCKS) {
+    navItem(b, d.id, t(d.navLabel), d.icon, v === "dock" && state.dock === d.id, "", () => openDock(d.id));
+  }
   navItem(b, "agent", t("panel.maestro"), "spark", v === "agent", agentDot(), () => setView("agent"));
   b.close();
 }
@@ -125,7 +146,7 @@ export function studio(b) {
   const compact = isCompact(window.innerWidth, window.innerHeight);
   // On a phone the keys show under the editors that use them: not over the
   // browser or the terminal, nor under the mixer or the Voice panel.
-  const keys = keyboard.shown && (!compact || layoutState.view === "playlist" || (layoutState.view === "dock" && keysHelp(state.dock)));
+  const keys = keyboard.shown && (!compact || layoutState.view === "playlist" || (layoutState.view === "dock" && dockInfo(state.dock).keys));
   const base = compact ? `studio compact v-${layoutState.view}` : "studio";
   const cls = keys ? `${base} has-keys` : base;
   b.open("div", "studio", layoutState.dragging ? `${cls} dragging` : cls);
@@ -201,30 +222,16 @@ export function studio(b) {
   b.on("pointerdown", (e) => paneDown(e, dockName(state.dock)));
   b.open("div", "tabs", "tabs");
   paneHeader(b, "dock");
-  tab(b, "rack", t("shell.dock.rack.label"), "rack", "F6");
-  tab(b, "piano", t("shell.dock.piano.label"), "piano", "F7");
-  tab(b, "voice", t("panel.voice"), "mic", "F8");
-  tab(b, "drums", t("panel.drums"), "drum", "F4");
-  tab(b, "mixer", t("panel.mixer"), "mixer", "F9");
-  tab(b, "score", t("panel.score"), "score", "F10");
+  for (const d of DOCKS) tab(b, d.id, t(d.label), d.icon, d.key);
+  const view = dockView(state.dock);
   b.open("div", "tools", "tools");
-  if (state.dock === "rack") rackTools(b);
-  else if (state.dock === "piano") pianoTools(b);
-  else if (state.dock === "voice") voiceTools(b);
-  else if (state.dock === "drums") drumsTools(b);
-  else if (state.dock === "score") scoreTools(b, dockScore);
-  else mixerTools(b);
+  view.tools(b);
   b.close();
   paneControls(b, "dock");
   b.close();
   b.open("div", "body", "dock-body");
   if (state.dock !== "piano") state.viewport.prOn = false;
-  if (state.dock === "rack") rack(b);
-  else if (state.dock === "piano") pianoRoll(b);
-  else if (state.dock === "voice") voicePanel(b);
-  else if (state.dock === "drums") drumsPanel(b);
-  else if (state.dock === "score") scoreView(b, dockScore);
-  else mixer(b);
+  view.body(b);
   b.close();
   b.close();
   b.close();

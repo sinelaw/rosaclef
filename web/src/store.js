@@ -7,6 +7,7 @@
 import { debounce, nowIso } from "#platform";
 import { decodeProject, emptyProject, projectJson, cloneProject, describeChange, defaultArpCatalog, newDevice, noArp } from "./model.js";
 import { insertIx, insertIndex, trackIx, noteIndex, clipIndex } from "#brands";
+import { dockInfo } from "./docks.js";
 
 export const state = {
   project /*: Project */: emptyProject(),
@@ -308,12 +309,7 @@ export function selectInsert(i) {
 /** The dock's editor as the agent's context names it. */
 /** function dockName(dock: String) => String */
 export function dockName(dock) {
-  if (dock === "piano") return "piano roll";
-  if (dock === "mixer") return "mixer";
-  if (dock === "voice") return "voice to notes";
-  if (dock === "drums") return "drums";
-  if (dock === "score") return "score";
-  return "channel rack";
+  return dockInfo(dock).agentName;
 }
 
 /** function showDock(name: String) => Undefined */

@@ -17,6 +17,7 @@ import { keyboard, pressKey, releaseKey, typedPitch, shiftTyped, toggleRecordKey
 import { voice, startTake, stopTake } from "./ui/voice.js";
 import { setScoreTool, cancelScoreRange } from "./ui/score.js";
 import { keysTarget } from "./ui/instruments.js";
+import { dockForKey } from "./docks.js";
 
 /** Computer keys holding a note, by `code`. */
 /** const held: String[] */
@@ -100,24 +101,9 @@ export function installKeys() {
       else if (voice.status === "recording") stopTake();
       else if (keyboard.armed) toggleRecordKeys();
       else stop();
-    } else if (k === "F4") {
+    } else if (dockForKey(k) !== "") {
       e.preventDefault();
-      openDock("drums");
-    } else if (k === "F6") {
-      e.preventDefault();
-      openDock("rack");
-    } else if (k === "F7") {
-      e.preventDefault();
-      openDock("piano");
-    } else if (k === "F8") {
-      e.preventDefault();
-      openDock("voice");
-    } else if (k === "F9") {
-      e.preventDefault();
-      openDock("mixer");
-    } else if (k === "F10") {
-      e.preventDefault();
-      openDock("score");
+      openDock(dockForKey(k));
     } else if (k === "Delete" || k === "Backspace") {
       if ((state.dock === "piano" || state.focus === "score") && state.selection.length > 0) deleteSelection();
       else deleteSelectedClips();
