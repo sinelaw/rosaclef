@@ -4,8 +4,8 @@
 //
 // The server owns the library (GET /api/projects, /api/files, ...); this
 // module keeps a copy of what it last listed and asks again after every
-// action. Opening a project makes the server broadcast `switched`, which
-// reloads every client (net.js) and calls `projectSwitched` here. In the
+// action. Opening a project connects this tab to it (the back end keeps a
+// project per tab; net.js), and net.js calls `projectSwitched` here. In the
 // browser-only studio the "server" is the back end in a worker, and the
 // library lives in the browser's storage: projects download as .zip files.
 
@@ -22,8 +22,10 @@ import {
   confirmBox,
   listenWindow,
   storageEstimate,
+  urlFragment,
+  setUrlFragment,
 } from "#platform";
-import { state, invalidate, hint } from "../store.js";
+import { state, invalidate, hint, hooks } from "../store.js";
 import { PALETTE } from "../model.js";
 import { glyph, iconButton, button } from "./widgets.js";
 import { toast } from "./toast.js";
@@ -217,11 +219,16 @@ function act(label, failed, p, done) {
   });
 }
 
+/** Open a project of the library in this tab (other tabs keep theirs). */
 /** function openProject(name: String) => Undefined */
-function openProject(name) {
+export function openProject(name) {
   act(tf("projects.open.busy", [name]), tf("projects.open.failed", [name]), sendJson("/api/projects/open", "POST", { name: name }), (r) => {
     pm.imported = [];
     closeProjects();
+    if (String(r.folder) !== state.folder) {
+      setUrlFragment(fragmentOf(String(r.folder), String(r.name)), true);
+      if (hooks.reopen) hooks.reopen();
+    }
   });
 }
 
@@ -389,7 +396,7 @@ export function closeProjects() {
   invalidate();
 }
 
-/** Called by net.js after the server opened another project. */
+/** Called by net.js once the tab has another project. */
 export function projectSwitched() {
   pm.files = [];
   pm.filesLoaded = false;
@@ -464,6 +471,84 @@ listenWindow("keydown", (e) => {
     if (pm.open) closeProjects();
     else openProjects();
   }
+});
+
+// ------------------------------------------------------------------ the address
+
+// The address names the tab's project in its fragment, so that a reload, a
+// bookmark or a link opens it again: `#path=<folder>` for a project of the
+// server's library, `#project=<name>` in the browser-only studio.
+//
+// The back end keeps several projects open, one per tab: the address is the
+// tab's own choice, and changing it (the Projects window, Back, a typed
+// fragment, the shell's `open`) connects the tab to that project (net.js),
+// leaving other tabs as they are. Opening another project adds a history
+// entry: Back returns to the last one.
+
+/** type Asked = { kind: String, value: String } */
+
+/** function decoded(s: String) => String */
+function decoded(s) {
+  try {
+    return decodeURIComponent(s);
+  } catch (e) {
+    return "";
+  }
+}
+
+/** A project, as the address names it. */
+/** function fragmentOf(folder: String, name: String) => String */
+function fragmentOf(folder, name) {
+  if (state.backend === "local") return `project=${encodeURIComponent(name)}`;
+  return `path=${encodePath(folder)}`;
+}
+
+/** What an address's fragment asks for: kind "project" or "path" ("" when nothing). */
+/** function asked(frag: String) => Asked */
+function asked(frag) {
+  for (const kind of ["project", "path"]) {
+    if (frag.startsWith(`${kind}=`)) return { kind: kind, value: decoded(frag.slice(kind.length + 1)) };
+  }
+  return { kind: "", value: "" };
+}
+
+/** function trimSep(path: String) => String */
+function trimSep(path) {
+  return path.length > 1 ? path.replace(/[\\/]+$/, "") : path;
+}
+
+/** Whether the fragment asks for nothing but the tab's project. */
+/** function isOpen(a: Asked) => Boolean */
+function isOpen(a) {
+  if (a.kind === "project") return a.value === state.name;
+  if (a.kind === "path") return trimSep(a.value) === trimSep(state.folder);
+  return true;
+}
+
+/** The project the address asks the back end for (kind "": its home project). */
+/** function addressedProject() => Asked */
+export function addressedProject() {
+  const a = asked(urlFragment());
+  return a.value === "" ? { kind: "", value: "" } : a;
+}
+
+/** The address named a project the back end would not open: say why, and go
+ * on with its home project (net.js). */
+/** function addressRefused(message: String) => Undefined */
+export function addressRefused(message) {
+  toast(t("projects.address.notFound.title"), errText(message), "error");
+  setUrlFragment("", false);
+}
+
+/** Name the tab's project in the address (the back end said which it is). */
+export function showAddress() {
+  setUrlFragment(fragmentOf(state.folder, state.name), false);
+}
+
+// Back, Forward, or a fragment typed into the address: the tab connects to
+// that project (and the back end says if it may not).
+listenWindow("hashchange", (e) => {
+  if (state.loaded && !isOpen(asked(urlFragment())) && hooks.reopen) hooks.reopen();
 });
 
 // ------------------------------------------------------------------ views

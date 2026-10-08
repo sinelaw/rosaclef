@@ -193,15 +193,16 @@ right before editing it, and never rewrite the whole file from memory.
   turn a MIDI file or an LMMS project into a new project next to this one (prints what was approximated).
   To add a MIDI file's parts to *this* song instead: `curl -X POST --data-binary @FILE.mid "$ROSACLEF_URL/api/import-midi?into=current"`.
 
-HTTP API (while the studio runs, base URL in `$ROSACLEF_URL`): `POST /api/mixcheck` (the mixcheck
+HTTP API (while the studio runs, base URL in `$ROSACLEF_URL` — this project's own; use it rather than the
+server's bare address, which is another project's): `POST /api/mixcheck` (the mixcheck
 flags as JSON: `{"range": "52:59", "focus": ["rbass"], "whatIf": [...]}`; same report; the producer's
 Mix check panel shows it; or `POST /api/jobs/mixcheck` with the same body answers `{"job": ID}` at once,
 and `GET /api/jobs/ID` says how far it has come until its `state` is `"done"` with the `result` —
 `POST /api/jobs/render` too), `GET /api/project`,
 `PUT /api/project` (full document; validated), `GET /api/schema`, `GET /api/catalog`,
 `GET /api/projects` (the library), `GET /api/files` (this project's files).
-Editing the file is preferred. The producer can open another project from the studio; when
-that happens your terminal session is restarted in the new project's folder.
+Editing the file is preferred. Each project open in the studio has its own terminal and agent; if
+the producer renames this project, your terminal session is restarted in its new folder.
 
 ## Data model
 

@@ -1,17 +1,32 @@
 // Connection to the Rosaclef server: project sync, native engine status.
+//
+// The back end (the server, or the browser-only one) keeps a project per
+// tab: the tab asks it to open the project its address names (projects.js)
+// and gets the project's key, which scopes the tab's socket and requests to
+// that project (`setScope`). Choosing another project (the Projects window,
+// Back, the shell's `open`) connects the tab again.
 
-import { connectRaw, wsUrl, loadPref, savePref, now } from "#platform";
+import { connectRaw, wsUrl, loadPref, savePref, now, sendJson, setScope, isOffline } from "#platform";
 import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel, dockName, projectOpened } from "./store.js";
 import { toast } from "./ui/toast.js";
 import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
 import { decodeProject, encodeClipWire, barBeat } from "./model.js";
 import { selectedLane, selectedPoints, laneValueAt } from "./automation.js";
-import { projectSwitched } from "./ui/projects.js";
+import { projectSwitched, showAddress, addressedProject, addressRefused, openProject } from "./ui/projects.js";
 import { t } from "./i18n.js";
 
 /** const sock: RawSock[] */
 const sock = [];
 let retry = 500;
+
+const link = {
+  /** Counts connections: a socket replaced by a newer one is let go quietly. */
+  gen: 0,
+  /** The project's key on the server ("" before the first welcome). */
+  session: "",
+  /** The next welcome is for a project the tab chose (not the one it had). */
+  switching: false,
+};
 
 /** function send<M>(m: M) => Undefined */
 export function send(m) {
@@ -31,21 +46,37 @@ function onMessage(text) {
   const m = JSON.parse(text);
   const kind = String(m.t);
   if (kind === "welcome" || kind === "switched") {
-    // Another project (opened, imported, or found on reconnecting): what
-    // was measured of the last one goes.
+    // Another project (opened, imported, moved, or found on reconnecting):
+    // what was measured of the last one goes.
     if (kind === "switched" || (state.loaded && state.folder !== String(m.folder))) projectOpened();
+    const first = !state.loaded;
+    const chose = link.switching;
+    link.switching = false;
+    const key = String(m.session ?? "");
+    const fresh = first || key !== link.session;
+    link.session = key;
+    setScope(key);
     state.folder = String(m.folder);
+    state.name = String(m.name ?? "");
     state.samples = m.samples;
     state.rev = Number(m.rev);
     state.nativeAvailable = m.native.available === true;
     state.nativeEnabled = m.native.enabled === true;
     state.backend = m.backend === "local" ? "local" : "server";
     load(decodeProject(m.project));
-    if (kind === "switched") projectSwitched();
+    showAddress();
+    if (fresh && hooks.session) hooks.session();
+    if (kind === "switched" || chose) projectSwitched();
     else if (state.backend === "local" && loadPref("rosaclef.localIntro") === "") {
       savePref("rosaclef.localIntro", "shown");
       toast(t("net.localIntro.toast.title"), t("net.localIntro.toast.body"), "info");
     }
+  } else if (kind === "goto") {
+    // The shell's `open`: this tab opens that project.
+    openProject(String(m.name));
+  } else if (kind === "closed") {
+    // The project closed while the tab was connecting: open it again.
+    reconnect(false);
   } else if (kind === "project") {
     state.rev = Number(m.rev);
     state.diskIssues = [];
@@ -102,27 +133,88 @@ function onMessage(text) {
   }
 }
 
+/** Connect to the back end, to the project the address names (its home
+ * project when it names none). */
 export function connect() {
+  const gen = link.gen + 1;
+  link.gen = gen;
+  const want = addressedProject();
+  if (want.kind === "") {
+    // The home project (its key comes with the welcome).
+    setScope("");
+    openSocket(gen);
+    return undefined;
+  }
+  const byName = want.kind === "project";
+  sendJson("/api/projects/open", "POST", { name: byName ? want.value : "", path: byName ? "" : want.value })
+    .then((r) => {
+      if (gen !== link.gen) return false;
+      setScope(String(r.session));
+      openSocket(gen);
+      return true;
+    })
+    .catch((e) => {
+      if (gen !== link.gen) return false;
+      if (isOffline(e)) {
+        // Down or restarting: try again (the address still names the project).
+        retryLater(gen);
+        return false;
+      }
+      // Gone (deleted, renamed elsewhere) or not the back end's to open.
+      addressRefused(String(e));
+      setScope("");
+      openSocket(gen);
+      return false;
+    });
+}
+
+/** function retryLater(gen: Int) => Undefined */
+function retryLater(gen) {
+  setTimeout(() => {
+    if (gen === link.gen) connect();
+  }, retry);
+  retry = Math.min(8000, retry * 2);
+}
+
+/** function openSocket(gen: Int) => Undefined */
+function openSocket(gen) {
   const s = connectRaw(wsUrl("/ws"), {
     onOpen: () => {
+      if (gen !== link.gen) return undefined;
       state.connected = true;
       retry = 500;
       invalidate();
     },
-    onText: onMessage,
+    onText: (text) => {
+      if (gen === link.gen) onMessage(text);
+    },
     onBinary: (b) => undefined,
     onClose: () => {
+      if (gen !== link.gen) return undefined;
       state.connected = false;
       sock.length = 0;
       invalidate();
-      setTimeout(() => {
-        connect();
-      }, retry);
-      retry = Math.min(8000, retry * 2);
+      retryLater(gen);
     },
   });
   sock.length = 0;
   sock.push(s);
+}
+
+/** Connect this tab again, to the project its address names now;
+ * `switching`: the tab chose another project. */
+/** function reconnect(switching: Boolean) => Undefined */
+function reconnect(switching) {
+  link.switching = switching;
+  const old = sock.length > 0 ? sock[0] : undefined;
+  sock.length = 0;
+  connect();
+  if (old) old.close();
+}
+
+/** The tab chose another project (the Projects window, Back, a typed address). */
+function reopen() {
+  reconnect(true);
 }
 
 /** Tell the server (and so the agent) what the producer is looking at.
@@ -219,6 +311,7 @@ export function sendContext() {
 }
 
 export function installSync() {
+  hooks.reopen = reopen;
   hooks.sync = (json) => {
     send({ t: "put", folder: state.folder, project: JSON.parse(json) });
   };

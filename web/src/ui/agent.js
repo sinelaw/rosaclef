@@ -9,7 +9,7 @@
 // tab shows, so the agent keeps running.
 
 import { connectRaw, wsUrl, createTerm, getJson, loadPref, loadPrefOr, savePref } from "#platform";
-import { state, invalidate, currentPattern, currentChannel, hint, setFocus } from "../store.js";
+import { state, hooks, invalidate, currentPattern, currentChannel, hint, setFocus } from "../store.js";
 import { iconButton, button, select, glyph } from "./widgets.js";
 import { paneHeader, paneControls } from "./panes.js";
 import { insertIndex } from "#brands";
@@ -26,6 +26,8 @@ const agent = {
   connected: false,
   choosing: false,
   autostarted: false,
+  /** A start was asked for, and its status has not come back yet. */
+  starting: false,
 };
 
 /** The panel's plugins: the terminal, the Critic and the Mix check. */
@@ -60,6 +62,15 @@ const term = [];
 /** const sock: RawSock[] */
 const sock = [];
 
+/** Each project has its own agent (on the server): the terminal connects
+ * once the tab knows its project, and again when the tab changes project. */
+const termLink = {
+  /** Counts connections: a socket replaced by a newer one is let go quietly. */
+  gen: 0,
+  /** The tab's project is known. */
+  ready: false,
+};
+
 /** function send<M>(m: M) => Undefined */
 function send(m) {
   if (sock.length > 0) sock[0].send(JSON.stringify(m));
@@ -80,20 +91,27 @@ export function startAgent(id) {
     tm.reset();
     tm.fit();
   }
+  agent.starting = true;
   send({ t: "start", agent: id, cols: tm ? tm.cols() : 80, rows: tm ? tm.rows() : 24 });
   invalidate();
 }
 
 function connectTerm() {
+  if (!termLink.ready || term.length === 0) return undefined;
+  const gen = termLink.gen + 1;
+  termLink.gen = gen;
   const s = connectRaw(wsUrl("/ws/term"), {
     onOpen: () => {
+      if (gen !== termLink.gen) return undefined;
       agent.connected = true;
       invalidate();
     },
     onText: (text) => {
+      if (gen !== termLink.gen) return undefined;
       const m = JSON.parse(text);
       if (m.t === "status") {
         agent.running = m.running === true;
+        agent.starting = false;
         agent.id = String(m.agent ?? "");
         agent.name = String(m.name ?? agent.name);
         agent.exitCode = m.exitCode === undefined || m.exitCode === null ? -1 : Number(m.exitCode);
@@ -104,26 +122,49 @@ function connectTerm() {
         }
         agent.autostarted = true;
       } else if (m.t === "error") {
+        agent.starting = false;
         agent.error = String(m.message);
         agent.choosing = true;
       }
       invalidate();
     },
     onBinary: (bytes) => {
-      if (term.length > 0) term[0].write(bytes);
+      if (gen === termLink.gen && term.length > 0) term[0].write(bytes);
     },
     onClose: () => {
+      if (gen !== termLink.gen) return undefined;
       agent.connected = false;
       sock.length = 0;
       invalidate();
       setTimeout(() => {
-        connectTerm();
+        if (gen === termLink.gen) connectTerm();
       }, 1500);
     },
   });
   sock.length = 0;
   sock.push(s);
 }
+
+/** The tab's project is known, or changed: show that project's agent (it
+ * starts the preferred one if it is not running, as on opening the page). */
+function projectTerm() {
+  termLink.ready = true;
+  const old = sock.length > 0 ? sock[0] : undefined;
+  termLink.gen = termLink.gen + 1;
+  sock.length = 0;
+  if (old) {
+    old.close();
+    agent.connected = false;
+    agent.running = false;
+    agent.autostarted = false;
+    agent.starting = false;
+    if (term.length > 0) term[0].reset();
+  }
+  connectTerm();
+  invalidate();
+}
+
+hooks.session = projectTerm;
 
 /** Called once the terminal's DOM node exists. */
 function mountTerm() {
@@ -329,7 +370,14 @@ export function agentPanel(b) {
     mountTerm();
   });
 
-  const showChooser = agent.connected && !agent.running && (agent.choosing || preferred() === "" || agent.exitCode >= 0 || agent.error !== "");
+  // Once the preferred agent had its chance to start (the preference is
+  // shared by the tabs, whose projects each have their own agent), a tab
+  // whose agent is not running offers the choice.
+  const showChooser =
+    agent.connected &&
+    !agent.running &&
+    !agent.starting &&
+    (agent.choosing || agent.autostarted || preferred() === "" || agent.exitCode >= 0 || agent.error !== "");
   if (showChooser) {
     b.open("div", "empty", "term-empty");
     b.leaf("h2", "h", "", t("agent.chooser.title"));

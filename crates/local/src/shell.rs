@@ -423,15 +423,14 @@ impl Host {
         if cmd == "exit" || cmd == "quit" {
             return ("bye".into(), true);
         }
-        let _ = client;
-        match self.command(cmd, &w[1..]) {
+        match self.command(client, cmd, &w[1..]) {
             Ok(s) => (s, false),
             Err(e) if e.is::<crate::host::NeedContent>() => (String::new(), false),
             Err(e) => (format!("{RED}{e:#}{RESET}"), false),
         }
     }
 
-    fn command(&mut self, cmd: &str, args: &[String]) -> Result<String> {
+    fn command(&mut self, client: u64, cmd: &str, args: &[String]) -> Result<String> {
         if cmd == "mixcheck" {
             return self.mixcheck_command(args);
         }
@@ -705,8 +704,9 @@ impl Host {
             }
             "open" => {
                 let name = a.pos.join(" ");
-                if self.switch_to(&name)? {
-                    format!("opened {name}")
+                // In this tab: the page opens it (and this terminal follows).
+                if self.open_in_tab(client, &name)? {
+                    format!("opening {name}")
                 } else {
                     format!("{name} is already open")
                 }

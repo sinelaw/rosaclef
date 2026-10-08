@@ -1,17 +1,17 @@
 // The top bar: brand, song title, transport, tempo, output and export.
 
-import { drag, fmt, download } from "#platform";
+import { drag, fmt } from "#platform";
 import { state, begin, changed, commit, undo, redo, hint, invalidate, projectEdit } from "../store.js";
 import { barBeat, semitonesText } from "../model.js";
 import { togglePlay, stop, record, setMode, setOutput, toggleMetronome } from "../audio.js";
 import { iconButton, button, knob, meter, glyph } from "./widgets.js";
 import { t, tf, tk, language, setLanguage, LANGUAGES } from "../i18n.js";
 import { isAutomated, shownValue, openMenu } from "../automation.js";
-import { toast } from "./toast.js";
 import { projectsButton } from "./projects.js";
 import { keyboard, toggleKeyboard } from "./keyboard.js";
 import { meterLcd } from "./meter.js";
-import { followJob, jobLabel, jobFraction } from "./progress.js";
+import { jobLabel, jobFraction } from "./progress.js";
+import { exp, openExport, closeExport } from "./export.js";
 
 /** function lcd(b: Builder, key: String, label: String, value: String, unit: String) => Undefined */
 function lcd(b, key, label, value, unit) {
@@ -103,38 +103,6 @@ function tempoLcd(b) {
   lcd(b, "bpm", t("term.tempo"), fmt(shownValue("tempo", p.transport.bpm), 2), "BPM");
   if (isAutomated("tempo")) b.leaf("i", "auto", "auto-dot", "");
   b.close();
-}
-
-let exporting = false;
-/** The export's job id (its progress). */
-let exportJob = 0;
-
-function exportSong() {
-  if (exporting) return;
-  exporting = true;
-  exportJob = 0;
-  invalidate();
-  followJob("render", { bits: 24 }, (id) => {
-    exportJob = id;
-  })
-    .then((r) => {
-      exporting = false;
-      invalidate();
-      const path = String(r.path);
-      toast(
-        t("topbar.export.done.toast.title"),
-        path + "\n" + tf("topbar.export.done.toast.body", [fmt(Number(r.duration), 1), fmt(Number(r.peakDb), 1)]),
-        "info"
-      );
-      download(String(r.url), path.split("/").pop() ?? "mixdown.wav");
-      return true;
-    })
-    .catch((e) => {
-      exporting = false;
-      invalidate();
-      toast(t("topbar.export.failed.toast.title"), String(e), "error");
-      return false;
-    });
 }
 
 /** Set the master transpose (semitones, -12..12). */
@@ -318,15 +286,18 @@ export function topbar(b) {
   iconButton(b, "redo", "", "redo", t("topbar.redo.title"), () => {
     redo();
   });
-  b.open("button", "export", exporting ? "btn gold export busy" : "btn gold export");
-  b.attr("title", exporting ? jobLabel(exportJob) : t("topbar.export.title"));
-  b.on("pointerenter", (e) => hint(t("topbar.export.hint")));
+  const exporting = exp.rendering;
+  b.open("button", "export", exporting ? "btn gold export busy" : exp.open ? "btn gold export on" : "btn gold export");
+  b.attr("title", exporting ? jobLabel(exp.job) : t("topbar.export.dialog.title"));
+  b.attr("aria-haspopup", "dialog");
+  b.on("pointerenter", (e) => hint(t("topbar.export.dialog.hint")));
   b.on("click", (e) => {
-    exportSong();
+    if (exp.open) closeExport();
+    else openExport();
   });
   // While it renders: how far into the song, as a fill behind the label.
-  b.style("--done", `${Math.round(jobFraction(exportJob) * 1000) / 10}%`);
-  b.leaf("span", "t", "", exporting ? tf("topbar.export.progress.label", [String(Math.round(jobFraction(exportJob) * 100))]) : t("topbar.export.label"));
+  b.style("--done", `${Math.round(jobFraction(exp.job) * 1000) / 10}%`);
+  b.leaf("span", "t", "", exporting ? tf("topbar.export.progress.label", [String(Math.round(jobFraction(exp.job) * 100))]) : t("topbar.export.label"));
   b.close();
   languageSwitch(b);
   b.close();

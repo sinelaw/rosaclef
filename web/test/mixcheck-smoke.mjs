@@ -148,10 +148,11 @@ await page.waitForFunction(
 );
 ok("Ctrl+Z (undo) puts the drive back");
 
-// Export says how far into the song its render has come.
+// Export (its window's Render) says how far into the song its render has come.
+await page.click(".btn.export");
 const [wav] = await Promise.all([
   page.waitForEvent("download", { timeout: 120000 }),
-  page.click(".btn.export"),
+  page.click(".ex-run"),
   page.waitForFunction(() => /Exporting [1-9]\d*%/.test(document.querySelector(".btn.export")?.textContent ?? ""), null, { timeout: 60000 }),
 ]);
 ok(`Export shows its progress, then downloads ${wav.suggestedFilename()}`);

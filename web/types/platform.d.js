@@ -40,6 +40,14 @@ export const uploadFile;
 /** "server" (the Rosaclef server) or "local" (the browser-only studio). */
 /** const backendMode: () => Promise<String> */
 export const backendMode;
+
+/** Name the project this tab's requests are for: the key the server gave it ("" = the server's home project). */
+/** const setScope: (String) => Undefined */
+export const setScope;
+
+/** Whether a failed request never reached the back end (it is down or restarting). */
+/** const isOffline: <E>(E) => Boolean */
+export const isOffline;
 /** const runJob: <B, T>(String, B, (Job) => Undefined) => Promise<T> */
 export const runJob;
 
@@ -172,6 +180,14 @@ export const recStop;
 
 /** const setTitle: (String) => Undefined */
 export const setTitle;
+
+/** The address's fragment, without the "#" ("" when none). */
+/** const urlFragment: () => String */
+export const urlFragment;
+
+/** Show a fragment in the address (no reload, no hashchange): a new history entry when the flag is set, else in place. */
+/** const setUrlFragment: (String, Boolean) => Undefined */
+export const setUrlFragment;
 
 /** const confirmBox: (String) => Boolean */
 export const confirmBox;

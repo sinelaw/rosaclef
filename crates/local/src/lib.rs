@@ -21,7 +21,10 @@
 //! - `font` `{name}` + content: a soundfont file (`gm/index.sf2`, ...).
 //! - `start` → open the last project (or create the demo on first use).
 //! - `request` `{client, method, url}` + body → an HTTP-like response.
-//! - `ws_open`, `ws` `{text}`, `term_open`, `term` `{text}`, `close`.
+//! - `ws_open` `{scope}`, `ws` `{text}`, `term_open` `{scope}`, `term`
+//!   `{text}`, `close`: a page's sockets; `scope` is the key of the project
+//!   the socket is for ("": the home project). Every call may carry `nonce`,
+//!   random hex for the key of a project it opens.
 //!
 //! Every reply: `{status, type, bodyLen, blob, need, needFonts, out, changes}` + the
 //! body, then the contents of new blobs:
@@ -154,6 +157,12 @@ impl Backend {
         let op = h.get("op").and_then(|o| o.as_str()).unwrap_or("");
         let client = h.get("client").and_then(|c| c.as_u64()).unwrap_or(0);
         let text = h.get("text").and_then(|t| t.as_str()).unwrap_or("");
+        // The project a socket is opened for (its key; "": the home project).
+        let scope = h.get("scope").and_then(|t| t.as_str()).unwrap_or("");
+        if let (Some(host), Some(n)) = (self.host.as_mut(), h.get("nonce").and_then(|n| n.as_str()))
+        {
+            host.nonce = Some(n.to_string());
+        }
         let mut reply = json!({"status": 200, "type": "application/json"});
         let mut resp_body: Vec<u8> = vec![];
 
@@ -193,7 +202,10 @@ impl Backend {
                 let name = h.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 host.font_files.provide(name, body.to_vec());
             }
-            ("start", _) => match Host::start(self.mem.clone()) {
+            ("start", _) => match Host::start(
+                self.mem.clone(),
+                h.get("nonce").and_then(|n| n.as_str()).map(str::to_string),
+            ) {
                 Ok(host) => self.host = Some(host),
                 Err(e) => {
                     reply["status"] = json!(500);
@@ -209,10 +221,14 @@ impl Backend {
                 reply["blob"] = json!(r.blob);
                 resp_body = r.body;
             }
-            ("ws_open", Some(host)) => host.ws_open(client),
+            ("ws_open", Some(host)) => host.ws_open(client, scope),
             ("ws", Some(host)) => host.ws_message(client, text),
-            ("term_open", Some(host)) => host.term_open(client),
-            ("term", Some(host)) => host.term_message(client, text),
+            ("term_open", Some(host)) => host.term_open_in(client, scope),
+            ("term", Some(host)) => {
+                if host.select_for(client, true) {
+                    host.term_message(client, text);
+                }
+            }
             ("close", Some(host)) => host.close(client),
             (_, None) => {
                 reply["status"] = json!(503);

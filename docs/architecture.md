@@ -34,11 +34,48 @@
 | `rosaclef-local` | browser worker | the server's HTTP API and socket protocol on `rosaclef-studio` with a `MemFs`, plus the Rosaclef shell for the terminal (the static build) |
 | `web/` | browser | the studio UI; `web/lib/backend.js` sends its requests to the server or to `rosaclef-local` |
 
+### Projects and tabs
+
+The server keeps several projects open at once: each browser tab works on
+the project its address names (`#path=<folder>`), and tabs on different
+projects do not touch each other (the browser-only studio too, below). Each open project
+(`crates/server/src/server.rs`, `Proj`) has its own document, clients,
+watcher, agent terminal, native engine, jobs, and an unguessable key (128
+random bits). Everything about a project is reached through its key:
+`/s/{key}/ws`, `/s/{key}/ws/term`, `/s/{key}/api/...`, `/s/{key}/files/...`.
+A middleware takes the key off before routing and hands the handler that
+project (`Scope`); handlers of project data take nothing else, so no id,
+path or name in a request can reach another project's state (a job id is
+looked up among the project's own jobs, a file path inside its own folder).
+An unknown key is refused, never taken as another project. Requests without
+a key act on the home project (the folder `rosaclef serve` opened), which
+keeps scripts and the CLI working.
+
+- A tab gets a key from `POST /api/projects/open` (`{name}` or `{path}`):
+  only a project of the library opens, or one open already (the home project
+  may live outside the library); a path elsewhere, `..`, or a name that is
+  not a project is refused. The tab's socket and requests then carry the key
+  (`setScope` in `web/lib/backend.js`); on reconnecting it opens the project
+  again by its folder, so a restarted server gives it a fresh key.
+- Each project's agent runs in its folder with `ROSACLEF_URL` set to the
+  project's own base URL (`http://…/s/{key}`), so the agent's API calls reach
+  its project.
+- A project nobody uses — no tab, no running agent, no running job — is
+  closed after a minute (its watcher, agent and native engine stop, and its
+  key stops working); the home project stays open. An open project cannot be
+  deleted, and one renamed while open keeps its key and follows its folder.
+- The browser-only studio does the same in its worker (`crates/local`,
+  `Host`): one back end in a SharedWorker for every tab, a project per tab
+  (`#project=<name>`), keyed the same way. Every call works on exactly one
+  project — `Host::select` makes the call's project the active one before
+  anything runs — and messages go only to that project's pages. A project
+  closes once no tab uses it (the last one opened stays: a new tab opens it).
+
 ### Project sync
 
 - UI edits are debounced and sent as `{t: "put", project}` over `/ws`; the
-  server validates, writes `project.json` atomically, broadcasts to other
-  clients and updates the native engine.
+  server validates, writes `project.json` atomically, broadcasts to the
+  project's other clients and updates its native engine.
 - The server watches the folder. When `project.json` changes on disk (an
   agent edit), it validates it: valid → broadcast `{t: "project", origin:
   "disk"}` (the UI pushes an undo step, so Ctrl+Z reverts agent edits);
@@ -297,7 +334,8 @@ static build's worker (`web/local/worker.js`).
 it) into the project folder: the data model, conventions, the device catalog
 generated from the Rust tables, and the workflow (read context → edit →
 validate → render to check levels). The agent terminal is a PTY started in the
-project folder with `rosaclef` on its `PATH` and `ROSACLEF_URL` set; the
-browser attaches with xterm.js over `/ws/term` (scrollback is replayed on
+project folder with `rosaclef` on its `PATH` and `ROSACLEF_URL` set to the
+project's own API (one terminal per open project); the browser attaches with
+xterm.js over the project's `/s/{key}/ws/term` (scrollback is replayed on
 reconnect). All WebSocket and mutating HTTP endpoints reject cross-origin
 requests, and the server binds to localhost by default.

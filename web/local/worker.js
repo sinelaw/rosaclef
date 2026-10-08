@@ -4,7 +4,9 @@
 //
 // Every open tab talks to one SharedWorker (a plain Worker per tab where
 // SharedWorker is missing), just as every tab talks to one server natively:
-// an edit in one tab reaches the others. web/lib/backend.js is the page side.
+// each tab works on its own project (the key its sockets and requests carry),
+// and an edit in one tab reaches the other tabs on that project.
+// web/lib/backend.js is the page side.
 //
 // Storage (database "rosaclef"):
 //   entries  path → { path, dir, blob, len, modified }   the file tree
@@ -109,9 +111,14 @@ async function collectGarbage(entries) {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
+/** 128 random bits, in hex: the key of a project a call opens (the module has no randomness of its own). */
+function nonce() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** One synchronous call into the module: envelope in, envelope out. */
 function call(header, body) {
-  const h = enc.encode(JSON.stringify({ ...header, now: Date.now() }));
+  const h = enc.encode(JSON.stringify({ ...header, now: Date.now(), nonce: nonce() }));
   const b = body ? new Uint8Array(body) : new Uint8Array(0);
   const len = 4 + h.length + b.length;
   const ptr = wasm.rc_alloc(len);
@@ -239,7 +246,8 @@ async function onChannel(client, port, m) {
     await booted;
     if (bootError) throw new Error(bootError);
     if (m.t === "open") {
-      await enqueue(() => run({ op: m.chan === "term" ? "term_open" : "ws_open", client }, null));
+      // `scope`: the key of the project the page's socket is for ("": the home project).
+      await enqueue(() => run({ op: m.chan === "term" ? "term_open" : "ws_open", client, scope: m.scope || "" }, null));
       if (m.chan === "ws" && storageWarning)
         port.postMessage({ t: "msg", chan: "ws", text: JSON.stringify({ t: "notice", title: "Projects are not saved", message: storageWarning }), raw: false });
     } else if (m.t === "send") await enqueue(() => run({ op: m.chan === "term" ? "term" : "ws", client, text: m.text }, null));
