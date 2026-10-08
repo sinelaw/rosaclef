@@ -265,7 +265,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         .route("/api/info", get(get_info))
         .nest("/files", Router::new().fallback(serve_file))
         .merge(crate::library::routes())
-        .fallback_service(web)
+        .fallback(move |req: Request| serve_web(web.clone(), req))
         .with_state(app.clone());
     // Before routing: `/s/{key}/...` names the project, and is routed as `/...`.
     let service = tower::Layer::layer(
@@ -1473,6 +1473,24 @@ async fn term_handler(
 }
 
 // ------------------------------------------------------------------ files
+
+/// The studio's own files: the page, its modules, styles and engines.
+/// Revalidated on every load (a 304 when unchanged): left to guess how long
+/// to keep them, a browser runs modules of an older build beside a newer one
+/// after an update (opening a project then only half happens) until a forced
+/// reload.
+async fn serve_web(web: ServeDir, req: Request) -> Response {
+    use tower::ServiceExt;
+    match web.oneshot(req).await {
+        Ok(res) => {
+            let mut res = res.map(Body::new);
+            res.headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+            res
+        }
+        Err(e) => match e {},
+    }
+}
 
 /// `/files/...`: static files of the request's project folder. Revalidated
 /// on every use, since two projects may hold different files at one path.
