@@ -33,8 +33,9 @@ the studio (`web/src`) is one program written on it.
 2. **Elements** — persistent records matched to descriptions by their path of
    `type:key` pairs. They own the backend handle, the last applied properties
    and the current handlers, and survive rebuilds. A node without a key is
-   keyed by its position among its siblings of the same type. Keys must be
-   unique among siblings.
+   keyed by its position among its siblings of the same type. Keys should be
+   unique among siblings; a repeated one is told apart by its occurrence
+   (`x`, `x#1`, …), as positions tell keyless ones apart.
 3. **Backends** — primitive operations on numeric handles (`Backend` in
    `types.d.js`): the DOM (`dom.js`) and an in-memory tree for tests
    (`memory.js`).

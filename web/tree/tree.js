@@ -241,6 +241,8 @@ export function mount(backend, view) {
       /** const fresh: String[] */
       const fresh = [];
       const counts = new Map();
+      /** Paths given to children so far: each is one element. */
+      const taken = new Map();
       for (const i of children) {
         const d = nodes[i];
         let key = d.key;
@@ -249,10 +251,20 @@ export function mount(backend, view) {
           counts.set(d.type, n + 1);
           key = `@${n}`;
         }
-        const path = `${parent.path}/${d.type}:${key}`;
+        // A key repeated among siblings names its next occurrence ("x", "x#1",
+        // …): two children never share an element (the first's would be lost
+        // to the reconciler and stay in the backend's tree, one more each flush).
+        const base = `${parent.path}/${d.type}:${key}`;
+        let path = base;
+        let again = 0;
+        while (taken.get(path) !== undefined) {
+          again = again + 1;
+          path = `${base}#${again}`;
+        }
+        taken.set(path, true);
         paths[i] = path;
         let el = elems.get(path);
-        if (el === undefined || el.seen === generation) {
+        if (el === undefined) {
           fresh.push(path);
           const handle = backend.create(d.type);
           created = created + 1;

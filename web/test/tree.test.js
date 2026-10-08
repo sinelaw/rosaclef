@@ -94,5 +94,36 @@ check("the order reversed moves all but one", step(["q", "b", "c", "p", "n"]) ==
 check("children come and go at both ends", step(["c", "p", "n", "x", "y"]) === 2);
 check("the longest run in order stays", JSON.stringify(increasingRun([3, -1, 0, 1, 4, 2])) === "[false,false,true,true,false,true]");
 
+// Siblings with the same key are kept apart by their occurrence: no element is
+// lost to the reconciler (and left in the backend's tree, one more each flush).
+const twins = { second: "second", clicked: "" };
+const mem3 = memoryBackend();
+const ui3 = mount(mem3.backend, (b) => {
+  b.open("div", "app", "");
+  b.leaf("span", "x", "one", "first");
+  b.on("click", (e) => {
+    twins.clicked = "first";
+  });
+  b.leaf("span", "x", "two", twins.second);
+  b.on("click", (e) => {
+    twins.clicked = "second";
+  });
+  b.close();
+});
+/** function liveSpans() => Int */
+function liveSpans() {
+  return mem3.nodes().filter((n) => n.alive && n.type === "span").length;
+}
+ui3.flush();
+const twinsCreated = ui3.stats().created;
+for (let i = 0; i < 5; i++) ui3.flush();
+check("repeated keys show every child, in order", mem3.dump() === 'div\n  span.one "first"\n  span.two "second"\n');
+check("repeated keys leave no orphans behind", liveSpans() === 2 && ui3.stats().elements === 3);
+check("repeated keys are not recreated on each flush", ui3.stats().created === twinsCreated);
+twins.second = "changed";
+ui3.flush();
+check("each repeated key keeps its own element", mem3.dump().includes('span.one "first"\n  span.two "changed"') && ui3.stats().created === twinsCreated);
+check("each repeated key keeps its own handler", mem3.fire("two", "click", blankEvent()) && twins.clicked === "second");
+
 if (failures > 0) throw new Error(`${failures} test(s) failed`);
 console.log("all UI tree tests passed");
