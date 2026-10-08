@@ -146,9 +146,9 @@ function navBar(b) {
 
 /** function studio(b: Builder) => Undefined */
 export function studio(b) {
-  const sizes = sideSizes(window.innerWidth);
+  const sizes = sideSizes(state.screen.width);
   // A phone shows one view at a time; its panels are never folded.
-  const compact = isCompact(window.innerWidth, window.innerHeight);
+  const compact = isCompact(state.screen.width, state.screen.height);
   // On a phone the keys show under the editors that use them: not over the
   // browser or the terminal, nor under the mixer or the Voice panel.
   const keys = keyboard.shown && (!compact || layoutState.view === "playlist" || (layoutState.view === "dock" && dockInfo(state.dock).keys));
@@ -207,7 +207,7 @@ export function studio(b) {
     e.preventDefault();
     const y0 = e.clientY;
     const h0 = layoutState.dockH;
-    const total = Math.max(200, window.innerHeight - 86);
+    const total = Math.max(200, state.screen.height - 86);
     startDockResize();
     drag(
       e,
@@ -247,7 +247,7 @@ export function studio(b) {
     drag(
       e,
       (m) => resizeAgent(w0 + (x0 - m.clientX)),
-      (u) => endAgentResize(window.innerWidth)
+      (u) => endAgentResize(state.screen.width)
     );
   });
   b.close();

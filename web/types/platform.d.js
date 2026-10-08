@@ -140,7 +140,7 @@ export const nowIso;
 /** const wsUrl: (String) => String */
 export const wsUrl;
 
-/** const createTerm: <E>(E, (String) => Undefined) => Term */
+/** const createTerm: (String, (String) => Undefined) => Term */
 export const createTerm;
 
 /** const audioStart: (String, String, (AudioMsg) => Undefined) => Promise<Number> */
@@ -182,6 +182,9 @@ export const promptBox;
 /** const loadPref: (String) => String */
 export const loadPref;
 
+/** const loadPrefOr: (String, String) => String */
+export const loadPrefOr;
+
 /** const savePref: (String, String) => Undefined */
 export const savePref;
 
@@ -197,6 +200,9 @@ export const pressOrTap;
 
 /** const debounce: (Number, () => Undefined) => () => Undefined */
 export const debounce;
+
+/** const windowSize: () => { width: Number, height: Number } */
+export const windowSize;
 
 /** const domBackend: (String) => Backend */
 export const domBackend;

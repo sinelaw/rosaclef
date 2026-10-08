@@ -781,10 +781,10 @@ function partMenu(b, v, c) {
     closePartMenu(v);
   });
   b.open("div", "menu", "auto-menu score-partmenu");
-  const left = Math.max(4, Math.min(m.x, window.innerWidth - 290));
+  const left = Math.max(4, Math.min(m.x, state.screen.width - 290));
   b.style("left", `${Math.round(left)}px`);
   // Below the pointer, or above it when the window has more room there; never past its edges (the list scrolls).
-  const winH = window.innerHeight;
+  const winH = state.screen.height;
   const up = m.y > winH / 2;
   b.style("top", up ? "auto" : `${Math.round(m.y)}px`);
   b.style("bottom", up ? `${Math.round(winH - m.y + 16)}px` : "auto");
@@ -899,7 +899,7 @@ function partMenu(b, v, c) {
   // Beside the menu, on the right where it fits, else on the left; level with the item, or
   // rising from it when the window has more room above.
   const w = 280;
-  const right = left + w + 4 + w <= window.innerWidth - 4;
+  const right = left + w + 4 + w <= state.screen.width - 4;
   b.style("left", `${Math.round(right ? left + w + 4 : Math.max(4, left - w - 4))}px`);
   const rise = m.subY > winH / 2;
   b.style("top", rise ? "auto" : `${Math.round(m.subY - 8)}px`);

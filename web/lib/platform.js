@@ -254,7 +254,9 @@ export function download(url, name) {
 
 // ------------------------------------------------------------------ terminal
 
-export function createTerm(el, onData) {
+/** A terminal in the element with this id. */
+export function createTerm(id, onData) {
+  const el = document.getElementById(id);
   const term = new Terminal({
     fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Consolas, monospace',
     fontSize: 12.5,
@@ -558,6 +560,16 @@ export function loadPref(key) {
   }
 }
 
+/** A stored preference, or `fallback` when none is stored (a stored "" is kept). */
+export function loadPrefOr(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 export function savePref(key, value) {
   try {
     localStorage.setItem(key, value);
@@ -748,6 +760,11 @@ export function textWidth(face, text) {
   // Liberation Serif and Times New Roman share Times' widths.
   measureCtx.font = `${style}${weight}100px "Times New Roman", "Liberation Serif", Tinos, Times, serif`;
   return measureCtx.measureText(text).width / 100;
+}
+
+/** The window's inner size, in CSS pixels. */
+export function windowSize() {
+  return { width: window.innerWidth, height: window.innerHeight };
 }
 
 export function paperSize() {

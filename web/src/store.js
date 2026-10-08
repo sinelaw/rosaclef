@@ -52,6 +52,8 @@ export const state = {
   focus: "playlist",
   /** The film on screen (Score view, Film mode), for the agent's context: the scene at the playhead. */
   film: { on: false, mode: "", shot: -1, selected: -1, start: 0, end: 0, frame: "", focus /*: String[] */: [], why: "" },
+  /** The window's inner size (CSS pixels): set by main.js, from the platform, on every resize. */
+  screen: { width: 1280, height: 800 },
   viewport: { plStart: 0, plEnd: 0, plTrack0: 0, plTrack1: 0, prStart: 0, prEnd: 0, prLow: 0, prHigh: 0, prOn: false },
   recent /*: { at: String, summary: String }[] */: [],
   hint: "",

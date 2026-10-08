@@ -1,6 +1,6 @@
 // Rosaclef Studio — entry point.
 
-import { domBackend, getJson, listenWindow } from "#platform";
+import { domBackend, getJson, listenWindow, windowSize } from "#platform";
 import { state, hooks, invalidate } from "./store.js";
 import { decodeCatalog } from "./model.js";
 import { mount } from "../tree/tree.js";
@@ -27,6 +27,7 @@ loadLanguage(() => {
 
 function start() {
   boot.started = true;
+  state.screen = windowSize();
   const ui = mount(domBackend("app"), studio);
   hooks.mark = ui.mark;
 
@@ -49,6 +50,7 @@ function start() {
     if (!state.audioReady && state.output === "browser") startAudio();
   });
   listenWindow("resize", (e) => {
+    state.screen = windowSize();
     invalidate();
   });
 
