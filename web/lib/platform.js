@@ -31,7 +31,9 @@ export function connectRaw(url, h) {
   backend.then((m) => {
     if (closed) return;
     if (m === "local") {
-      inner = localSocket(new URL(url).pathname.endsWith("/term") ? "term" : "ws", h);
+      const path = new URL(url).pathname;
+      const key = path.match(/^\/s\/([0-9a-f]+)\//);
+      inner = localSocket(path.endsWith("/term") ? "term" : "ws", h, key ? key[1] : "");
       return;
     }
     const ws = new WebSocket(url);

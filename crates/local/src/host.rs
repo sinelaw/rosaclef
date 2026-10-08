@@ -6,6 +6,14 @@
 //! IndexedDB. The UI cannot tell the two apart, except that there is no
 //! native audio device, no CLAP plugins, and the terminal runs the built-in
 //! `rosaclef` shell ([`crate::shell`]) instead of a coding agent.
+//!
+//! Like the native server, the host keeps several projects open at once,
+//! one per tab (or several tabs on one), each reached only through its key:
+//! `/s/{key}/api/...`, `/s/{key}/files/...`, and the key a page's socket was
+//! opened with. Every call works on exactly one project: [`Host::select`]
+//! makes it the active one (`folder`, `doc`, `context`) before anything
+//! else runs, and messages go only to that project's pages. Calls without a
+//! key act on the home project (the last one a tab opened).
 
 use crate::shell::Shell;
 use anyhow::{anyhow, bail, Result};
@@ -24,7 +32,7 @@ use std::sync::Arc;
 
 /// Where the library lives in the in-memory tree.
 pub const LIBRARY: &str = "/library";
-/// Remembers which project is open.
+/// Remembers which project was opened last (a new tab without one opens it).
 const STATE_FILE: &str = "/state.json";
 /// What the agent guides call the command line (the in-browser shell).
 pub const EXE: &str = "rosaclef";
@@ -98,6 +106,14 @@ struct Doc {
     issues: Vec<Issue>,
 }
 
+/// An open project that is not the active one (see [`Host::select`]).
+struct Parked {
+    key: String,
+    folder: Folder,
+    doc: Doc,
+    context: Value,
+}
+
 /// Soundfont files, fetched by the worker from the site (`soundfonts/NAME`)
 /// when a render needs them: a read of a missing file records it and fails
 /// with [`NeedContent`], and the call is retried once the worker provides it.
@@ -151,11 +167,23 @@ pub struct Host {
     pub font_files: Arc<MemFonts>,
     pub fonts: Arc<Fonts>,
     pub library: Library,
+    /// The active project — the one the call being handled is for: its key,
+    /// folder, song and the producer's context (what
+    /// `.rosaclef/context.json` holds natively).
+    key: String,
     pub folder: Folder,
     doc: Doc,
-    /// The producer's context (what `.rosaclef/context.json` holds natively).
     pub context: Value,
-    ws_clients: Vec<u64>,
+    /// The other open projects.
+    parked: Vec<Parked>,
+    /// The project of calls without a key.
+    home: String,
+    /// Each page's project, for its project socket (`ws`) and its terminal.
+    ws_clients: HashMap<u64, String>,
+    term_clients: HashMap<u64, String>,
+    /// Randomness from the worker for the next key (`crypto.getRandomValues`).
+    pub nonce: Option<String>,
+    next_key: u64,
     pub(crate) shells: HashMap<u64, Shell>,
     peaks: HashMap<(u64, usize), Value>,
     pub out: Vec<Out>,
@@ -228,7 +256,7 @@ fn str_field(v: &Value, k: &str) -> String {
 impl Host {
     /// A host on `mem`, with the library under [`LIBRARY`]. Opens the last
     /// open project; on first use, creates one from the demo song.
-    pub fn start(mem: Arc<MemFs>) -> Result<Host> {
+    pub fn start(mem: Arc<MemFs>, nonce: Option<String>) -> Result<Host> {
         let fs: SharedFs = mem.clone();
         let library = Library::new(fs.clone(), LIBRARY, EXE);
         fs.create_dir_all(Path::new(LIBRARY))?;
@@ -253,11 +281,12 @@ impl Host {
         let folder = library.folder(&name);
         let (project, issues) = Self::load(&folder)?;
         let font_files = Arc::new(MemFonts::default());
-        let host = Host {
+        let mut host = Host {
             mem,
             fonts: Arc::new(Fonts::new(font_files.clone())),
             font_files,
             library,
+            key: String::new(),
             folder,
             doc: Doc {
                 project,
@@ -265,13 +294,103 @@ impl Host {
                 issues,
             },
             context: Value::Null,
-            ws_clients: vec![],
+            parked: vec![],
+            home: String::new(),
+            ws_clients: HashMap::new(),
+            term_clients: HashMap::new(),
+            nonce,
+            next_key: 0,
             shells: HashMap::new(),
             peaks: HashMap::new(),
             out: vec![],
         };
+        host.key = host.new_key();
+        host.home = host.key.clone();
         host.remember()?;
         Ok(host)
+    }
+
+    // ------------------------------------------------------------ projects
+
+    /// A key for a project: the worker's random bits (else, natively in
+    /// tests, a counter).
+    fn new_key(&mut self) -> String {
+        self.next_key += 1;
+        match self.nonce.take() {
+            Some(n) if n.len() == 32 && n.bytes().all(|b| b.is_ascii_hexdigit()) => n,
+            _ => format!("{:032x}", self.next_key),
+        }
+    }
+
+    /// Make the project with `key` the active one. False when no open
+    /// project has that key (nothing changes then).
+    pub fn select(&mut self, key: &str) -> bool {
+        if key == self.key {
+            return true;
+        }
+        let Some(i) = self.parked.iter().position(|p| p.key == key) else {
+            return false;
+        };
+        let p = &mut self.parked[i];
+        std::mem::swap(&mut self.key, &mut p.key);
+        std::mem::swap(&mut self.folder, &mut p.folder);
+        std::mem::swap(&mut self.doc, &mut p.doc);
+        std::mem::swap(&mut self.context, &mut p.context);
+        true
+    }
+
+    /// The key of the open project in `dir`.
+    fn open_key(&self, dir: &Path) -> Option<String> {
+        if self.folder.dir == dir {
+            return Some(self.key.clone());
+        }
+        self.parked
+            .iter()
+            .find(|p| p.folder.dir == dir)
+            .map(|p| p.key.clone())
+    }
+
+    /// Open a project of the library (or find it open) and make it active;
+    /// it is the home project from now on. Its key.
+    pub fn open_named(&mut self, name: &str) -> Result<String> {
+        let dir = self.library.project_dir(name)?;
+        let key = match self.open_key(&dir) {
+            Some(k) => k,
+            None => {
+                let folder = Folder::new(self.fs().clone(), dir);
+                let (project, issues) = Self::load(&folder)?;
+                let key = self.new_key();
+                self.parked.push(Parked {
+                    key: key.clone(),
+                    folder,
+                    doc: Doc {
+                        project,
+                        rev: 1,
+                        issues,
+                    },
+                    context: Value::Null,
+                });
+                key
+            }
+        };
+        self.select(&key);
+        self.home = key.clone();
+        self.remember()?;
+        Ok(key)
+    }
+
+    /// Close the open projects no page uses any more (never the home project).
+    fn close_unused(&mut self) {
+        let used: std::collections::HashSet<String> = std::iter::once(self.home.clone())
+            .chain(self.ws_clients.values().cloned())
+            .chain(self.term_clients.values().cloned())
+            .collect();
+        if !used.contains(&self.key) {
+            // The active project closes too: the home project takes its place.
+            let home = self.home.clone();
+            self.select(&home);
+        }
+        self.parked.retain(|p| used.contains(&p.key));
     }
 
     fn fs(&self) -> &SharedFs {
@@ -292,8 +411,17 @@ impl Host {
         Ok((checked.project.expect("checked"), checked.issues))
     }
 
+    /// Remember the home project (a new tab opens it).
     fn remember(&self) -> Result<()> {
-        let v = json!({"current": self.folder.name()});
+        let home = if self.home == self.key {
+            &self.folder
+        } else {
+            match self.parked.iter().find(|p| p.key == self.home) {
+                Some(p) => &p.folder,
+                None => &self.folder,
+            }
+        };
+        let v = json!({"current": home.name()});
         Ok(self
             .fs()
             .write_if_changed(Path::new(STATE_FILE), &(v.to_string() + "\n"))?)
@@ -305,14 +433,32 @@ impl Host {
 
     // ------------------------------------------------------------ messages
 
+    /// A message for one page (`to`), or for every page on the active
+    /// project but `exclude` — never for another project's pages.
     fn send(&mut self, to: Option<u64>, exclude: u64, chan: &'static str, v: Value) {
-        self.out.push(Out {
-            to,
-            exclude,
-            chan,
-            text: v.to_string(),
-            raw: false,
-        });
+        let text = v.to_string();
+        let to: Vec<u64> = match to {
+            Some(c) => vec![c],
+            None => {
+                let mut cs: Vec<u64> = self
+                    .ws_clients
+                    .iter()
+                    .filter(|(c, k)| **k == self.key && **c != exclude)
+                    .map(|(c, _)| *c)
+                    .collect();
+                cs.sort_unstable();
+                cs
+            }
+        };
+        for c in to {
+            self.out.push(Out {
+                to: Some(c),
+                exclude: 0,
+                chan,
+                text: text.clone(),
+                raw: false,
+            });
+        }
     }
 
     pub(crate) fn term_out(&mut self, client: u64, text: String) {
@@ -333,6 +479,7 @@ impl Host {
         json!({
             "t": t,
             "client": client,
+            "session": self.key,
             "rev": self.doc.rev,
             "project": self.doc.project,
             "issues": self.doc.issues,
@@ -344,23 +491,84 @@ impl Host {
         })
     }
 
-    pub fn ws_open(&mut self, client: u64) {
-        if !self.ws_clients.contains(&client) {
-            self.ws_clients.push(client);
+    /// A page's project socket opens, for the project with key `scope`
+    /// ("": the home project). A key that names no open project is refused
+    /// (`closed`: the page opens its project again).
+    pub fn ws_open(&mut self, client: u64, scope: &str) {
+        let key = if scope.is_empty() {
+            self.home.clone()
+        } else {
+            scope.to_string()
+        };
+        if !self.select(&key) {
+            self.send(
+                Some(client),
+                0,
+                "ws",
+                json!({"t": "closed", "message": "the project was closed; opening it again"}),
+            );
+            return;
         }
+        self.ws_clients.insert(client, key);
         let w = self.welcome("welcome", client);
         self.send(Some(client), 0, "ws", w);
+        self.close_unused();
+    }
+
+    /// Make the project of `client`'s socket (or terminal) active. False when
+    /// it has none (nothing of the call may run then).
+    pub fn select_for(&mut self, client: u64, term: bool) -> bool {
+        let key = if term {
+            self.term_clients.get(&client)
+        } else {
+            self.ws_clients.get(&client)
+        };
+        match key.cloned() {
+            Some(k) => self.select(&k),
+            None => false,
+        }
+    }
+
+    /// A page's terminal opens, for the project with key `scope` ("": the
+    /// project of its socket, else the home project).
+    pub fn term_open_in(&mut self, client: u64, scope: &str) {
+        let key = if !scope.is_empty() {
+            scope.to_string()
+        } else {
+            self.ws_clients
+                .get(&client)
+                .cloned()
+                .unwrap_or_else(|| self.home.clone())
+        };
+        if !self.select(&key) {
+            self.term_json(
+                client,
+                json!({"t": "error", "message": "the project was closed; reload the page"}),
+            );
+            return;
+        }
+        // Another project: its own shell.
+        if self.term_clients.insert(client, key.clone()).as_ref() != Some(&key) {
+            self.shells.remove(&client);
+        }
+        self.term_open(client);
+        self.close_unused();
     }
 
     pub fn close(&mut self, client: u64) {
-        self.ws_clients.retain(|c| *c != client);
+        self.ws_clients.remove(&client);
+        self.term_clients.remove(&client);
         self.shells.remove(&client);
+        self.close_unused();
     }
 
     pub fn ws_message(&mut self, client: u64, text: &str) {
         let Ok(v) = serde_json::from_str::<Value>(text) else {
             return;
         };
+        if !self.select_for(client, false) {
+            return;
+        }
         match v.get("t").and_then(|t| t.as_str()).unwrap_or("") {
             "put" => {
                 let checked =
@@ -374,7 +582,7 @@ impl Host {
                     );
                     return;
                 }
-                // An edit made for a project that has since been closed is dropped.
+                // An edit made for the project's folder before it moved is dropped.
                 if let Some(f) = v.get("folder").and_then(|f| f.as_str()) {
                     if f != self.folder.dir.display().to_string() {
                         return;
@@ -404,7 +612,7 @@ impl Host {
         }
     }
 
-    /// Accept a new version of the song and tell every other page.
+    /// Accept a new version of the active song and tell its other pages.
     pub fn apply(
         &mut self,
         project: Project,
@@ -421,23 +629,14 @@ impl Host {
         Ok(self.doc.rev)
     }
 
-    /// Open another project of the library; every page reloads it.
-    pub fn switch_to(&mut self, name: &str) -> Result<bool> {
+    /// The shell's `open NAME`: the page of terminal `client` opens that
+    /// project (in that tab only). False when it is the tab's project already.
+    pub fn open_in_tab(&mut self, client: u64, name: &str) -> Result<bool> {
         let dir = self.library.project_dir(name)?;
-        let target = Folder::new(self.fs().clone(), dir);
-        if target.dir == self.folder.dir {
+        if dir == self.folder.dir {
             return Ok(false);
         }
-        let (project, issues) = Self::load(&target)?;
-        self.folder = target;
-        self.doc = Doc {
-            project,
-            rev: 1,
-            issues,
-        };
-        self.remember()?;
-        let w = self.welcome("switched", 0);
-        self.send(None, 0, "ws", w);
+        self.send(Some(client), 0, "ws", json!({"t": "goto", "name": name}));
         Ok(true)
     }
 
@@ -462,9 +661,24 @@ impl Host {
     // ------------------------------------------------------------ requests
 
     pub fn request(&mut self, client: u64, method: &str, url: &str, body: &[u8]) -> Response {
+        let (path, q) = parse_url(url);
+        // `/s/{key}/...`: that project's, served as `/...`; a key that names
+        // no open project is refused, never taken as another's.
+        let (key, path) = match path.strip_prefix("/s/") {
+            Some(rest) => {
+                let (k, tail) = rest.split_once('/').unwrap_or((rest, ""));
+                (k.to_string(), format!("/{tail}"))
+            }
+            None => (self.home.clone(), path),
+        };
+        if !self.select(&key) {
+            return Response::text(
+                404,
+                "this project is not open in the studio (any more); open it again",
+            );
+        }
         let samples_before = self.folder.list_samples();
         let folder_before = self.folder.dir.clone();
-        let (path, q) = parse_url(url);
         let res = self.route(client, method, &path, &q, body);
         if self.folder.dir == folder_before {
             let samples = self.folder.list_samples();
@@ -585,6 +799,7 @@ impl Host {
                 Response::json(r)
             }
             ("GET", "/api/projects") => Response::json(json!({
+                // (`current`: the project of the request.)
                 "library": "Browser storage",
                 "current": self.folder.name(),
                 "currentFolder": self.folder.dir.display().to_string(),
@@ -600,9 +815,23 @@ impl Host {
                 Response::json(json!({"name": f.name()}))
             }
             ("POST", "/api/projects/open") => {
-                let name = str_field(&body_json(body)?, "name");
-                let switched = self.switch_to(&name)?;
-                Response::json(json!({"ok": true, "name": name, "switched": switched}))
+                // By name, or by folder (a project of the library).
+                let v = body_json(body)?;
+                let mut name = str_field(&v, "name");
+                if name.is_empty() {
+                    let path = str_field(&v, "path");
+                    name = match Path::new(&path).strip_prefix(LIBRARY) {
+                        Ok(rel) if rel.components().count() == 1 => rel.display().to_string(),
+                        _ => bail!("{path} is not a project of the library"),
+                    };
+                }
+                let key = self.open_named(&name)?;
+                Response::json(json!({
+                    "ok": true,
+                    "session": key,
+                    "name": self.folder.name(),
+                    "folder": self.folder.dir.display().to_string(),
+                }))
             }
             ("POST", "/api/projects/duplicate") => {
                 let v = body_json(body)?;
@@ -654,10 +883,10 @@ impl Host {
             ("DELETE", p) if p.starts_with("/api/projects/") => {
                 let name = &p["/api/projects/".len()..];
                 let dir = self.library.project_dir(name)?;
-                if dir == self.folder.dir {
+                if self.open_key(&dir).is_some() {
                     return Ok(Response::text(
                         409,
-                        format!("{name:?} is open; open another project before deleting it"),
+                        format!("{name:?} is open; close its tabs before deleting it"),
                     ));
                 }
                 let trashed = self.library.trash(name)?;
@@ -914,11 +1143,12 @@ impl Host {
 
     fn rename_project(&mut self, name: &str, to: &str) -> Result<()> {
         let src = self.library.project_dir(name)?;
-        if src != self.folder.dir {
+        let Some(key) = self.open_key(&src) else {
             return self.library.rename(name, to);
-        }
-        // The open project: move it and follow it.
+        };
+        // An open project: move it and follow it (its pages hear `switched`).
         let dst = self.library.checked_target(to)?;
+        self.select(&key);
         self.fs().rename(&src, &dst)?;
         self.folder = Folder::new(self.fs().clone(), dst);
         self.remember()?;

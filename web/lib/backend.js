@@ -46,13 +46,14 @@ const jobs = new Map();
 /** POST /api/jobs/<kind>, served here: the worker runs POST /api/<kind> (busy
  * until it ends) and tells how far it has come, and GET /api/jobs/<id> is
  * answered from what it said — the same exchange as with the server. */
-function startLocalJob(kind, body) {
+function startLocalJob(prefix, kind, body) {
   // Random: the tabs share the worker, and it tells every tab of every job.
   const id = 1 + Math.floor(Math.random() * 4294967294);
-  jobs.set(id, { id, active: false, what: kind, stage: "", done: 0, render: 0, seconds: 0, total: 0, state: "running" });
+  // `prefix`: the project's (`/s/<key>`); the job is found only through it.
+  jobs.set(id, { id, prefix, active: false, what: kind, stage: "", done: 0, render: 0, seconds: 0, total: 0, state: "running" });
   // Forget the oldest finished ones.
   for (const [k, j] of jobs) if (jobs.size > 32 && j.state !== "running") jobs.delete(k);
-  localRequest("POST", `/api/${kind}?job=${id}`, body).then((r) => {
+  localRequest("POST", `${prefix}/api/${kind}?job=${id}`, body).then((r) => {
     const j = jobs.get(id);
     if (!j) return;
     const text = new TextDecoder().decode(r.body);
@@ -62,11 +63,12 @@ function startLocalJob(kind, body) {
   return { status: 202, type: "application/json", body: JSON.stringify({ job: id }) };
 }
 
-/** GET /api/jobs/<id>, served here. */
-function localJob(id) {
+/** GET /api/jobs/<id>, served here (for the project the job was started for). */
+function localJob(prefix, id) {
   const j = jobs.get(id);
-  if (!j) return { status: 404, type: "text/plain", body: `no job ${id}` };
-  return { status: 200, type: "application/json", body: JSON.stringify(j) };
+  if (!j || j.prefix !== prefix) return { status: 404, type: "text/plain", body: `no job ${id}` };
+  const { prefix: _, ...shown } = j;
+  return { status: 200, type: "application/json", body: JSON.stringify(shown) };
 }
 
 function startWorker() {
@@ -118,10 +120,11 @@ export async function localRequest(method, url, body) {
   return res;
 }
 
-// The server can have several projects open, one per tab: a tab's requests
-// name its project by the key the server gave it (`/s/<key>/api/...`), and
-// reach no other project. "" = the server's home project, until the first
-// welcome names it; the browser-only studio has one project and no keys.
+// The back end (the server, or the browser-only one in the worker) can have
+// several projects open, one per tab: a tab's requests and sockets name its
+// project by the key the back end gave it (`/s/<key>/api/...`), and reach no
+// other project. "" = the back end's home project, until the first welcome
+// names it.
 let scope = "";
 
 /** Name the project this tab's requests are for (its key from the server). */
@@ -140,13 +143,14 @@ export function scoped(url) {
 /** Like fetch, for either back end: { ok, status, text(), json(), blob() }. */
 export async function request(method, url, body, headers) {
   const m = await backend;
+  const at = scoped(url);
   if (m === "server") {
-    const r = await fetch(scoped(url), { method, headers, body });
+    const r = await fetch(at, { method, headers, body });
     return r;
   }
-  const started = method === "POST" && url.match(/^\/api\/jobs\/([a-z]+)$/);
-  const asked = method === "GET" && url.match(/^\/api\/jobs\/(\d+)$/);
-  const r = started ? startLocalJob(started[1], body) : asked ? localJob(Number(asked[1])) : await localRequest(method, url, body);
+  const started = method === "POST" && at.match(/^((?:\/s\/[0-9a-f]+)?)\/api\/jobs\/([a-z]+)$/);
+  const asked = method === "GET" && at.match(/^((?:\/s\/[0-9a-f]+)?)\/api\/jobs\/(\d+)$/);
+  const r = started ? startLocalJob(started[1], started[2], body) : asked ? localJob(asked[1], Number(asked[2])) : await localRequest(method, at, body);
   if (typeof r.body === "string") r.body = new TextEncoder().encode(r.body).buffer;
   return {
     ok: r.status >= 200 && r.status < 300,
@@ -158,12 +162,13 @@ export async function request(method, url, body, headers) {
   };
 }
 
-/** A socket-like channel to the browser back end (`ws` or `term`). */
-export function localSocket(chan, h) {
+/** A socket-like channel to the browser back end (`ws` or `term`), for the
+ * project with key `scope` ("": the home project). */
+export function localSocket(chan, h, scope) {
   let open = true;
   sockets.set(chan, h);
   backend.then(() => {
-    port.postMessage({ t: "open", chan });
+    port.postMessage({ t: "open", chan, scope });
     h.onOpen();
   });
   return {
@@ -188,7 +193,7 @@ export async function resolveUrl(url) {
   const m = await backend;
   if (m === "server") return scoped(url);
   if (!isBackendUrl(url)) return url;
-  const r = await localRequest("GET", url, null);
+  const r = await localRequest("GET", scoped(url), null);
   if (r.status !== 200) throw new Error(new TextDecoder().decode(r.body) || `${r.status}`);
   return URL.createObjectURL(new Blob([r.body], { type: r.type }));
 }

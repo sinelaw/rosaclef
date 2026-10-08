@@ -38,7 +38,7 @@
 
 The server keeps several projects open at once: each browser tab works on
 the project its address names (`#path=<folder>`), and tabs on different
-projects do not touch each other. Each open project
+projects do not touch each other (the browser-only studio too, below). Each open project
 (`crates/server/src/server.rs`, `Proj`) has its own document, clients,
 watcher, agent terminal, native engine, jobs, and an unguessable key (128
 random bits). Everything about a project is reached through its key:
@@ -64,8 +64,12 @@ keeps scripts and the CLI working.
   closed after a minute (its watcher, agent and native engine stop, and its
   key stops working); the home project stays open. An open project cannot be
   deleted, and one renamed while open keeps its key and follows its folder.
-- The browser-only studio keeps one project for all its tabs (one back end
-  in a SharedWorker): there, the address opens a project for them all.
+- The browser-only studio does the same in its worker (`crates/local`,
+  `Host`): one back end in a SharedWorker for every tab, a project per tab
+  (`#project=<name>`), keyed the same way. Every call works on exactly one
+  project — `Host::select` makes the call's project the active one before
+  anything runs — and messages go only to that project's pages. A project
+  closes once no tab uses it (the last one opened stays: a new tab opens it).
 
 ### Project sync
 

@@ -217,11 +217,14 @@ fn first_run_sync_and_persistence() {
     assert!(msgs
         .iter()
         .any(|m| m["to"] == 1 && m["text"].as_str().unwrap().contains("\"ack\"")));
-    let broadcast = msgs
+    assert!(
+        msgs.iter()
+            .any(|m| m["to"] == 2 && m["text"].as_str().unwrap().contains("\"project\"")),
+        "the other page on the project hears of it"
+    );
+    assert!(!msgs
         .iter()
-        .find(|m| m["to"].is_null())
-        .expect("the other page hears of it");
-    assert_eq!(broadcast["exclude"], 1);
+        .any(|m| m["to"] == 1 && m["text"].as_str().unwrap().contains("\"project\"")));
 
     // An invalid edit is rejected.
     project["transport"]["bpm"] = json!(-5);
@@ -242,7 +245,9 @@ fn samples_peaks_render_and_lazy_contents() {
     let mut w = Worker::boot(Store::default());
     // A small song renders fast in debug builds.
     w.json("POST", "/api/projects", json!({"name": "Small"}));
-    w.json("POST", "/api/projects/open", json!({"name": "Small"}));
+    let key = w.json("POST", "/api/projects/open", json!({"name": "Small"}))["session"].clone();
+    w.call(json!({"op": "ws_open", "client": 1, "scope": key}), b"");
+    w.messages("ws");
     let (status, body, _) = w.req("POST", "/api/samples?name=hit.wav", &wav(0.5));
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
     assert_eq!(
@@ -343,11 +348,17 @@ fn library_zip_and_trash() {
     w.call(json!({"op": "ws_open", "client": 1}), b"");
     w.messages("ws");
     let r = w.json("POST", "/api/projects/open", json!({"name": "Second"}));
-    assert_eq!(r["switched"], true);
-    let switched: Value =
+    assert_eq!(r["name"], "Second");
+    // The page connects to it (its tab's project now).
+    w.call(
+        json!({"op": "ws_open", "client": 1, "scope": r["session"]}),
+        b"",
+    );
+    let welcome: Value =
         serde_json::from_str(w.messages("ws")[0]["text"].as_str().unwrap()).unwrap();
-    assert_eq!(switched["t"], "switched");
-    assert_eq!(switched["name"], "Second");
+    assert_eq!(welcome["t"], "welcome");
+    assert_eq!(welcome["name"], "Second");
+    assert_eq!(welcome["session"], r["session"]);
 
     // The open project can be renamed; its song title follows.
     w.json(
@@ -525,4 +536,156 @@ fn writes_a_drum_part() {
         "{}",
         String::from_utf8_lossy(&body)
     );
+}
+
+/// The text of each `ws` message to `client` (parsed).
+fn to_page(msgs: &[Value], client: u64) -> Vec<Value> {
+    msgs.iter()
+        .filter(|m| m["to"] == client)
+        .map(|m| serde_json::from_str(m["text"].as_str().unwrap()).unwrap())
+        .collect()
+}
+
+#[test]
+fn tabs_on_different_projects_are_isolated() {
+    let mut w = Worker::boot(Store::default());
+    w.json("POST", "/api/projects", json!({"name": "Beta"}));
+    let a = w.json(
+        "POST",
+        "/api/projects/open",
+        json!({"name": "Arietta in J"}),
+    )["session"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let b = w.json(
+        "POST",
+        "/api/projects/open",
+        json!({"path": "/library/Beta"}),
+    )["session"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(a, b);
+    // Opening it again finds it open: the same key.
+    assert_eq!(
+        w.json("POST", "/api/projects/open", json!({"name": "Beta"}))["session"],
+        b.as_str()
+    );
+
+    // Page 1 on Arietta, pages 2 and 3 on Beta.
+    w.call(json!({"op": "ws_open", "client": 1, "scope": a}), b"");
+    w.call(json!({"op": "ws_open", "client": 2, "scope": b}), b"");
+    w.call(json!({"op": "ws_open", "client": 3, "scope": b}), b"");
+    let msgs = w.messages("ws");
+    let w1 = &to_page(&msgs, 1)[0];
+    let w2 = &to_page(&msgs, 2)[0];
+    assert_eq!(w1["name"], "Arietta in J");
+    assert_eq!(w2["name"], "Beta");
+
+    // An edit on Beta reaches Beta's other page, not Arietta's, and changes
+    // Beta only — whatever folder the message names.
+    let mut p = w2["project"].clone();
+    p["transport"]["bpm"] = json!(133);
+    w.call(json!({"op": "ws", "client": 2, "text": json!({"t": "put", "folder": w2["folder"], "project": p}).to_string()}), b"");
+    let msgs = w.messages("ws");
+    assert!(to_page(&msgs, 3).iter().any(|m| m["t"] == "project"));
+    assert!(to_page(&msgs, 1).is_empty(), "Arietta's page hears nothing");
+    let mut q = w1["project"].clone();
+    q["transport"]["bpm"] = json!(44);
+    w.call(json!({"op": "ws", "client": 2, "text": json!({"t": "put", "folder": w1["folder"], "project": q}).to_string()}), b"");
+    w.messages("ws");
+    let pa: Value =
+        serde_json::from_slice(&w.req("GET", &format!("/s/{a}/api/project"), b"").1).unwrap();
+    let pb: Value =
+        serde_json::from_slice(&w.req("GET", &format!("/s/{b}/api/project"), b"").1).unwrap();
+    assert_ne!(pa["transport"]["bpm"], 133);
+    assert_ne!(
+        pa["transport"]["bpm"], 44,
+        "a page cannot write another project"
+    );
+    assert_eq!(pb["transport"]["bpm"], 133);
+
+    // Requests reach the project their key names; an unknown key reaches none.
+    assert!(
+        w.json("GET", &format!("/s/{b}/api/files"), json!(null))["folder"]
+            .as_str()
+            .unwrap()
+            .ends_with("/Beta")
+    );
+    assert_eq!(
+        w.req("GET", &format!("/s/{}/api/project", "0".repeat(32)), b"")
+            .0,
+        404
+    );
+    let (status, _, _) = w.req("POST", &format!("/s/{b}/api/samples?name=b.wav"), &wav(0.1));
+    assert_eq!(status, 200);
+    assert_eq!(
+        w.req("GET", &format!("/s/{b}/files/samples/b.wav"), b"").0,
+        200
+    );
+    assert_eq!(
+        w.req("GET", &format!("/s/{a}/files/samples/b.wav"), b"").0,
+        404
+    );
+    let msgs = w.messages("ws");
+    assert!(to_page(&msgs, 2).iter().any(|m| m["t"] == "samples"));
+    assert!(to_page(&msgs, 1).is_empty());
+
+    // Only projects of the library open.
+    for body in [
+        json!({"path": "/library/../state.json"}),
+        json!({"path": "/elsewhere/Beta"}),
+        json!({"name": "../x"}),
+        json!({"name": "Nope"}),
+    ] {
+        let (status, _, _) = w.req("POST", "/api/projects/open", body.to_string().as_bytes());
+        assert_eq!(status, 400, "{body} opened");
+    }
+
+    // A project open in a tab cannot be deleted.
+    assert_eq!(w.req("DELETE", "/api/projects/Beta", b"").0, 409);
+
+    // Each tab's terminal works on its own project; `open` asks its page to
+    // open another one (in that tab).
+    w.call(json!({"op": "term_open", "client": 1}), b"");
+    w.call(json!({"op": "term_open", "client": 2}), b"");
+    for c in [1, 2] {
+        w.call(json!({"op": "term", "client": c, "text": json!({"t": "start", "agent": "shell"}).to_string()}), b"");
+    }
+    w.messages("term");
+    let get_bpm = |w: &mut Worker, c: u64| -> String {
+        w.call(json!({"op": "term", "client": c, "text": json!({"t": "input", "data": "get /transport/bpm\r"}).to_string()}), b"");
+        w.messages("term")
+            .iter()
+            .filter(|m| m["to"] == c)
+            .map(|m| m["text"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert!(get_bpm(&mut w, 2).contains("133"));
+    assert!(!get_bpm(&mut w, 1).contains("133"));
+    w.call(json!({"op": "term", "client": 1, "text": json!({"t": "input", "data": "open Beta\r"}).to_string()}), b"");
+    w.messages("term");
+    let goto = to_page(&w.messages("ws"), 1);
+    assert_eq!(goto[0]["t"], "goto");
+    assert_eq!(goto[0]["name"], "Beta");
+
+    // Once no page uses Beta, it closes, and its key stops working.
+    w.call(json!({"op": "close", "client": 2}), b"");
+    assert_eq!(
+        w.req("GET", &format!("/s/{b}/api/project"), b"").0,
+        200,
+        "page 3 is still on it"
+    );
+    w.call(json!({"op": "close", "client": 3}), b"");
+    // (Beta was the last project opened — the home project, which stays.)
+    w.json(
+        "POST",
+        "/api/projects/open",
+        json!({"name": "Arietta in J"}),
+    );
+    w.call(json!({"op": "close", "client": 4}), b"");
+    assert_eq!(w.req("GET", &format!("/s/{b}/api/project"), b"").0, 404);
+    w.call(json!({"op": "ws_open", "client": 5, "scope": b}), b"");
+    assert_eq!(to_page(&w.messages("ws"), 5)[0]["t"], "closed");
 }
