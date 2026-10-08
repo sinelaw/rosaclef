@@ -33,6 +33,7 @@
   "agent.term.banner": "このプロジェクトのファイルを扱う、お使いのコーディングエージェントです。",
   "agent.typeIntoPrompt": "エージェントのプロンプトに入力",
   "audio.engine.rejected.toast.title": "オーディオエンジンがプロジェクトを受け付けませんでした",
+  "audio.loadingInstruments.hint": "楽器を読み込み中 — 揃いしだい再生が始まります (Space で取り消し)",
   "audio.micUnavailable.body": "録音するにはマイクへのアクセスを許可してください。",
   "audio.micUnavailable.title": "マイクを使用できません",
   "audio.preset.loadFailed.toast.title": "インストゥルメントを読み込めませんでした",

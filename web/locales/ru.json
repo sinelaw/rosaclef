@@ -33,6 +33,7 @@
   "agent.term.banner": "Ваш собственный агент для кода, работающий с файлами этого проекта.",
   "agent.typeIntoPrompt": "Введите это в строку запроса агента",
   "audio.engine.rejected.toast.title": "Аудиодвижок отклонил проект",
+  "audio.loadingInstruments.hint": "Загрузка инструментов — воспроизведение начнётся, как только они будут готовы (Пробел отменяет)",
   "audio.micUnavailable.body": "Разрешите доступ к микрофону, чтобы записывать.",
   "audio.micUnavailable.title": "Микрофон недоступен",
   "audio.preset.loadFailed.toast.title": "Не удалось загрузить инструмент",

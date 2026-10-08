@@ -33,6 +33,7 @@
   "agent.term.banner": "Your own coding agent, working on this project's files.",
   "agent.typeIntoPrompt": "Type this into the agent's prompt",
   "audio.engine.rejected.toast.title": "The audio engine rejected the project",
+  "audio.loadingInstruments.hint": "Loading the instruments — playback starts as soon as they are in (Space cancels)",
   "audio.micUnavailable.body": "Allow microphone access to record.",
   "audio.micUnavailable.title": "Microphone unavailable",
   "audio.preset.loadFailed.toast.title": "Could not load an instrument",

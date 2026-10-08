@@ -33,6 +33,7 @@
   "agent.term.banner": "Votre propre agent de code, qui travaille sur les fichiers de ce projet.",
   "agent.typeIntoPrompt": "Saisir ceci dans le prompt de l’agent",
   "audio.engine.rejected.toast.title": "Le moteur audio a rejeté le projet",
+  "audio.loadingInstruments.hint": "Chargement des instruments — la lecture démarre dès qu’ils sont prêts (Espace annule)",
   "audio.micUnavailable.body": "Autorisez l’accès au micro pour enregistrer.",
   "audio.micUnavailable.title": "Micro indisponible",
   "audio.preset.loadFailed.toast.title": "Impossible de charger un instrument",

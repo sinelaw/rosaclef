@@ -8,7 +8,7 @@
 // The UI sends the same transport commands to whichever one is selected.
 
 import { audioStart, audioPost, audioPostSample, audioLoadPreset, audioResume, decodeAudioUrl, recStart, recStop, now, loadPref, savePref } from "#platform";
-import { state, hooks, invalidate, commit, currentPattern, reportContext, engineJson, refreshEngine, AUDITION } from "./store.js";
+import { state, hooks, invalidate, commit, currentPattern, reportContext, engineJson, refreshEngine, hint, AUDITION } from "./store.js";
 import { send } from "./net.js";
 import { toast } from "./ui/toast.js";
 import { insertIx, trackIndex } from "#brands";
@@ -18,6 +18,29 @@ import { t } from "./i18n.js";
 const loaded = [];
 /** const loading: String[] */
 const loading = [];
+
+/** What the browser engine still lacks: `answered` once it has said which
+ * samples and soundfont presets the last project sent needs, `inFlight` of
+ * them on their way. */
+const supply = { answered: false, inFlight: 0 };
+
+/** A play waiting for the instruments (`on`), with its count-in; `gen` tells
+ * it from a later one. */
+const pending = { on: false, beats /*: Number */: 0, gen: 0 };
+
+/** The longest a play waits for the instruments (ms). */
+const SUPPLY_WAIT = 20000;
+
+/** function supplied() => Boolean */
+function supplied() {
+  return supply.answered && supply.inFlight === 0;
+}
+
+/** A sample or preset arrived (or failed): a waiting play may start. */
+function landed() {
+  supply.inFlight = Math.max(0, supply.inFlight - 1);
+  if (pending.on && supplied()) startPending();
+}
 
 /** function onEngineMessage(m: AudioMsg) => Undefined */
 function onEngineMessage(m) {
@@ -40,8 +63,12 @@ function onEngineMessage(m) {
   } else if (m.t === "loaded") {
     for (const path of m.missing) loadSample(path);
     for (const p of m.presets) loadPreset(p);
+    supply.answered = true;
+    if (pending.on && supplied()) startPending();
   } else if (m.t === "loadError") {
     toast(t("audio.engine.rejected.toast.title"), m.message, "error");
+    supply.answered = true;
+    if (pending.on && supplied()) startPending();
   }
 }
 
@@ -49,14 +76,17 @@ function onEngineMessage(m) {
 function loadSample(path) {
   if (loaded.includes(path) || loading.includes(path)) return undefined;
   loading.push(path);
+  supply.inFlight += 1;
   decodeAudioUrl(`/files/${path}`)
     .then((d) => {
       audioPostSample(path, d);
       loaded.push(path);
+      landed();
       return true;
     })
     .catch((e) => {
       toast(t("audio.sample.loadFailed.toast.title"), path, "error");
+      landed();
       return false;
     });
 }
@@ -72,11 +102,18 @@ function loadPreset(p) {
   const key = `${p.font}/${p.bank}/${p.program}`;
   if (presets.includes(key)) return undefined;
   presets.push(key);
-  audioLoadPreset(p.font, p.bank, p.program).catch((e) => {
-    presets.splice(presets.indexOf(key), 1);
-    toast(t("audio.preset.loadFailed.toast.title"), String(e), "error");
-    return false;
-  });
+  supply.inFlight += 1;
+  audioLoadPreset(p.font, p.bank, p.program)
+    .then((ok) => {
+      landed();
+      return ok;
+    })
+    .catch((e) => {
+      presets.splice(presets.indexOf(key), 1);
+      toast(t("audio.preset.loadFailed.toast.title"), String(e), "error");
+      landed();
+      return false;
+    });
 }
 
 /** const startup: Promise<Boolean>[] */
@@ -97,6 +134,7 @@ async function boot() {
   try {
     await audioStart("engine/worklet.js", "engine/rosaclef.wasm", onEngineMessage);
     state.audioReady = true;
+    supply.answered = false;
     audioPost({ t: "project", json: engineJson() });
     invalidate();
   } catch (e) {
@@ -148,7 +186,10 @@ export function installEngine() {
       if (sampleCache.folder !== "") forgetSamples();
       sampleCache.folder = state.folder;
     }
-    if (state.audioReady) audioPost({ t: "project", json: json });
+    if (state.audioReady) {
+      supply.answered = false;
+      audioPost({ t: "project", json: json });
+    }
   };
 }
 
@@ -173,6 +214,29 @@ export async function playCountIn(beats) {
     return true;
   }
   await startAudio();
+  // Right after loading, the engine is still being sent the song's samples
+  // and soundfont presets: playing now would start silent and bring the
+  // instruments in one by one as they arrive. Wait for them (not forever).
+  pending.gen = pending.gen + 1;
+  pending.on = true;
+  pending.beats = beats;
+  if (supplied()) startPending();
+  else {
+    hint(t("audio.loadingInstruments.hint"));
+    const gen = pending.gen;
+    setTimeout(() => {
+      if (pending.on && pending.gen === gen) startPending();
+    }, SUPPLY_WAIT);
+  }
+  return true;
+}
+
+/** Start the play that waited for the instruments. */
+function startPending() {
+  if (!pending.on) return undefined;
+  pending.on = false;
+  if (state.hint === t("audio.loadingInstruments.hint")) hint("");
+  const beats = pending.beats;
   audioPost({ t: "metronome", on: state.metronome });
   audioPost({ t: "mode", pattern: modeTarget() });
   audioPost({ t: "play", countIn: beats });
@@ -183,7 +247,13 @@ export async function playCountIn(beats) {
   state.playing = true;
   reportContext();
   invalidate();
-  return true;
+}
+
+/** Drop a play still waiting for the instruments. */
+function cancelPending() {
+  if (!pending.on) return undefined;
+  pending.on = false;
+  if (state.hint === t("audio.loadingInstruments.hint")) hint("");
 }
 
 /** In pattern mode, play on past the pattern's end instead of looping (while
@@ -214,6 +284,7 @@ export function stop() {
     stopRecording();
     return;
   }
+  cancelPending();
   if (state.output === "native") send({ t: "native.stop" });
   else audioPost({ t: "stop" });
   state.playing = false;
@@ -223,7 +294,8 @@ export function stop() {
 }
 
 export function togglePlay() {
-  if (state.playing) {
+  if (pending.on) cancelPending();
+  else if (state.playing) {
     if (state.output === "native") send({ t: "native.pause" });
     else audioPost({ t: "pause" });
     state.playing = false;

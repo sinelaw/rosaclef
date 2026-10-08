@@ -33,6 +33,7 @@
   "agent.term.banner": "Dein eigener Coding-Agent, der an den Dateien dieses Projekts arbeitet.",
   "agent.typeIntoPrompt": "Gib das in den Prompt des Agenten ein",
   "audio.engine.rejected.toast.title": "Die Audio-Engine hat das Projekt abgelehnt",
+  "audio.loadingInstruments.hint": "Instrumente werden geladen — die Wiedergabe startet, sobald sie da sind (Leertaste bricht ab)",
   "audio.micUnavailable.body": "Erlaube den Mikrofonzugriff, um aufzunehmen.",
   "audio.micUnavailable.title": "Mikrofon nicht verfügbar",
   "audio.preset.loadFailed.toast.title": "Ein Instrument konnte nicht geladen werden",

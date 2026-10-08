@@ -33,6 +33,7 @@
   "agent.term.banner": "你自己的编程智能体，直接处理此项目的文件。",
   "agent.typeIntoPrompt": "在智能体的提示符中输入此内容",
   "audio.engine.rejected.toast.title": "音频引擎拒绝了该项目",
+  "audio.loadingInstruments.hint": "正在加载乐器 — 加载完成后立即开始播放（按空格取消）",
   "audio.micUnavailable.body": "请允许访问麦克风以进行录音。",
   "audio.micUnavailable.title": "麦克风不可用",
   "audio.preset.loadFailed.toast.title": "无法加载乐器",
