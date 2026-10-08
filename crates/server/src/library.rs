@@ -1,13 +1,15 @@
 //! HTTP routes of the project library and the file manager. The logic lives
 //! in `rosaclef_studio::library` (shared with the browser build); this module
-//! adds what only the server does: switching the open project (agent,
-//! watcher, clients) and serving requests.
+//! adds what only the server does: opening projects (each tab may have its
+//! own), following an open project that is renamed, and serving requests.
+//! Routes about the open project act on the request's project (its
+//! [`Scope`]); library routes name projects of the library, never paths.
 
 use crate::folder::Folder;
-use crate::server::{forbidden, same_origin, Shared};
+use crate::server::{forbidden, same_origin, Scope, Shared};
 use anyhow::{anyhow, bail, Result};
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Path as UrlPath, Query, State};
+use axum::extract::{DefaultBodyLimit, Extension, Path as UrlPath, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
@@ -16,7 +18,7 @@ use rosaclef_studio::library::{self, rewrite_refs};
 use rosaclef_studio::{archive, slug};
 use serde::Deserialize;
 use serde_json::json;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Largest file accepted by the import and upload endpoints.
 const MAX_UPLOAD: usize = 512 << 20;
@@ -56,25 +58,28 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'sta
         .map_err(|e| anyhow!("task failed: {e}"))?
 }
 
-fn current_dir(app: &Shared) -> PathBuf {
-    app.folder().dir
+/// Whether a project of the library is open (in any tab, or for its agent).
+fn is_open(app: &Shared, dir: &Path) -> bool {
+    app.open_at(&dir.canonicalize().unwrap_or(dir.to_path_buf()))
+        .is_some()
 }
 
-async fn list_projects(State(app): State<Shared>) -> Response {
-    let (library, current) = (app.library.clone(), current_dir(&app));
+async fn list_projects(
+    State(app): State<Shared>,
+    Extension(Scope(proj)): Extension<Scope>,
+) -> Response {
+    let cur = proj.folder().dir;
+    let (library, current) = (app.library.clone(), cur.clone());
     let res = blocking(move || Ok(library.list(&current))).await;
     match res {
-        Ok(projects) => {
-            let cur = current_dir(&app);
-            Json(json!({
-                "library": app.library.dir.display().to_string(),
-                "current": cur.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-                "currentFolder": cur.display().to_string(),
-                "projects": projects,
-                "demoTitle": rosaclef_studio::folder::demo_title(),
-            }))
-            .into_response()
-        }
+        Ok(projects) => Json(json!({
+            "library": app.library.dir.display().to_string(),
+            "current": cur.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+            "currentFolder": cur.display().to_string(),
+            "projects": projects,
+            "demoTitle": rosaclef_studio::folder::demo_title(),
+        }))
+        .into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
@@ -104,34 +109,39 @@ async fn create_project(
 }
 
 #[derive(Deserialize)]
-struct NameReq {
-    name: String,
+struct OpenReq {
+    /// A project of the library, by name…
+    name: Option<String>,
+    /// …or by its folder (a project of the library, or one open already).
+    path: Option<String>,
 }
 
+/// `POST /api/projects/open`: open a project (or find it open) for the tab
+/// asking. The answer's `session` scopes the tab's requests to it
+/// (`/s/{session}/...`); other tabs keep their own projects.
 async fn open_project(
     State(app): State<Shared>,
     headers: HeaderMap,
-    Json(req): Json<NameReq>,
+    Json(req): Json<OpenReq>,
 ) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
-    let dir = match app.library.project_dir(&req.name) {
+    let dir = match app.openable(req.name.as_deref(), req.path.as_deref()) {
         Ok(d) => d,
         Err(e) => return bad(e),
     };
     let a = app.clone();
-    let res = blocking(move || {
-        let target = Folder::on_disk(&dir);
-        if target.dir == a.folder().dir {
-            return Ok(false);
-        }
-        a.switch_to(target).map(|_| true)
-    })
-    .await;
-    match res {
-        Ok(switched) => {
-            Json(json!({"ok": true, "name": req.name, "switched": switched})).into_response()
+    match blocking(move || a.open_dir(&dir)).await {
+        Ok(p) => {
+            let folder = p.folder();
+            Json(json!({
+                "ok": true,
+                "session": p.key,
+                "folder": folder.dir.display().to_string(),
+                "name": folder.name(),
+            }))
+            .into_response()
         }
         Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()).into_response(),
     }
@@ -176,14 +186,14 @@ async fn rename_project(
         let src = a.library.project_dir(&name)?;
         let dst = a.library.checked_target(&to2)?;
         let src_canon = src.canonicalize().unwrap_or(src.clone());
-        if src_canon == a.folder().dir {
-            // The open project: move it and follow it (agent, watcher, clients).
-            a.rename_open(&dst)?;
-            let mut p = a.project();
+        if let Some(open) = a.open_at(&src_canon) {
+            // An open project: move it and follow it (agent, watcher, clients).
+            a.rename_open(&open, &dst)?;
+            let mut p = open.project();
             if p.meta.title == name {
                 p.meta.title = to2.clone();
                 let issues = rosaclef_core::validate::validate(&p);
-                a.apply(p, issues, "files", 0, None)?;
+                open.apply(p, issues, "files", 0, None)?;
             }
             Ok(())
         } else {
@@ -209,8 +219,8 @@ async fn delete_project(
     let a = app.clone();
     let res = blocking(move || {
         let dir = a.library.project_dir(&name)?;
-        if dir.canonicalize().unwrap_or(dir.clone()) == a.folder().dir {
-            bail!("{name:?} is open; open another project before deleting it");
+        if is_open(&a, &dir) {
+            bail!("{name:?} is open; close its tabs (and its agent) before deleting it");
         }
         a.library.trash(&name)
     })
@@ -281,12 +291,13 @@ async fn import_lmms(
 
 async fn import_midi(
     State(app): State<Shared>,
+    scope: Extension<Scope>,
     headers: HeaderMap,
     Query(q): Query<ImportQuery>,
     body: Bytes,
 ) -> Response {
     if q.into.as_deref() == Some("current") {
-        return import_midi_into(State(app), headers, Query(q), body).await;
+        return import_midi_into(scope, headers, Query(q), body).await;
     }
     if !same_origin(&headers) {
         return forbidden();
@@ -321,18 +332,22 @@ async fn import_zip(
 
 #[derive(Deserialize)]
 struct ExportQuery {
-    /// The project (default: the open one).
+    /// A project of the library (default: the request's project).
     name: Option<String>,
 }
 
 /// `GET /api/projects/export?name=`: the project folder as a zip archive.
-async fn export_project(State(app): State<Shared>, Query(q): Query<ExportQuery>) -> Response {
+async fn export_project(
+    State(app): State<Shared>,
+    Extension(Scope(proj)): Extension<Scope>,
+    Query(q): Query<ExportQuery>,
+) -> Response {
     let folder = match q.name.as_deref().filter(|n| !n.is_empty()) {
         Some(n) => match app.library.project_dir(n) {
             Ok(d) => Folder::on_disk(d),
             Err(e) => return bad(e),
         },
-        None => app.folder(),
+        None => proj.folder(),
     };
     let file = format!("{}.zip", slug(&folder.name()));
     match blocking(move || archive::export(&folder)).await {
@@ -354,7 +369,7 @@ async fn export_project(State(app): State<Shared>, Query(q): Query<ExportQuery>)
 /// `POST /api/import-midi?into=current`: add a MIDI file's parts to the
 /// open song as new channels, patterns, tracks and inserts (one undo step).
 async fn import_midi_into(
-    State(app): State<Shared>,
+    Extension(Scope(proj)): Extension<Scope>,
     headers: HeaderMap,
     Query(q): Query<ImportQuery>,
     body: Bytes,
@@ -365,7 +380,7 @@ async fn import_midi_into(
     if q.into.as_deref().unwrap_or("current") != "current" {
         return bad("only into=current is supported");
     }
-    let a = app.clone();
+    let a = proj.clone();
     let res = blocking(move || {
         let im =
             rosaclef_import::midi::import(&body, &rosaclef_import::midi::Options::new("import"))?;
@@ -399,8 +414,12 @@ struct FilesQuery {
     dir: Option<String>,
 }
 
-async fn list_files(State(app): State<Shared>, Query(q): Query<FilesQuery>) -> Response {
-    let (f, project) = (app.folder(), app.project());
+async fn list_files(
+    Extension(Scope(proj)): Extension<Scope>,
+    Query(q): Query<FilesQuery>,
+) -> Response {
+    let (f, project) = (proj.folder(), proj.project());
+    let folder = f.dir.display().to_string();
     let res = blocking(move || {
         library::files(
             &f,
@@ -410,8 +429,7 @@ async fn list_files(State(app): State<Shared>, Query(q): Query<FilesQuery>) -> R
     })
     .await;
     match res {
-        Ok(list) => Json(json!({"folder": app.folder().dir.display().to_string(), "files": list}))
-            .into_response(),
+        Ok(list) => Json(json!({"folder": folder, "files": list})).into_response(),
         Err(e) => bad(e),
     }
 }
@@ -423,16 +441,16 @@ struct FileRenameReq {
 }
 
 async fn rename_file(
-    State(app): State<Shared>,
+    Extension(Scope(proj)): Extension<Scope>,
     headers: HeaderMap,
     Json(req): Json<FileRenameReq>,
 ) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
-    let a = app.clone();
+    let a = proj.clone();
     let res = blocking(move || {
-        let _guard = a.switching.lock();
+        let _guard = a.busy.lock();
         let new_rel = library::rename_path(&a.folder(), &req.path, &req.to)?;
         // Keep the song pointing at the file.
         let mut project = a.project();
@@ -456,14 +474,14 @@ struct PathQuery {
 }
 
 async fn delete_file(
-    State(app): State<Shared>,
+    Extension(Scope(proj)): Extension<Scope>,
     headers: HeaderMap,
     Query(q): Query<PathQuery>,
 ) -> Response {
     if !same_origin(&headers) {
         return forbidden();
     }
-    let a = app.clone();
+    let a = proj.clone();
     match blocking(move || library::trash_path(&a.folder(), &q.path)).await {
         Ok(p) => Json(json!({"trashed": p})).into_response(),
         Err(e) => bad(e),
@@ -472,13 +490,14 @@ async fn delete_file(
 
 #[derive(Deserialize)]
 struct TrashReq {
-    /// `library` (deleted projects) or `project` (the open project's deleted files).
+    /// `library` (deleted projects) or `project` (the request's project's deleted files).
     scope: String,
 }
 
 /// `POST /api/trash/empty`: delete the trash for good.
 async fn empty_trash(
     State(app): State<Shared>,
+    Extension(Scope(proj)): Extension<Scope>,
     headers: HeaderMap,
     Json(req): Json<TrashReq>,
 ) -> Response {
@@ -488,7 +507,7 @@ async fn empty_trash(
     let a = app.clone();
     let res = blocking(move || match req.scope.as_str() {
         "library" => a.library.empty_trash(),
-        "project" => library::empty_trash(&a.folder()),
+        "project" => library::empty_trash(&proj.folder()),
         s => bail!("unknown trash {s:?} (library or project)"),
     })
     .await;

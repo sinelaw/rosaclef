@@ -1,6 +1,7 @@
-//! The agent terminal: one shared PTY session running the user's own coding
-//! agent (Claude Code, Codex, Gemini CLI, ...) inside the project folder.
-//! The browser renders it with xterm.js over `/ws/term`.
+//! The agent terminal: a PTY session running the user's own coding agent
+//! (Claude Code, Codex, Gemini CLI, ...) inside a project folder — one per
+//! open project, shared by that project's tabs. The browser renders it with
+//! xterm.js over the project's `/s/{key}/ws/term`.
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
@@ -105,8 +106,8 @@ pub struct Terminal {
     scrollback: Mutex<VecDeque<u8>>,
     status: Mutex<Value>,
     tx: broadcast::Sender<Event>,
-    /// Where agents run: the current project folder (changes when the
-    /// studio switches projects).
+    /// Where agents run: the project folder (it changes when the project
+    /// is renamed), and the project's own API URL.
     env: Mutex<AgentEnv>,
     last: Mutex<Option<Launch>>,
     next_id: AtomicU64,
@@ -124,6 +125,17 @@ impl Terminal {
             last: Mutex::new(None),
             next_id: AtomicU64::new(1),
         }
+    }
+
+    /// Whether an agent is running.
+    pub fn running(&self) -> bool {
+        self.session.lock().is_some()
+    }
+
+    /// Stop the agent for good (its project closed).
+    pub fn shut_down(&self) {
+        *self.last.lock() = None;
+        self.stop();
     }
 
     /// Point future agent sessions at another project folder.

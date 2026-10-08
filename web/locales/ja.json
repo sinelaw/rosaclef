@@ -907,7 +907,6 @@
   "projects.addMidi.done.body": "{1} から {0} 個の新しいチャンネル — Ctrl+Z で元に戻せます",
   "projects.addMidi.done.title": "MIDI パートを追加しました",
   "projects.addMidi.failed": "{0} を追加できませんでした",
-  "projects.address.notFound.body": "{0} はライブラリ {1} のプロジェクトではありません。",
   "projects.address.notFound.title": "アドレスのプロジェクトを開けません",
   "projects.ago.days": "{0} 日前",
   "projects.ago.hours": "{0} 時間前",

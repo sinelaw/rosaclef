@@ -92,6 +92,13 @@ export const hooks = {
   /** The tried-out instrument changed (audio.js tells the engine). */
   /** @type {() => Undefined} */
   audition: null,
+  /** Connect this tab to the project its address names (net.js; the server). */
+  /** @type {() => Undefined} */
+  reopen: null,
+  /** The tab's project has a new key (or the first): the agent's terminal
+   * connects to that project's (ui/agent.js). */
+  /** @type {() => Undefined} */
+  session: null,
 };
 
 // ------------------------------------------------------------------ opening

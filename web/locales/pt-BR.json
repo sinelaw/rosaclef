@@ -907,7 +907,6 @@
   "projects.addMidi.done.body": "{0} canal(is) novo(s) de {1} — Ctrl+Z desfaz",
   "projects.addMidi.done.title": "Partes MIDI adicionadas",
   "projects.addMidi.failed": "Falha ao adicionar {0}",
-  "projects.address.notFound.body": "{0} não é um projeto da biblioteca {1}.",
   "projects.address.notFound.title": "Não é possível abrir o projeto do endereço",
   "projects.ago.days": "há {0} dias",
   "projects.ago.hours": "há {0} h",

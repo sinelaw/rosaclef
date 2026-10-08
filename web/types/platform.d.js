@@ -40,6 +40,14 @@ export const uploadFile;
 /** "server" (the Rosaclef server) or "local" (the browser-only studio). */
 /** const backendMode: () => Promise<String> */
 export const backendMode;
+
+/** Name the project this tab's requests are for: the key the server gave it ("" = the server's home project). */
+/** const setScope: (String) => Undefined */
+export const setScope;
+
+/** Whether a failed request never reached the back end (it is down or restarting). */
+/** const isOffline: <E>(E) => Boolean */
+export const isOffline;
 /** const runJob: <B, T>(String, B, (Job) => Undefined) => Promise<T> */
 export const runJob;
 

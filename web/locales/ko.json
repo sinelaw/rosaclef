@@ -907,7 +907,6 @@
   "projects.addMidi.done.body": "{1}에서 새 채널 {0}개 — Ctrl+Z로 실행 취소",
   "projects.addMidi.done.title": "MIDI 파트 추가됨",
   "projects.addMidi.failed": "{0} 추가 실패",
-  "projects.address.notFound.body": "{0}은(는) 라이브러리 {1}의 프로젝트가 아닙니다.",
   "projects.address.notFound.title": "주소의 프로젝트를 열 수 없습니다",
   "projects.ago.days": "{0}일 전",
   "projects.ago.hours": "{0}시간 전",

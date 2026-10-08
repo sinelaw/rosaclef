@@ -6,7 +6,7 @@
 //! plugins and gives the lowest latency.
 
 use crate::folder::{self, Folder};
-use crate::server::App;
+use crate::server::Proj;
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use parking_lot::Mutex;
@@ -259,7 +259,7 @@ impl Drop for Native {
 }
 
 /// Handle `native.*` messages from the UI.
-pub async fn handle(app: Arc<App>, t: &str, v: &Value) -> Option<Value> {
+pub async fn handle(app: Arc<Proj>, t: &str, v: &Value) -> Option<Value> {
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
     match t {
         "native.enable" => {
@@ -355,7 +355,7 @@ pub async fn handle(app: Arc<App>, t: &str, v: &Value) -> Option<Value> {
 }
 
 /// Write the recorded take to `samples/` and place it on the playlist.
-fn finish_recording(app: &Arc<App>) {
+fn finish_recording(app: &Arc<Proj>) {
     let (data, channels, sr, start) = {
         let guard = app.native().lock();
         let Some(n) = guard.as_ref() else { return };

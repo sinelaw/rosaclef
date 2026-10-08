@@ -118,11 +118,30 @@ export async function localRequest(method, url, body) {
   return res;
 }
 
+// The server can have several projects open, one per tab: a tab's requests
+// name its project by the key the server gave it (`/s/<key>/api/...`), and
+// reach no other project. "" = the server's home project, until the first
+// welcome names it; the browser-only studio has one project and no keys.
+let scope = "";
+
+/** Name the project this tab's requests are for (its key from the server). */
+export function setScope(key) {
+  scope = key;
+}
+
+/** `url` for this tab's project: API calls, project files and sockets get its
+ * prefix. Opening a project names it by itself (it works whatever the tab had). */
+export function scoped(url) {
+  if (scope === "" || url.startsWith("/s/") || url === "/api/projects/open") return url;
+  if (url.startsWith("/api/") || url.startsWith("/files/") || url.startsWith("/ws")) return `/s/${scope}${url}`;
+  return url;
+}
+
 /** Like fetch, for either back end: { ok, status, text(), json(), blob() }. */
 export async function request(method, url, body, headers) {
   const m = await backend;
   if (m === "server") {
-    const r = await fetch(url, { method, headers, body });
+    const r = await fetch(scoped(url), { method, headers, body });
     return r;
   }
   const started = method === "POST" && url.match(/^\/api\/jobs\/([a-z]+)$/);
@@ -167,7 +186,8 @@ export function isBackendUrl(url) {
 /** A URL the browser can load for a back-end resource (an object URL when local). */
 export async function resolveUrl(url) {
   const m = await backend;
-  if (m === "server" || !isBackendUrl(url)) return url;
+  if (m === "server") return scoped(url);
+  if (!isBackendUrl(url)) return url;
   const r = await localRequest("GET", url, null);
   if (r.status !== 200) throw new Error(new TextDecoder().decode(r.body) || `${r.status}`);
   return URL.createObjectURL(new Blob([r.body], { type: r.type }));

@@ -115,7 +115,8 @@ await page.waitForSelector('.pm-card:has-text("Arietta in J")');
 const [zip] = await Promise.all([page.waitForEvent("download"), page.click('.pm-card:has-text("Arietta in J") button[title*=".zip"]')]);
 ok(`a project downloads as ${zip.suggestedFilename()}`);
 await page.keyboard.press("Escape");
-const [wav] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click("button.btn.gold:has-text('Export')")]);
+await page.click("button.btn.gold:has-text('Export')");
+const [wav] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click(".ex-run")]);
 ok(`the song exports to ${wav.suggestedFilename()}`);
 
 await browser.close();

@@ -907,7 +907,6 @@
   "projects.addMidi.done.body": "已从 {1} 新建 {0} 个通道——按 Ctrl+Z 可撤销",
   "projects.addMidi.done.title": "已添加 MIDI 声部",
   "projects.addMidi.failed": "添加 {0} 失败",
-  "projects.address.notFound.body": "{0} 不是资料库 {1} 中的项目。",
   "projects.address.notFound.title": "无法打开地址中的项目",
   "projects.ago.days": "{0} 天前",
   "projects.ago.hours": "{0} 小时前",

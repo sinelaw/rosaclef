@@ -907,7 +907,6 @@
   "projects.addMidi.done.body": "{0} neue(r) Kanal/Kanäle aus {1} — Ctrl+Z macht es rückgängig",
   "projects.addMidi.done.title": "MIDI-Stimmen hinzugefügt",
   "projects.addMidi.failed": "Hinzufügen von {0} fehlgeschlagen",
-  "projects.address.notFound.body": "{0} ist kein Projekt der Bibliothek {1}.",
   "projects.address.notFound.title": "Das Projekt aus der Adresse lässt sich nicht öffnen",
   "projects.ago.days": "vor {0} Tagen",
   "projects.ago.hours": "vor {0} Std.",

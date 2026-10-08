@@ -6,7 +6,9 @@
 import { Terminal } from "../vendor/xterm/xterm.mjs";
 import { FitAddon } from "../vendor/xterm/addon-fit.mjs";
 import { WebLinksAddon } from "../vendor/xterm/addon-web-links.mjs";
-import { backend, request, localSocket, resolveUrl, isLocal } from "./backend.js";
+import { backend, request, localSocket, resolveUrl, isLocal, setScope, scoped } from "./backend.js";
+
+export { setScope };
 
 // The DOM backend, the event layer, gestures and canvas sizing live with the
 // tree UI library (web/tree/dom.js).
@@ -18,7 +20,7 @@ export const now = () => performance.now();
 
 export function wsUrl(path) {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}${path}`;
+  return `${proto}//${location.host}${scoped(path)}`;
 }
 
 export function connectRaw(url, h) {
@@ -92,14 +94,16 @@ export async function uploadFile(url, file) {
  * `step` hears each answer, the first with just the id; resolves with the
  * job's result. */
 export async function runJob(kind, body, step) {
-  const { job } = await sendJson(`/api/jobs/${kind}`, "POST", body);
+  // The job is the project's it was started for, even if the tab moves on.
+  const jobs = scoped("/api/jobs/");
+  const { job } = await sendJson(`${jobs}${kind}`, "POST", body);
   step({ id: job, active: false, what: kind, stage: "", done: 0, render: 0, seconds: 0, total: 0, state: "running" });
   let misses = 0;
   for (;;) {
     await new Promise((r) => setTimeout(r, 200));
     let j;
     try {
-      j = await getJson(`/api/jobs/${job}`);
+      j = await getJson(`${jobs}${job}`);
       misses = 0;
     } catch (e) {
       // A busy server can miss an answer; one gone fails the job.
@@ -110,6 +114,11 @@ export async function runJob(kind, body, step) {
     if (j.state === "done") return j.result;
     if (j.state === "failed") throw new Error(j.error || String(j.status));
   }
+}
+
+/** Whether a failed request never reached the back end (it is down or restarting). */
+export function isOffline(e) {
+  return e instanceof TypeError;
 }
 
 /** "server" or "local" (the browser-only studio), once known. */

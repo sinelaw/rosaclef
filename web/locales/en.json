@@ -907,7 +907,6 @@
   "projects.addMidi.done.body": "{0} new channel(s) from {1} — Ctrl+Z undoes it",
   "projects.addMidi.done.title": "MIDI parts added",
   "projects.addMidi.failed": "Adding {0} failed",
-  "projects.address.notFound.body": "{0} is not a project of the library {1}.",
   "projects.address.notFound.title": "Cannot open the project in the address",
   "projects.ago.days": "{0} days ago",
   "projects.ago.hours": "{0} h ago",
