@@ -158,6 +158,7 @@ class RosaclefProcessor extends AudioWorkletProcessor {
         this.withStr(m.pattern, (p, l) => w.rc_set_mode(p, l));
         break;
       case "seek":
+        this.transport = m.transport || this.transport;
         w.rc_seek(m.beat);
         break;
       case "note":
