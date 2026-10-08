@@ -2,7 +2,7 @@
 //
 // State flows down into the view functions; there are no observers. Every
 // change calls `invalidate()`, which marks the UI tree; the next animation
-// frame rebuilds all descriptions and reconciles them (see ui/tree.js).
+// frame rebuilds all descriptions and reconciles them (see web/tree/tree.js).
 
 import { debounce, nowIso } from "#platform";
 import { decodeProject, emptyProject, projectJson, cloneProject, describeChange, defaultArpCatalog, newDevice, noArp } from "./model.js";

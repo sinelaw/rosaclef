@@ -2,6 +2,10 @@
 // between inty-checked application code and browser APIs that inty's
 // standard library does not describe yet (typed events, canvas, sockets,
 // Web Audio, xterm.js). `inty.json` maps the "platform" import here.
+//
+// The event layer, gestures, canvas sizing and the DOM backend (listen,
+// listenWindow, capturePointer, pixelRatio, canvas2d, drag, pressOrTap,
+// domBackend) are the UI library's (web/tree/dom.js), re-exported.
 
 /** const listen: <E>(E, String, (Ev) => Undefined) => Undefined */
 export const listen;

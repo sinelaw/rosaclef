@@ -3,7 +3,7 @@
 import { domBackend, getJson, listenWindow } from "#platform";
 import { state, hooks, invalidate } from "./store.js";
 import { decodeCatalog } from "./model.js";
-import { mount } from "./ui/tree.js";
+import { mount } from "../tree/tree.js";
 import { studio } from "./ui/shell.js";
 import { connect, installSync } from "./net.js";
 import { installEngine, startAudio, loadMetronome } from "./audio.js";

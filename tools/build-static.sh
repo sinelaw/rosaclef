@@ -17,7 +17,7 @@ fi
 rm -rf "$out"
 mkdir -p "$out"
 # The page, its modules and assets — not the type declarations and tests.
-for d in engine fonts lib local locales soundfonts src styles vendor; do
+for d in engine fonts lib local locales soundfonts src styles tree vendor; do
   cp -R "web/$d" "$out/$d"
 done
 # Tell the page it has no server (skips probing for one).

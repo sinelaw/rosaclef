@@ -1,4 +1,5 @@
-// Global type aliases for the Rosaclef frontend (loaded with `inty --lib`).
+// Global type aliases for the Rosaclef frontend (loaded with `inty --lib`,
+// after the UI library's own, web/tree/types.d.js: Ev, Ctx, KS, Builder, ...).
 //
 // The project model mirrors crates/core/src/model.rs. On the wire `params`
 // and `options` are JSON objects; in memory they are lists of key/value
@@ -16,10 +17,6 @@
 /** nominal type NoteIx = Int */
 /** Index into playlist.clips. */
 /** nominal type ClipIx = Int */
-/** A UI backend element handle. */
-/** nominal type Handle = Int */
-/** Index into a description buffer. */
-/** nominal type NodeIx = Int */
 /** Index into project.automation. */
 /** nominal type LaneIx = Int */
 /** Index into an automation lane's points. */
@@ -28,7 +25,6 @@
 // ------------------------------------------------------------------ model
 
 /** type KV = { key: String, value: Number } */
-/** type KS = { key: String, value: String } */
 /** type Device = { type: String, enabled: Boolean, params: KV[], options: KS[] } */
 /** A channel's arpeggiator; `on` false = none (only written to the project when on).
  * Held notes play `chord` above them over `octaves` octaves, one every `rate` beats. */
@@ -157,43 +153,6 @@
 
 // --------------------------------------------------------------- platform
 
-/** type Ev = {
-    clientX: Number, clientY: Number, offsetX: Number, offsetY: Number,
-    movementX: Number, movementY: Number, button: Number, buttons: Number, pointerId: Number, pointerType: String,
-    deltaX: Number, deltaY: Number, key: String, code: String,
-    shiftKey: Boolean, ctrlKey: Boolean, metaKey: Boolean, altKey: Boolean, repeat: Boolean,
-    detail: Number, typing: Boolean, terminal: Boolean, onControl: Boolean, value: String, checked: Boolean,
-    targetLeft: Number, targetTop: Number, targetWidth: Number, targetHeight: Number,
-    scrollLeft: Number, scrollTop: Number,
-    preventDefault: () => Undefined, stopPropagation: () => Undefined
-} */
-
-/** type Gradient = { addColorStop: (Number, String) => Undefined } */
-
-/** type Ctx = {
-    fillStyle: String, strokeStyle: String, lineWidth: Number, font: String,
-    textAlign: String, textBaseline: String, globalAlpha: Number,
-    shadowColor: String, shadowBlur: Number, lineCap: String, lineJoin: String,
-    fillRect: (Number, Number, Number, Number) => Undefined,
-    strokeRect: (Number, Number, Number, Number) => Undefined,
-    clearRect: (Number, Number, Number, Number) => Undefined,
-    beginPath: () => Undefined, closePath: () => Undefined,
-    moveTo: (Number, Number) => Undefined, lineTo: (Number, Number) => Undefined,
-    rect: (Number, Number, Number, Number) => Undefined,
-    roundRect: (Number, Number, Number, Number, Number) => Undefined,
-    arc: (Number, Number, Number, Number, Number) => Undefined,
-    quadraticCurveTo: (Number, Number, Number, Number) => Undefined,
-    fill: () => Undefined, stroke: () => Undefined, clip: () => Undefined,
-    fillText: (String, Number, Number) => Undefined,
-    measureText: (String) => { width: Number },
-    save: () => Undefined, restore: () => Undefined,
-    translate: (Number, Number) => Undefined, scale: (Number, Number) => Undefined,
-    setLineDash: (Number[]) => Undefined,
-    createLinearGradient: (Number, Number, Number, Number) => Gradient,
-    fillGradient: (Gradient) => Undefined,
-    strokeGradient: (Gradient) => Undefined
-} */
-
 /** A PDF object: its dictionary and, for a stream, its content (compressed when written). */
 /** type PdfObj = { head: String, stream: String } */
 
@@ -217,44 +176,6 @@
 
 /** Bytes of the browser's storage in use, and available (0 when unknown). */
 /** type StorageUse = { usage: Number, quota: Number } */
-
-// ------------------------------------------------------------- ui library
-// See web/src/ui/tree.js. Descriptions are flat (parent index, not nested
-// children), which keeps them cheap to rebuild and easy to type.
-
-/** type Listener = { event: String, fn: (Ev) => Undefined } */
-/** type Painter = (Ctx, Number, Number) => Undefined */
-/** type Desc = { parent: NodeIx, type: String, key: String, cls: String, text: String, attrs: KS[], styles: KS[], props: KS[], on: Listener[], paint: Painter, canvas: Boolean } */
-
-/** type Builder = {
-    open: (String, String, String) => Undefined,
-    close: () => Undefined,
-    leaf: (String, String, String, String) => Undefined,
-    text: (String) => Undefined,
-    attr: (String, String) => Undefined,
-    style: (String, String) => Undefined,
-    prop: (String, String) => Undefined,
-    on: (String, (Ev) => Undefined) => Undefined,
-    canvas: (String, String, Painter) => Undefined,
-    nodes: () => Desc[]
-} */
-
-/** type Backend = {
-    create: (String) => Handle,
-    root: () => Handle,
-    setText: (Handle, String) => Undefined,
-    setClass: (Handle, String) => Undefined,
-    setAttr: (Handle, String, String) => Undefined,
-    removeAttr: (Handle, String) => Undefined,
-    setStyle: (Handle, String, String) => Undefined,
-    setProp: (Handle, String, String) => Undefined,
-    append: (Handle, Handle) => Undefined,
-    insert: (Handle, Handle, Handle) => Undefined,
-    remove: (Handle) => Undefined,
-    listen: (Handle, String, (Ev) => Undefined) => Undefined,
-    paint: (Handle, Painter) => Undefined,
-    frame: (() => Undefined) => Undefined
-} */
 
 // ---------------------------------------------------------------- mix check
 // The report of POST /api/mixcheck (crates/studio/src/mixcheck, docs/mixcheck.md),

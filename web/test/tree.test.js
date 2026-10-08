@@ -1,8 +1,8 @@
 // Tests for the UI tree, run with: node web/test/tree.test.js
 // (also type-checked by inty via web/check.sh).
-import { mount, increasingRun } from "../src/ui/tree.js";
-import { handleIndex } from "#brands";
-import { memoryBackend, blankEvent } from "../src/ui/memory.js";
+import { mount, increasingRun } from "../tree/tree.js";
+import { handleIndex } from "#tree-ids";
+import { memoryBackend, blankEvent } from "../tree/memory.js";
 
 let failures = 0;
 /** function check(name: String, ok: Boolean) => Undefined */

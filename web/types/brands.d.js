@@ -17,14 +17,6 @@ export const noteIndex;
 export const clipIx;
 /** const clipIndex: (ClipIx) => Int */
 export const clipIndex;
-/** const handle: (Int) => Handle */
-export const handle;
-/** const handleIndex: (Handle) => Int */
-export const handleIndex;
-/** const nodeIx: (Int) => NodeIx */
-export const nodeIx;
-/** const nodeIndex: (NodeIx) => Int */
-export const nodeIndex;
 /** const laneIx: (Int) => LaneIx */
 export const laneIx;
 /** const laneIndex: (LaneIx) => Int */

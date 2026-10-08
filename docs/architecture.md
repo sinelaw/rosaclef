@@ -240,19 +240,24 @@
   `/api/render`. (Raised, glossy ink, a three.js renderer and a path tracer
   were tried on the branch `claude/film-heavy-rendering`.)
 
-### The UI library (`web/src/ui/tree.js`)
+### The UI library (`web/tree/`)
 
 A small retained, reconciling tree in the spirit of
-[fresh-ui](https://github.com/sinelaw/fresh/tree/master/crates/fresh-ui):
+[fresh-ui](https://github.com/sinelaw/fresh/tree/master/crates/fresh-ui),
+kept apart from the studio in `web/tree/` (its [README](../web/tree/README.md)
+describes it):
 
 - **Descriptions** are immutable, flat values (each node records its parent
-  index) rebuilt from state on every flush — one allocation per node.
+  index) rebuilt from state on every flush — one allocation per node
+  (`web/tree/tree.js`).
 - **Elements** persist across rebuilds, matched by their path of (type, key);
   they own the backend handle, the last-applied properties and the current
   handlers.
 - **Backends** implement a handful of primitives on numeric handles: the DOM
-  (`web/lib/platform.js`) and an in-memory test backend
-  (`web/src/ui/memory.js`) used by `web/test/tree.test.js`.
+  (`web/tree/dom.js`, with the event layer and pointer gestures; the studio
+  reaches it through `#platform`) and an in-memory test backend
+  (`web/tree/memory.js`) used by `web/test/tree.test.js`. The library's types
+  are in `web/tree/types.d.js`.
 - State flows down as arguments, events flow up as callbacks; any change calls
   `mark()` and the next animation frame rebuilds and reconciles everything.
 - Dense editors (piano roll, playlist) compute one layout (rectangles) that
@@ -275,11 +280,14 @@ A small retained, reconciling tree in the spirit of
 
 The UI is plain JavaScript type-checked by
 [inty](https://sinelaw.github.io/inty/) — no transpilation. Global model and
-UI types live in `web/types/globals.d.js`; integers with different meanings are
-`nominal type`s (`InsertIx`, `TrackIx`, `NoteIx`, `Handle`, …) declared in the
-same file, erased at runtime by identity casts (`web/lib/brands.js`).
+UI types live in `web/types/globals.d.js` (the UI library's in
+`web/tree/types.d.js`); integers with different meanings are `nominal type`s
+(`InsertIx`, `TrackIx`, `NoteIx`, …) declared in the same file, erased at
+runtime by identity casts (`web/lib/brands.js`; the library's `Handle` and
+`NodeIx` in `web/tree/ids.js`).
 `web/check.sh` checks every module in one run (about 2 s). The only unchecked code is the platform boundary
-(`web/lib/platform.js`, typed by `web/types/platform.d.js`, and the back-end
+(`web/lib/platform.js` and the UI library's `web/tree/dom.js`, typed by
+`web/types/platform.d.js`, and the back-end
 switch `web/lib/backend.js` behind it), the AudioWorklet processor and the
 static build's worker (`web/local/worker.js`).
 

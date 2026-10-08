@@ -10,15 +10,15 @@
 //     (type, key) pairs. They own the backend handle, the last applied
 //     properties and the current event handlers, and they survive rebuilds.
 //  3. The backend — a set of primitive operations on numeric handles (the
-//     DOM in the browser, an in-memory tree in tests). Nothing else touches
-//     the platform.
+//     DOM in the browser, ./dom.js; an in-memory tree in tests, ./memory.js).
+//     Nothing else touches the platform.
 //
 // State flows down (a view is a function of state writing descriptions),
 // events flow up (handlers are callbacks in the description). There are no
 // signals and no observers: anything that changes calls `mark()`, and the
 // next frame rebuilds and reconciles everything.
 
-import { nodeIx, nodeIndex } from "#brands";
+import { nodeIx, nodeIndex } from "#tree-ids";
 
 /** function noPaint(g: Ctx, w: Number, h: Number) => Undefined */
 function noPaint(g, w, h) {}
