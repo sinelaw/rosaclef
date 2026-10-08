@@ -19,7 +19,8 @@
 // studio run, so the agent can edit both.
 
 import { getJson, sendJson, now, audioPost } from "#platform";
-import { state, commit, invalidate, hint, currentPattern, hooks, engineJson, selectPattern } from "../store.js";
+import { state, commit, invalidate, hint, currentPattern, engineJson, selectPattern } from "../store.js";
+import { claimPreview, releasePreview } from "../preview.js";
 import { decodeProject, encodeProject, meterMap, barAt, barLines, cloneProject, uniqueId, songLength, optionValue, drumName, noteName } from "../model.js";
 import { startAudio, seek, setMode, play, stop } from "../audio.js";
 import { button, iconButton, select, textInput, glyph } from "./widgets.js";
@@ -489,8 +490,7 @@ async function playPreview() {
   drums.previewing = true;
   // Every change to the song (the part, the kit, a note) plays on in the
   // preview, instead of the song without its drums replacing it.
-  hooks.preview = refreshPreview;
-  hooks.previewing = true;
+  claimPreview("drums.preview", refreshPreview, stopPreview);
   invalidate();
   return await sendPreview(true);
 }
@@ -505,7 +505,7 @@ function refreshPreview() {
 export function stopPreview() {
   if (!drums.previewing) return undefined;
   drums.previewing = false;
-  hooks.previewing = false;
+  releasePreview("drums.preview");
   drums.previewSeq = drums.previewSeq + 1;
   audioPost({ t: "stop" });
   audioPost({ t: "project", json: engineJson() });
@@ -1858,8 +1858,7 @@ function tryGroove(gid) {
     .then((r) => {
       if (seq !== drums.trySeq || drums.trying !== gid) return false;
       // Changes to the song meanwhile do not replace what is trying.
-      hooks.preview = stopTrying;
-      hooks.previewing = true;
+      claimPreview("drums.try", stopTrying, stopTrying);
       audioPost({ t: "project", json: JSON.stringify(r.project) });
       audioPost({ t: "mode", pattern: id });
       audioPost({ t: "seek", beat: 0 });
@@ -1880,7 +1879,7 @@ export function stopTrying() {
   if (drums.trying === "") return undefined;
   drums.trying = "";
   drums.trySeq = drums.trySeq + 1;
-  hooks.previewing = false;
+  releasePreview("drums.try");
   audioPost({ t: "stop" });
   audioPost({ t: "project", json: engineJson() });
   const pat = currentPattern();

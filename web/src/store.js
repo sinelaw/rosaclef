@@ -8,6 +8,7 @@ import { debounce, nowIso } from "#platform";
 import { decodeProject, emptyProject, projectJson, cloneProject, describeChange, defaultArpCatalog, newDevice, noArp } from "./model.js";
 import { insertIx, insertIndex, trackIx, noteIndex, clipIndex } from "#brands";
 import { dockInfo } from "./docks.js";
+import { previewTakes } from "./preview.js";
 
 export const state = {
   project /*: Project */: emptyProject(),
@@ -78,7 +79,8 @@ export function tick() {
 
 // ------------------------------------------------------------------ hooks
 
-/** Set by the network and audio layers. */
+/** Set once, at start, by the network and audio layers (one each). Panels use
+ * `claimPreview` (preview.js) and `onOpened` below instead. */
 export const hooks = {
   /** @type {() => Undefined} */
   mark: null,
@@ -86,21 +88,29 @@ export const hooks = {
   sync: null,
   /** @type {(String) => Undefined} */
   engine: null,
-  /** While a preview plays its own version of the song (the Drums tab's,
-   * `previewing`), project changes go to it instead of the engine. */
-  /** @type {() => Undefined} */
-  preview: null,
-  previewing: false,
   /** @type {() => Undefined} */
   context: null,
   /** The tried-out instrument changed (audio.js tells the engine). */
   /** @type {() => Undefined} */
   audition: null,
-  /** Another project opened (net.js): the panels drop what they measured
-   * of the last one (the Mix check's report). */
-  /** @type {() => Undefined} */
-  opened: null,
 };
+
+// ------------------------------------------------------------------ opening
+
+/** const openedListeners: (() => Undefined)[] */
+const openedListeners = [];
+
+/** Run `fn` whenever another project opens: panels drop what they measured
+ * of the last one (the Mix check's report). */
+/** function onOpened(fn: () => Undefined) => Undefined */
+export function onOpened(fn) {
+  openedListeners.push(fn);
+}
+
+/** Another project opened (net.js). */
+export function projectOpened() {
+  for (const fn of openedListeners) fn();
+}
 
 // ------------------------------------------------------------------ editing
 
@@ -135,8 +145,7 @@ function pushToEngine() {
   engineQueued = true;
   setTimeout(() => {
     engineQueued = false;
-    if (hooks.previewing && hooks.preview) hooks.preview();
-    else if (hooks.engine) hooks.engine(engineJson());
+    if (!previewTakes() && hooks.engine) hooks.engine(engineJson());
   }, 30);
 }
 

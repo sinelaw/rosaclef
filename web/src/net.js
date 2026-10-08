@@ -1,7 +1,7 @@
 // Connection to the Rosaclef server: project sync, native engine status.
 
 import { connectRaw, wsUrl, loadPref, savePref, now } from "#platform";
-import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel, dockName } from "./store.js";
+import { state, hooks, load, applyRemote, invalidate, currentPattern, currentChannel, dockName, projectOpened } from "./store.js";
 import { toast } from "./ui/toast.js";
 import { insertIndex, noteIndex, clipIndex, trackIndex } from "#brands";
 import { decodeProject, encodeClipWire, barBeat } from "./model.js";
@@ -33,7 +33,7 @@ function onMessage(text) {
   if (kind === "welcome" || kind === "switched") {
     // Another project (opened, imported, or found on reconnecting): what
     // was measured of the last one goes.
-    if ((kind === "switched" || (state.loaded && state.folder !== String(m.folder))) && hooks.opened) hooks.opened();
+    if (kind === "switched" || (state.loaded && state.folder !== String(m.folder))) projectOpened();
     state.folder = String(m.folder);
     state.samples = m.samples;
     state.rev = Number(m.rev);
